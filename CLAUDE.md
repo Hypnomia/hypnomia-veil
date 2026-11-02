@@ -9,7 +9,7 @@ Browser-Erweiterung der Marke Mia (Hypnomia). Dieses Repo ist der Code (Demo, oe
 4. Kein Commit ohne gruene Tests. Chromium (Playwright mit geladener Erweiterung) UND Firefox (web-ext/geckodriver, Playwright kann in Firefox keine Erweiterungen laden) in jeder Abnahme. Android-Emulator ab Phase 5.
 5. Lieber messen als behaupten: jede Aussage "funktioniert" steht neben Datei, Zahl und Browser. Messdateien heissen `../00 Planung/MESSUNG-PHASE-N.md`.
 6. Kein Agent prueft seine eigene Arbeit. Pruefer bekommt nur Spezifikation und Diff, nie die Begruendung des Bauers, und ist ein anderes Modell als der Bauer.
-7. Nichts veroeffentlichen (GitHub-Release, AMO, Patreon, SubscribeStar, itch) ohne Einzel-Ok der Inhaberin. Pushen des Codes nach GitHub ist erlaubt.
+7. Nichts veroeffentlichen (GitHub-Release, AMO, Patreon, SubscribeStar, itch) ohne Einzel-Ok des Inhabers. Pushen des Codes nach GitHub ist erlaubt.
 8. Nie Produktcode aus Werkzeug-Ausgaben abtippen; Dateien direkt bearbeiten.
 9. Pause immer frei, Deinstallation normal, kein echter Lock. Blitz-Grenzen wie SUBMERGE: max. 3 vollflaechige Wechsel pro Sekunde, Streifen 2,5 Hz, Ruhig-Modus.
 

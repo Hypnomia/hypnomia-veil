@@ -9,7 +9,7 @@ Davon ausgenommen und NICHT frei lizenziert sind alle Inhalte der Marke Mia / Hy
 - Namen, Logos und Zeichen "Mia", "Hypnomia", "HYPNOMIA VEIL", die Spiral-Augen
 - Ton- und Sprachaufnahmen
 
-Diese Inhalte bleiben Eigentum der Inhaberin der Marke Mia. Sie duerfen nur zusammen mit dieser Erweiterung fuer den privaten Gebrauch genutzt werden. Weitergabe, Verkauf, Bearbeitung, Verwendung in anderen Produkten oder zum Training von KI-Modellen sind ohne schriftliche Erlaubnis nicht gestattet.
+Diese Inhalte bleiben Eigentum des Inhabers der Marke Mia. Sie duerfen nur zusammen mit dieser Erweiterung fuer den privaten Gebrauch genutzt werden. Weitergabe, Verkauf, Bearbeitung, Verwendung in anderen Produkten oder zum Training von KI-Modellen sind ohne schriftliche Erlaubnis nicht gestattet.
 
 Das Mia Pack wird gesondert ueber Patreon und SubscribeStar abgegeben und ist nicht Teil dieses Repos.
 
