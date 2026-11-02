@@ -11,7 +11,7 @@ const NAMEN = {
   buttocks: 'Po',
   belly: 'Bauch',
   feet: 'Füße',
-  hands: 'Hände',
+  armpits: 'Achseln',
 };
 
 const el = (id) => document.getElementById(id);
@@ -19,7 +19,9 @@ const el = (id) => document.getElementById(id);
 const zustand = {
   zonen: [],
   saetze: { nsfw: [], sfw: [] },
-  bilder: {}, // gespeicherte Eintraege, Schluessel "satz/datei"
+  bilder: {}, // gespeicherte (gepruefte) Eintraege, Schluessel "satz/datei"
+  vorschlag: {}, // Modellvorschlag, nur zur Vorbelegung, nie ein gespeicherter Eintrag
+  nurVorschlag: false, // Entwurf stammt aus dem Vorschlag und ist noch nicht gespeichert
   satz: 'nsfw',
   index: 0,
   entwurf: null, // Arbeitskopie des aktuellen Bildes
@@ -58,6 +60,7 @@ async function ladeListe() {
   zustand.zonen = d.zonen;
   zustand.saetze = d.saetze;
   zustand.bilder = d.bilder;
+  zustand.vorschlag = d.vorschlag && typeof d.vorschlag === 'object' ? d.vorschlag : {};
 }
 
 // ---------- Aufbau ----------
@@ -118,12 +121,38 @@ function zaehleMarkiert(satz) {
   return zustand.saetze[satz].filter((d) => zustand.bilder[schluessel(satz, d)]).length;
 }
 
+/** Bilder ohne gespeicherten Eintrag, aber mit Modellvorschlag. */
+function zaehleNurVorschlag(satz) {
+  return zustand.saetze[satz].filter((d) => {
+    const k = schluessel(satz, d);
+    return !zustand.bilder[k] && zustand.vorschlag[k];
+  }).length;
+}
+
+/** Wandelt einen Vorschlag in einen Entwurf; unbekannte Zonen werden verworfen. */
+function entwurfAusVorschlag(v) {
+  const bekannt = (x) => (Array.isArray(x) ? zustand.zonen.filter((z) => x.includes(z)) : []);
+  const kein = v.kein_mensch === true;
+  return {
+    sichtbar: kein ? [] : bekannt(v.sichtbar),
+    bedeckt: kein ? [] : bekannt(v.bedeckt),
+    kein_mensch: kein,
+    notiz: typeof v.notiz === 'string' ? v.notiz.slice(0, 500) : '',
+  };
+}
+
+function zeichneVorschlagHinweis() {
+  el('vorschlag-hinweis').hidden = !zustand.nurVorschlag;
+  document.querySelector('.steuerspalte').classList.toggle('ist-vorschlag', zustand.nurVorschlag);
+}
+
 function zeichneKopf() {
   const liste = zustand.saetze[zustand.satz];
   const n = liste.length;
   el('zaehler').textContent = n ? `Bild ${zustand.index + 1} von ${n}, Satz ${zustand.satz}` : `Satz ${zustand.satz}: keine Bilder`;
   const markiert = zaehleMarkiert(zustand.satz);
-  el('fortschritt-text').textContent = `markiert ${markiert} / ${n}`;
+  const nurVorschlag = zaehleNurVorschlag(zustand.satz);
+  el('fortschritt-text').textContent = `geprüft ${markiert} / ${n}, nur Vorschlag ${nurVorschlag}, nichts ${n - markiert - nurVorschlag}`;
   el('balken-fuellung').style.width = n ? `${Math.round((markiert / n) * 100)}%` : '0%';
   for (const s of ['nsfw', 'sfw']) {
     const b = el(`satz-${s}`);
@@ -140,8 +169,10 @@ function zeigeBild() {
     el('leer').hidden = false;
     el('dateiname').textContent = '';
     zustand.entwurf = leerEintrag();
+    zustand.nurVorschlag = false;
     zustand.veraendert = false;
     zeichneEntwurf();
+    zeichneVorschlagHinweis();
     zeichneKopf();
     return;
   }
@@ -151,19 +182,28 @@ function zeigeBild() {
   el('dateiname').textContent = schluessel(zustand.satz, datei);
 
   const gespeichert = zustand.bilder[aktuellerSchluessel()];
-  zustand.entwurf = gespeichert
-    ? {
-        sichtbar: [...gespeichert.sichtbar],
-        bedeckt: [...gespeichert.bedeckt],
-        kein_mensch: !!gespeichert.kein_mensch,
-        notiz: gespeichert.notiz ?? '',
-      }
-    : leerEintrag();
+  const vorschlag = gespeichert ? null : zustand.vorschlag[aktuellerSchluessel()];
+  if (gespeichert) {
+    zustand.entwurf = {
+      sichtbar: [...gespeichert.sichtbar],
+      bedeckt: [...gespeichert.bedeckt],
+      kein_mensch: !!gespeichert.kein_mensch,
+      notiz: gespeichert.notiz ?? '',
+    };
+  } else if (vorschlag && typeof vorschlag === 'object') {
+    zustand.entwurf = entwurfAusVorschlag(vorschlag);
+  } else {
+    zustand.entwurf = leerEintrag();
+  }
+  zustand.nurVorschlag = !gespeichert && !!vorschlag && typeof vorschlag === 'object';
+  // Ein Vorschlag wird erst durch Speichern zum Eintrag (Pfeiltasten allein speichern ihn nicht).
   zustand.veraendert = false;
   el('notiz').value = zustand.entwurf.notiz;
   zeichneEntwurf();
+  zeichneVorschlagHinweis();
   zeichneKopf();
-  meldung(gespeichert ? `Gespeichert am ${gespeichert.geprueft}.` : 'Noch nicht markiert.');
+  if (gespeichert) meldung(`Gespeichert am ${gespeichert.geprueft}.`);
+  else meldung(zustand.nurVorschlag ? 'Noch nicht geprüft. Mit "Speichern und weiter" bestätigen.' : 'Noch nicht markiert.');
 
   // Nachbarn vorladen, damit das Blaettern flott bleibt.
   for (const d of [zustand.saetze[zustand.satz][zustand.index + 1]]) {
@@ -186,6 +226,8 @@ async function speichere() {
     });
     zustand.bilder[k] = antwort.eintrag;
     zustand.veraendert = false;
+    zustand.nurVorschlag = false;
+    zeichneVorschlagHinweis();
     zeichneKopf();
     meldung(`Gespeichert am ${antwort.eintrag.geprueft}.`);
     return true;

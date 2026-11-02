@@ -12,12 +12,13 @@ const HIER = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HIER, '../..');
 const BILDER = path.resolve(REPO, '../05 Testbilder');
 const ERGEBNIS = path.join(BILDER, 'soll-zonen.json');
+const VORSCHLAG = path.join(BILDER, 'soll-zonen-vorschlag.json');
 
 const HOST = '127.0.0.1';
 const PORT = Number.parseInt(process.env.VEIL_ANNOTATE_PORT ?? '', 10) || 5188;
 
 const SAETZE = ['nsfw', 'sfw'];
-const ZONEN = ['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'hands'];
+const ZONEN = ['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'];
 const ENDUNGEN = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
@@ -84,6 +85,8 @@ function schluesselForm(schluessel) {
   return { satz, datei };
 }
 
+// Hinweis: Zonen, die nicht (mehr) in ZONEN stehen (z. B. das fruehere "hands"), werden beim
+// Laden und Speichern verworfen. Alte Eintraege bleiben so lesbar, ohne das Werkzeug zu stoeren.
 function zoneListe(x) {
   if (!Array.isArray(x)) return [];
   return ZONEN.filter((z) => x.includes(z));
@@ -148,6 +151,21 @@ function speichere() {
     fs.closeSync(fd);
   }
   fs.renameSync(tmp, ERGEBNIS);
+}
+
+/**
+ * Liest den Modellvorschlag roh (Schluessel "satz/datei" auf Eintrag), ohne Bereinigung und ohne
+ * Schreibzugriff. Fehlende oder unlesbare Datei ergibt ein leeres Objekt. Die Oberflaeche filtert
+ * unbekannte Zonen selbst heraus. Der Vorschlag ist nie ein gespeicherter Eintrag.
+ */
+function ladeVorschlag() {
+  try {
+    const roh = JSON.parse(fs.readFileSync(VORSCHLAG, 'utf8'));
+    const bilder = roh && typeof roh === 'object' ? roh.bilder : null;
+    return bilder && typeof bilder === 'object' && !Array.isArray(bilder) ? bilder : {};
+  } catch {
+    return {};
+  }
 }
 
 // ---------- HTTP-Hilfen ----------
@@ -262,7 +280,7 @@ async function behandle(req, res) {
   if (pfad === '/api/liste' && methode === 'GET') {
     const saetze = leseAlleSaetze();
     const anzahl = Object.fromEntries(SAETZE.map((s) => [s, saetze[s].length]));
-    return json(res, 200, { zonen: ZONEN, saetze, anzahl, bilder: daten.bilder });
+    return json(res, 200, { zonen: ZONEN, saetze, anzahl, bilder: daten.bilder, vorschlag: ladeVorschlag() });
   }
 
   if (pfad === '/api/daten' && methode === 'GET') {

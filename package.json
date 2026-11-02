@@ -13,14 +13,24 @@
     "lint": "tsc --noEmit",
     "test:chromium": "playwright test tests/chromium",
     "test:firefox": "node tests/firefox/hello.test.mjs",
+    "test:android": "node tests/android/hello.test.mjs",
     "test": "node scripts/test-all.mjs",
     "postinstall": "wxt prepare && npm run test:setup",
-    "test:setup": "playwright install chromium"
+    "test:setup": "playwright install chromium",
+    "spike:s0": "node spike/s0-zonen-vorschlag/vorschlag.mjs",
+    "spike:s1:chromium": "node spike/s1-modell/lauf-chromium.mjs",
+    "spike:s1:firefox": "node spike/s1-modell/lauf-firefox.mjs",
+    "spike:s1:chromium:webgpu": "node spike/s1-modell/lauf-chromium.mjs --backend webgpu",
+    "spike:s1:chromium:threads": "node spike/s1-modell/lauf-chromium.mjs --threads 4",
+    "spike:s1:firefox:webgpu": "node spike/s1-modell/lauf-firefox.mjs --backend webgpu"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
+    "onnxruntime-node": "^1.31.1",
+    "onnxruntime-web": "^1.31.1",
     "selenium-webdriver": "^4.51.0",
+    "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "wxt": "^0.21.5"
   }

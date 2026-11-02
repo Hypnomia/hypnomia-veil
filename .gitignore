@@ -31,3 +31,5 @@ __MACOSX/
 # Firefox-Profile aus Testlaeufen
 tests/**/profile/
 *.log
+# Spike-Messergebnisse
+spike/**/ergebnis-*.json
