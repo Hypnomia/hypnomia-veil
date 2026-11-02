@@ -34,6 +34,9 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 ## Befehle
 - `npm test`: Chromium- und Firefox-Tests (beide muessen gruen sein)
 - `npm run test:chromium`, `npm run test:firefox`: einzeln
+- `npm run test:android`: Firefox fuer Android im Emulator (vorher `export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` und Emulator `veil-android15` starten); installiert die signierte XPI aus `.output/signed/`
+- `npm run spike:s0`, `npm run spike:s1:chromium`, `npm run spike:s1:firefox` (plus `:webgpu`): Wegwerf-Messgeschirr in `spike/`, kein Produktcode
+- `node scripts/annotate/server.mjs`: Markierwerkzeug fuer die Soll-Zonen (http://127.0.0.1:5188)
 - `npm run build`: Chrome-Build; `npm run build:firefox`: Firefox-Build
 - `npm run zip`, `npm run zip:firefox`: Pakete fuer Release (landen in `.output/`, nie im Repo)
 - `./scripts/leak-check.sh --all`: Leck-Sperre ueber das ganze Repo

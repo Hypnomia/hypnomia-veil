@@ -25,6 +25,11 @@ export default defineConfig({
   outDir: '.output',
   // Manifest V3 auch fuer Firefox (WXT nimmt dort sonst MV2).
   manifestVersion: 3,
+  // Quellcode-Zip fuer Mozilla: Spike-, Test- und Werkzeugdateien gehoeren nicht hinein,
+  // nur das, was zum Nachbauen der Erweiterung noetig ist.
+  zip: {
+    excludeSources: ['spike/**', 'tests/**', 'scripts/annotate/**', 'scripts/make-icons.mjs', '*.log'],
+  },
   manifest: ({ browser }) => ({
     name: 'HYPNOMIA VEIL',
     version: paket.version,
