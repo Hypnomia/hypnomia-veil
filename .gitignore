@@ -1,0 +1,33 @@
+# HYPNOMIA VEIL: nie ins Repo (Entscheidung 34)
+node_modules/
+.output/
+.wxt/
+dist/
+build/
+*.zip
+*.xpi
+*.crx
+*.pem
+*.map
+web-ext-artifacts/
+test-results/
+playwright-report/
+blob-report/
+.env
+.env.*
+.DS_Store
+__MACOSX/
+.claude/settings.local.json
+.lokal/
+# Bilder: Mia-Bilder nie ins Repo; der Hook blockt zusaetzlich (Ausnahme: public/icons/)
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.avif
+*.heic
+!public/icons/*.png
+# Firefox-Profile aus Testlaeufen
+tests/**/profile/
+*.log

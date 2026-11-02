@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Git-Tuersteher 1/2: Leck-Sperre + Tests vor jedem Commit. Greift auch ohne Claude.
+set -u
+ROOT="$(git rev-parse --show-toplevel)"
+"$ROOT/scripts/leak-check.sh" || exit 2
+if [ -f "$ROOT/package.json" ] && [ -d "$ROOT/node_modules" ] && [ "${VEIL_SKIP_TESTS:-0}" != "1" ]; then
+  echo "Tests laufen (VEIL_SKIP_TESTS=1 nur fuer reine Doku-Commits)..."
+  (cd "$ROOT" && npm test --silent) || { echo "TESTS ROT: Commit geblockt." >&2; exit 2; }
+fi

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Git-Tuersteher 2/2: Commit-Text ohne Co-Author-/Session-/Werkzeug-Zeilen und ohne Leck-Muster.
+set -u
+ROOT="$(git rev-parse --show-toplevel)"
+MSG="$1"
+if grep -i -q -E '^(Co-Authored-By|Signed-off-by|Session|Generated with)' "$MSG"; then
+  echo "COMMIT-TEXT geblockt: Co-Author-/Session-/Werkzeug-Zeilen sind nicht erlaubt." >&2; exit 2
+fi
+LISTE="$ROOT/../.lokal/leck-muster.txt"
+if [ -r "$LISTE" ] && grep -v -E '^\s*(#|$)' "$LISTE" | grep -i -q -E -f - "$MSG"; then
+  echo "COMMIT-TEXT geblockt: Leck-Muster im Commit-Text." >&2; exit 2
+fi
