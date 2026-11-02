@@ -52,6 +52,19 @@ export function vergissWecken(): void {
 
 // ---------- Pixel lesen (Canvas-Weg) ----------
 
+// Darf das Content-Script die Pixel dieser Quelle selbst lesen? Chrome: ja, die Leinwand des Content-Scripts folgt den Regeln der Seite
+// (fremde Bilder ohne CORS verschmutzen sie). Firefox laesst Content-Scripts mit Host-Rechten aber auch fremde Pixel lesen, auch von
+// Weiterleitungen ins Heimnetz oder von Bildern, die mit Anmeldedaten geladen wurden; ueber das zensierte Bild kaeme das in die Seite.
+// Das Attribut crossorigin hilft nicht als Merkmal: es sagt nur, wie das Element jetzt geladen WUERDE, nicht wie der angezeigte Inhalt
+// geladen wurde (die Seite kann es nach dem Laden setzen, ein img zeigt dann weiter das alte Bild, ein video laedt nichts neu).
+// Darum liest Firefox Pixel nur bei data: und blob:. Alles mit http(s) (Bilder, Hintergruende) geht den Url-Weg: der Erkenner laedt ohne
+// Anmeldedaten und prueft die Endadresse. Videos mit http(s)-Quelle, mit srcObject (MediaStream) oder ohne Adresse werden in Firefox
+// ohne Pruefung verdeckt.
+export function pixelLesenErlaubt(url: string): boolean {
+  if (!import.meta.env.FIREFOX) return true;
+  return /^(data|blob):/i.test(url);
+}
+
 // Zeichnet die Quelle auf ein Canvas (laengste Seite hoechstens 1280), prueft die Lesbarkeit mit getImageData(0, 0, 1, 1)
 // und liefert ein JPEG als Data-URL. null = nicht lesbar (Canvas verschmutzt) oder keine Pixel.
 export function lesePixel(
@@ -91,6 +104,7 @@ export async function sendePruefe(
   hoehe: number,
   e: Einstellungen,
   rendern: boolean,
+  packStand?: number,
 ): Promise<AntwortPruefe> {
   const id = `${idPraefix}-${++zaehler}`;
   const nachricht: NachrichtErkennerPruefe = {
@@ -100,7 +114,7 @@ export async function sendePruefe(
     quelle,
     breite,
     hoehe,
-    einstellungen: { schwelle: e.schwelle, zonen: e.zonen, rand: e.rand, stil: e.stil },
+    einstellungen: { schwelle: e.schwelle, zonen: e.zonen, rand: e.rand, stil: e.stil, ...(packStand === undefined ? {} : { packStand }) },
     rendern,
   };
   // Zeitgrenze: ein haengender Erkenner (oder ein haengender Bildserver beim Nachladen) darf das Element nicht ewig offen halten.
@@ -129,13 +143,18 @@ export async function sendePruefe(
   }
 }
 
-// Referer fuer das Nachladen durch den Erkenner: Ursprung der Seite.
+// Herkunft der Seite fuer das Nachladen durch den Erkenner (Netzgrenze: oeffentlich nach privat gesperrt) und Referer-Wert.
+// Sie kommt allein vom Ursprung des Dokuments (window.origin: auch in about:blank-, blob:- und srcdoc-Frames der echte, geerbte Ursprung),
+// NIE aus document.baseURI: die Seite bestimmt <base href> selbst und koennte sich sonst als Seite im Heimnetz ausgeben.
+// Ist der Ursprung undurchsichtig (data:, sandbox ohne allow-same-origin), kommt "null" statt einer leeren Zeichenkette: der Erkenner
+// behandelt das als oeffentliche Seite (private Ziele bleiben gesperrt, es wird kein Referer gesetzt). Eine leere Zeichenkette hiesse
+// dort "kein Seitenbezug" und bleibt Absendern ohne Tab vorbehalten.
 export function refererDerSeite(): string {
   try {
-    const ursprung = location.origin !== 'null' ? location.origin : new URL(document.baseURI).origin;
-    return ursprung && ursprung !== 'null' ? `${ursprung}/` : '';
+    const ursprung = window.origin || location.origin;
+    return ursprung && ursprung !== 'null' && /^https?:\/\//i.test(ursprung) ? `${ursprung}/` : 'null';
   } catch {
-    return '';
+    return 'null';
   }
 }
 

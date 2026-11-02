@@ -71,6 +71,8 @@ export default defineConfig({
     // webRequest + webRequestBlocking (Firefox): Referer fuer das Nachladen fremder Bilder (Entscheidung 59).
     permissions: [
       'storage',
+      // unlimitedStorage: das Mia Pack liegt in IndexedDB und ist groesser als die Grenze von storage.local (Entscheidung 25).
+      'unlimitedStorage',
       // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
       ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen', 'declarativeNetRequestWithHostAccess']),
     ],

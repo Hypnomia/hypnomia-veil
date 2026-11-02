@@ -2,6 +2,8 @@
 // Einstellungen setzt die Seite ueber das CustomEvent `veil-test` (nur auf 127.0.0.1), das das Content-Script in storage.local schreibt.
 import { Builder } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
+import { Command } from 'selenium-webdriver/lib/command.js';
+import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +30,12 @@ const paket = path.join(ausgabe, `${paketJson.name}-${paketJson.version}-firefox
 if (!existsSync(paket)) {
   console.error(`firefox: Paket fehlt: ${path.relative(wurzel, paket)} (npm run zip:firefox)`);
   process.exit(1);
+}
+
+// Erweiterung als temporaeres Add-on installieren, ueber den Pfad (nicht Base64 wie driver.installAddon): geckodriver 0.37 mit Firefox 128
+// lehnt die Base64-Form ab (InvalidArgumentError), der Pfad geht in 128 und in neueren Versionen.
+async function installiere(treiber, paketPfad) {
+  await treiber.execute(new Command('install addon').setParameter('path', paketPfad).setParameter('temporary', true));
 }
 
 let letzterStatus = null;
@@ -101,9 +109,12 @@ try {
   server.push(await starteFixtureServer(port));
   server.push(await starteFixtureServer(portFremd));
   const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  // Testnamen auf den lokalen Rechner abbilden: fuer die Erweiterung sind es oeffentliche Namen (Netzgrenze-Tests mit Weiterleitungen).
+  optionen.setPreference('network.dns.localDomains', 'oeffentlich.test,bilder.test');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).build();
   await driver.manage().setTimeouts({ pageLoad: 20_000, script: 20_000 });
-  await driver.installAddon(paket, true);
+  console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);
+  await installiere(driver, paket);
 
   const alleBilderSichtbar = () =>
     driver.executeScript("return [...document.querySelectorAll('img')].every((i) => getComputedStyle(i).opacity === '1')");
@@ -405,6 +416,224 @@ try {
       await driver.switchTo().defaultContent();
     }
     await setze({ ausnahmen: [] });
+  });
+
+  // Adresswechsel in Einzelseiten-Apps (PHASE-2-BAUPLAN 9.6): Seite auf localhost, Rahmen auf 127.0.0.1, Ausnahme mit Pfadmuster.
+  // Die Ausnahme greift nach pushState, replaceState und popstate und endet, wenn die Seite den Pfad verlaesst. Die Seite liest ihre eigene
+  // Adresse (Navigation API wo vorhanden, sonst Takt), der Rahmen fragt die Tab-Adresse im Takt beim Hintergrund.
+  await test('o) Adresswechsel: Ausnahme greift nach pushState, replaceState und popstate und endet wieder (Seite und Rahmen)', async () => {
+    await driver.get(`${basis}/schleier.html`);
+    await bis('Status', status);
+    await setze({ ausnahmen: ['localhost/gp/buy'] });
+    await warte(500);
+    await driver.get(`http://localhost:${port}/spa.html`);
+    await bis('Status', status);
+    const navigationApi = await driver.executeScript("return typeof window.navigation !== 'undefined'");
+    console.log(`firefox Adresswechsel: Navigation API in der Seite ${navigationApi ? 'vorhanden' : 'fehlt (Takt)'}`);
+    const rahmen = await driver.findElement({ css: '#rahmen' });
+    const seiteIm = async (inRahmen) => {
+      if (inRahmen) await driver.switchTo().frame(rahmen);
+      try {
+        return await attribut('data-veil-seite');
+      } finally {
+        if (inRahmen) await driver.switchTo().defaultContent();
+      }
+    };
+    const erwarte = async (erwartet, beschreibung) => {
+      const t0 = Date.now();
+      await bis(`Seite: ${beschreibung}`, async () => (await seiteIm(false)) === erwartet, 3000);
+      const tSeite = Date.now() - t0;
+      await bis(`Rahmen: ${beschreibung}`, async () => (await seiteIm(true)) === erwartet, 6000);
+      console.log(`firefox Adresswechsel ${beschreibung}: Seite nach ${tSeite} ms, Rahmen nach ${Date.now() - t0} ms`);
+    };
+    await erwarte(null, 'Start');
+    await driver.executeScript("window.gehe('/gp/buy', 'push')");
+    await erwarte('aus', 'pushState nach /gp/buy');
+    if ((await driver.executeScript("return getComputedStyle(document.getElementById('b1')).opacity")) !== '1') throw new Error('Bild bei aktiver Ausnahme nicht sichtbar');
+    await driver.executeScript("window.gehe('/weiter', 'push')");
+    await erwarte(null, 'pushState nach /weiter (Ausnahme endet)');
+    await bis('Bild beurteilt', async () => /^(frei|zensiert)$/.test(await driver.executeScript("return document.getElementById('b1').dataset.veil ?? ''")), 30_000);
+    await driver.executeScript('window.zurueck()');
+    await erwarte('aus', 'popstate zurueck nach /gp/buy');
+    await driver.executeScript('window.zurueck()');
+    await erwarte(null, 'popstate zurueck nach /spa.html');
+    await driver.executeScript("window.gehe('/gp/buy/zahlen', 'replace')");
+    await erwarte('aus', 'replaceState nach /gp/buy/zahlen');
+    await driver.executeScript("window.gehe('/spa.html', 'replace')");
+    await erwarte(null, 'replaceState nach /spa.html');
+    await driver.executeScript("window.gehe('#abschnitt', 'hash')");
+    await erwarte(null, 'hashchange');
+    await setze({ ausnahmen: [] });
+  });
+
+  // blob:- und about:blank-Rahmen (match_about_blank, match_origin_as_fallback): das Bild darin ist vor der Beurteilung unsichtbar, danach beurteilt.
+  // Mit Firefox 128 (VEIL_FIREFOX_BIN) ist das die Messung zu match_origin_as_fallback (Fund 35).
+  await test('p) blob:- und about:blank-Rahmen: Bild vor der Beurteilung unsichtbar, danach beurteilt', async () => {
+    await driver.get(`${basis}/schleier-frames.html`);
+    await bis('Status', status);
+    await driver.executeScript('window.fuelleBeide()');
+    const urteil = async () => JSON.stringify(await driver.executeScript('return window.__urteil'));
+    const unbeurteilt = (z) => z.includes('null');
+    let letzter = '';
+    try {
+      await bis('beide Rahmenbilder beurteilt', async () => {
+        letzter = await urteil();
+        return !unbeurteilt(letzter);
+      }, 15_000);
+    } catch (fehler) {
+      const [blitz, proben] = await driver.executeScript('return [window.__blitz, window.__proben]');
+      throw new Error(`${fehler.message}; Urteile ${letzter}, Aufblitzen ${JSON.stringify(blitz)}, Proben ${JSON.stringify(proben)}`);
+    }
+    const [blitz, proben] = await driver.executeScript('return [window.__blitz, window.__proben]');
+    console.log(`firefox Rahmen: Urteile ${letzter}, Proben ${JSON.stringify(proben)}, Aufblitzen ${JSON.stringify(blitz)}`);
+    if (blitz.blob !== 0 || blitz.leer !== 0) throw new Error(`Bild im Rahmen war vor dem Urteil sichtbar: ${JSON.stringify(blitz)}`);
+    if (!(proben.blob > 0 && proben.leer > 0)) throw new Error(`zu wenige Proben ${JSON.stringify(proben)}`);
+    if (!/^\{"blob":"(frei|zensiert)","leer":"(frei|zensiert)"\}$/.test(letzter)) throw new Error(`Urteile ${letzter}`);
+  });
+
+  // Testhaken "Freigabe sperren": mit veil-freigabe=nie bleibt jedes Element bei opacity 0 und ohne Urteil-Attribut, ohne den Parameter wird freigegeben.
+  await test('q) Freigabe sperren: mit veil-freigabe=nie nie sichtbar, ohne den Parameter freigegeben', async () => {
+    const elemente = () =>
+      driver.executeScript(`
+        const liste = [...document.querySelectorAll('img, [style*="background"]')];
+        const w = document.getElementById('shadow-offen') && document.getElementById('shadow-offen').shadowRoot;
+        if (w) liste.push(...w.querySelectorAll('img'));
+        return [liste.length, liste.filter((e) => getComputedStyle(e).opacity !== '0').length, liste.filter((e) => e.hasAttribute('data-veil')).length];
+      `);
+    await driver.get(`${basis}/schleier.html?veil-freigabe=nie`);
+    await bis('Status', status);
+    await scrolleDurch();
+    const s = await warteBeurteilt(16);
+    if (s.frei + s.zensiert + s.verdeckt !== 16) throw new Error(`Zaehlung ${JSON.stringify(s)}`);
+    await warte(3000);
+    const g = await elemente();
+    console.log(`firefox Freigabe gesperrt: ${g[0]} Elemente, ${g[1]} sichtbar, ${g[2]} mit data-veil, nach 3 s`);
+    if (g[0] < 8 || g[1] !== 0 || g[2] !== 0) throw new Error(`Freigabe nicht gesperrt: ${JSON.stringify(g)}`);
+    await driver.get(`${basis}/schleier.html`);
+    await bis('Status', status);
+    await scrolleDurch();
+    await warteBeurteilt(16);
+    await warte(500);
+    const f = await elemente();
+    console.log(`firefox Freigabe offen: ${f[0]} Elemente, ${f[1]} sichtbar, ${f[2]} mit data-veil`);
+    if (f[1] !== f[0] || f[2] !== f[0]) throw new Error(`ohne Parameter nicht freigegeben: ${JSON.stringify(f)}`);
+  });
+
+  await test('r) Freigabe sperren: Bild im about:blank- und im blob:-Rahmen bleibt unsichtbar', async () => {
+    await driver.get(`${basis}/schleier-frames.html?veil-freigabe=nie`);
+    await bis('Status', status);
+    await driver.executeScript('window.fuelleBeide()');
+    const zustand = () =>
+      driver.executeScript(`
+        return ['blob', 'leer'].map((id) => {
+          const dok = document.getElementById(id).contentDocument;
+          const bild = dok && dok.getElementById('bild');
+          if (!bild) return null;
+          const roh = dok.documentElement.dataset.veilStatus;
+          const st = roh ? JSON.parse(roh) : null;
+          return [dok.defaultView.getComputedStyle(bild).opacity, bild.getAttribute('data-veil'), !!st && st.offen === 0 && st.gesamt === 1];
+        });
+      `);
+    await bis('beide Rahmenbilder beurteilt', async () => (await zustand()).every((z) => z && z[2]), 30_000);
+    await warte(3000);
+    const z = JSON.stringify(await zustand());
+    console.log(`firefox Freigabe gesperrt in Rahmen: ${z}`);
+    if (z !== '[["0",null,true],["0",null,true]]') throw new Error(`Rahmen nicht gesperrt: ${z}`);
+  });
+
+  // Netzgrenze: ein Rahmen mit undurchsichtigem Ursprung (sandbox, srcdoc) setzt <base href> auf ein privates Ziel. Die Herkunft kommt aus
+  // window.origin ("null", oeffentlich), nie aus der Basisadresse: fehler "privat", sofort endgueltig verdeckt. Gegenprobe ohne sandbox: beurteilt.
+  await test('s) Netzgrenze: sandbox-srcdoc mit <base href> auf ein privates Ziel bleibt verdeckt, ohne sandbox wird beurteilt', async () => {
+    await driver.get(`${basis}/netzgrenze.html`);
+    await bis('Status', status);
+    const urteil = async (id) => {
+      const rahmen = await driver.findElement({ css: `#${id}` });
+      await driver.switchTo().frame(rahmen);
+      try {
+        return await driver.executeScript("const b = document.getElementById('bild'); return b ? [b.getAttribute('data-veil') ?? '', getComputedStyle(b).opacity, getComputedStyle(b).filter] : ['', '', '']");
+      } finally {
+        await driver.switchTo().defaultContent();
+      }
+    };
+    const t0 = Date.now();
+    await bis('sandbox-Rahmen verdeckt', async () => (await urteil('sandbox'))[0] === 'verdeckt', 15_000, 50);
+    const dauer = Date.now() - t0;
+    console.log(`firefox Netzgrenze: sandbox-Rahmen nach ${dauer} ms endgueltig verdeckt (zweiter Versuch waere nach 10000 ms)`);
+    if (dauer >= 8000) throw new Error(`zu langsam: ${dauer} ms`);
+    const u = await urteil('sandbox');
+    if (u[1] !== '1' || !u[2].includes('blur')) throw new Error(`sandbox-Rahmen: ${JSON.stringify(u)}`);
+    await bis('offener Rahmen beurteilt', async () => /^(frei|zensiert)$/.test((await urteil('offen'))[0]), 15_000);
+  });
+
+  // Netzgrenze bei Weiterleitungen (Firefox liest Pixel nur bei data:, blob: und CORS selbst, alles andere geht ueber den Erkenner, der die
+  // Endadresse prueft): eine oeffentliche Seite bekommt kein ins Heimnetz umgeleitetes Bild zurueck, nie entsteht ein data:-Bild in der Seite.
+  await test('t) Netzgrenze: Weiterleitung einer oeffentlichen Seite ins Heimnetz bleibt verdeckt, private Seite darf', async () => {
+    const lese = () =>
+      driver.executeScript(`
+        return ['a', 'b', 'e', 'c', 'd'].map((id) => {
+          const el = document.getElementById(id);
+          const st = getComputedStyle(el);
+          return [id, el.getAttribute('data-veil') ?? '', st.opacity, st.filter.includes('blur'), (el instanceof HTMLImageElement && el.src.startsWith('data:')) || st.backgroundImage.includes('data:')];
+        });
+      `);
+    const urteile = async () => (await lese()).map((e) => e[1]).join(',');
+    await driver.get(`http://oeffentlich.test:${port}/umleitung.html`);
+    const t0 = Date.now();
+    await bis('a, b, e verdeckt, c und d beurteilt', async () => /^verdeckt,verdeckt,verdeckt,(frei|zensiert),(frei|zensiert)$/.test(await urteile()), 30_000);
+    console.log(`firefox Umleitung (oeffentliche Seite): a, b, e verdeckt nach ${Date.now() - t0} ms, c und d beurteilt`);
+    for (const e of await lese()) {
+      if (e[4]) throw new Error(`${e[0]}: data:-Bild in der Seite`);
+      if (['a', 'b', 'e'].includes(e[0]) && !e[3]) throw new Error(`${e[0]}: nicht unscharf`);
+      if (e[2] !== '1') throw new Error(`${e[0]}: opacity ${e[2]}`);
+    }
+    await driver.get(`${basis}/umleitung.html`);
+    await bis('private Seite: alles beurteilt', async () => /^(frei|zensiert),(frei|zensiert),(frei|zensiert),(frei|zensiert),(frei|zensiert)$/.test(await urteile()), 30_000);
+  });
+
+  // Pixelweg in Firefox: das Content-Script liest Pixel nur bei data: und blob:. Bilder mit http(s) gehen den Url-Weg (Anfrage des Erkenners
+  // mit Sec-Fetch-Dest "empty" an den Bildserver, zusaetzlich zum Laden durch die Seite mit Dest "image"), auch mit CORS und auch wenn die Seite
+  // crossorigin erst nach dem Laden setzt. Videos mit http-Quelle oder srcObject werden ohne Pruefung verdeckt.
+  await test('u) Pixelweg: Bilder (CORS, crossorigin nach dem Laden) gehen den Url-Weg, Videos mit http-Quelle und srcObject sind verdeckt', async () => {
+    const anfragen = [];
+    server[1].on('request', (req) => anfragen.push({ url: req.url ?? '', dest: String(req.headers['sec-fetch-dest'] ?? '') }));
+    const vomErkenner = (teil) => anfragen.filter((a) => a.url.includes(teil) && a.dest === 'empty').length;
+    const vonSeite = (teil) => anfragen.filter((a) => a.url.includes(teil) && a.dest === 'image').length;
+    await driver.get(`${basis}/pixelweg.html?modus=bild`);
+    await bis('Pixelweg bereit', () => driver.executeScript('return document.documentElement.dataset.pixelBereit ?? null'), 10_000);
+    await bis('crossorigin nach dem Laden gesetzt', () => driver.executeScript('return document.documentElement.dataset.spaetGesetzt ?? null'), 10_000);
+    await bis('beide Bilder beurteilt', async () => (await driver.executeScript("return ['cors', 'spaet'].map((id) => document.getElementById(id).dataset.veil ?? '').join(',')")) === 'frei,frei', 20_000);
+    // Beurteilung des spaeten Bildes noch einmal erzwingen, nachdem crossorigin gesetzt ist (neue Epoche der Einstellungen).
+    await setze({ schwelle: 0.12 });
+    await warte(1500);
+    await bis('nach der neuen Beurteilung beide Bilder frei', async () => (await driver.executeScript("return ['cors', 'spaet'].map((id) => document.getElementById(id).dataset.veil ?? '').join(',')")) === 'frei,frei', 20_000);
+    await setze({ schwelle: 0.1 });
+    const cors = [vonSeite('/synthetisch/21.png'), vomErkenner('/synthetisch/21.png')];
+    const spaet = [vonSeite('/synthetisch/22.png'), vomErkenner('/synthetisch/22.png')];
+    console.log(`firefox Pixelweg Bilder: CORS-Bild Seite ${cors[0]}, Erkenner ${cors[1]}; spaet-crossorigin-Bild Seite ${spaet[0]}, Erkenner ${spaet[1]}`);
+    if (cors[1] < 1) throw new Error('CORS-Bild: keine Anfrage des Erkenners (Pixel im Content-Script gelesen)');
+    if (spaet[1] < 1) throw new Error('Bild mit spaet gesetztem crossorigin: keine Anfrage des Erkenners (Pixel im Content-Script gelesen)');
+    const dataBild = await driver.executeScript("return [...document.querySelectorAll('img')].filter((i) => i.src.startsWith('data:')).length");
+    if (dataBild !== 0) throw new Error('data:-Bild in der Seite');
+
+    // Video: kurzes Video in der Seite aufnehmen, ueber einen eigenen kleinen Server (zweiter Ursprung, http) ausliefern.
+    const aufnahme = await driver.executeAsyncScript('const fertig = arguments[arguments.length - 1]; window.nimmAuf().then(fertig)');
+    const film = Buffer.from(aufnahme.base64, 'base64');
+    const filmPort = port + 4;
+    const filmServer = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': aufnahme.typ.split(';')[0], 'content-length': film.length, 'cache-control': 'no-store' });
+      res.end(film);
+    });
+    await new Promise((fertig) => filmServer.listen(filmPort, '127.0.0.1', fertig));
+    server.push(filmServer);
+    await driver.get(`${basis}/pixelweg.html?modus=film&film=${encodeURIComponent(`http://127.0.0.1:${filmPort}/film.webm`)}`);
+    await bis('Pixelweg bereit', () => driver.executeScript('return document.documentElement.dataset.pixelBereit ?? null'), 10_000);
+    await bis('crossorigin am Video nach dem Laden gesetzt', () => driver.executeScript('return document.documentElement.dataset.filmGesetzt ?? null'), 15_000);
+    await warte(1500);
+    const v = await driver.executeScript("return ['film', 'strom'].map((id) => { const el = document.getElementById(id); return [el.dataset.veil ?? '', el.readyState, el.crossOrigin, !!el.srcObject]; })");
+    console.log(`firefox Pixelweg Videos: ${JSON.stringify(v)}`);
+    if (v[0][0] !== 'verdeckt') throw new Error(`Video mit http-Quelle und crossorigin nach dem Laden: ${JSON.stringify(v[0])}`);
+    if (v[1][0] !== 'verdeckt') throw new Error(`Video mit srcObject: ${JSON.stringify(v[1])}`);
+    if (!(v[0][1] >= 2)) throw new Error('Video hatte keine Daten (Test sagt nichts aus)');
   });
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

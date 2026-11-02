@@ -25,6 +25,8 @@ npm run spike:s4:server
 npm run spike:s4:aufnahme -- --browser chromium --ohne-erweiterung --dauer 4
 npm run spike:s4:aufnahme -- --browser chromium --erweiterung .output/chrome-mv3 --name chromium-veil
 npm run spike:s4:aufnahme -- --browser firefox --erweiterung .output/hypnomia-veil-0.0.1-firefox.zip --name firefox-veil
+# Testhaken "Freigabe sperren" (nur mit Testbau, WXT_TESTHAKEN=1): kein Element wird je sichtbar
+npm run spike:s4:aufnahme -- --browser chromium --erweiterung .output-test/chrome-mv3 --freigabe-sperren --name chromium-gesperrt
 ```
 
 Der Browser muss auf dem Bildschirm sichtbar sein (nicht verdeckt, kein zweites Fenster darueber, kein Bildschirmschoner). Waehrend der Aufnahme nichts anklicken. Dem startenden Programm (Terminal oder Claude) muss in den macOS-Systemeinstellungen die Bildschirmaufnahme erlaubt sein.
@@ -38,6 +40,7 @@ Der Browser muss auf dem Bildschirm sichtbar sein (nicht verdeckt, kein zweites 
 | `--ohne-erweiterung` | Kontrolllauf ohne Erweiterung (muss Magenta in allen Verdeckungs-Kacheln zeigen) |
 | `--url <Adresse>` | Standard `http://127.0.0.1:47182/blitz.html`. Die Zaehlung nach Kacheln gilt nur fuer `blitz.html` |
 | `--dauer <Sekunden>` | Aufnahmedauer, Standard 6. Mit 4 Sekunden bleiben nach dem Scrollen nur etwa 20 bis 25 Frames fuer `lazy-scroll`; 6 ist komfortabler |
+| `--freigabe-sperren` | haengt `veil-freigabe=nie` an die Seitenadresse (auch an den Rahmen `iframe-fremd`). Mit einem Testbau der Erweiterung bekommt dann kein Element je ein Urteil-Attribut und bleibt bei opacity 0 (weder frei noch zensiert noch unscharf). Erwartung: in keinem Einzelbild Magenta in einer Verdeckungs-Kachel, auch nicht nach Ende der Beurteilung (dort sonst die Freigabe). Ausnahme ist `css-klasse`: Hintergruende aus einem Stylesheet versteckt der Schleier nicht vorab (erst nach load beurteilt, ein Klassen-Hintergrund ohne Treffer bleibt ohnehin sichtbar), diese Kachel zaehlt in der Gegenprobe nicht. Im Release-Bau ist der Haken nicht enthalten, der Parameter bleibt wirkungslos. Das Ergebnis traegt `freigabeGesperrt: true` |
 | `--name <Kennung>` | fuer Dateinamen und Arbeitsordner, Standard Browsername (plus `-kontrolle`) |
 
 Umgebungsvariablen: `VEIL_FIREFOX_BIN`, `VEIL_FFMPEG`, `VEIL_S4_PORT`, `VEIL_S4_PORT2`, `VEIL_S4_LOG`.

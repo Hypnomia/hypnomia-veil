@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="manifest.open_in_tab" content="true" />
+    <title>HYPNOMIA VEIL: Mia Pack</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>HYPNOMIA VEIL</h1>
+        <p class="unter">Mia Pack</p>
+      </header>
+
+      <section aria-labelledby="stand-titel" id="stand">
+        <h2 id="stand-titel">Your pack</h2>
+        <p id="pack-status" role="status" aria-live="polite"></p>
+        <dl id="pack-daten" hidden>
+          <div><dt>Title</dt><dd id="pack-titel"></dd></div>
+          <div><dt>Version</dt><dd id="pack-version"></dd></div>
+          <div><dt>Pictures</dt><dd id="pack-bilder"></dd></div>
+          <div><dt>Size</dt><dd id="pack-groesse"></dd></div>
+          <div><dt>Added</dt><dd id="pack-datum"></dd></div>
+        </dl>
+        <div id="entfernen-zeile" hidden>
+          <button id="entfernen" class="klein" type="button">Remove pack</button>
+        </div>
+        <div id="entfernen-frage" class="frage" role="alertdialog" aria-labelledby="entfernen-text" hidden>
+          <p id="entfernen-text">Remove the pack? The pictures go, and the cover style goes back to Mosaic. You can add it again whenever you like.</p>
+          <div class="knoepfe">
+            <button id="entfernen-ja" class="klein" type="button">Remove</button>
+            <button id="entfernen-nein" class="klein ruhig" type="button">Keep it</button>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="neu-titel" id="neu">
+        <h2 id="neu-titel">Add a pack</h2>
+        <p>The pack holds my pictures for the Mia patch style. It is checked here, stored on this device only, and never leaves your browser.</p>
+        <label class="datei" for="datei">
+          <span>Choose a pack file</span>
+          <input id="datei" type="file" accept=".miapack" />
+        </label>
+
+        <div id="fortschritt-zeile" hidden>
+          <progress id="fortschritt" max="1" value="0" aria-labelledby="fortschritt-text"></progress>
+          <span id="fortschritt-text"></span>
+        </div>
+
+        <div id="lizenz-block" hidden>
+          <h3>Before it goes in</h3>
+          <p id="lizenz-kopf" class="hinweis"></p>
+          <pre id="lizenz-text" tabindex="0" aria-label="License text of the pack"></pre>
+          <p class="hinweis">The pictures are mine. This license says what you may do with them. Accept it to add the pack.</p>
+          <div class="knoepfe">
+            <button id="annehmen" class="gross" type="button">Accept and import</button>
+            <button id="abbrechen" class="klein ruhig" type="button">Not yet</button>
+          </div>
+        </div>
+
+        <p id="meldung" role="status" aria-live="polite"></p>
+      </section>
+
+      <footer>
+        <span>Pausing and uninstalling are always allowed.</span>
+      </footer>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

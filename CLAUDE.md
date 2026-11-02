@@ -36,6 +36,8 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 - `npm run test:einheit` (Node, ohne Browser), `npm run test:chromium`, `npm run test:firefox`: einzeln (Browser-Tests brauchen einen Build mit Testhaken: `npm run build:test`, `build:test:firefox`, `zip:test:firefox`)
 - `VEIL_AUSGABE=<ordner>` waehlt einen anderen Ausgabeordner fuer Bau und Tests (z. B. wenn parallel gemessen wird); `VEIL_FIXTURE_PORT` und `VEIL_FIXTURE_PORT_FREMD` (Standard 47173 und 47175) die Ports des Testservers (`npm run fixtures` startet ihn von Hand)
 - `node scripts/messung/zonen.mjs|feed.mjs|kaltstart.mjs`: Messwerkzeuge Phase 2 (Treffer je Zone, Zeit bis sichtbarer Bereich frei, Kaltstart), kein Produktcode; lesen den Testbau aus `.output-test` (nach `npm test`), `VEIL_AUSGABE` waehlt einen anderen Ordner
+- `npm run pack:dummy`: Dummy-Pack aus synthetischen Bildern nach `.output-pack/dummy.miapack` (nie ins Repo); `npm run pack:bau -- --quelle <ordner> --aus <datei>`: Pack aus einem Ordner mit `pack.json` (spaeter `../02 Assets Mia/pack/`)
+- Weitere Schalter fuer Tests: `VEIL_FIREFOX_BIN=<pfad>` (anderer Firefox, z. B. 128 aus `../.werkzeuge.nosync/`, Pfad nie in Dateien schreiben), `VEIL_OHNE_TESTBILDER=1` (Render-Tests ohne `../05 Testbilder` laut ueberspringen statt rot), `VEIL_NUR_RELEASEPRUEFUNG=1` (nur die Suche nach Testhaken-Spuren im Release-Bau)
 - `npm run test:android`: Firefox fuer Android im Emulator (vorher `export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` und Emulator `veil-android15` starten); installiert die signierte XPI aus `.output/signed/`
 - `npm run spike:s0`, `npm run spike:s1:chromium`, `npm run spike:s1:firefox` (plus `:webgpu`), `node spike/erweiterung/lauf-ext.mjs`, `npm run spike:s4:aufnahme`, `npm run spike:s2:server`, `node spike/s5-android/lauf-android.mjs`, `node spike/auswertung.mjs`: Wegwerf-Messgeschirr in `spike/` (je Ordner eine LIES-MICH), kein Produktcode; Messreihen `spike/reihe-final.sh` und `reihe-final-2.sh`
 - `node scripts/annotate/server.mjs`: Markierwerkzeug fuer die Soll-Zonen (http://127.0.0.1:5188)
@@ -45,9 +47,9 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 - `VEIL_SKIP_TESTS=1 git commit ...`: nur fuer reine Doku-Commits erlaubt
 
 ## Aufbau
-- `entrypoints/`: `background.ts` (Chrome: Service Worker, legt `offscreen/` an; Firefox: Hintergrundskript mit Erkenner), `content/` (Schleier, CSS hide-first), `popup/`
-- `src/`: `nachrichten.ts` (Vertrag), `einstellungen.ts`, `erkenner/` (Modell, Zonen, Stile, Nachladen, Warteschlange), `schleier/` (Beobachter, Pruefung, Anwenden, Shadow Roots, Status)
-- Spezifikation Phase 2: `../00 Planung/PHASE-2-BAUPLAN.md` (Nachrichten-Vertrag, Einstellungen, Auftraege, Nachtrag nach Pruefung)
+- `entrypoints/`: `background.ts` (Chrome: Service Worker, legt `offscreen/` an; Firefox: Hintergrundskript mit Erkenner), `content/` (Schleier, CSS hide-first), `popup/`, `options/` (Einstellungsseite: Mia Pack importieren und entfernen)
+- `src/`: `nachrichten.ts` (Vertrag), `einstellungen.ts`, `erkenner/` (Modell, Zonen, Stile, Nachladen mit Netzgrenze, Warteschlange), `schleier/` (Beobachter, Pruefung, Anwenden, Shadow Roots, Adresse, Status), `pack/` (`vertrag.ts` Vertrag, `format.ts` Dateiformat `.miapack`, `db.ts`/`speicher.ts` IndexedDB, `patches.ts` Patch-Bilder fuer den Erkenner)
+- Spezifikation Phase 2: `../00 Planung/PHASE-2-BAUPLAN.md` (Nachrichten-Vertrag, Einstellungen, Auftraege, Nachtraege nach Pruefung, Abschnitt 9 Pack und Netzgrenze)
 - `public/`: Icons, `modelle/320n.onnx` (im Repo, siehe `data/MODELL-LIES-MICH.md`), `ort/` (WASM-Laufzeit, nicht im Repo); keine Mia-Bilder
 - `tests/einheit/`: Node-Tests; `tests/chromium/`: Playwright; `tests/firefox/`: geckodriver/WebDriver; `tests/fixtures/`: lokale Testseiten (Bilder vom Testserver aus `../05 Testbilder/` oder synthetisch)
 - `scripts/`: Hooks, Leck-Sperre, Pack-Bau, Release

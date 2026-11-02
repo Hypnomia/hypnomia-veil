@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Netzgrenze-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      iframe { width: 300px; height: 240px; border: 0; margin-right: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Netzgrenze</h1>
+    <!-- Umgehungsversuch der Netzgrenze: ein Rahmen mit undurchsichtigem Ursprung (sandbox ohne allow-same-origin, Inhalt per srcdoc)
+         setzt <base href> auf ein privates Ziel (hier der zweite Testserver auf 127.0.0.1) und laedt das Bild relativ dazu. Das Bild ist
+         fuer den Rahmen fremd und ohne CORS nicht lesbar, also laedt der Erkenner es selbst. Seine Herkunft ist undurchsichtig ("null",
+         oeffentlich), also bleibt das private Ziel gesperrt (fehler "privat"), und das Element wird sofort verdeckt.
+         Gegenprobe: derselbe Rahmen ohne sandbox erbt den Ursprung dieser Seite (127.0.0.1, privat): privat nach privat, erlaubt. -->
+    <iframe id="sandbox" name="sandbox" sandbox></iframe>
+    <iframe id="offen" name="offen"></iframe>
+    <script>
+      var privat = 'http://127.0.0.1:' + (Number(location.port) + 2) + '/';
+      var inhalt = '<!doctype html><html><head><meta charset="utf-8"><base href="' + privat + '"></head>' +
+        '<body style="margin:0"><img id="bild" width="280" height="210" src="synthetisch/3.png"></body></html>';
+      document.getElementById('sandbox').srcdoc = inhalt;
+      document.getElementById('offen').srcdoc = inhalt;
+    </script>
+  </body>
+</html>

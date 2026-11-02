@@ -19,13 +19,49 @@ export interface StatusAnzeige extends Zaehlung {
   seiteFreiMs: number | null;
 }
 
+// Host des Dokumentursprungs. In about:blank-, blob:- und srcdoc-Frames ist location.hostname leer, window.origin traegt dort den vom
+// Erzeuger geerbten Ursprung (bei undurchsichtigem Ursprung "null": dann kein Testhost).
+function ursprungsHost(): string {
+  try {
+    const ursprung = window.origin;
+    if (ursprung && ursprung !== 'null') return new URL(ursprung).hostname;
+  } catch {
+    // ohne Ursprung faellt es auf die Adresse zurueck
+  }
+  return location.hostname;
+}
+
 export function istTesthost(): boolean {
-  return location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+  const host = ursprungsHost();
+  return host === '127.0.0.1' || host === 'localhost';
 }
 
 // Testhaken aktiv: Testbau und Testhost. Ohne Schalter ist das beim Bauen immer false.
 export function testhakenAktiv(): boolean {
   return TESTHAKEN && istTesthost();
+}
+
+// Testhaken "Freigabe sperren": die Seitenadresse enthaelt veil-freigabe=nie. Dann bekommt kein Element je ein Urteil-Attribut, es bleibt
+// bei opacity 0 (weder frei noch zensiert noch verdeckt-unscharf). Gedacht fuer die Blitz-Aufnahme: ohne Freigabe darf nirgends Magenta
+// auftauchen. Nur im Testbau und nur auf 127.0.0.1 und localhost. In about:blank-Frames zaehlt die Adresse der Basis (die des Erzeugers).
+let gesperrt: boolean | null = null;
+export function freigabeGesperrt(): boolean {
+  if (!testhakenAktiv()) return false;
+  if (gesperrt !== null) return gesperrt;
+  try {
+    // Eigene Abfrage; in Rahmen ohne eigene Abfrage (about:blank, blob:) die Basisadresse oder die Abfrage der Elternseite, soweit
+    // sie gleichen Ursprungs ist (geerbter Ursprung). Fremde Rahmen bekommen den Parameter in ihre Adresse geschrieben.
+    const quellen: string[] = [location.search, new URL(document.baseURI).search];
+    try {
+      quellen.push(window.parent.location.search);
+    } catch {
+      // Elternseite fremd: nicht lesbar
+    }
+    gesperrt = quellen.some((q) => new URLSearchParams(q).get('veil-freigabe') === 'nie');
+  } catch {
+    gesperrt = false;
+  }
+  return gesperrt;
 }
 
 export class Status {

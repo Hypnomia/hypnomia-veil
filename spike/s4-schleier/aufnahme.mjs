@@ -29,6 +29,9 @@ const browserName = arg('browser');
 const ohneErweiterung = process.argv.includes('--ohne-erweiterung');
 const erweiterung = arg('erweiterung');
 const dauer = Number(arg('dauer') ?? 6);
+// Testhaken "Freigabe sperren": haengt veil-freigabe=nie an die Seitenadresse. Wirkt nur mit einem Testbau (WXT_TESTHAKEN=1) der Erweiterung:
+// kein Element wird je sichtbar, in keinem Einzelbild darf Magenta in einer Verdeckungs-Kachel auftauchen.
+const freigabeSperren = process.argv.includes('--freigabe-sperren');
 if (!['chromium', 'firefox'].includes(browserName)) {
   console.error('aufnahme: --browser chromium|firefox ist Pflicht');
   process.exit(1);
@@ -338,7 +341,8 @@ let bildschirmFehler = null;
 const zeiten = {};
 try {
   server = await starteS4Server();
-  const url = arg('url') ?? `http://127.0.0.1:${server.ports.haupt}/blitz.html`;
+  const grundUrl = arg('url') ?? `http://127.0.0.1:${server.ports.haupt}/blitz.html`;
+  const url = freigabeSperren ? `${grundUrl}${grundUrl.includes('?') ? '&' : '?'}veil-freigabe=nie` : grundUrl;
   const index = findeBildschirmIndex();
   if (index === null) throw new Error('Kein Eintrag "Capture screen 0" in der AVFoundation-Liste');
   const bildschirmHz = leseBildschirmHz();
@@ -442,6 +446,7 @@ try {
     browser: browserName,
     erweiterung: !ohneErweiterung,
     erweiterungName: erweiterungPfad ? path.basename(erweiterungPfad) : null,
+    freigabeGesperrt: freigabeSperren,
     url: url.replace(/^http:\/\/127\.0\.0\.1:\d+/, ''),
     dauerSekunden: dauer,
     bildschirmHz,

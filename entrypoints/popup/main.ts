@@ -14,6 +14,7 @@ import {
   type Stil,
   type Zone,
 } from '../../src/einstellungen';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
 
 const ZONEN_NAMEN: Record<Zone, string> = {
   eyes: 'Eyes',
@@ -45,8 +46,11 @@ const zonenListe = el<HTMLUListElement>('zonen');
 const ausnahmeKnopf = el<HTMLButtonElement>('ausnahme');
 const ausnahmeHinweis = el<HTMLParagraphElement>('ausnahme-hinweis');
 const stilFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stil"]')];
+const packHinweis = el<HTMLParagraphElement>('pack-hinweis');
+const packLink = el<HTMLButtonElement>('pack-link');
 
 let aktuell: Einstellungen | null = null;
+let pack: PackKurz | null = null;
 let seite: URL | null = null;
 
 // ---------- Aktueller Tab ----------
@@ -87,7 +91,7 @@ function zeichne(e: Einstellungen): void {
   if (document.activeElement !== stimmung) stimmung.value = e.schwelle.toFixed(2);
   stimmungWert.textContent = e.schwelle.toFixed(2);
 
-  for (const feld of stilFelder) feld.checked = feld.value === e.stil;
+  zeichneStil(e);
   strict.checked = e.strict;
 
   for (const zone of ZONEN) {
@@ -101,6 +105,23 @@ function zeichne(e: Einstellungen): void {
   }
 
   zeichneAusnahme(e);
+}
+
+// Stilwahl: Mia patch ist ohne Pack gesperrt (Hinweis auf das Pack), mit Pack waehlbar. Angezeigt wird der Stil, der wirklich gilt.
+function zeichneStil(e: Einstellungen): void {
+  const frei = istFreigeschaltet(pack, 'stil:mia-patch');
+  const gilt = wirksamerStil(e.stil, pack);
+  for (const feld of stilFelder) {
+    feld.checked = feld.value === gilt;
+    if (feld.value === 'mia-patch') {
+      feld.disabled = !frei;
+      feld.closest('label')?.classList.toggle('gesperrt', !frei);
+    }
+  }
+  packHinweis.textContent = frei
+    ? `Mia patch uses ${pack?.bilder ?? 0} of my pictures from your pack.`
+    : 'Mia patch is locked until you add the Mia Pack.';
+  packLink.textContent = frei ? 'Mia Pack settings' : 'Add the Mia Pack';
 }
 
 function zeichneAusnahme(e: Einstellungen): void {
@@ -199,6 +220,11 @@ zonenListe.addEventListener('change', (ereignis) => {
   });
 });
 
+// Einstellungsseite des Packs oeffnen; das Popup schliesst sich danach von selbst (Firefox) bzw. wir schliessen es.
+packLink.addEventListener('click', () => {
+  void browser.runtime.openOptionsPage().then(() => window.close());
+});
+
 ausnahmeKnopf.addEventListener('click', () => {
   if (!seite) return;
   const url = seite;
@@ -219,9 +245,25 @@ ausnahmeKnopf.addEventListener('click', () => {
 el<HTMLSpanElement>('version').textContent = `v${browser.runtime.getManifest().version}`;
 
 const abmelden = beiEinstellungsAenderung(zeichne);
-window.addEventListener('pagehide', abmelden, { once: true });
+// Das Pack (storage.local.pack) kann sich aendern, waehrend das Popup offen ist (Import auf der Einstellungsseite).
+const packHorcher = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
+  if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen)) return;
+  const neu = aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue as PackKurz | undefined;
+  pack = neu && typeof neu === 'object' && typeof neu.id === 'string' ? neu : null;
+  if (aktuell) zeichne(aktuell);
+};
+browser.storage.onChanged.addListener(packHorcher);
+window.addEventListener(
+  'pagehide',
+  () => {
+    abmelden();
+    browser.storage.onChanged.removeListener(packHorcher);
+  },
+  { once: true },
+);
 
 void (async () => {
   seite = await leseSeite();
+  pack = await ladePackKurz().catch(() => null);
   zeichne(await ladeEinstellungen());
 })();

@@ -76,7 +76,8 @@ html, body { margin: 0; background: #fff; color: #000; }
   (function (ziel) {
     var port2 = document.body.dataset.port2;
     var rahmen = document.createElement('iframe');
-    rahmen.src = 'http://127.0.0.1:' + port2 + '/rahmen.html';
+    // Die Abfrage der Seite (zum Beispiel veil-freigabe=nie fuer den Testhaken "Freigabe sperren") gilt auch fuer den Rahmen.
+    rahmen.src = 'http://127.0.0.1:' + port2 + '/rahmen.html' + location.search;
     rahmen.width = 200;
     rahmen.height = 200;
     rahmen.setAttribute('scrolling', 'no');

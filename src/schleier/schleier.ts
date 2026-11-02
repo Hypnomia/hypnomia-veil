@@ -10,7 +10,17 @@ import {
   vervollstaendige,
   type Einstellungen,
 } from '../einstellungen';
-import type { AntwortPruefe, AntwortPruefeOk, AntwortTab, NachrichtHintergrundTab, Quelle } from '../nachrichten';
+import {
+  istFuer,
+  type AntwortPruefe,
+  type AntwortPruefeOk,
+  type AntwortTab,
+  type NachrichtErkennerStatus,
+  type NachrichtHintergrundAdresse,
+  type NachrichtHintergrundTab,
+  type NachrichtInhalt,
+  type Quelle,
+} from '../nachrichten';
 import {
   bildSignatur,
   hintergrundInline,
@@ -23,6 +33,9 @@ import {
   verdeckeNurHintergrund,
   vergiss,
 } from './anwenden';
+import { entscheideNachladen } from '../erkenner/nachladen';
+import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
+import { AdressBeobachter } from './adresse';
 import { Beobachter } from './beobachter';
 import {
   ATTR_SEITE,
@@ -45,6 +58,7 @@ import {
 import { KlassenSucher } from './klasse';
 import {
   lesePixel,
+  pixelLesenErlaubt,
   refererDerSeite,
   sendePruefe,
   urlAusEbene,
@@ -64,7 +78,8 @@ export interface KontextLeicht {
 type Ergebnis =
   | { art: 'frei' }
   | { art: 'verdeckt' }
-  | { art: 'fehler' }
+  // endgueltig: eine Wiederholung bringt nichts (Netzgrenze: fehler 'privat'), das Element wird sofort verdeckt.
+  | { art: 'fehler'; endgueltig?: boolean }
   | { art: 'zensiert'; bild: string }
   | { art: 'zensiertHg'; wert: string };
 
@@ -244,10 +259,11 @@ export function starteSchleier(ctx: KontextLeicht): void {
     nachUrteil();
   }
 
-  function urteilFehler(el: Element, z: Zustand): void {
+  function urteilFehler(el: Element, z: Zustand, endgueltig = false): void {
     z.eingereiht = false;
     status.fehler++;
     z.versuche++;
+    if (endgueltig) z.versuche = 2;
     if (z.versuche < 2) {
       // Bleibt verdeckt (kein data-veil), nach 10 s ein zweiter Versuch.
       z.timer = planeNeuenVersuch(el, z, zweiterVersuchMs);
@@ -489,7 +505,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       case 'verdeckt':
         return urteilVerdeckt(el, z);
       case 'fehler':
-        return urteilFehler(el, z);
+        return urteilFehler(el, z, e.endgueltig === true);
       case 'zensiert':
         return urteilZensiertBild(el as HTMLImageElement, z, e.bild);
       case 'zensiertHg':
@@ -524,38 +540,60 @@ export function starteSchleier(ctx: KontextLeicht): void {
       const q = await bau();
       if (!q) return null;
       if (!(await wecke(lebt))) return { ok: false, id: '', fehler: 'Erkenner nicht erreichbar' } as AntwortPruefe;
-      return sendePruefe(q.quelle, q.breite, q.hoehe, e, true);
+      return sendePruefe(q.quelle, q.breite, q.hoehe, e, true, packStandFuer(e));
     });
     // Nur ablegen, wenn sich die pruefrelevanten Einstellungen inzwischen nicht geaendert haben.
     if (antwort?.ok && dieseEpoche === epoche) speicher.lege(schluessel, antwort);
     return antwort;
   }
 
+  // Netzgrenze: 'privat' ist endgueltig (die Seite darf das Ziel nie bekommen), jede Wiederholung wuerde dasselbe antworten.
+  function fehlerErgebnis(a: AntwortPruefe): Ergebnis {
+    return !a.ok && a.fehler === 'privat' ? { art: 'fehler', endgueltig: true } : { art: 'fehler' };
+  }
+
+  // Vorpruefung der Ausgangsadresse (Netzgrenze im Content-Script, spart den Weg zum Erkenner). Die Endadresse nach Weiterleitungen
+  // prueft allein der Erkenner (ladeNach).
+  // Hintergrund: Firefox laesst Content-Scripts mit Host-Rechten die Pixel fremder Bilder lesen (kein verschmutztes
+  // Canvas), der Erkenner liefe dann gar nicht ins Nachladen. Ein fremdes Bild in einem privaten Bereich darf eine oeffentliche oder
+  // undurchsichtige Seite (Herkunft "null") nicht ueber die Erweiterung lesbar machen: endgueltig verdeckt, ohne Pixel zu lesen.
+  function netzgrenzeSperrt(url: string): boolean {
+    if (!/^https?:/i.test(url)) return false;
+    try {
+      if (new URL(url).origin === window.origin) return false; // eigener Ursprung: die Seite kann es ohnehin lesen
+    } catch {
+      return false;
+    }
+    return entscheideNachladen(url, refererDerSeite()) === 'privat';
+  }
+
   async function pruefeBild(el: HTMLImageElement, z: Zustand): Promise<Ergebnis> {
     const adresse = bildAdresse(el);
     z.adresse = adresse;
+    if (netzgrenzeSperrt(adresse)) return { art: 'fehler', endgueltig: true };
     const antwort = await frageNach(adresse, () => {
       const m = bildMass(el);
-      const px = lesePixel(el, m.breite, m.hoehe);
+      const px = pixelLesenErlaubt(adresse) ? lesePixel(el, m.breite, m.hoehe) : null;
       if (px) return { quelle: { art: 'daten', dataUrl: px.dataUrl }, breite: m.breite, hoehe: m.hoehe };
       // Ohne Eigengroesse und nicht lesbar: kaputtes Bild oder fremdes SVG, es gibt nichts zu pruefen.
       if (!(el.naturalWidth > 0)) return null;
-      // Nicht lesbar (Chrome ohne CORS): der Erkenner laedt selbst. data: und blob: gibt es nur ueber den Canvas-Weg.
+      // Nicht lesbar (Chrome ohne CORS) oder in Firefox nicht erlaubt: der Erkenner laedt selbst. data: und blob: gibt es nur ueber den Canvas-Weg.
       if (/^https?:/i.test(adresse)) return { quelle: { art: 'url', url: adresse, referer: refererDerSeite() }, breite: m.breite, hoehe: m.hoehe };
       return null;
     });
     if (!antwort) return { art: 'frei' };
-    if (!antwort.ok) return { art: 'fehler' };
+    if (!antwort.ok) return fehlerErgebnis(antwort);
     if (!antwort.flaechen.length) return { art: 'frei' };
     return antwort.bild ? { art: 'zensiert', bild: antwort.bild } : { art: 'verdeckt' };
   }
 
   async function pruefeVideo(el: HTMLVideoElement): Promise<Ergebnis> {
     // Einzelbild per Canvas. Nicht lesbar: verdeckt (Entscheidung 21). Keine laufende Nachpruefung in dieser Session.
-    const px = lesePixel(el, el.videoWidth, el.videoHeight);
+    // Firefox: nur data:- und blob:-Videos werden gelesen; http(s)-Quellen, srcObject (MediaStream) und leere Adresse ohne Pruefung verdeckt.
+    const px = !el.srcObject && pixelLesenErlaubt(el.currentSrc || el.src) ? lesePixel(el, el.videoWidth, el.videoHeight) : null;
     if (!px || !einstellungen) return { art: 'verdeckt' };
     if (!(await wecke(lebt))) return { art: 'fehler' };
-    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, el.videoWidth, el.videoHeight, einstellungen, false);
+    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, el.videoWidth, el.videoHeight, einstellungen, false, packStandFuer(einstellungen));
     if (!a.ok) return { art: 'fehler' };
     return a.flaechen.length ? { art: 'verdeckt' } : { art: 'frei' };
   }
@@ -565,7 +603,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     const px = lesePixel(el, el.width, el.height);
     if (!px || !einstellungen) return { art: 'frei' };
     if (!(await wecke(lebt))) return { art: 'fehler' };
-    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, el.width, el.height, einstellungen, false);
+    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, el.width, el.height, einstellungen, false, packStandFuer(einstellungen));
     if (!a.ok) return { art: 'fehler' };
     return a.flaechen.length ? { art: 'verdeckt' } : { art: 'frei' };
   }
@@ -586,14 +624,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function gleicherUrsprung(url: string): boolean {
     if (/^(data|blob):/i.test(url)) return true;
     try {
-      return new URL(url).origin === location.origin;
+      return new URL(url).origin === window.origin;
     } catch {
       return false;
     }
   }
 
   async function hintergrundQuelleBauen(url: string): Promise<QuelleMitMass | null> {
-    if (gleicherUrsprung(url)) {
+    // Firefox liest nur data: und blob: selbst (hier gibt es kein crossOrigin); sonst geht es den Url-Weg.
+    if (gleicherUrsprung(url) && pixelLesenErlaubt(url)) {
       const bild = await ladeBild(url);
       if (bild) {
         const px = lesePixel(bild, bild.naturalWidth, bild.naturalHeight);
@@ -610,15 +649,24 @@ export function starteSchleier(ctx: KontextLeicht): void {
     let geaendert = false;
     let verdeckt = false;
     let fehler = false;
+    let endgueltig = false;
     for (const ebene of zerlegeEbenen(wert)) {
       const url = pruefbareAdresse(ebene);
       if (!url) {
         neu.push(ebene);
         continue;
       }
+      if (netzgrenzeSperrt(url)) {
+        fehler = true;
+        endgueltig = true;
+        continue;
+      }
       const a = await frageNach(url, () => hintergrundQuelleBauen(url));
       if (!a) neu.push(ebene);
-      else if (!a.ok) fehler = true;
+      else if (!a.ok) {
+        fehler = true;
+        if (a.fehler === 'privat') endgueltig = true;
+      }
       else if (!a.flaechen.length) neu.push(ebene);
       else if (a.bild) {
         // Zensiertes Bild vorladen, damit beim Setzen kein leerer Hintergrund aufblitzt.
@@ -627,7 +675,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         geaendert = true;
       } else verdeckt = true;
     }
-    if (fehler) return { art: 'fehler' };
+    if (fehler) return endgueltig ? { art: 'fehler', endgueltig: true } : { art: 'fehler' };
     if (verdeckt) return { art: 'verdeckt' };
     return geaendert ? { art: 'zensiertHg', wert: neu.join(', ') } : { art: 'frei' };
   }
@@ -910,19 +958,112 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return tabAdresse !== null && passtAusnahme(tabAdresse, e.ausnahmen);
   }
 
-  async function frageTabAdresse(): Promise<void> {
-    if (!istRahmen) return;
+  // Fragt den Hintergrund nach der Adresse des Tabs (nur eingebettete Frames). undefined = keine verwertbare Antwort (alter Stand bleibt).
+  async function frageTabAdresse(): Promise<URL | null | undefined> {
+    if (!istRahmen) return undefined;
     try {
       const nachricht: NachrichtHintergrundTab = { ziel: 'hintergrund', typ: 'tab' };
       const antwort = (await browser.runtime.sendMessage(nachricht)) as Partial<AntwortTab> | undefined;
-      if (antwort && antwort.ok === true && typeof antwort.url === 'string') tabAdresse = new URL(antwort.url);
+      if (antwort && antwort.ok === true) return typeof antwort.url === 'string' ? new URL(antwort.url) : null;
     } catch {
       // keine oder fehlerhafte Antwort: es zaehlt nur die eigene Adresse
     }
+    return undefined;
   }
 
+  // Liest die Tab-Adresse neu; hat sie sich geaendert, gelten die Ausnahmen neu (sie greifen oder enden).
+  async function aktualisiereTabAdresse(): Promise<void> {
+    const neu = await frageTabAdresse();
+    if (neu === undefined || abgebaut) return;
+    uebernimmTabAdresse(neu);
+  }
+
+  // ---------- Adresswechsel (Einzelseiten-Apps): nur bei vorhandenen eigenen Ausnahmen ----------
+
+  // Nur die oberste Seite beobachtet ihre Adresse. Wechselt sie (pushState, popstate, hashchange), gelten die Ausnahmen neu (ein
+  // Pfadmuster kann jetzt passen oder nicht mehr) und der Hintergrund bekommt die neue Adresse; er reicht sie an die Frames des Tabs weiter.
+  const adressen = new AdressBeobachter(
+    () => location.href,
+    () => {
+      if (!lebt()) return;
+      if (einstellungen) wendeEinstellungenAn(einstellungen);
+      // Nur melden, wenn es Rahmen gibt, die es betrifft (kein Rahmen: nichts weiterzureichen).
+      if (window.frames.length === 0) return;
+      const nachricht: NachrichtHintergrundAdresse = { ziel: 'hintergrund', typ: 'adresse', url: location.href };
+      browser.runtime.sendMessage(nachricht).catch(() => {});
+    },
+  );
+
+  // Eingebettete Frames hoeren auf inhalt/tab des Hintergrunds. Sie fragen hintergrund/tab nur beim Start (wenn es Ausnahmen gibt),
+  // beim Entstehen der ersten Ausnahme und beim Sichtbarwerden des Tabs, nie im Takt.
+  function beiInhaltNachricht(nachricht: unknown): undefined {
+    if (!istRahmen || !lebt() || !istFuer(nachricht, 'inhalt')) return undefined;
+    const n = nachricht as NachrichtInhalt;
+    if (n.typ !== 'tab' || typeof n.url !== 'string') return undefined;
+    try {
+      uebernimmTabAdresse(new URL(n.url));
+    } catch {
+      // ungueltige Adresse: ignorieren
+    }
+    return undefined;
+  }
+
+  function uebernimmTabAdresse(neu: URL | null): void {
+    if ((neu?.href ?? null) === (tabAdresse?.href ?? null)) return;
+    tabAdresse = neu;
+    if (einstellungen) wendeEinstellungenAn(einstellungen);
+  }
+
+  function beiSichtbarkeit(): void {
+    if (!document.hidden && istRahmen && lebt() && einstellungen?.ausnahmen.length) void aktualisiereTabAdresse();
+  }
+
+  let inhaltHoererAn = false;
+  // Hat dieser Frame die Tab-Adresse in der laufenden Ausnahmen-Phase schon beim Hintergrund erfragt? Dann fragt er nur noch beim Sichtbarwerden.
+  let tabGefragt = false;
+  // Beobachtung an, wenn es eigene Ausnahmen gibt, sonst aus (dann gibt es nichts zu entscheiden und nichts zu fragen).
+  function beobachteAdressen(e: Einstellungen): void {
+    if (e.ausnahmen.length > 0) {
+      if (!istRahmen) {
+        adressen.start();
+      } else if (!inhaltHoererAn) {
+        inhaltHoererAn = true;
+        browser.runtime.onMessage.addListener(beiInhaltNachricht);
+        document.addEventListener('visibilitychange', beiSichtbarkeit);
+        if (!tabGefragt) {
+          tabGefragt = true;
+          void aktualisiereTabAdresse();
+        }
+      }
+    } else {
+      adressen.stopp();
+      if (inhaltHoererAn) {
+        inhaltHoererAn = false;
+        browser.runtime.onMessage.removeListener(beiInhaltNachricht);
+        document.removeEventListener('visibilitychange', beiSichtbarkeit);
+      }
+      tabAdresse = null;
+      tabGefragt = false;
+    }
+  }
+
+  // Das Mia Pack gehoert zum Pruefstand, solange der Stil Mia-Patch ist: wird das Pack ersetzt (neues `importiert`) oder erst jetzt
+  // freigeschaltet, rechnen offene Tabs neu, auch wenn die Einstellungen selbst gleich bleiben. Gelesen wird nur storage.local.pack.
+  let packKurz: PackKurz | null = null;
+  // packStand fuer die Anfrage an den Erkenner: nur bei Stil mia-patch (importiert des Packs, sonst 0), sonst weggelassen.
+  function packStandFuer(e: Einstellungen): number | undefined {
+    return e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : undefined;
+  }
   function pruefRelevant(e: Einstellungen): string {
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.stil]);
+    const stil = wirksamerStil(e.stil, packKurz);
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.stil, stil, e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : 0]);
+  }
+
+  function beiPackAenderung(aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void {
+    if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen) || abgebaut) return;
+    const p = aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue as PackKurz | undefined;
+    packKurz = p && typeof p === 'object' && typeof p.id === 'string' ? p : null;
+    if (einstellungen) wendeEinstellungenAn(einstellungen);
   }
 
   // Beginnt eine neue Epoche, wenn sich die pruefrelevanten Einstellungen geaendert haben (auch waehrend einer Pause).
@@ -999,6 +1140,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function wendeEinstellungenAn(neu: Einstellungen): void {
     if (abgebaut) return;
     einstellungen = neu;
+    beobachteAdressen(neu);
     const stand = aktualisierePruefstand(neu);
     const sollAus = istAusFuer(neu);
     if (sollAus) {
@@ -1023,15 +1165,25 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // ---------- Testhaken: CustomEvent veil-test (nur im Testbau, nur auf 127.0.0.1 und localhost) ----------
 
-  // detail ist ein JSON-Text oder ein Objekt mit { einstellungen, zweiterVersuchMs }. Ein Text ist der sichere Weg ueber die Grenze
+  // detail ist ein JSON-Text oder ein Objekt mit { einstellungen, zweiterVersuchMs, erkennerStatus }. Ein Text ist der sichere Weg ueber die Grenze
   // zwischen Seite und Content-Script (Firefox reicht Objekte der Seite nicht durch). zweiterVersuchMs verkuerzt die Wartezeit des
   // zweiten Versuchs nach einem Fehler, damit der Fehlerpfad im Test nicht 10 s dauert; das Produktverhalten bleibt unveraendert.
   function beiTestEreignis(e: Event): void {
     try {
       let detail = (e as CustomEvent).detail as unknown;
       if (typeof detail === 'string') detail = JSON.parse(detail);
-      const d = detail as { einstellungen?: unknown; zweiterVersuchMs?: unknown } | null;
+      const d = detail as { einstellungen?: unknown; zweiterVersuchMs?: unknown; erkennerStatus?: unknown } | null;
       if (typeof d?.zweiterVersuchMs === 'number' && d.zweiterVersuchMs >= 0) zweiterVersuchMs = d.zweiterVersuchMs;
+      // Status des Erkenners abfragen (weckt eine beendete Ereignisseite): die Antwort steht samt der Nummer der Anfrage in data-veil-erkenner.
+      if (typeof d?.erkennerStatus === 'number') {
+        const nr = d.erkennerStatus;
+        const schreibe = (inhalt: Record<string, unknown>) => document.documentElement?.setAttribute('data-veil-erkenner', JSON.stringify({ nr, ...inhalt }));
+        const frage: NachrichtErkennerStatus = { ziel: 'erkenner', typ: 'status' };
+        browser.runtime.sendMessage(frage).then(
+          (antwort) => schreibe({ antwort }),
+          (fehler) => schreibe({ fehler: String(fehler) }),
+        );
+      }
       const roh = d?.einstellungen;
       if (!roh || typeof roh !== 'object') return;
       aendereEinstellungen(roh as Partial<Einstellungen>).catch(() => {});
@@ -1067,20 +1219,36 @@ export function starteSchleier(ctx: KontextLeicht): void {
     ausEinstellungGehoert = true;
     wendeEinstellungenAn(neu);
   });
-  // Eingebettete Frames fragen den Hintergrund nach der Adresse des Tabs. Kommt die Antwort spaeter als die Einstellungen,
-  // gilt sie ab dann (die Einstellungen werden erneut angewendet); der Start wartet hoechstens TAB_FRIST_MS darauf.
-  const tabAntwort = frageTabAdresse().then(() => {
-    if (einstellungen && lebt()) wendeEinstellungenAn(einstellungen);
-  });
-  const tabFrist = new Promise<void>((fertig) => setTimeout(fertig, TAB_FRIST_MS));
-  Promise.all([ladeEinstellungen().catch(() => vervollstaendige(undefined)), Promise.race([tabAntwort, tabFrist])]).then(([e]) => {
+  // Eingebettete Frames fragen den Hintergrund nach der Adresse des Tabs, aber nur, wenn es eigene Ausnahmen gibt (sonst ist die Antwort
+  // ohne Folgen). Der Start wartet hoechstens TAB_FRIST_MS darauf; spaetere Wechsel melden die Frames ueber inhalt/tab.
+  let packGehoert = false;
+  const packLaden = ladePackKurz().catch(() => null);
+  const packHoerer = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
+    if (bereich === 'local' && PACK_SPEICHER_SCHLUESSEL in aenderungen) packGehoert = true;
+    beiPackAenderung(aenderungen, bereich);
+  };
+  browser.storage.onChanged.addListener(packHoerer);
+  Promise.all([ladeEinstellungen().catch(() => vervollstaendige(undefined)), packLaden]).then(async ([e, pack]) => {
+    if (!packGehoert) packKurz = pack;
+    if (!ausEinstellungGehoert && istRahmen && e.ausnahmen.length > 0) {
+      tabGefragt = true;
+      const frist = new Promise<undefined>((fertig) => setTimeout(() => fertig(undefined), TAB_FRIST_MS));
+      const t = await Promise.race([frageTabAdresse(), frist]);
+      if (t) tabAdresse = t;
+    }
     if (!ausEinstellungGehoert) wendeEinstellungenAn(e);
+    else if (einstellungen) wendeEinstellungenAn(einstellungen); // das Pack ist inzwischen da
   });
 
   ctx.onInvalidated(() => {
     abgebaut = true;
     aktiv = false;
     abmelden();
+    browser.storage.onChanged.removeListener(packHoerer);
+    adressen.stopp();
+    if (inhaltHoererAn) browser.runtime.onMessage.removeListener(beiInhaltNachricht);
+    inhaltHoererAn = false;
+    document.removeEventListener('visibilitychange', beiSichtbarkeit);
     beobachter.stopp();
     klassen.stopp();
     sichtBeobachter?.disconnect();

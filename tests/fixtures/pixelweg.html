@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Pixelweg-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      img, video { display: block; width: 200px; height: 150px; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Pixelweg in Firefox</h1>
+    <!-- Firefox liest im Content-Script Pixel nur bei data: und blob:. Alles mit http(s) geht den Url-Weg (Erkenner), Videos mit
+         http-Quelle oder srcObject werden verdeckt, auch wenn die Seite crossorigin erst nach dem Laden setzt. Modus per ?modus=:
+           bild    #cors   per CORS geladenes Bild (zweiter Ursprung, ?cors=1)
+                   #spaet  Bild ohne CORS geladen, danach setzt die Seite crossorigin
+           film    #film   Video mit http-Quelle (?film=<adresse>), crossorigin wird nach dem Laden gesetzt
+                   #strom  Video mit srcObject (canvas.captureStream())
+         nimmAuf() nimmt ein kurzes Video auf (MediaRecorder) und liefert es als Base64 (der Test reicht es ueber einen eigenen Server aus). -->
+    <div id="platz"></div>
+    <script>
+      (function () {
+        var param = new URLSearchParams(location.search);
+        var modus = param.get('modus');
+        var platz = document.getElementById('platz');
+        var fremd = 'http://127.0.0.1:' + (Number(location.port) + 2);
+        function farbverlauf(c, versatz) {
+          var g = c.getContext('2d');
+          var v = g.createLinearGradient(0, 0, c.width, c.height);
+          v.addColorStop(0, 'hsl(' + versatz + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, c.width, c.height);
+        }
+        window.nimmAuf = function () {
+          return new Promise(function (fertig) {
+            var quelle = document.createElement('canvas');
+            quelle.width = 320;
+            quelle.height = 240;
+            var versatz = 0;
+            var timer = setInterval(function () { farbverlauf(quelle, (versatz += 20)); }, 50);
+            var aufnahme = new MediaRecorder(quelle.captureStream(20));
+            var stuecke = [];
+            aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+            aufnahme.onstop = function () {
+              clearInterval(timer);
+              var leser = new FileReader();
+              leser.onload = function () { fertig({ typ: aufnahme.mimeType, base64: String(leser.result).split(',')[1] }); };
+              leser.readAsDataURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+            };
+            aufnahme.start();
+            setTimeout(function () { aufnahme.stop(); }, 700);
+          });
+        };
+        if (modus === 'bild') {
+          var cors = document.createElement('img');
+          cors.id = 'cors';
+          cors.crossOrigin = 'anonymous';
+          cors.src = fremd + '/synthetisch/21.png?cors=1';
+          platz.appendChild(cors);
+          var spaet = document.createElement('img');
+          spaet.id = 'spaet';
+          // erst laden (ohne CORS), dann crossorigin setzen: das angezeigte Bild bleibt das ohne CORS geladene
+          spaet.addEventListener('load', function () { spaet.setAttribute('crossorigin', 'anonymous'); document.documentElement.dataset.spaetGesetzt = '1'; }, { once: true });
+          spaet.src = fremd + '/synthetisch/22.png';
+          platz.appendChild(spaet);
+        } else if (modus === 'film') {
+          var film = document.createElement('video');
+          film.id = 'film';
+          film.muted = true;
+          film.loop = true;
+          film.addEventListener('loadeddata', function () { film.setAttribute('crossorigin', 'anonymous'); document.documentElement.dataset.filmGesetzt = '1'; }, { once: true });
+          film.src = param.get('film');
+          platz.appendChild(film);
+          film.play().catch(function () {});
+          var strom = document.createElement('video');
+          strom.id = 'strom';
+          strom.muted = true;
+          var leinwand = document.createElement('canvas');
+          leinwand.width = 320;
+          leinwand.height = 240;
+          var versatz2 = 0;
+          setInterval(function () { farbverlauf(leinwand, (versatz2 += 20)); }, 50);
+          strom.srcObject = leinwand.captureStream(20);
+          platz.appendChild(strom);
+          strom.play().catch(function () {});
+        }
+        document.documentElement.dataset.pixelBereit = '1';
+      })();
+    </script>
+  </body>
+</html>

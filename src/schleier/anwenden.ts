@@ -1,7 +1,7 @@
 // Urteile auf Elemente anwenden: freigeben, verdecken, Quelle gegen das zensierte Bild tauschen, Originale wiederherstellen.
 
 import { ATTR_MS, ATTR_NUR_HG, ATTR_URTEIL, TESTHAKEN, type Urteil } from './konstanten';
-import { testhakenAktiv } from './status';
+import { freigabeGesperrt, testhakenAktiv } from './status';
 import type { BildOriginal, Zustand } from './zustand';
 
 // ---------- Signaturen (erkennen, ob die Seite die Quelle geaendert hat) ----------
@@ -44,6 +44,8 @@ export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number 
   // Inline-Hintergrund (den die CSS-Regel fuer Inline-Hintergruende sonst unsichtbar machte) und "verdeckt" soll unscharf zeigen,
   // beides ueber das Attribut.
   if (z.art === 'klasse' && urteil === 'frei') return;
+  // Testhaken "Freigabe sperren" (nur Testbau, nur Testhost): das Urteil gilt, aber das Element wird nie sichtbar.
+  if (TESTHAKEN && freigabeGesperrt()) return;
   el.setAttribute(ATTR_URTEIL, urteil);
   // Zeitstempel nur im Testbau auf Testhosts.
   if (TESTHAKEN && ms !== null && testhakenAktiv()) el.setAttribute(ATTR_MS, String(ms));

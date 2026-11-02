@@ -7,7 +7,9 @@ export type Zone = (typeof ZONEN)[number];
 // Zonen, bei denen "auch bedeckt" Sinn ergibt (das Modell kennt dort bedeckte Varianten).
 export const BEDECKBARE_ZONEN: ReadonlySet<Zone> = new Set<Zone>(['breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits']);
 
-export type Stil = 'mosaik' | 'blur';
+// 'mia-patch' gilt nur mit Pack (src/pack/vertrag.ts, wirksamerStil); ohne Pack zeichnet der Erkenner Mosaik.
+export type Stil = 'mosaik' | 'blur' | 'mia-patch';
+export const STILE: readonly Stil[] = ['mosaik', 'blur', 'mia-patch'];
 
 export interface ZonenEinstellung {
   an: boolean;
@@ -72,7 +74,7 @@ export function vervollstaendige(roh: unknown): Einstellungen {
     pause: typeof r.pause === 'boolean' ? r.pause : STANDARD.pause,
     strict: typeof r.strict === 'boolean' ? r.strict : STANDARD.strict,
     schwelle: begrenze(r.schwelle, SCHWELLE_MIN, SCHWELLE_MAX, STANDARD.schwelle),
-    stil: r.stil === 'blur' ? 'blur' : 'mosaik',
+    stil: STILE.includes(r.stil as Stil) ? (r.stil as Stil) : 'mosaik',
     rand: begrenze(r.rand, 0, 0.5, STANDARD.rand),
     zonen,
     ausnahmen: Array.isArray(r.ausnahmen)

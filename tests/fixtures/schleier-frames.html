@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil blob- und about:blank-Rahmen</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      iframe { width: 300px; height: 240px; border: 0; margin-right: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Rahmen ohne eigene Adresse</h1>
+    <!-- Zwei Rahmen, in die der Test je ein Bild schreibt: ein blob:-Rahmen (Dokument aus einer Blob-Adresse) und ein about:blank-Rahmen.
+         Beide haben keine eigene http-Adresse; das Content-Script laeuft dort nur dank match_about_blank und match_origin_as_fallback.
+         Vor der Beurteilung muss das Bild unsichtbar sein, danach beurteilt. Ein kleiner Waechter dieser Seite tastet beide Bilder nach jedem
+         Zeichnen ab (die Rahmen sind gleichen Ursprungs): window.__blitz zaehlt Proben, in denen ein Bild ohne Urteil sichtbar war,
+         window.__proben die Proben insgesamt, window.__urteil das Urteil je Rahmen. -->
+    <iframe id="blob"></iframe>
+    <iframe id="leer"></iframe>
+    <script>
+      var BILD = '/synthetisch/7.png';
+      window.fuelleBlob = function () {
+        var html = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">' +
+          '<img id="bild" width="280" height="210" src="' + location.origin + BILD + '"></body></html>';
+        var url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+        document.getElementById('blob').src = url;
+      };
+      window.fuelleLeer = function () {
+        var dok = document.getElementById('leer').contentDocument;
+        dok.body.style.margin = '0';
+        var bild = dok.createElement('img');
+        bild.id = 'bild';
+        bild.width = 280;
+        bild.height = 210;
+        bild.src = location.origin + BILD;
+        dok.body.appendChild(bild);
+      };
+      window.fuelleBeide = function () { window.fuelleBlob(); window.fuelleLeer(); };
+
+      window.__blitz = { blob: 0, leer: 0 };
+      window.__proben = { blob: 0, leer: 0 };
+      window.__urteil = { blob: null, leer: null };
+      function bildIn(id) {
+        var dok = document.getElementById(id === 'blob' ? 'blob' : 'leer').contentDocument;
+        return dok && dok.getElementById('bild') ? dok.getElementById('bild') : null;
+      }
+      function probe() {
+        ['blob', 'leer'].forEach(function (id) {
+          var bild = bildIn(id);
+          if (!bild) return;
+          var urteil = bild.getAttribute('data-veil');
+          window.__proben[id]++;
+          if (urteil === null) {
+            if (bild.ownerDocument.defaultView.getComputedStyle(bild).opacity !== '0') window.__blitz[id]++;
+          } else {
+            window.__urteil[id] = urteil;
+          }
+        });
+      }
+      (function schritt() {
+        setTimeout(probe, 0);
+        requestAnimationFrame(schritt);
+      })();
+    </script>
+  </body>
+</html>

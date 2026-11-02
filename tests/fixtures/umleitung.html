@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Umleitungs-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      img, .feld { width: 200px; height: 150px; display: block; margin-bottom: 8px; background-size: cover; }
+    </style>
+  </head>
+  <body>
+    <h1>Umleitungen ins Heimnetz</h1>
+    <!-- Netzgrenze bei Weiterleitungen. Die Seite laeuft unter einem Testnamen (oeffentlich.test), den der Test auf 127.0.0.1 abbildet:
+         fuer die Erweiterung ist sie also eine oeffentliche Seite. Der Testserver leitet /umleiten?ziel=... per 302 auf eine private Adresse
+         (zweiter Testserver auf 127.0.0.1) um.
+           a  gleicher Ursprung leitet nach privat um      -> verdeckt, kein data:-Bild in der Seite
+           b  anderer oeffentlicher Name leitet nach privat -> verdeckt
+           e  Inline-Hintergrund, gleicher Ursprung leitet nach privat um -> verdeckt
+           c  harmloses Bild vom eigenen Ursprung            -> frei
+           d  Bild mit crossorigin (CORS) von anderem Namen  -> frei
+         Wird dieselbe Seite unter 127.0.0.1 geladen (private Seite), sind alle fuenf beurteilt: privat nach privat ist erlaubt. -->
+    <script>
+      var port = location.port;
+      var privat = 'http://127.0.0.1:' + (Number(port) + 2);
+      var html =
+        '<img id="a" alt="a" width="200" height="150" src="/umleiten?ziel=' + privat + '/synthetisch/3.png">' +
+        '<img id="b" alt="b" width="200" height="150" src="http://bilder.test:' + port + '/umleiten?ziel=' + privat + '/synthetisch/4.png">' +
+        '<div id="e" class="feld" style="background-image: url(/umleiten?ziel=' + privat + '/synthetisch/7.png)"></div>' +
+        '<img id="c" alt="c" width="200" height="150" src="/synthetisch/5.png">' +
+        '<img id="d" alt="d" width="200" height="150" crossorigin="anonymous" src="http://bilder.test:' + port + '/synthetisch/6.png?cors=1">';
+      document.write(html);
+    </script>
+  </body>
+</html>

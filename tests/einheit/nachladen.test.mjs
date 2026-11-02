@@ -8,9 +8,11 @@ import { ladeNach } from '../../src/erkenner/nachladen.ts';
 let server;
 let basis = '';
 const offeneAntworten = new Set();
+let anfragenGesamt = 0;
 
 before(async () => {
   server = createServer((anfrage, antwort) => {
+    anfragenGesamt++;
     offeneAntworten.add(antwort);
     antwort.on('close', () => offeneAntworten.delete(antwort));
     if (anfrage.url === '/klein') {
@@ -25,6 +27,10 @@ before(async () => {
     } else if (anfrage.url === '/gross') {
       antwort.writeHead(200, { 'content-type': 'image/png', 'content-length': '5000' });
       antwort.end(Buffer.alloc(5000));
+    } else if (anfrage.url === '/weiter') {
+      // Weiterleitung auf ein Bild (gleicher Host)
+      antwort.writeHead(302, { location: '/klein' });
+      antwort.end();
     } else if (anfrage.url === '/endlos') {
       // ohne Laengenangabe, Stueck fuer Stueck
       antwort.writeHead(200, { 'content-type': 'image/png' });
@@ -92,4 +98,83 @@ test('404 bleibt ein HTTP-Fehler mit Status', async () => {
   const r = await ladeNach(`${basis}/nichts`, '', ohneReferer, grenzen);
   assert.equal(r.ok, false);
   assert.equal(r.status, 404);
+});
+
+// ---------- Private Adressbereiche (PHASE-2-BAUPLAN 9.6) ----------
+// Der Testserver liegt auf 127.0.0.1, also in einem privaten Bereich.
+
+test('oeffentliche Seite nach privatem Ziel: abgelehnt als privat, ohne Abruf und ohne Referer-Wiederholung', async () => {
+  const vorher = anfragenGesamt;
+  let refererGesetzt = 0;
+  const r = await ladeNach(`${basis}/klein`, 'https://example.com/', async () => void refererGesetzt++, grenzen);
+  assert.deepEqual({ ok: r.ok, fehler: r.fehler }, { ok: false, fehler: 'privat' });
+  assert.equal(anfragenGesamt, vorher);
+  assert.equal(refererGesetzt, 0);
+});
+
+test('Weiterleitung innerhalb des privaten Netzes bleibt erlaubt (die Endadresse unterliegt derselben Regel)', async () => {
+  const r = await ladeNach(`${basis}/weiter`, 'http://127.0.0.1:1/', ohneReferer, grenzen);
+  assert.equal(r.ok, true);
+});
+
+test('private Seite nach privatem Ziel: erlaubt', async () => {
+  const r = await ladeNach(`${basis}/klein`, 'http://192.168.0.7/seite', ohneReferer, grenzen);
+  assert.equal(r.ok, true);
+  const l = await ladeNach(`${basis}/klein`, 'http://localhost:3000/', ohneReferer, grenzen);
+  assert.equal(l.ok, true);
+});
+
+test('leerer Referer (interner Aufruf ohne Seitenbezug): private Ziele bleiben erreichbar', async () => {
+  const r = await ladeNach(`${basis}/klein`, '', ohneReferer, grenzen);
+  assert.equal(r.ok, true);
+});
+
+test('unbekannter Ursprung ("null") gilt als oeffentlich: privates Ziel abgelehnt', async () => {
+  const r = await ladeNach(`${basis}/klein`, 'null', ohneReferer, grenzen);
+  assert.equal(r.ok, false);
+  assert.equal(r.fehler, 'privat');
+});
+
+// Weiterleitung von einer oeffentlichen Seite auf eine private Adresse: die Endadresse (antwort.url) wird abgelehnt, der Rumpf nie gelesen.
+test('Weiterleitung oeffentlich nach privat: Endadresse abgelehnt, Rumpf abgebrochen', async () => {
+  let abgebrochen = false;
+  let gelesen = false;
+  const holeFn = async () => ({
+    url: 'http://192.168.1.1/kamera.jpg',
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'image/jpeg' }),
+    body: {
+      cancel: async () => {
+        abgebrochen = true;
+      },
+      getReader: () => {
+        gelesen = true;
+        throw new Error('Rumpf darf nicht gelesen werden');
+      },
+    },
+  });
+  let refererGesetzt = 0;
+  const r = await ladeNach('https://bilder.example.com/a.jpg', 'https://example.com/', async () => void refererGesetzt++, grenzen, { holeFn });
+  assert.deepEqual({ ok: r.ok, fehler: r.fehler }, { ok: false, fehler: 'privat' });
+  assert.equal(abgebrochen, true);
+  assert.equal(gelesen, false);
+  assert.equal(refererGesetzt, 0);
+  assert.equal(r.endgueltig, true);
+});
+
+test('Weiterleitung von einer privaten Seite auf eine private Adresse ist erlaubt', async () => {
+  const holeFn = async () => new Response(Buffer.from('abc'), { status: 200 });
+  const antwort = await holeFn();
+  Object.defineProperty(antwort, 'url', { value: 'http://192.168.1.1/kamera.jpg' });
+  const r = await ladeNach('http://10.0.0.5/a.jpg', 'http://192.168.0.2/', ohneReferer, grenzen, { holeFn: async () => antwort });
+  assert.equal(r.ok, true);
+});
+
+test('herkunft aus dem Absender geht vor dem Referer', async () => {
+  // Referer behauptet eine private Seite, die Herkunft aus dem Absender ist "null": abgelehnt.
+  const r = await ladeNach(`${basis}/klein`, 'http://192.168.1.1/', ohneReferer, grenzen, { herkunft: 'null' });
+  assert.equal(r.fehler, 'privat');
+  const ok = await ladeNach(`${basis}/klein`, 'null', ohneReferer, grenzen, { herkunft: 'http://192.168.1.1/' });
+  assert.equal(ok.ok, true);
 });

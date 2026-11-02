@@ -36,6 +36,7 @@ export const ZWEITER_VERSUCH_MS = 10_000;
 export const VIDEO_NACHFRIST_MS = 1000; // nach load: so lange auf Videodaten warten, danach unscharf zeigen (preload none oder metadata)
 export const AUFRAEUM_VERZOEGERUNG_MS = 3000; // nach entfernten Knoten: so lange warten, dann Verweise auf getrennte Elemente loesen
 export const TAB_FRIST_MS = 1500; // eingebettete Frames: so lange auf die Adresse des Tabs warten, danach zaehlt nur die eigene Adresse
+export const ADRESS_TAKT_MS = 400; // Abfrage der eigenen Adresse, nur ohne Navigation API und nur bei vorhandenen Ausnahmen
 export const TAUSCH_MAX_MS = 3000; // so lange darf das Laden des zensierten Bildes dauern, danach verdeckt
 export const STARTPHASE_NACH_LOAD_MS = 250;
 export const STARTPHASE_MAX_MS = 5000;

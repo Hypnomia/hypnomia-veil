@@ -12,11 +12,15 @@ export interface NachrichtHintergrundReferer { ziel: 'hintergrund'; typ: 'refere
 export interface NachrichtHintergrundPause { ziel: 'hintergrund'; typ: 'pause'; an?: boolean }
 // Adresse des Tabs, aus dem die Nachricht kommt (fuer eingebettete Frames: die oberste Seite). Eigene Ausnahmen gelten je Tab.
 export interface NachrichtHintergrundTab { ziel: 'hintergrund'; typ: 'tab' }
+// Die oberste Seite eines Tabs meldet einen Adresswechsel ohne Neuladen (pushState, hashchange), nur wenn eigene Ausnahmen existieren.
+// Der Hintergrund reicht die neue Adresse per tabs.sendMessage als `inhalt/tab` an alle Frames dieses Tabs weiter (kein Takt in Frames).
+export interface NachrichtHintergrundAdresse { ziel: 'hintergrund'; typ: 'adresse'; url: string }
 export type NachrichtHintergrund =
   | NachrichtHintergrundWecke
   | NachrichtHintergrundReferer
   | NachrichtHintergrundPause
-  | NachrichtHintergrundTab;
+  | NachrichtHintergrundTab
+  | NachrichtHintergrundAdresse;
 
 export interface AntwortOk { ok: true }
 export interface AntwortPause { ok: true; pause: boolean }
@@ -36,6 +40,9 @@ export interface PruefEinstellungen {
   zonen: Einstellungen['zonen'];
   rand: number;
   stil: Einstellungen['stil'];
+  // Nur bei Stil mia-patch: `importiert` der Pack-Kurzfassung, die das Content-Script kennt (0 = kein Pack). Weicht der Stand im
+  // Erkenner ab, liest er die Patch-Bilder neu, bevor er rendert (kein Rendern mit dem alten Pack nach einem Ersetzen).
+  packStand?: number;
 }
 
 export interface NachrichtErkennerWecke { ziel: 'erkenner'; typ: 'wecke' }
@@ -89,7 +96,12 @@ export interface AntwortPruefeOk {
 export interface AntwortPruefeFehler { ok: false; id: string; fehler: string; status?: number }
 export type AntwortPruefe = AntwortPruefeOk | AntwortPruefeFehler;
 
-export type Nachricht = NachrichtHintergrund | NachrichtErkenner;
+// ---------- Ziel inhalt (Content-Script, per tabs.sendMessage vom Hintergrund) ----------
+// Neue Adresse des Tabs nach einem Adresswechsel der obersten Seite. Antwort: keine (undefined).
+export interface NachrichtInhaltTab { ziel: 'inhalt'; typ: 'tab'; url: string }
+export type NachrichtInhalt = NachrichtInhaltTab;
+
+export type Nachricht = NachrichtHintergrund | NachrichtErkenner | NachrichtInhalt;
 
 // Typwaechter fuer Empfaenger: nur das eigene Ziel beantworten.
 export function istFuer<Z extends Ziel>(n: unknown, ziel: Z): n is Extract<Nachricht, { ziel: Z }> {

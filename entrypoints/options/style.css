@@ -1,0 +1,203 @@
+/* Einstellungsseite: hell und pastellfarben, Farben wie das Popup (Entscheidung 4). */
+:root {
+  --grund: #fff5fa;
+  --karte: #ffffff;
+  --text: #4f3345;
+  --leise: #86647a;
+  --akzent: #b03f7a;
+  --akzent-hell: #f9d6e7;
+  --pastell: #e9def9;
+  --linie: #f0cfe0;
+  --fokus: #6a4bc4;
+  --fehler: #a8324f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 28px 20px 24px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.14em;
+  color: var(--akzent);
+}
+
+.unter {
+  margin: 2px 0 0;
+  color: var(--leise);
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--leise);
+}
+
+h3 {
+  margin: 14px 0 4px;
+  font-size: 15px;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+section {
+  padding: 14px 16px;
+  background: var(--karte);
+  border: 1px solid var(--linie);
+  border-radius: 12px;
+}
+
+.hinweis {
+  font-size: 13px;
+  color: var(--leise);
+}
+
+dl {
+  margin: 0 0 12px;
+}
+
+dl > div {
+  display: flex;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--linie);
+}
+
+dt {
+  flex: 0 0 90px;
+  color: var(--leise);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button.gross {
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--akzent);
+  color: #fff;
+  font-weight: 650;
+}
+
+button.klein {
+  padding: 8px 14px;
+  border: 1px solid var(--akzent);
+  border-radius: 10px;
+  background: var(--akzent-hell);
+  color: var(--akzent);
+  font-weight: 600;
+}
+
+button.ruhig {
+  border-color: #b9a2e4;
+  background: var(--pastell);
+  color: var(--text);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+.knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.frage {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--pastell);
+  border-radius: 10px;
+}
+
+.datei {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  font-weight: 600;
+}
+
+.datei input {
+  font: inherit;
+  font-weight: 400;
+}
+
+#fortschritt-zeile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+progress {
+  flex: 1;
+  height: 12px;
+  accent-color: var(--akzent);
+}
+
+pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 6px 0 10px;
+  padding: 10px 12px;
+  background: var(--grund);
+  border: 1px solid var(--linie);
+  border-radius: 10px;
+  font: 13px/1.5 ui-monospace, 'SF Mono', Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#meldung {
+  margin: 10px 0 0;
+  min-height: 1.5em;
+}
+
+#meldung.fehler {
+  color: var(--fehler);
+  font-weight: 600;
+}
+
+footer {
+  font-size: 12px;
+  color: var(--leise);
+}

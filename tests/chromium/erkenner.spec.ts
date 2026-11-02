@@ -45,6 +45,17 @@ async function testbilder(satz: 'sfw' | 'nsfw'): Promise<string[]> {
   return json.bilder;
 }
 
+// Render-Tests brauchen die Testbilder aus ../05 Testbilder (nie im Repo). Fehlen sie, ist der Test ROT; nur mit VEIL_OHNE_TESTBILDER=1
+// wird er uebersprungen, und das laut gemeldet.
+function brauchtTestbilder(liste: string[], satz: string): void {
+  if (liste.length > 0) return;
+  if (process.env.VEIL_OHNE_TESTBILDER === '1') {
+    console.log(`chromium: AUSNAHME VEIL_OHNE_TESTBILDER=1: Test mit Testsatz ${satz} uebersprungen`);
+    test.skip(true, 'VEIL_OHNE_TESTBILDER=1');
+  }
+  throw new Error(`Testsatz ${satz} ist leer oder fehlt (../05 Testbilder/${satz}); ohne Testbilder nur mit VEIL_OHNE_TESTBILDER=1`);
+}
+
 test.describe.configure({ mode: 'serial' });
 
 let profil: string | undefined;
@@ -129,7 +140,7 @@ test('Erkenner: status und wecke', async () => {
 
 test('Erkenner: Testbild aus dem sfw-Satz, rendern liefert JPEG, wenn Flaechen da sind', async () => {
   const liste = await testbilder('sfw');
-  test.skip(liste.length === 0, 'Testsatz sfw ist leer');
+  brauchtTestbilder(liste, 'sfw');
   const antwort = await ausWorker(
     worker,
     pruefeNachricht(`${basis}/testbild/sfw/${encodeURIComponent(liste[0]!)}`, { rendern: true }),
@@ -142,7 +153,7 @@ test('Erkenner: Testbild aus dem sfw-Satz, rendern liefert JPEG, wenn Flaechen d
 
 test('Erkenner: Bild als Daten (Data-URL) und Rendern beider Stile', async () => {
   const liste = await testbilder('nsfw');
-  test.skip(liste.length === 0, 'Testsatz nsfw ist leer');
+  brauchtTestbilder(liste, 'nsfw');
   // Das Bild kommt hier als Data-URL aus dem Seitenkontext (wie vom Content-Script), nicht ueber die Adresse.
   const seite = await context.newPage();
   await seite.goto(`${basis}/hello.html`);

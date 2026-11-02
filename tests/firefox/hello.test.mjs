@@ -1,6 +1,7 @@
 // Firefox-Test ueber geckodriver/WebDriver (Playwright kann in Firefox keine Erweiterungen laden).
 import { Builder } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
+import { Command } from 'selenium-webdriver/lib/command.js';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,12 @@ if (!existsSync(paket)) {
   process.exit(1);
 }
 
+// Erweiterung als temporaeres Add-on installieren, ueber den Pfad (nicht Base64 wie driver.installAddon): geckodriver 0.37 mit Firefox 128
+// lehnt die Base64-Form ab (InvalidArgumentError), der Pfad geht in 128 und in neueren Versionen.
+async function installiere(treiber, paketPfad) {
+  await treiber.execute(new Command('install addon').setParameter('path', paketPfad).setParameter('temporary', true));
+}
+
 let server;
 let driver;
 let code = 0;
@@ -38,7 +45,8 @@ try {
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).build();
   await driver.manage().setTimeouts({ pageLoad: 15_000 });
   // true = temporaere Installation, keine Signatur noetig
-  await driver.installAddon(paket, true);
+  console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);
+  await installiere(driver, paket);
 
   const start = Date.now();
   await driver.get(`http://127.0.0.1:${port}/hello.html`);

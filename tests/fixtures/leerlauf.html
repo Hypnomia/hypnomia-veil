@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Leerlauf-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .fremd { width: 240px; height: 180px; background-size: cover; }
+    </style>
+  </head>
+  <body>
+    <h1>Leerlauf-Test</h1>
+    <!-- Fremde Klassen-Hintergruende vom zweiten Ursprung (Port plus 2), mit ?nurReferer=1: der Server verweigert den Abruf ohne Referer,
+         der Erkenner schafft es erst nach der Referer-Regel des Hintergrunds. Jeder Aufruf von fuegeEin(n) nimmt ein anderes Bild (n),
+         damit der Zwischenspeicher der Seite nicht antwortet, sondern der Erkenner wirklich gefragt wird. -->
+    <div id="platz"></div>
+    <!-- Mit ?rahmen=1 sitzt ein eingebetteter Rahmen von einem anderen Host (localhost) auf der Seite: fuer den Leerlauftest mit eigener
+         Ausnahme. Mit Ausnahmen fragen Rahmen den Hintergrund einmal beim Start; danach darf kein Takt die Ereignisseite wachhalten. -->
+    <script>
+      if (new URLSearchParams(location.search).get('rahmen') === '1') {
+        var rahmen = document.createElement('iframe');
+        rahmen.id = 'rahmen';
+        rahmen.width = 300;
+        rahmen.height = 120;
+        rahmen.src = 'http://localhost:' + location.port + '/ausnahme.html';
+        document.body.appendChild(rahmen);
+      }
+      window.gehe = function (pfad) { history.pushState({}, '', pfad); };
+      window.fuegeEin = function (n) {
+        var fremd = 'http://127.0.0.1:' + (Number(location.port) + 2);
+        var stil = document.createElement('style');
+        stil.textContent = '.fremd-' + n + ' { background-image: url(' + fremd + '/synthetisch/' + n + '.png?nurReferer=1); }';
+        document.head.appendChild(stil);
+        var feld = document.createElement('div');
+        feld.id = 'fremd-' + n;
+        feld.className = 'fremd fremd-' + n;
+        feld.textContent = 'Fremder Hintergrund ' + n;
+        document.getElementById('platz').appendChild(feld);
+      };
+    </script>
+  </body>
+</html>

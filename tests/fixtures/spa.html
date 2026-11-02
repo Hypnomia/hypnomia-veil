@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Einzelseiten-App-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+    </style>
+  </head>
+  <body>
+    <h1>Einzelseiten-App</h1>
+    <!-- Ein Bild der Seite und ein eingebetteter Rahmen von einem anderen Host (127.0.0.1, die Seite selbst laeuft ueber localhost).
+         Die Seite wechselt ihre Adresse ohne Neuladen: Aufruf von gehe(pfad, art) mit art push, replace oder hash; zurueck() geht einen
+         Schritt zurueck (popstate). Der Test setzt Ausnahmen mit Pfadmuster (zum Beispiel localhost/gp/buy). -->
+    <img id="b1" alt="Bild 1" width="280" height="210" src="/synthetisch/1.png" />
+    <iframe id="rahmen" width="600" height="260" style="border:0"></iframe>
+    <script>
+      document.getElementById('rahmen').src = 'http://127.0.0.1:' + location.port + '/ausnahme.html';
+      window.gehe = function (pfad, art) {
+        if (art === 'replace') history.replaceState({}, '', pfad);
+        else if (art === 'hash') location.hash = pfad;
+        else history.pushState({}, '', pfad);
+      };
+      window.zurueck = function () { history.back(); };
+    </script>
+  </body>
+</html>

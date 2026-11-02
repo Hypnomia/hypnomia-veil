@@ -4,7 +4,7 @@
 // Firefox: startet den Erkenner im selben Kontext und setzt Referer per webRequest (blocking).
 import { aendereEinstellungen } from '../src/einstellungen';
 import { fehlerAntwortFuer } from '../src/erkenner/antwort';
-import { istFuer, type AntwortTab, type NachrichtHintergrund } from '../src/nachrichten';
+import { istFuer, type AntwortTab, type NachrichtHintergrund, type NachrichtInhaltTab } from '../src/nachrichten';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -27,7 +27,38 @@ function saubereReferer(host: string, referer: string): { hostname: string; refe
 
 // Absender einer Nachricht: nur das, was wir lesen (Adresse des Tabs, falls die Nachricht aus einem Tab kommt).
 interface AbsenderMitTab {
-  tab?: { url?: string };
+  tab?: { id?: number; url?: string };
+  frameId?: number;
+  origin?: string;
+  url?: string;
+}
+
+// ---------- Tab-Adresse an alle Frames des Tabs ----------
+// Die oberste Seite meldet ihre neue Adresse (hintergrund/adresse); der Hintergrund reicht sie als inhalt/tab an alle Frames des Tabs weiter.
+// Nur der oberste Frame eines Tabs darf melden: `frameId` muss da und 0 sein (ohne frameId keine Weiterleitung), sonst koennten Frames von
+// Fremden Ausnahmen im ganzen Tab ein- und ausschalten. Die Adresse kommt aus dem Absender (sender.url, vom Browser gesetzt), nicht aus
+// der Nachricht. Hinkt sender.url nach einem pushState hinterher, darf die gemeldete Adresse den Pfad liefern, aber nur auf demselben
+// Ursprung wie sender.url; ein anderer Ursprung in der Nachricht wird verworfen.
+function adresseFuerWeiterleitung(absender: AbsenderMitTab | undefined, gemeldet: string): string | null {
+  if (typeof absender?.tab?.id !== 'number' || absender.frameId !== 0) return null;
+  try {
+    const basis = new URL(absender.url ?? '');
+    if (basis.protocol !== 'http:' && basis.protocol !== 'https:') return null;
+    const gemeldetURL = new URL(gemeldet);
+    return gemeldetURL.origin === basis.origin ? gemeldetURL.href : basis.href;
+  } catch {
+    return null;
+  }
+}
+
+async function reicheAdresseWeiter(absender: AbsenderMitTab | undefined, url: string): Promise<boolean> {
+  const adresse = adresseFuerWeiterleitung(absender, url);
+  const tabId = absender?.tab?.id;
+  if (adresse === null || typeof tabId !== 'number') return false;
+  const nachricht: NachrichtInhaltTab = { ziel: 'inhalt', typ: 'tab', url: adresse };
+  // Ohne frameId gehen die Nachrichten an alle Frames; ein Tab ohne Empfaenger meldet einen Fehler, der hier egal ist.
+  await browser.tabs.sendMessage(tabId, nachricht).catch(() => {});
+  return true;
 }
 
 // ---------- Pause ----------
@@ -166,10 +197,12 @@ export default defineBackground(() => {
     );
   }
 
-  // Lebenszeichen fuer die Hallo-Tests (tests/chromium/hello.spec.ts, tests/firefox/hello.test.mjs).
-  browser.runtime.onInstalled.addListener(() => {
-    browser.storage.local.set({ veilHello: true }).catch(() => {});
-  });
+  // Lebenszeichen fuer die Hallo-Tests (tests/chromium/hello.spec.ts), nur im Testbau (WXT_TESTHAKEN=1): im Release-Bau faellt es weg.
+  if (import.meta.env.WXT_TESTHAKEN === '1') {
+    browser.runtime.onInstalled.addListener(() => {
+      browser.storage.local.set({ veilHello: true }).catch(() => {});
+    });
+  }
 
   // Chrome: Offscreen-Dokument bei Installation und Browserstart anlegen.
   if (import.meta.env.CHROME) {
@@ -189,6 +222,8 @@ export default defineBackground(() => {
       }
       case 'pause':
         return { ok: true, pause: await schaltePause(typeof n.an === 'boolean' ? n.an : undefined) };
+      case 'adresse':
+        return (await reicheAdresseWeiter(absender, n.url)) ? { ok: true } : { ok: false, fehler: 'nur die oberste Seite eines Tabs darf melden' };
       case 'tab': {
         // Absender ist das Content-Script; mit Host-Rechten liefert sender.tab.url die Adresse des Tabs.
         const antwort: AntwortTab = { ok: true, url: absender?.tab?.url ?? null };
@@ -204,7 +239,7 @@ export default defineBackground(() => {
     if (erkenner && istFuer(nachricht, 'erkenner')) {
       if (nachricht.typ !== 'wecke' && nachricht.typ !== 'status' && nachricht.typ !== 'pruefe') return undefined;
       erkenner
-        .then((m) => m.bearbeiteErkennerNachricht(nachricht))
+        .then((m) => m.bearbeiteErkennerNachricht(nachricht, absender))
         .then(
           (antwort) => antworte(antwort),
           (e) => antworte(fehlerAntwortFuer(nachricht, e)),
@@ -213,7 +248,7 @@ export default defineBackground(() => {
     }
     if (!istFuer(nachricht, 'hintergrund')) return undefined;
     const n = nachricht as NachrichtHintergrund;
-    if (n.typ !== 'wecke' && n.typ !== 'referer' && n.typ !== 'pause' && n.typ !== 'tab') return undefined;
+    if (n.typ !== 'wecke' && n.typ !== 'referer' && n.typ !== 'pause' && n.typ !== 'tab' && n.typ !== 'adresse') return undefined;
     bearbeiteHintergrund(n, absender).then(antworte, (e) => antworte(fehlerAntwortFuer(nachricht, e)));
     return true;
   });

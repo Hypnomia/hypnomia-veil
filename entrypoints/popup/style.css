@@ -94,6 +94,10 @@ button.klein {
   font-weight: 600;
 }
 
+#pack-link {
+  margin-top: 8px;
+}
+
 button:disabled {
   opacity: 0.55;
   cursor: default;
@@ -144,12 +148,17 @@ input[type='range'] {
 
 .wahl span {
   display: block;
-  padding: 6px 0;
+  padding: 6px 2px;
   text-align: center;
   border: 1px solid var(--linie);
   border-radius: 10px;
   background: var(--grund);
   cursor: pointer;
+}
+
+.wahl input:disabled + span {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .wahl input:checked + span {

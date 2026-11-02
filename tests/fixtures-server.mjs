@@ -5,6 +5,7 @@
 //   /api/testbilder?satz=sfw     Namensliste des Satzes (JSON)
 //   /synthetisch/<n>.png         Farbverlauf 640 x 480, zur Laufzeit erzeugt (n aendert die Farbe)
 //   /soll-zonen.json             Soll-Zonen aus ../05 Testbilder/
+//   /umleiten?ziel=<adresse>     302-Weiterleitung auf <adresse> (nur http://127.0.0.1 und http://localhost; Netzgrenze-Tests)
 //   ?immer403=1                  jede Antwort 403; ?nurReferer=1: 403 ohne Referer von 127.0.0.1 oder localhost (Hotlink-Schutz)
 // Zweiter Ursprung: derselbe Server auf einem zweiten Port (fremde Bilder). Bilder mit ?cors=1 bekommen CORS-Kopfzeilen, ohne nicht.
 import { createServer } from 'node:http';
@@ -79,6 +80,12 @@ export function starteFixtureServer(port = STANDARD_PORT) {
       if (url.searchParams.get('nurReferer') === '1') {
         const referer = String(req.headers.referer ?? '');
         if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(referer)) return sende(res, 403, 'text/plain', 'verweigert: Referer fehlt');
+      }
+      if (pfad === '/umleiten') {
+        const ziel = url.searchParams.get('ziel') ?? '';
+        if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(ziel)) return sende(res, 400, 'text/plain', 'ziel nicht erlaubt');
+        res.writeHead(302, { Location: ziel, 'Cache-Control': 'no-store', ...cors });
+        return res.end();
       }
       if (pfad === '/api/testbilder') {
         const satz = url.searchParams.get('satz') === 'nsfw' ? 'nsfw' : 'sfw';

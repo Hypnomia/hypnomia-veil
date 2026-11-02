@@ -6,10 +6,12 @@ import { vervollstaendige } from '../einstellungen';
 import type {
   AntwortErkennerStatus,
   AntwortPruefe,
+  Flaeche,
   NachrichtErkennerPruefe,
   Treffer,
   ZeitenPruefung,
 } from '../nachrichten';
+import { hashe, waehlePatch } from '../pack/patches';
 import { geometrieFuer, MODELL_GROESSE, nachverarbeite } from './modell';
 import { blobAusDataUrl, ladeNach, type RefererSetzer } from './nachladen';
 import { Schranke } from './schranke';
@@ -23,6 +25,32 @@ const MAX_SEITE = 1600;
 const PARALLELE_PRUEFUNGEN = 2;
 // So lange gilt ein fehlgeschlagenes Laden des Modells als Antwort, bevor ein neuer Versuch erlaubt ist.
 const LADE_PAUSE_MS = 5000;
+
+// Kennung des Bildes fuer die stabile Patch-Auswahl: Adresse bei `url`, Hash der Daten bei `daten`.
+function bildKennung(n: NachrichtErkennerPruefe): string {
+  const q = n.quelle;
+  if (q.art === 'url') return q.url;
+  const d = q.dataUrl;
+  return `daten:${d.length}:${hashe(d)}`;
+}
+
+// Zu jeder Flaeche ein Patch-Bild aus dem Pack (Auswahl stabil je Bild und Flaeche), dazu die Rueckgabe der geliehenen Bilder
+// (nach dem Rendern aufrufen). null, wenn keins zu haben ist: dann Mosaik. `packStand`: das Pack, das der Aufrufer kennt.
+async function patchesFuer(
+  kennung: string,
+  flaechen: readonly Flaeche[],
+  packStand: number | undefined,
+): Promise<{ bilder: (CanvasImageSource | null)[]; freigeben: () => void } | null> {
+  const bilder: (CanvasImageSource | null)[] = [];
+  const frei: (() => void)[] = [];
+  for (const f of flaechen) {
+    const wahl = await waehlePatch(`${kennung}|${f.zone}|${f.box.join(',')}`, packStand);
+    bilder.push(wahl ? wahl.bild : null);
+    if (wahl) frei.push(wahl.freigeben);
+  }
+  if (frei.length === 0) return null;
+  return { bilder, freigeben: () => frei.forEach((f) => f()) };
+}
 
 const jetzt = (): number => performance.now();
 const runde = (x: number): number => Math.round(x * 100) / 100;
@@ -156,17 +184,17 @@ function fehlerAntwort(id: string, fehler: string, status?: number): AntwortPrue
 }
 
 // Eine Pruefung auf einem der freien Plaetze; die Wartezeit davor fliesst in `ms.warte` ein.
-export async function pruefe(n: NachrichtErkennerPruefe): Promise<AntwortPruefe> {
+export async function pruefe(n: NachrichtErkennerPruefe, herkunft?: string): Promise<AntwortPruefe> {
   const vorSchranke = jetzt();
   const abgeben = await schranke.betrete();
   try {
-    return await pruefeAufPlatz(n, jetzt() - vorSchranke);
+    return await pruefeAufPlatz(n, jetzt() - vorSchranke, herkunft);
   } finally {
     abgeben();
   }
 }
 
-async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number): Promise<AntwortPruefe> {
+async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, herkunft?: string): Promise<AntwortPruefe> {
   const id = typeof n.id === 'string' ? n.id : '';
   const t0 = jetzt();
   const kalt = session === null;
@@ -184,7 +212,8 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number): P
   let blob: Blob;
   try {
     if (q.art === 'url') {
-      const geholt = await ladeNach(q.url, q.referer ?? '', refererSetzer);
+      // herkunft: Entscheidung der Netzgrenze aus dem Absender (index.ts); fehlt sie, zaehlt der Referer.
+      const geholt = await ladeNach(q.url, q.referer ?? '', refererSetzer, undefined, { herkunft });
       if (!geholt.ok) return fehlerAntwort(id, geholt.fehler, geholt.status);
       blob = geholt.blob;
     } else {
@@ -213,7 +242,14 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number): P
     const tNach = jetzt();
     let bild: string | undefined;
     if (n.rendern && flaechen.length > 0) {
-      bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.stil);
+      // Mia-Patch nur mit Patch-Bildern aus dem Pack; ohne Pack oder ohne Bilder wird es Mosaik.
+      const stand = n.einstellungen?.packStand;
+      const patches = e.stil === 'mia-patch' ? await patchesFuer(bildKennung(n), flaechen, typeof stand === 'number' ? stand : undefined) : null;
+      try {
+        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.stil, patches?.bilder);
+      } finally {
+        patches?.freigeben();
+      }
     }
     const tRender = jetzt();
     const ms: ZeitenPruefung = {
