@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>S1 Messung: Start</title>
+</head>
+<body>
+  <p>Spike S1: Tempo-Messung. Fortschritt steht im Seitentitel.</p>
+  <script>
+    // Bundle je Backend: wasm (Standard) oder webgpu. Danach erst die Messung laden.
+    const q = new URLSearchParams(location.search);
+    const bundle = q.get('backend') === 'webgpu' ? 'ort.webgpu.min.js' : 'ort.wasm.min.js';
+    const lade = (src) => new Promise((ok, fehl) => {
+      const e = document.createElement('script');
+      e.src = src; e.onload = ok; e.onerror = () => fehl(new Error(`Laden fehlgeschlagen: ${src}`));
+      document.body.appendChild(e);
+    });
+    lade(`/ort/${bundle}`).then(() => lade('/messung.js')).catch((f) => {
+      document.documentElement.dataset.fehler = String(f);
+      document.documentElement.dataset.fertig = '1';
+    });
+  </script>
+</body>
+</html>
