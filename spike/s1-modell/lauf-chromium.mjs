@@ -11,11 +11,17 @@ const arg = (name) => { const i = process.argv.indexOf(`--${name}`); return i >=
 const backend = arg('backend') === 'webgpu' ? 'webgpu' : 'wasm';
 const threads = Number(arg('threads') ?? 1) || 1;
 const sichtbar = process.argv.includes('--sichtbar');
+const modell = arg('modell') === '320n' ? '320n' : '640m';
+const kanal = arg('kanal') === 'bgr' ? 'bgr' : 'rgb';
+const pad = arg('pad') === 'mitte' ? 'mitte' : 'ru';
+const schwelle = arg('schwelle') ?? '0.2';
+const max = arg('max') ?? '0';
+const saetze = arg('saetze') ?? 'nsfw,sfw';
 // WebGPU in Chromium: headless braucht diese Flags (Metal ueber ANGLE). Vulkan ist auf macOS nicht noetig.
 const gpuArgs = backend === 'webgpu'
   ? ['--enable-unsafe-webgpu', '--enable-features=WebGPU', '--use-angle=metal', '--ignore-gpu-blocklist']
   : [];
-const abfrage = `backend=${backend}${threads > 1 ? `&threads=${threads}` : ''}`;
+const abfrage = `backend=${backend}${threads > 1 ? `&threads=${threads}` : ''}&modell=${modell}&kanal=${kanal}&pad=${pad}&schwelle=${schwelle}&max=${max}&saetze=${saetze}`;
 const server = spawn(process.execPath, [path.join(hier, 'server.mjs')], { stdio: ['ignore', 'inherit', 'inherit'], env: { ...process.env, VEIL_S1_LOG: '1' } });
 let browser;
 let code = 0;
@@ -33,7 +39,12 @@ try {
     ergebnis: document.documentElement.dataset.ergebnis ?? null,
   }));
   if (fehler) throw new Error(fehler);
-  console.log('chromium Ergebnis:', JSON.stringify(JSON.parse(ergebnis), null, 2));
+  const e = JSON.parse(ergebnis);
+  // Kurzfassung im Terminal; die vollstaendigen Zahlen je Zone und je Bild stehen in der Ergebnisdatei.
+  const kurz = {};
+  for (const k of ['browser', 'modell', 'kanal', 'pad', 'schwelle', 'backend', 'genutztesBackend', 'gpuAdapter', 'fehlerLog', 'crossOriginIsolated', 'numThreads', 'modellLadenMs', 'sessionMs', 'kaltstartMs', 'anzahl', 'dekodMedianMs', 'vorMedianMs', 'infMedianMs', 'infP90Ms', 'infP95Ms', 'nachMedianMs', 'jeBildMedianMs', 'bilderProSekunde', 'koerperzonen', 'fehlerBilder', 'gesamtMs', 'datei']) kurz[k] = e[k];
+  kurz.verpasstJeZone = Object.fromEntries(Object.entries(e.zonen ?? {}).map(([z, v]) => [z, `${v.treffer_sichtbar}/${v.soll_sichtbar} (${v.verpasst_prozent}%), fehl nsfw ${v.fehlalarm_nsfw}, fehl sfw ${v.fehlalarm_sfw}`]));
+  console.log('chromium Ergebnis:', JSON.stringify(kurz, null, 2));
 } catch (f) {
   console.error('chromium: FEHLER', f);
   code = 1;

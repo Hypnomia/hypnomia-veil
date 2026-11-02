@@ -1,0 +1,3 @@
+/* Wegwerf-Spike S4, Strategie A/B: Bilder vor dem ersten Zeichnen verdecken, Freigabe per Attribut. */
+img, picture, video, canvas, [style*="background-image"] { opacity: 0 !important; }
+[data-veil="frei"] { opacity: 1 !important; }

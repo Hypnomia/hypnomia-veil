@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>S4 Blitz-Raster</title>
+<style>
+/* Nur Weiss, Schwarz, Magenta, Gruen (Referenz) und Blau (Phasenmarke), damit die Zaehlung eindeutig bleibt. */
+html, body { margin: 0; background: #fff; color: #000; }
+#raster {
+  width: 1260px;
+  padding: 10px 5px 5px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(6, 200px);
+  column-gap: 10px;
+  row-gap: 10px;
+}
+.zelle { position: relative; width: 200px; height: 216px; }
+.fall { position: relative; width: 200px; height: 200px; overflow: hidden; background: #fff; }
+.fall img, .fall video, .fall canvas, .fall iframe { display: block; width: 200px; height: 200px; border: 0; }
+.name { position: absolute; left: 0; top: 200px; height: 16px; font: 12px/16px sans-serif; color: #000; white-space: nowrap; }
+.klasse-hintergrund { background-image: url(/magenta.png); background-size: 200px 200px; }
+.blitz { width: 200px; height: 200px; background: #ff00ff; visibility: hidden; }
+</style>
+<script>
+  // Gemeinsamer Helfer: ein magentafarbenes Bild.
+  function magentaBild() {
+    var bild = document.createElement('img');
+    bild.src = '/magenta.png';
+    bild.width = 200;
+    bild.height = 200;
+    bild.style.display = 'block';
+    return bild;
+  }
+  window.addEventListener('load', function () {
+    document.documentElement.dataset.s4Geladen = String(performance.now());
+    var b1 = document.getElementById('blitz-1frame');
+    var b50 = document.getElementById('blitz-50ms');
+    // Genau ein Anzeigebild: im ersten rAF sichtbar schalten, im naechsten rAF wieder verstecken.
+    setTimeout(function () {
+      requestAnimationFrame(function () {
+        b1.style.visibility = 'visible';
+        requestAnimationFrame(function () { b1.style.visibility = 'hidden'; });
+      });
+    }, 400);
+    // 50 ms sichtbar, 800 ms nach load.
+    setTimeout(function () {
+      b50.style.visibility = 'visible';
+      setTimeout(function () { b50.style.visibility = 'hidden'; }, 50);
+    }, 800);
+  });
+</script>
+</head>
+<body data-port2="__PORT2__">
+<!-- Phasenmarke: blauer Streifen am Seitenanfang, scrollt mit. Zeigt dem Aufnahmeskript, ob die Seite noch oben steht (vor dem Scrollen fuer lazy-scroll). -->
+<div id="phasenmarke" style="position:absolute;left:0;top:0;width:100%;height:8px;background:#0000ff"></div>
+<div id="raster">
+
+<div class="zelle"><div class="fall" data-fall="html-sofort"><img src="/magenta.png" width="200" height="200"></div><div class="name">html-sofort</div></div>
+
+<div class="zelle"><div class="fall" data-fall="skript-0ms"><script>document.currentScript.parentNode.appendChild(magentaBild());</script></div><div class="name">skript-0ms</div></div>
+
+<div class="zelle"><div class="fall" data-fall="skript-50ms"><script>(function (ziel) { setTimeout(function () { ziel.appendChild(magentaBild()); }, 50); })(document.currentScript.parentNode);</script></div><div class="name">skript-50ms</div></div>
+
+<div class="zelle"><div class="fall" data-fall="skript-500ms"><script>(function (ziel) { setTimeout(function () { ziel.appendChild(magentaBild()); }, 500); })(document.currentScript.parentNode);</script></div><div class="name">skript-500ms</div></div>
+
+<div class="zelle"><div class="fall" data-fall="lazy"><img src="/magenta.png" loading="lazy" width="200" height="200"></div><div class="name">lazy</div></div>
+
+<div class="zelle"><div class="fall" data-fall="shadow-offen"><script>(function (host) { var wurzel = host.attachShadow({ mode: 'open' }); wurzel.appendChild(magentaBild()); })(document.currentScript.parentNode);</script></div><div class="name">shadow-offen</div></div>
+
+<div class="zelle"><div class="fall" data-fall="shadow-geschlossen"><script>(function (host) { var wurzel = host.attachShadow({ mode: 'closed' }); wurzel.appendChild(magentaBild()); })(document.currentScript.parentNode);</script></div><div class="name">shadow-geschlossen</div></div>
+
+<div class="zelle"><div class="fall" data-fall="shadow-deklarativ"><template shadowrootmode="open"><img src="/magenta.png" width="200" height="200" style="display:block"></template></div><div class="name">shadow-deklarativ</div></div>
+
+<div class="zelle"><div class="fall" data-fall="iframe-fremd"><script>
+  (function (ziel) {
+    var port2 = document.body.dataset.port2;
+    var rahmen = document.createElement('iframe');
+    rahmen.src = 'http://127.0.0.1:' + port2 + '/rahmen.html';
+    rahmen.width = 200;
+    rahmen.height = 200;
+    rahmen.setAttribute('scrolling', 'no');
+    ziel.appendChild(rahmen);
+  })(document.currentScript.parentNode);
+</script></div><div class="name">iframe-fremd</div></div>
+
+<div class="zelle"><div class="fall" data-fall="iframe-blank"><script>
+  (function (ziel) {
+    var rahmen = document.createElement('iframe');
+    rahmen.width = 200;
+    rahmen.height = 200;
+    rahmen.setAttribute('scrolling', 'no');
+    ziel.appendChild(rahmen);
+    // Firefox ersetzt das anfaengliche about:blank asynchron, darum nach dem Laden pruefen und notfalls erneut einsetzen.
+    function fuelle() {
+      var dok = rahmen.contentDocument;
+      if (!dok || !dok.body || dok.querySelector('img')) return;
+      dok.body.style.margin = '0';
+      var bild = dok.createElement('img');
+      bild.src = '/magenta.png';
+      bild.width = 200;
+      bild.height = 200;
+      bild.style.display = 'block';
+      dok.body.appendChild(bild);
+    }
+    rahmen.addEventListener('load', fuelle);
+    fuelle();
+  })(document.currentScript.parentNode);
+</script></div><div class="name">iframe-blank</div></div>
+
+<div class="zelle"><div class="fall" data-fall="css-style"><div style="width:200px;height:200px;background-image:url(/magenta.png);background-size:200px 200px"></div></div><div class="name">css-style</div></div>
+
+<div class="zelle"><div class="fall" data-fall="css-klasse"><div class="klasse-hintergrund" style="width:200px;height:200px"></div></div><div class="name">css-klasse</div></div>
+
+<div class="zelle"><div class="fall" data-fall="picture"><picture><source srcset="/magenta.png" type="image/png"><img src="/magenta.png" width="200" height="200"></picture></div><div class="name">picture</div></div>
+
+<div class="zelle"><div class="fall" data-fall="video"><video poster="/magenta.png" src="/magenta.mp4" autoplay muted playsinline loop width="200" height="200"></video></div><div class="name">video</div></div>
+
+<div class="zelle"><div class="fall" data-fall="canvas"><canvas width="200" height="200"></canvas><script>
+  (function (zeichnung) {
+    var ctx = zeichnung.getContext('2d');
+    ctx.fillStyle = '#ff00ff';
+    ctx.fillRect(0, 0, 200, 200);
+  })(document.currentScript.previousElementSibling);
+</script></div><div class="name">canvas</div></div>
+
+<!-- Positivkontrolle: reines Gruen als CSS-Farbe, kein Bild. Fest am Fenster (position:fixed), bleibt also auch beim Scrollen sichtbar. -->
+<div class="zelle"><div class="fall" data-fall="referenz" style="position:fixed;background:#00ff00"></div><div class="name">referenz</div></div>
+
+<div class="zelle"><div class="fall" data-fall="blitz-1frame"><div class="blitz" id="blitz-1frame"></div></div><div class="name">blitz-1frame</div></div>
+
+<div class="zelle"><div class="fall" data-fall="blitz-50ms"><div class="blitz" id="blitz-50ms"></div></div><div class="name">blitz-50ms</div></div>
+
+</div>
+
+<!-- Weit unterhalb des Ausschnitts: laedt erst, wenn das Aufnahmeskript dorthin scrollt. -->
+<div class="zelle" style="position:absolute;left:5px;top:3800px"><div class="fall" data-fall="lazy-scroll"><img src="/magenta.png" loading="lazy" width="200" height="200"></div><div class="name">lazy-scroll</div></div>
+
+</body>
+</html>

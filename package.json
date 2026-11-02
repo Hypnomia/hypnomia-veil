@@ -22,7 +22,10 @@
     "spike:s1:firefox": "node spike/s1-modell/lauf-firefox.mjs",
     "spike:s1:chromium:webgpu": "node spike/s1-modell/lauf-chromium.mjs --backend webgpu",
     "spike:s1:chromium:threads": "node spike/s1-modell/lauf-chromium.mjs --threads 4",
-    "spike:s1:firefox:webgpu": "node spike/s1-modell/lauf-firefox.mjs --backend webgpu"
+    "spike:s1:firefox:webgpu": "node spike/s1-modell/lauf-firefox.mjs --backend webgpu",
+    "spike:s2:server": "node spike/s2-s3-fremd/server.mjs",
+    "spike:s4:server": "node spike/s4-schleier/server.mjs",
+    "spike:s4:aufnahme": "node spike/s4-schleier/aufnahme.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

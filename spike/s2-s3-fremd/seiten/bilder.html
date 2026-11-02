@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>S2 Bilder</title>
+<style>
+  body { font-family: sans-serif; margin: 12px; }
+  img { background: #ddd; margin: 0 8px 8px 0; vertical-align: top; }
+</style>
+</head>
+<body data-port2="{{PORT2}}">
+<!-- Je Bildroute einmal vom eigenen und einmal vom fremden Ursprung, plus ok.jpg fremd mit crossorigin. -->
+<img data-fall="ok-gleich" src="/ok.jpg" width="160" height="120" alt="">
+<img data-fall="ok-fremd" src="http://127.0.0.1:{{PORT2}}/ok.jpg" width="160" height="120" alt="">
+<img data-fall="403-ohne-referer-gleich" src="/403-ohne-referer.jpg" width="160" height="120" alt="">
+<img data-fall="403-ohne-referer-fremd" src="http://127.0.0.1:{{PORT2}}/403-ohne-referer.jpg" width="160" height="120" alt="">
+<img data-fall="403-fremder-referer-gleich" src="/403-fremder-referer.jpg" width="160" height="120" alt="">
+<img data-fall="403-fremder-referer-fremd" src="http://127.0.0.1:{{PORT2}}/403-fremder-referer.jpg" width="160" height="120" alt="">
+<img data-fall="kein-cors-gleich" src="/kein-cors.jpg" width="160" height="120" alt="">
+<img data-fall="kein-cors-fremd" src="http://127.0.0.1:{{PORT2}}/kein-cors.jpg" width="160" height="120" alt="">
+<img data-fall="langsam-gleich" src="/langsam.jpg" width="160" height="120" alt="">
+<img data-fall="langsam-fremd" src="http://127.0.0.1:{{PORT2}}/langsam.jpg" width="160" height="120" alt="">
+<img data-fall="riesig-gleich" src="/riesig.jpg" width="160" height="120" alt="">
+<img data-fall="riesig-fremd" src="http://127.0.0.1:{{PORT2}}/riesig.jpg" width="160" height="120" alt="">
+<img data-fall="cookie-gleich" src="/cookie.jpg" width="160" height="120" alt="">
+<img data-fall="cookie-fremd" src="http://127.0.0.1:{{PORT2}}/cookie.jpg" width="160" height="120" alt="">
+<img data-fall="ok-fremd-crossorigin" crossorigin="anonymous" src="http://127.0.0.1:{{PORT2}}/ok.jpg" width="160" height="120" alt="">
+</body>
+</html>

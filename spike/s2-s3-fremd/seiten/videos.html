@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>S2 Videos</title>
+<style>
+  body { font-family: sans-serif; margin: 12px; }
+  video { width: 320px; height: 240px; background: #222; margin: 0 8px 8px 0; vertical-align: top; }
+</style>
+</head>
+<body data-port2="{{PORT2}}">
+<!-- Vier Faelle: gleicher Ursprung, fremd ohne CORS, fremd mit CORS, Media Source Extensions. -->
+<video data-fall="gleich" src="/video.mp4" muted autoplay playsinline loop width="320" height="240"></video>
+<video data-fall="fremd-ohne-cors" muted autoplay playsinline loop width="320" height="240"></video>
+<video data-fall="fremd-mit-cors" crossorigin="anonymous" muted autoplay playsinline loop width="320" height="240"></video>
+<video data-fall="mse" muted autoplay playsinline loop width="320" height="240"></video>
+<script>
+(function () {
+  var port2 = document.body.getAttribute('data-port2');
+  var fremd = location.protocol + '//' + location.hostname + ':' + port2;
+  var v = function (fall) { return document.querySelector('video[data-fall="' + fall + '"]'); };
+
+  v('fremd-ohne-cors').src = fremd + '/video.mp4';
+  v('fremd-mit-cors').src = fremd + '/video-cors.mp4';
+
+  // MSE: fragmentierte Datei per fetch vom fremden Ursprung, als ein SourceBuffer anhaengen.
+  var mse = v('mse');
+  window.__mseStatus = 'start';
+  try {
+    var mime = 'video/mp4; codecs="{{CODEC}}"';
+    if (!window.MediaSource || !MediaSource.isTypeSupported(mime)) {
+      window.__mseStatus = 'mime-nicht-unterstuetzt';
+    } else {
+      var ms = new MediaSource();
+      mse.src = URL.createObjectURL(ms);
+      ms.addEventListener('sourceopen', function () {
+        var sb = ms.addSourceBuffer(mime);
+        fetch(fremd + '/video-frag.mp4', { mode: 'cors' })
+          .then(function (r) { return r.arrayBuffer(); })
+          .then(function (buf) {
+            sb.addEventListener('updateend', function () {
+              if (ms.readyState === 'open') { ms.endOfStream(); }
+              window.__mseStatus = 'angehaengt';
+            }, { once: true });
+            sb.appendBuffer(buf);
+          })
+          .catch(function (e) { window.__mseStatus = 'fehler: ' + e; });
+      }, { once: true });
+    }
+  } catch (e) {
+    window.__mseStatus = 'fehler: ' + e;
+  }
+})();
+</script>
+</body>
+</html>

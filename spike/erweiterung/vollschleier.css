@@ -1,0 +1,4 @@
+/* Wegwerf-Spike S4, Strategie C: ganze Seite verdecken, bis der erste Durchlauf fertig ist. */
+html:not([data-veil-seite="frei"]) { opacity: 0 !important; }
+img, picture, video, canvas, [style*="background-image"] { opacity: 0 !important; }
+[data-veil="frei"] { opacity: 1 !important; }

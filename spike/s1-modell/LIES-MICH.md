@@ -1,32 +1,36 @@
-# Spike S1: Modell-Tempo im Browser (Wegwerf-Code)
+# Spike S1: Modell-Tempo und Treffer im Browser (Wegwerf-Code)
 
-Zweck: Tempo des YOLOv8-Modells (640m.onnx, 640x640) mit onnxruntime-web (WASM, ein Thread) in Chromium und Firefox messen.
-Kein Produktcode. Die 20 Testbilder sind synthetisch (Canvas: Verlaeufe, Rechtecke, Rauschen), es zaehlt nur das Tempo.
+Zweck: Tempo und Treffer der beiden YOLOv8-Modelle (640m.onnx, 320n.onnx) mit onnxruntime-web in Chromium, Firefox
+und Firefox fuer Android auf den echten Testbildern (`../05 Testbilder/nsfw` und `sfw`) gegen `soll-zonen.json`.
+Kein Produktcode. Session 1 hat hier mit synthetischen Bildern gemessen; seit Session 2 laufen echte Bilder.
 
 Start:
-- `npm run spike:s1:chromium` (Playwright, headless)
-- `VEIL_FIREFOX_BIN=<Pfad zur Firefox-Datei> npm run spike:s1:firefox` (selenium-webdriver, headless)
+- `npm run spike:s1:chromium` (Playwright, headless), `npm run spike:s1:firefox` (selenium-webdriver, headless)
+- Parameter (beide Laufskripte): `--modell 640m|320n`, `--kanal rgb|bgr`, `--pad ru|mitte` (rechts/unten schwarz wie
+  NudeNet, oder zentriert grau 114 wie Ultralytics), `--schwelle 0.2` (0,25 ist NudeNet-gleich: das Python-Paket filtert
+  erst 0,2 und dann in der NMS 0,25), `--max N`, `--saetze nsfw,sfw`, `--backend webgpu`, `--threads N` (nur Chromium),
+  `--sichtbar` (Fenster statt headless; Firefox-WebGPU braucht ein sichtbares Fenster, headless gibt es keinen Adapter).
+- Android: `node spike/s5-android/lauf-android.mjs --modell 320n` (Emulator laeuft, Server auf 127.0.0.1, Emulator sieht ihn als 10.0.2.2).
+- Messreihe: `spike/reihe-final.sh` (alle Varianten nacheinander, Log `spike/reihe-final-1.log`).
+- Auswertung: `node spike/auswertung.mjs s1` (Markdown-Tabellen), `node spike/s1-modell/paritaet.mjs` (Browser gegen Node).
 
-Ausgabe: Zusammenfassung im Terminal und `ergebnis-<browser>-<zeitstempel>.json` in diesem Ordner (per .gitignore ausgeschlossen).
-Gemessen werden: Modell-Ladezeit, Kaltstart (Session bis erste Inferenz), Median, p90, min, max je Bild, SIMD, Ausgabeform, Gesamtzeit.
-Hinweis: Echte Testbilder werden in Session 2 ueber `/api/bilder` nachgeruestet; bis dahin ist die Messung nur eine Tempo-Aussage.
+Ablauf je Bild: Blob holen, `createImageBitmap` (EXIF beachtet), auf S x S zeichnen (Canvas, Browser-Skalierung),
+`getImageData`, Tensor NCHW /255, `session.run`, Nachverarbeitung (beste Klasse je Anker, Schwelle, NMS klassenuebergreifend
+IoU 0,45, Boxen zurueck in Originalpixel), Zonen wie `s0-zonen-vorschlag` (Gesicht leitet face/head/eyes/mouth ab).
+Gemessen je Bild: Netz, Dekodieren, Vorverarbeitung, Inferenz, Nachverarbeitung; Kaltstart = Session-Erstellung bis
+erste Inferenz mit Nullbild.
 
-## Backends (Erweiterung)
+Zaehlung: je Zone Soll sichtbar, Treffer sichtbar, Treffer irgendwie (sichtbar oder bedeckt gemeldet), Soll bedeckt und davon
+gefunden, Fehlalarm nsfw (gemeldet sichtbar, im Soll weder sichtbar noch bedeckt), Fehlalarm sfw (Koerperzone
+breast/genitals/buttocks/belly/armpits als sichtbar gemeldet; der SFW-Satz ist nicht markiert, Regel aus UEBERGABE-1).
+"Koerperzonen" in der Zusammenfassung = diese fuenf Zonen ohne Gesicht und Fuesse.
 
-Die Messung kennt drei Backends, gewaehlt ueber URL-Parameter (die Laufskripte setzen sie):
+Ausgabe: Zusammenfassung im Terminal, Vollfassung mit `jeBild` (Treffer, Zonen, Zeiten je Bild, keine Bilder) in
+`ergebnis-<browser>-<backend>-<modell>-<kanal>-s<schwelle>[-mitte]-<zeitstempel>.json` (per .gitignore ausgeschlossen).
+
+## Backends
 - `?backend=wasm` (Standard): `ort.wasm.min.js`, ein Thread, geladen wird `ort-wasm-simd-threaded.wasm`.
-- `?backend=webgpu`: `ort.webgpu.min.js` mit `executionProviders: ['webgpu']`. Geladen werden `ort-wasm-simd-threaded.asyncify.mjs` und `.asyncify.wasm` (nicht `jsep`, das hat ort-web 1.31.1 fuer dieses Bundle nicht angefragt). Scheitert WebGPU, faellt die Messung auf wasm zurueck, der Fehler steht in `fehlerLog`, `genutztesBackend` lautet dann `wasm-rueckfall` (die Zahlen sind dann wasm-Zahlen, nicht WebGPU).
-- `?threads=4` (mit wasm): `numThreads = 4`. Der Server sendet dann `Cross-Origin-Opener-Policy: same-origin` und `Cross-Origin-Embedder-Policy: require-corp` fuer die Seite sowie COEP und CORP auf den ORT-Dateien (ohne COEP auf den Worker-Skripten haengt der Start). Backend-Name im Ergebnis: `wasm-threads4`. Ohne `?threads` sendet der Server keine dieser Kopfzeilen, die Basismessung bleibt unberuehrt.
-
-Start:
-- `npm run spike:s1:chromium:webgpu`
-- `npm run spike:s1:chromium:threads`
-- `VEIL_FIREFOX_BIN=<Pfad> npm run spike:s1:firefox:webgpu`
-- Zusatzparameter Chromium: `--sichtbar` (Fenster statt headless), `--threads N`, `--backend webgpu`.
-
-Ergebnisdatei: `ergebnis-<browser>-<backend>-<zeitstempel>.json`. Neue Felder: `backend`, `genutztesBackend`, `navigatorGpu` (ja/nein), `gpuAdapter`, `fehlerLog`, `geladeneOrt` (tatsaechlich per Netz geladene ORT-Dateien), `crossOriginIsolated`.
-
-Noetige Flags:
-- Chromium headless (Playwright, Mac mit Apple-GPU): `--enable-unsafe-webgpu --enable-features=WebGPU --use-angle=metal --ignore-gpu-blocklist`. Mit diesen Flags lief WebGPU headless, ein sichtbares Fenster war nicht noetig. Nicht einzeln geprueft, welche der Flags wirklich Pflicht sind.
-- Firefox: `dom.webgpu.enabled=true` (per Preference gesetzt). `navigator.gpu` ist da, aber `requestAdapter()` liefert headless keinen Adapter, ORT faellt auf wasm zurueck. Nicht weiter untersucht (sichtbares Fenster, `dom.webgpu.allow-present-without-webrender` und Nightly-Flags sind ungeprueft).
-- Hinweis: WebGPU-Kaltstart enthaelt das Uebersetzen der Shader, der Wert je Bild danach ist der Dauerwert.
+- `?backend=webgpu`: `ort.webgpu.min.js` mit `executionProviders: ['webgpu']`, geladen werden `ort-wasm-simd-threaded.asyncify.mjs` und `.asyncify.wasm`. Scheitert WebGPU, faellt die Messung auf wasm zurueck (`genutztesBackend` = `wasm-rueckfall`).
+- `?threads=4` (mit wasm): der Server sendet COOP/COEP fuer die Seite und COEP/CORP fuer die ORT-Dateien.
+Chromium headless braucht fuer WebGPU `--enable-unsafe-webgpu --enable-features=WebGPU --use-angle=metal --ignore-gpu-blocklist`.
+Firefox: `dom.webgpu.enabled=true` und ein sichtbares Fenster (`--sichtbar`).
