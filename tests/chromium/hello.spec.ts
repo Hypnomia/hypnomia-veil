@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
-const erweiterung = path.join(wurzel, '.output/chrome-mv3');
+const erweiterung = path.join(wurzel, process.env.VEIL_AUSGABE ?? '.output', 'chrome-mv3');
 const port = Number(process.env.VEIL_FIXTURE_PORT ?? 47173);
 
 // Erwartete Erweiterungs-ID aus dem oeffentlichen Schluessel: SHA-256 des DER-Schluessels,

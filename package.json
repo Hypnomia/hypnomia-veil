@@ -12,7 +12,7 @@
     "zip:firefox": "wxt zip -b firefox",
     "lint": "tsc --noEmit",
     "test:chromium": "playwright test tests/chromium",
-    "test:firefox": "node tests/firefox/hello.test.mjs",
+    "test:firefox": "node tests/firefox/hello.test.mjs && node tests/firefox/schleier.test.mjs",
     "test:android": "node tests/android/hello.test.mjs",
     "test": "node scripts/test-all.mjs",
     "postinstall": "wxt prepare && npm run test:setup",
@@ -25,7 +25,16 @@
     "spike:s1:firefox:webgpu": "node spike/s1-modell/lauf-firefox.mjs --backend webgpu",
     "spike:s2:server": "node spike/s2-s3-fremd/server.mjs",
     "spike:s4:server": "node spike/s4-schleier/server.mjs",
-    "spike:s4:aufnahme": "node spike/s4-schleier/aufnahme.mjs"
+    "spike:s4:aufnahme": "node spike/s4-schleier/aufnahme.mjs",
+    "prebuild": "node scripts/kopiere-laufzeit.mjs",
+    "prebuild:firefox": "node scripts/kopiere-laufzeit.mjs",
+    "prezip": "node scripts/kopiere-laufzeit.mjs",
+    "prezip:firefox": "node scripts/kopiere-laufzeit.mjs",
+    "fixtures": "node tests/fixtures-server.mjs",
+    "test:einheit": "node --experimental-strip-types --test \"tests/einheit/*.test.mjs\"",
+    "build:test": "WXT_TESTHAKEN=1 wxt build",
+    "build:test:firefox": "WXT_TESTHAKEN=1 wxt build -b firefox",
+    "zip:test:firefox": "WXT_TESTHAKEN=1 wxt zip -b firefox"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

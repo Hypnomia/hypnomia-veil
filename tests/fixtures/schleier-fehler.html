@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Fehlerpfad-Testseite</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+    </style>
+  </head>
+  <body>
+    <h1>Fehlerpfad-Test</h1>
+    <!-- Fremder Klassen-Hintergrund (zweiter Ursprung). Parameter modus: nurReferer (403 ohne Referer, der Erkenner schafft es nach der
+         Referer-Regel) oder immer403 (jeder Abruf scheitert, das Element bleibt am Ende verdeckt). Der Test ruft fuegeEin() auf,
+         nachdem er die Wartezeit des zweiten Versuchs gesetzt hat. -->
+    <div id="platz"></div>
+    <script>
+      window.fuegeEin = function () {
+        var modus = new URLSearchParams(location.search).get('modus') === 'immer403' ? 'immer403' : 'nurReferer';
+        var fremd = 'http://127.0.0.1:' + (Number(location.port) + 2);
+        var stil = document.createElement('style');
+        stil.textContent = '.fremd { width: 240px; height: 180px; background-size: cover; background-image: url(' + fremd + '/synthetisch/3.png?' + modus + '=1); }';
+        document.head.appendChild(stil);
+        var feld = document.createElement('div');
+        feld.id = 'fremd';
+        feld.className = 'fremd';
+        feld.textContent = 'Fremder Hintergrund';
+        document.getElementById('platz').appendChild(feld);
+        document.documentElement.dataset.fehlerBereit = '1';
+      };
+    </script>
+  </body>
+</html>

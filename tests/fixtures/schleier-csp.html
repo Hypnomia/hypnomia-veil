@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Strenge Seitenrichtlinie: keine Inline-Stile, keine data:-Bilder. Zeigt, ob der Schleier trotzdem verdeckt (auch in Shadow Roots). -->
+    <meta http-equiv="Content-Security-Policy" content="style-src 'self'; img-src 'self' http://127.0.0.1:*" />
+    <script src="/waechter.js"></script>
+    <title>Veil CSP-Testseite</title>
+  </head>
+  <body>
+    <h1>CSP-Test</h1>
+    <div id="liste"></div>
+    <div id="host"></div>
+    <script>
+      (function () {
+        var satz = new URLSearchParams(location.search).get('satz') === 'nsfw' ? 'nsfw' : 'sfw';
+        fetch('/api/testbilder?satz=' + satz)
+          .then(function (r) { return r.json(); })
+          .then(function (antwort) {
+            var namen = antwort.bilder;
+            var liste = document.getElementById('liste');
+            for (var i = 0; i < 4; i++) {
+              var b = document.createElement('img');
+              b.width = 200;
+              b.height = 200;
+              b.src = '/testbild/' + satz + '/' + encodeURIComponent(namen[i]);
+              liste.appendChild(b);
+            }
+            var wurzel = document.getElementById('host').attachShadow({ mode: 'open' });
+            var s = document.createElement('img');
+            s.id = 'shadow-bild';
+            s.width = 200;
+            s.height = 200;
+            s.src = '/testbild/' + satz + '/' + encodeURIComponent(namen[4]);
+            wurzel.appendChild(s);
+            document.documentElement.dataset.fotosBereit = '1';
+          });
+      })();
+    </script>
+  </body>
+</html>

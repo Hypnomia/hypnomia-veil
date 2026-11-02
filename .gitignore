@@ -33,3 +33,9 @@ tests/**/profile/
 *.log
 # Spike-Messergebnisse
 spike/**/ergebnis-*.json
+# Laufzeit von onnxruntime-web, kopiert vor jedem Build (scripts/kopiere-laufzeit.mjs)
+public/ort/
+# weitere Ausgabeordner (VEIL_AUSGABE)
+.output-*/
+# Messergebnisse Phase 2 (nur Zahlen, nie im Repo)
+scripts/messung/ergebnis-*.json

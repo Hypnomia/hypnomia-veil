@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'wxt';
+import { manifestMuster, musterAusListe } from './scripts/ausnahmen-muster.mjs';
 
 const paket = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -21,8 +23,24 @@ function ladeChromeKey(): string {
   return key;
 }
 
+// Standard-Ausnahmeliste als exclude_matches: auf diesen Seiten laeuft der Schleier gar nicht erst (Entscheidung 10, 55).
+// Eigene Ausnahmen des Nutzers prueft das Content-Script zur Laufzeit (scripts/ausnahmen-muster.mjs, passtAusnahme).
+// Die Muster kommen ueber den Manifest-Hook unten ins Manifest, damit die Liste nicht im Content-Script-Bundle landet.
+function standardAusnahmenManifest(): string[] {
+  const liste = JSON.parse(readFileSync(new URL('./data/ausnahmen-standard.json', import.meta.url), 'utf8'));
+  return manifestMuster(musterAusListe(liste));
+}
+
 export default defineConfig({
-  outDir: '.output',
+  // VEIL_AUSGABE erlaubt einen zweiten Ausgabeordner (z. B. waehrend eine Messung auf .output laeuft).
+  outDir: process.env.VEIL_AUSGABE ?? '.output',
+  hooks: {
+    'build:manifestGenerated': (_wxt, manifest) => {
+      const schleier = (manifest.content_scripts ?? []).find((cs) => (cs.js ?? []).some((j) => j.includes('content')));
+      if (!schleier) throw new Error('Manifest-Hook: Content-Script des Schleiers nicht gefunden');
+      schleier.exclude_matches = standardAusnahmenManifest();
+    },
+  },
   // Manifest V3 auch fuer Firefox (WXT nimmt dort sonst MV2).
   manifestVersion: 3,
   // Quellcode-Zip fuer Mozilla: Spike-, Test- und Werkzeugdateien gehoeren nicht hinein,
@@ -30,14 +48,45 @@ export default defineConfig({
   zip: {
     excludeSources: ['spike/**', 'tests/**', 'scripts/annotate/**', 'scripts/make-icons.mjs', '*.log'],
   },
+  // onnxruntime-web: die Variante ohne eingebettetes WASM nehmen. Die Standardvariante buendelt die 15 MB grosse WASM-Datei
+  // ein zweites Mal als Asset ins Paket; so liegt sie nur einmal unter ort/ (scripts/kopiere-laufzeit.mjs), die Adresse setzt der Erkenner.
+  vite: () => ({
+    // Testhaken-Schalter als Konstante, damit der Testhaken-Code im Release-Bundle sicher wegfaellt (nicht nur zur Laufzeit falsch ist).
+    define: { 'import.meta.env.WXT_TESTHAKEN': JSON.stringify(process.env.WXT_TESTHAKEN ?? '') },
+    resolve: {
+      alias: [
+        {
+          find: /^onnxruntime-web\/wasm$/,
+          replacement: fileURLToPath(new URL('./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs', import.meta.url)),
+        },
+      ],
+    },
+  }),
   manifest: ({ browser }) => ({
     name: 'HYPNOMIA VEIL',
     version: paket.version,
     description:
       'Mia takes over your browser. A veil over every image, a censor over what she decides you do not get to see.',
-    permissions: ['storage'],
-    // Alle Seiten: der Schleier muss ab Phase 2 auf jeder Seite Bilder und Videos verdecken koennen.
+    // storage: Einstellungen. offscreen (Chrome): Erkenner als unsichtbare Nebenseite. declarativeNetRequest (Chrome) bzw.
+    // webRequest + webRequestBlocking (Firefox): Referer fuer das Nachladen fremder Bilder (Entscheidung 59).
+    permissions: [
+      'storage',
+      // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
+      ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen', 'declarativeNetRequestWithHostAccess']),
+    ],
+    // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
     host_permissions: ['<all_urls>'],
+    // onnxruntime-web braucht WebAssembly in Erweiterungsseiten (Entscheidung 58).
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
+    // Pause per Tastenkuerzel (Entscheidung 17, Desktop). Android kennt keine Kuerzel, dort bleibt das Menue.
+    commands: {
+      'pause-umschalten': {
+        suggested_key: { default: 'Alt+Shift+M' },
+        description: 'Pause or resume Mia',
+      },
+    },
     // Chrome: fester key, damit die ID stabil bleibt. Firefox kennt das Feld nicht.
     ...(browser === 'firefox' ? {} : { key: ladeChromeKey() }),
     // Firefox: Add-on-ID, Mindestversion, Pflichtangabe zur Datenerhebung, Update-Adresse.

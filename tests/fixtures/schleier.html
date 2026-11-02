@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Schleier-Testseite</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .reihe { display: flex; gap: 8px; margin-bottom: 8px; }
+      .reihe img, .reihe .feld { width: 280px; height: 210px; display: block; }
+      #hg { background-image: url(/synthetisch/15.png); background-size: cover; }
+      .lazy { margin-top: 1800px; display: flex; flex-direction: column; gap: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Schleier-Test</h1>
+    <!-- Im Startausschnitt: vier Bilder, dann Shadow Roots (offen, geschlossen), Inline-Hintergrund, picture mit srcset. -->
+    <div class="reihe">
+    <img id="b1" alt="Bild 1" width="280" height="210" src="/synthetisch/1.png" />
+    <img id="b2" alt="Bild 2" width="280" height="210" src="/synthetisch/2.png" />
+    <img id="b3" alt="Bild 3" width="280" height="210" src="/synthetisch/3.png" />
+    <img id="b4" alt="Bild 4" width="280" height="210" src="/synthetisch/4.png" />
+    </div>
+    <div class="reihe">
+      <div class="feld" id="shadow-offen"></div>
+      <div class="feld" id="shadow-zu"></div>
+      <div class="feld" id="hg" style="background-image: url(/synthetisch/15.png)"></div>
+      <picture>
+        <source srcset="/synthetisch/21.png 1x, /synthetisch/22.png 2x" media="(min-width: 100px)" />
+        <img id="pic" alt="picture" width="280" height="210" src="/synthetisch/20.png" />
+      </picture>
+    </div>
+    <script>
+      // Offene und geschlossene Shadow Root, je ein Bild darin.
+      function bildFuer(n) {
+        var b = document.createElement('img');
+        b.src = '/synthetisch/' + n + '.png';
+        b.width = 280;
+        b.height = 210;
+        b.style.display = 'block';
+        return b;
+      }
+      var offen = document.getElementById('shadow-offen').attachShadow({ mode: 'open' });
+      var bo = bildFuer(13);
+      bo.id = 'shadow-bild-offen';
+      offen.appendChild(bo);
+      var zu = document.getElementById('shadow-zu').attachShadow({ mode: 'closed' });
+      var bz = bildFuer(14);
+      bz.id = 'shadow-bild-zu';
+      zu.appendChild(bz);
+    </script>
+    <div class="lazy">
+    <img id="b5" alt="Bild 5" width="280" height="210" loading="lazy" src="/synthetisch/5.png" />
+    <img id="b6" alt="Bild 6" width="280" height="210" loading="lazy" src="/synthetisch/6.png" />
+    <img id="b7" alt="Bild 7" width="280" height="210" loading="lazy" src="/synthetisch/7.png" />
+    <img id="b8" alt="Bild 8" width="280" height="210" loading="lazy" src="/synthetisch/8.png" />
+    <img id="b9" alt="Bild 9" width="280" height="210" loading="lazy" src="/synthetisch/9.png" />
+    <img id="b10" alt="Bild 10" width="280" height="210" loading="lazy" src="/synthetisch/10.png" />
+    <img id="b11" alt="Bild 11" width="280" height="210" loading="lazy" src="/synthetisch/11.png" />
+    <img id="b12" alt="Bild 12" width="280" height="210" loading="lazy" src="/synthetisch/12.png" />
+    </div>
+  </body>
+</html>

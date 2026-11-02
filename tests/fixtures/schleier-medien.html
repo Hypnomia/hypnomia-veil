@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <title>Veil Medien-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      canvas, video { display: block; width: 200px; height: 150px; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Medien-Test</h1>
+    <!-- Canvas mit Farbverlauf und ein Video, das die Seite zur Laufzeit selbst aufnimmt (MediaRecorder): keine Mediendatei im Repo. -->
+    <canvas id="zeichnung" width="320" height="240"></canvas>
+    <canvas id="klein" width="16" height="16"></canvas>
+    <video id="film" muted loop playsinline></video>
+    <!-- Video ohne Daten (preload="none", Quelle erst auf Knopfdruck): bleibt auf readyState 0, bis abgespielt wird. Muss nach load unscharf
+         sichtbar werden (nicht unsichtbar bleiben). Der Test ruft filmLeerStarten() auf. -->
+    <video id="film-leer" preload="none" muted loop playsinline controls></video>
+    <script>
+      (function () {
+        function farbverlauf(c, versatz) {
+          var g = c.getContext('2d');
+          var v = g.createLinearGradient(0, 0, c.width, c.height);
+          v.addColorStop(0, 'hsl(' + versatz + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, c.width, c.height);
+        }
+        farbverlauf(document.getElementById('zeichnung'), 200);
+        farbverlauf(document.getElementById('klein'), 100);
+        var quelle = document.createElement('canvas');
+        quelle.width = 320;
+        quelle.height = 240;
+        var versatz = 0;
+        var timer = setInterval(function () { farbverlauf(quelle, (versatz += 20)); }, 50);
+        var aufnahme = new MediaRecorder(quelle.captureStream(20));
+        var stuecke = [];
+        aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+        aufnahme.onstop = function () {
+          clearInterval(timer);
+          var film = document.getElementById('film');
+          var adresse = URL.createObjectURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+          film.src = adresse;
+          film.play().catch(function () {});
+          window.filmLeerStarten = function () {
+            var leer = document.getElementById('film-leer');
+            leer.src = adresse;
+            return leer.play().catch(function () {});
+          };
+          document.documentElement.dataset.filmBereit = '1';
+        };
+        aufnahme.start();
+        setTimeout(function () { aufnahme.stop(); }, 700);
+      })();
+    </script>
+  </body>
+</html>

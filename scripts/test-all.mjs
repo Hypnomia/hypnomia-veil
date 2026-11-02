@@ -3,11 +3,13 @@
 import { spawn } from 'node:child_process';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+// Testbauten (mit Testhaken) landen in einem eigenen Ordner, nie unter den Release-Namen in .output.
+const TESTBAU = { WXT_TESTHAKEN: '1', VEIL_AUSGABE: process.env.VEIL_AUSGABE ?? '.output-test' };
 
 // Fuehrt ein npm-Skript aus, reicht die Ausgabe durch und liefert Exit-Code sowie Text.
-function lauf(skript) {
+function lauf(skript, umgebung = {}) {
   return new Promise((aufloesen) => {
-    const kind = spawn(npm, ['run', skript], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const kind = spawn(npm, ['run', skript], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...umgebung } });
     let text = '';
     kind.stdout.on('data', (d) => {
       text += d;
@@ -25,10 +27,21 @@ function lauf(skript) {
   });
 }
 
+// Einheitstests ohne Browser zuerst (Nachverarbeitung, Zonen, Ausnahmen).
+{
+  console.log('\n== test:einheit ==');
+  const { code } = await lauf('test:einheit');
+  if (code !== 0) {
+    console.error(`\nTEST-LAUF ABGEBROCHEN: Einheitstests rot (Exit ${code}).`);
+    process.exit(code);
+  }
+}
+
 // Bauschritte: bricht einer ab, laufen die Tests nicht (sie haetten keine Grundlage).
+// WXT_TESTHAKEN=1 baut die Testhaken (data-veil-status, veil-test auf 127.0.0.1) mit ein; Release-Builds (npm run zip) haben sie nicht.
 for (const schritt of ['build', 'build:firefox', 'zip:firefox']) {
-  console.log(`\n== ${schritt} ==`);
-  const { code } = await lauf(schritt);
+  console.log(`\n== ${schritt} (WXT_TESTHAKEN=1, ${TESTBAU.VEIL_AUSGABE}) ==`);
+  const { code } = await lauf(schritt, TESTBAU);
   if (code !== 0) {
     console.error(`\nTEST-LAUF ABGEBROCHEN: Schritt "${schritt}" ist fehlgeschlagen (Exit ${code}).`);
     process.exit(code);
@@ -41,8 +54,8 @@ for (const [name, skript] of [
   ['chromium', 'test:chromium'],
   ['firefox', 'test:firefox'],
 ]) {
-  console.log(`\n== ${skript} ==`);
-  const { code, text } = await lauf(skript);
+  console.log(`\n== ${skript} (${TESTBAU.VEIL_AUSGABE}) ==`);
+  const { code, text } = await lauf(skript, TESTBAU);
   const treffer = text.match(/Attribut nach (\d+) ms/);
   ergebnisse.push({ name, code, ms: treffer ? Number(treffer[1]) : null });
 }

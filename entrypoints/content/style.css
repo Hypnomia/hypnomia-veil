@@ -1,0 +1,13 @@
+/* Schleier (hide-first): wird bei document_start in allen Frames eingetragen (Manifest, cssInjectionMode 'manifest').
+   Dieselbe Datei geht ueber src/schleier/shadow.ts als <style> in jede Shadow Root.
+   Inline-Hintergruende: [style*="background"][style*="url("] trifft auch die Kurzform `background: url(...)`; ` i` macht den
+   Vergleich unabhaengig von der Schreibweise. Dieselbe Auswahl steht als HG_SELEKTOR in src/schleier/konstanten.ts.
+   Spezifitaet: die Auswahl fuer Inline-Hintergruende hat zwei Attribute (0,2,0). Die Freigabe-Regeln wiederholen deshalb
+   [data-veil], damit sie ebenfalls (0,2,0) haben und als spaetere Regel gewinnen. */
+img, video, canvas, [style*="background" i][style*="url(" i] { opacity: 0 !important; }
+[data-veil="frei"][data-veil], [data-veil="zensiert"][data-veil] { opacity: 1 !important; }
+[data-veil="verdeckt"][data-veil] { opacity: 1 !important; }
+/* Klassen-Hintergrund und grosse Container: nur der Hintergrund wurde entfernt (data-veil-hg), kein Blur ueber Text und Inhalt. */
+[data-veil="verdeckt"][data-veil]:not([data-veil-hg]) { filter: blur(40px) !important; }
+html[data-veil-seite="aus"] :is(img, video, canvas, [style*="background" i][style*="url(" i]) { opacity: 1 !important; filter: none !important; }
+html[data-veil-strict]:not([data-veil-seite]) { opacity: 0 !important; }

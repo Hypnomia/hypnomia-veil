@@ -17,7 +17,7 @@ process.env.SE_AVOID_STATS = 'true';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
-const ausgabe = path.join(wurzel, '.output');
+const ausgabe = path.join(wurzel, process.env.VEIL_AUSGABE ?? '.output');
 const firefoxBin = process.env.VEIL_FIREFOX_BIN ?? '/Applications/Firefox.app/Contents/MacOS/firefox';
 const port = Number(process.env.VEIL_FIXTURE_PORT ?? 47174);
 

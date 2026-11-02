@@ -32,21 +32,24 @@ Browser-Erweiterung der Marke Mia (Hypnomia). Dieses Repo ist der Code (Demo, oe
 Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, Pruefer erneut (max. 2 Runden, dann Eskalation an den Orchestrator).
 
 ## Befehle
-- `npm test`: Chromium- und Firefox-Tests (beide muessen gruen sein)
-- `npm run test:chromium`, `npm run test:firefox`: einzeln
+- `npm test`: Einheitstests, Builds mit Testhaken (`WXT_TESTHAKEN=1`) nach `.output-test`, dann Chromium- und Firefox-Tests (alles muss gruen sein); `.output/` bleibt dem Release-Bau vorbehalten
+- `npm run test:einheit` (Node, ohne Browser), `npm run test:chromium`, `npm run test:firefox`: einzeln (Browser-Tests brauchen einen Build mit Testhaken: `npm run build:test`, `build:test:firefox`, `zip:test:firefox`)
+- `VEIL_AUSGABE=<ordner>` waehlt einen anderen Ausgabeordner fuer Bau und Tests (z. B. wenn parallel gemessen wird); `VEIL_FIXTURE_PORT` und `VEIL_FIXTURE_PORT_FREMD` (Standard 47173 und 47175) die Ports des Testservers (`npm run fixtures` startet ihn von Hand)
+- `node scripts/messung/zonen.mjs|feed.mjs|kaltstart.mjs`: Messwerkzeuge Phase 2 (Treffer je Zone, Zeit bis sichtbarer Bereich frei, Kaltstart), kein Produktcode; lesen den Testbau aus `.output-test` (nach `npm test`), `VEIL_AUSGABE` waehlt einen anderen Ordner
 - `npm run test:android`: Firefox fuer Android im Emulator (vorher `export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` und Emulator `veil-android15` starten); installiert die signierte XPI aus `.output/signed/`
 - `npm run spike:s0`, `npm run spike:s1:chromium`, `npm run spike:s1:firefox` (plus `:webgpu`), `node spike/erweiterung/lauf-ext.mjs`, `npm run spike:s4:aufnahme`, `npm run spike:s2:server`, `node spike/s5-android/lauf-android.mjs`, `node spike/auswertung.mjs`: Wegwerf-Messgeschirr in `spike/` (je Ordner eine LIES-MICH), kein Produktcode; Messreihen `spike/reihe-final.sh` und `reihe-final-2.sh`
 - `node scripts/annotate/server.mjs`: Markierwerkzeug fuer die Soll-Zonen (http://127.0.0.1:5188)
-- `npm run build`: Chrome-Build; `npm run build:firefox`: Firefox-Build
+- `npm run build`: Chrome-Build; `npm run build:firefox`: Firefox-Build (beide ohne Testhaken, `prebuild` kopiert die WASM-Laufzeit nach `public/ort/`)
 - `npm run zip`, `npm run zip:firefox`: Pakete fuer Release (landen in `.output/`, nie im Repo)
 - `./scripts/leak-check.sh --all`: Leck-Sperre ueber das ganze Repo
 - `VEIL_SKIP_TESTS=1 git commit ...`: nur fuer reine Doku-Commits erlaubt
 
 ## Aufbau
-- `entrypoints/`: background (Chrome: Service Worker + Offscreen-Dokument; Firefox: Hintergrundskript), content (Schleier), popup
-- `src/`: Logik (Erkennung, Zonen, Stile, Whitelist, Pack-Import)
-- `public/`: Icons und statische Dateien ohne Mia-Bilder
-- `tests/chromium/`: Playwright; `tests/firefox/`: geckodriver/WebDriver; `tests/fixtures/`: lokale Testseiten
+- `entrypoints/`: `background.ts` (Chrome: Service Worker, legt `offscreen/` an; Firefox: Hintergrundskript mit Erkenner), `content/` (Schleier, CSS hide-first), `popup/`
+- `src/`: `nachrichten.ts` (Vertrag), `einstellungen.ts`, `erkenner/` (Modell, Zonen, Stile, Nachladen, Warteschlange), `schleier/` (Beobachter, Pruefung, Anwenden, Shadow Roots, Status)
+- Spezifikation Phase 2: `../00 Planung/PHASE-2-BAUPLAN.md` (Nachrichten-Vertrag, Einstellungen, Auftraege, Nachtrag nach Pruefung)
+- `public/`: Icons, `modelle/320n.onnx` (im Repo, siehe `data/MODELL-LIES-MICH.md`), `ort/` (WASM-Laufzeit, nicht im Repo); keine Mia-Bilder
+- `tests/einheit/`: Node-Tests; `tests/chromium/`: Playwright; `tests/firefox/`: geckodriver/WebDriver; `tests/fixtures/`: lokale Testseiten (Bilder vom Testserver aus `../05 Testbilder/` oder synthetisch)
 - `scripts/`: Hooks, Leck-Sperre, Pack-Bau, Release
 - `data/`: Datendateien (`links.json`, Standard-Ausnahmeliste, Quiz-Bank)
 - `docs/`: Anleitungen (Englisch, Mias Stimme)

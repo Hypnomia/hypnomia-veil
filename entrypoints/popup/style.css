@@ -1,0 +1,264 @@
+/* Popup: hell und pastellfarben, 320 px breit (Entscheidung 4). */
+:root {
+  --grund: #fff5fa;
+  --karte: #ffffff;
+  --text: #4f3345;
+  --leise: #86647a;
+  --akzent: #b03f7a;
+  --akzent-hell: #f9d6e7;
+  --pastell: #e9def9;
+  --linie: #f0cfe0;
+  --fokus: #6a4bc4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 320px;
+  background: var(--grund);
+  color: var(--text);
+  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  color: var(--akzent);
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--leise);
+}
+
+#status {
+  margin: 4px 0 0;
+  min-height: 2.8em;
+}
+
+section {
+  padding: 10px 12px;
+  background: var(--karte);
+  border: 1px solid var(--linie);
+  border-radius: 12px;
+}
+
+.hinweis {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--leise);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button.gross {
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--akzent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+button.gross[aria-pressed='true'] {
+  background: #7a5cc4;
+}
+
+button.klein {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--akzent);
+  border-radius: 10px;
+  background: var(--akzent-hell);
+  color: var(--akzent);
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+.kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+output {
+  font-variant-numeric: tabular-nums;
+  color: var(--akzent);
+  font-weight: 600;
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--akzent);
+}
+
+.enden {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--leise);
+}
+
+.wahl {
+  display: flex;
+  gap: 8px;
+}
+
+.wahl label {
+  flex: 1;
+}
+
+.wahl input {
+  position: absolute;
+  opacity: 0;
+}
+
+.wahl span {
+  display: block;
+  padding: 6px 0;
+  text-align: center;
+  border: 1px solid var(--linie);
+  border-radius: 10px;
+  background: var(--grund);
+  cursor: pointer;
+}
+
+.wahl input:checked + span {
+  background: var(--pastell);
+  border-color: #b9a2e4;
+  font-weight: 650;
+}
+
+.wahl input:focus-visible + span {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+/* Schalter */
+.schalter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.schalter input {
+  position: absolute;
+  opacity: 0;
+}
+
+.regler {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: #e3cfdb;
+  transition: background 0.15s;
+}
+
+.regler::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.schalter input:checked + .regler {
+  background: var(--akzent);
+}
+
+.schalter input:checked + .regler::after {
+  transform: translateX(14px);
+}
+
+.schalter input:focus-visible + .regler {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+.schalter .text {
+  display: flex;
+  flex-direction: column;
+}
+
+.schalter small {
+  color: var(--leise);
+  font-size: 11.5px;
+}
+
+/* Zonen */
+.zonen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.zonen li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+}
+
+.auch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--leise);
+  cursor: pointer;
+}
+
+.auch input {
+  accent-color: var(--akzent);
+}
+
+footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--leise);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regler,
+  .regler::after {
+    transition: none;
+  }
+}

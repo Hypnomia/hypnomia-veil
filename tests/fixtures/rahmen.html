@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Rahmen-Testseite</title>
+  </head>
+  <body>
+    <h1>Rahmen-Test</h1>
+    <!-- Diese Seite wird ueber localhost geladen, der Rahmen kommt von 127.0.0.1: eine eigene Ausnahme fuer localhost gilt je Tab,
+         also auch fuer den eingebetteten Rahmen, obwohl dessen eigene Adresse 127.0.0.1 ist. -->
+    <iframe id="rahmen" width="800" height="400" style="border:0"></iframe>
+    <script>
+      document.getElementById('rahmen').src = 'http://127.0.0.1:' + location.port + '/ausnahme.html';
+    </script>
+  </body>
+</html>

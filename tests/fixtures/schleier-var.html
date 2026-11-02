@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil var()-Testseite</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+    </style>
+  </head>
+  <body>
+    <h1>var()-Test</h1>
+    <!-- Inline-Hintergruende, deren Adresse ueber eine CSS-Variable kommt (Kurzform und Langform): die Langform des Style-Objekts liest dort
+         leer, der Schleier muss den berechneten Wert beurteilen. Der Test ruft fuegeVarEin(pfad) mit dem Pfad eines Fotos auf.
+         fuegeGrossEin() setzt einen fensterfuellenden Container mit Inline-Hintergrund auf dem zweiten Ursprung, dessen Abruf immer scheitert:
+         bei endgueltiger Verdeckung faellt nur der Hintergrund weg, der Text bleibt lesbar (kein Blur). -->
+    <div id="platz"></div>
+    <script>
+      window.fuegeVarEin = function (pfad) {
+        var kurz = document.createElement('div');
+        kurz.id = 'var-kurz';
+        kurz.textContent = 'Text im var-Hintergrund (kurz)';
+        kurz.setAttribute('style', 'width: 240px; height: 180px; background: var(--b) center / cover; --b: url(' + pfad + ')');
+        var lang = document.createElement('div');
+        lang.id = 'var-lang';
+        lang.textContent = 'Text im var-Hintergrund (lang)';
+        lang.setAttribute('style', 'width: 240px; height: 180px; background-size: cover; background-image: var(--b); --b: url(' + pfad + ')');
+        var platz = document.getElementById('platz');
+        platz.appendChild(kurz);
+        platz.appendChild(lang);
+        document.documentElement.dataset.varBereit = '1';
+      };
+      window.fuegeGrossEin = function () {
+        var fremd = 'http://127.0.0.1:' + (Number(location.port) + 2);
+        var gross = document.createElement('div');
+        gross.id = 'gross';
+        gross.textContent = 'Text im grossen Container';
+        gross.setAttribute('style', 'width: 100vw; height: 100vh; background-size: cover; background-image: url(' + fremd + '/synthetisch/3.png?immer403=1)');
+        document.getElementById('platz').appendChild(gross);
+        document.documentElement.dataset.grossBereit = '1';
+      };
+    </script>
+  </body>
+</html>

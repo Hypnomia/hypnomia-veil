@@ -4,36 +4,59 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HYPNOMIA VEIL</title>
-    <style>
-      body {
-        margin: 0;
-        min-width: 260px;
-        padding: 18px 20px;
-        background: #fff0f6;
-        color: #5a3a4a;
-        font-family: system-ui, sans-serif;
-      }
-      h1 {
-        margin: 0 0 8px;
-        font-size: 16px;
-        letter-spacing: 0.12em;
-        color: #c2538a;
-      }
-      p {
-        margin: 0 0 10px;
-        font-size: 13px;
-        line-height: 1.4;
-      }
-      #version {
-        font-size: 11px;
-        color: #a07a8d;
-      }
-    </style>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <h1>HYPNOMIA VEIL</h1>
-    <p>Phase 0. Mia is not here yet. Come back soon.</p>
-    <p id="version"></p>
+    <main>
+      <header>
+        <h1>HYPNOMIA VEIL</h1>
+        <p id="status" role="status" aria-live="polite"></p>
+      </header>
+
+      <button id="pause" class="gross" type="button"></button>
+
+      <section aria-labelledby="stimmung-titel">
+        <div class="kopf">
+          <h2 id="stimmung-titel">Mia's mood</h2>
+          <output id="stimmung-wert" for="stimmung"></output>
+        </div>
+        <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
+        <div class="enden"><span>Suspicious</span><span>Relaxed</span></div>
+        <p class="hinweis">Suspicious covers more. Relaxed lets the borderline ones through.</p>
+      </section>
+
+      <section aria-labelledby="stil-titel">
+        <h2 id="stil-titel">Cover style</h2>
+        <div class="wahl" role="radiogroup" aria-labelledby="stil-titel">
+          <label><input type="radio" name="stil" value="mosaik" /><span>Mosaic</span></label>
+          <label><input type="radio" name="stil" value="blur" /><span>Blur</span></label>
+        </div>
+      </section>
+
+      <section>
+        <label class="schalter">
+          <input id="strict" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>Strict</strong><small>The whole page waits for Mia</small></span>
+        </label>
+      </section>
+
+      <section aria-labelledby="zonen-titel">
+        <h2 id="zonen-titel">What I cover</h2>
+        <ul id="zonen" class="zonen"></ul>
+        <p class="hinweis">"Also covered" counts clothed versions too.</p>
+      </section>
+
+      <section>
+        <button id="ausnahme" class="klein" type="button"></button>
+        <p id="ausnahme-hinweis" class="hinweis"></p>
+      </section>
+
+      <footer>
+        <span id="version"></span>
+        <span>Pausing and uninstalling are always allowed.</span>
+      </footer>
+    </main>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

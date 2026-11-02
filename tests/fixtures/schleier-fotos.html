@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Foto-Testseite</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #liste { display: flex; flex-wrap: wrap; gap: 8px; }
+      #liste img, .zeile img, .zeile .klassenbild { width: 200px; height: 200px; object-fit: cover; display: block; }
+      .zeile { display: flex; gap: 8px; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Foto-Test</h1>
+    <!-- Bilder aus dem Testsatz (sfw oder nsfw, Parameter satz), vom Testserver. Die Seite selbst enthaelt keine Bilder. -->
+    <div id="liste"></div>
+    <div class="zeile" id="zeile"></div>
+    <script>
+      (function () {
+        var satz = new URLSearchParams(location.search).get('satz') === 'nsfw' ? 'nsfw' : 'sfw';
+        var fremdPort = Number(location.port) + 2;
+        fetch('/api/testbilder?satz=' + satz)
+          .then(function (r) { return r.json(); })
+          .then(function (antwort) {
+            var namen = antwort.bilder;
+            var pfad = function (n) { return '/testbild/' + satz + '/' + encodeURIComponent(namen[n % namen.length]); };
+            var liste = document.getElementById('liste');
+            for (var i = 0; i < 8; i++) {
+              var b = document.createElement('img');
+              b.alt = 'Foto ' + i;
+              b.src = pfad(i);
+              b.dataset.pfad = pfad(i); // Testhilfe: der Pfad bleibt lesbar, auch wenn die Quelle gegen das zensierte Bild getauscht wird
+              liste.appendChild(b);
+            }
+            var zeile = document.getElementById('zeile');
+            // Fremder Ursprung: mit CORS (Canvas lesbar) und ohne (Canvas verschmutzt, der Erkenner laedt selbst).
+            var mit = document.createElement('img');
+            mit.id = 'fremd-cors';
+            mit.crossOrigin = 'anonymous';
+            mit.src = 'http://127.0.0.1:' + fremdPort + pfad(8) + '?cors=1';
+            zeile.appendChild(mit);
+            var ohne = document.createElement('img');
+            ohne.id = 'fremd-ohne';
+            ohne.src = 'http://127.0.0.1:' + fremdPort + pfad(9);
+            zeile.appendChild(ohne);
+            // Hintergrund per Klasse.
+            var stil = document.createElement('style');
+            stil.textContent = '.klassenbild { background-image: url(' + pfad(10) + '); background-size: cover; }';
+            document.head.appendChild(stil);
+            var klasse = document.createElement('div');
+            klasse.id = 'klasse';
+            klasse.className = 'klassenbild';
+            zeile.appendChild(klasse);
+            // Karussell: die Adresse wechselt kurz nach dem Start.
+            var kar = document.createElement('img');
+            kar.id = 'karussell';
+            kar.src = pfad(11);
+            zeile.appendChild(kar);
+            setTimeout(function () { kar.src = pfad(12); }, 150);
+            // Spaet eingefuegtes Bild.
+            setTimeout(function () {
+              var spaet = document.createElement('img');
+              spaet.id = 'spaet';
+              spaet.src = pfad(13);
+              zeile.appendChild(spaet);
+            }, 400);
+            // Testhilfe: Klassen-Hintergrund mit einem bestimmten Bild nachtraeglich einfuegen (id klasse2).
+            window.fuegeKlasseEin = function (bildPfad) {
+              var s = document.createElement('style');
+              s.textContent = '.klassenbild2 { background-image: url(' + bildPfad + '); background-size: cover; width: 200px; height: 200px; }';
+              document.head.appendChild(s);
+              var d = document.createElement('div');
+              d.id = 'klasse2';
+              d.className = 'klassenbild2';
+              d.textContent = 'Text im Klassen-Hintergrund';
+              zeile.appendChild(d);
+            };
+            document.documentElement.dataset.fotosBereit = '1';
+          });
+      })();
+    </script>
+  </body>
+</html>
