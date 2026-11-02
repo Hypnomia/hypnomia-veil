@@ -130,7 +130,7 @@ try {
 
   // Mia patch ohne Pack gesperrt
   pruefe((await eigenschaft(radio('mia-patch'), 'disabled')) === true, 'Mia patch ist ohne Pack gesperrt');
-  pruefe((await text('#pack-hinweis')).includes('locked'), 'Hinweis nennt die Sperre');
+  pruefe((await text('#pack-hinweis')).includes('Add the Mia Pack'), 'Hinweis nennt den Weg zum Pack');
   pruefe((await eigenschaft(radio('mosaik'), 'checked')) === true, 'ohne Pack gilt Mosaik');
   pruefe((await text('#pack-link')).length > 0, 'Verweis auf die Einstellungsseite ist da');
   // Blur ist waehlbar

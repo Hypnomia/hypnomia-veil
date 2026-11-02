@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <script>
+      // Protokoll der Urteilswechsel der Videos (data-veil): Zeit im Rueckruf des MutationObserver (kein Abtastfehler) samt Abspielposition.
+      // window.__wechsel = [{ t, id, v (null = Attribut entfernt), ct }], window.__load = Zeit des load-Ereignisses.
+      (function () {
+        window.__wechsel = [];
+        new MutationObserver(function (liste) {
+          for (var i = 0; i < liste.length; i++) {
+            var el = liste[i].target;
+            if (el.localName !== 'video') continue;
+            window.__wechsel.push({ t: performance.now(), id: el.id, v: el.getAttribute('data-veil'), ct: el.currentTime });
+          }
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-veil'] });
+        window.addEventListener('load', function () { window.__load = performance.now(); }, { once: true });
+      })();
+    </script>
+    <title>Veil Video-Lauf-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      video { display: block; width: 240px; height: 180px; margin-bottom: 8px; }
+      #abstand { height: 3000px; }
+    </style>
+  </head>
+  <body>
+    <!-- Laufende Nachpruefung von Videos (PHASE-2-BAUPLAN 10.1). Die Seite nimmt zur Laufzeit ein Video auf (MediaRecorder, keine
+         Mediendatei im Repo): Abschnitt 1 neutral (Farbverlauf) 0 bis 3 s, Abschnitt 2 das Testbild ?bild=<name> aus dem Satz nsfw (vom
+         Testserver, gleicher Ursprung) 3 bis 6 s, Abschnitt 3 neutral 6 bis 10 s. Die Aufnahme dauert 10 s und wird im localStorage
+         abgelegt (Schluessel je Testbild), damit weitere Ladevorgaenge sofort starten. Erst danach steht data-film-bereit="1".
+         Die Videos legt der Test selbst an: window.neuesVideo({ id, autoplay, abspielen, unten, preload, springe }); window.neueQuelle() liefert eine frische Adresse. Mit ?modus=spaet steht schon beim
+         Parsen ein Autoplay-Video #spaet ohne Quelle da, die Quelle kommt 1,5 s nach load.
+         Auf jedem Bild bewegt sich ein kleiner Punkt, damit der Browser auch im Treffer-Abschnitt laufend neue Einzelbilder liefert. -->
+    <div id="platz"></div>
+    <div id="abstand"></div>
+    <div id="unten"></div>
+    <script>
+      (function () {
+        var param = new URLSearchParams(location.search);
+        var bild = param.get('bild') || '';
+        var modus = param.get('modus') || '';
+        var platz = document.getElementById('platz');
+        var unten = document.getElementById('unten');
+        var SCHLUESSEL = 'video-lauf-1:' + bild + ':' + (modus === 'zuerst' ? 'zuerst' : 'standard');
+        // Standard: neutral 0 bis 3 s, Treffer 3 bis 6 s, neutral 6 bis 10 s. Mit ?modus=zuerst: Treffer 0 bis 1,5 s, neutral bis 6 s (Firefox springt in
+        // Aufnahmen ohne Suchindex nur auf Schluesselbilder, meist das erste: dort liegt dann der Treffer).
+        var TREFFER_VON = modus === 'zuerst' ? 0 : 3000;
+        var TREFFER_BIS = modus === 'zuerst' ? 1500 : 6000;
+        var DAUER_MS = modus === 'zuerst' ? 6000 : 10000;
+        var adresse = null;
+        var filmBlob = null;
+
+        if (modus === 'spaet') {
+          var spaet = document.createElement('video');
+          spaet.id = 'spaet';
+          spaet.autoplay = true;
+          spaet.muted = true;
+          spaet.loop = true;
+          spaet.setAttribute('playsinline', '');
+          platz.appendChild(spaet);
+        }
+
+        function farbverlauf(g, b, h, versatz) {
+          var v = g.createLinearGradient(0, 0, b, h);
+          v.addColorStop(0, 'hsl(' + versatz + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, b, h);
+        }
+
+        function ladeBild(name) {
+          return new Promise(function (fertig, fehler) {
+            var i = new Image();
+            i.onload = function () { fertig(i); };
+            i.onerror = function () { fehler(new Error('Testbild nicht ladbar')); };
+            i.src = '/testbild/nsfw/' + encodeURIComponent(name);
+          });
+        }
+
+        function nimmAuf() {
+          return ladeBild(bild).then(function (img) {
+            var skala = 640 / Math.max(img.naturalWidth, img.naturalHeight);
+            var b = Math.round(img.naturalWidth * skala);
+            var h = Math.round(img.naturalHeight * skala);
+            var leinwand = document.createElement('canvas');
+            leinwand.width = b;
+            leinwand.height = h;
+            var g = leinwand.getContext('2d');
+            var t0 = performance.now();
+            var zeichne = function () {
+              var t = performance.now() - t0;
+              if (t >= TREFFER_VON && t < TREFFER_BIS) g.drawImage(img, 0, 0, b, h);
+              else farbverlauf(g, b, h, (t / 25) % 360);
+              g.fillStyle = '#000';
+              g.fillRect((t / 10) % (b - 8), h - 8, 8, 8);
+              // Kennfeld oben links: rot im Treffer-Abschnitt, blau sonst (fuer treffersuche).
+              g.fillStyle = t >= TREFFER_VON && t < TREFFER_BIS ? '#f00' : '#00f';
+              g.fillRect(0, 0, 12, 12);
+            };
+            zeichne();
+            var uhr = setInterval(zeichne, 40);
+            var aufnahme = new MediaRecorder(leinwand.captureStream(25), { videoBitsPerSecond: 1500000 });
+            var stuecke = [];
+            aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+            return new Promise(function (fertig) {
+              aufnahme.onstop = function () {
+                clearInterval(uhr);
+                fertig(new Blob(stuecke, { type: aufnahme.mimeType }));
+              };
+              t0 = performance.now();
+              aufnahme.start();
+              setTimeout(function () { aufnahme.stop(); }, DAUER_MS);
+            });
+          });
+        }
+
+        function alsText(blob) {
+          return new Promise(function (fertig) {
+            var l = new FileReader();
+            l.onload = function () { fertig(String(l.result)); };
+            l.readAsDataURL(blob);
+          });
+        }
+
+        function ausText(text) {
+          var teile = text.split(',');
+          var typ = /^data:([^;,]+)/.exec(teile[0]);
+          var bin = atob(teile[1]);
+          var feld = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) feld[i] = bin.charCodeAt(i);
+          return new Blob([feld], { type: typ ? typ[1] : 'video/webm' });
+        }
+
+        function beschaffe() {
+          try {
+            var gespeichert = localStorage.getItem(SCHLUESSEL);
+            if (gespeichert) {
+              document.documentElement.dataset.filmQuelle = 'speicher';
+              return Promise.resolve(ausText(gespeichert));
+            }
+          } catch (e) { /* ohne Speicher wird immer neu aufgenommen */ }
+          document.documentElement.dataset.filmQuelle = 'aufnahme';
+          return nimmAuf().then(function (blob) {
+            return alsText(blob).then(function (text) {
+              try { localStorage.setItem(SCHLUESSEL, text); } catch (e) { /* zu gross: dann bei jedem Laden neu */ }
+              return blob;
+            });
+          });
+        }
+
+        // Legt ein Video an: id, autoplay (Attribut), abspielen (play() rufen, Standard ja), unten (weit unter dem Sichtbereich).
+        // Weitere Angaben: springe (Sekunden, direkt nach loadeddata anhalten und dorthin springen), preload.
+        window.neuesVideo = function (opt) {
+          var v = document.createElement('video');
+          v.id = opt.id;
+          v.muted = true;
+          v.loop = true;
+          v.setAttribute('playsinline', '');
+          if (opt.autoplay) v.autoplay = true;
+          if (opt.preload) v.preload = opt.preload;
+          if (typeof opt.springe === 'number') {
+            v.addEventListener('loadeddata', function () { v.pause(); v.currentTime = opt.springe; }, { once: true });
+          }
+          (opt.unten ? unten : platz).appendChild(v);
+          v.src = adresse;
+          if (opt.abspielen !== false) v.play().catch(function () {});
+          return v;
+        };
+
+        // Liest das Kennfeld oben links im gezeigten Bild: true = rot (Treffer-Abschnitt), false = blau.
+        var leinwandLesen = document.createElement('canvas');
+        window.kennfeldRot = function (v) {
+          leinwandLesen.width = v.videoWidth;
+          leinwandLesen.height = v.videoHeight;
+          var g = leinwandLesen.getContext('2d');
+          g.drawImage(v, 0, 0);
+          var p = g.getImageData(4, 4, 1, 1).data;
+          return p[0] > 180 && p[2] < 90;
+        };
+
+        // Springt auf Abspielpositionen, bis das gezeigte Bild das rote Kennfeld des Treffer-Abschnitts traegt. Liefert die gefundene Position
+        // oder null. Das Kennfeld wird erst nach seeked gelesen.
+        window.treffersuche = function (v) {
+          var kandidaten = [4, 3.6, 4.5, 5, 3.3, 5.4, 5.7, 3.1];
+          var versuche = function (i) {
+            if (i >= kandidaten.length) return Promise.resolve(null);
+            return new Promise(function (fertig) {
+              var zeit = setTimeout(function () { fertig(false); }, 4000);
+              v.addEventListener('seeked', function () { clearTimeout(zeit); fertig(window.kennfeldRot(v)); }, { once: true });
+              v.currentTime = kandidaten[i];
+            }).then(function (treffer) { return treffer ? kandidaten[i] : versuche(i + 1); });
+          };
+          return versuche(0);
+        };
+
+        // Frische blob:-Adresse desselben Films (fuer den Quellenwechsel).
+        window.neueQuelle = function () { return URL.createObjectURL(filmBlob); };
+
+        window.filmBereitPromise = beschaffe().then(function (blob) {
+          filmBlob = blob;
+          adresse = URL.createObjectURL(blob);
+          document.documentElement.dataset.filmBereit = '1';
+          if (modus === 'spaet') {
+            var gesetzt = function () { document.getElementById('spaet').src = adresse; document.documentElement.dataset.spaetQuelle = String(Math.round(performance.now())); };
+            if (document.readyState === 'complete') setTimeout(gesetzt, 1500);
+            else window.addEventListener('load', function () { setTimeout(gesetzt, 1500); }, { once: true });
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

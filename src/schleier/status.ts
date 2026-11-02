@@ -17,6 +17,14 @@ export interface StatusAnzeige extends Zaehlung {
   fehler: number;
   sichtbarFreiMs: number | null;
   seiteFreiMs: number | null;
+  // Video-Pruefungen (erste und laufende) und Urteilswechsel von Videos seit Start.
+  videoPruefungen: number;
+  videoWechsel: number;
+  // Nachpruefungen, deren Antwort die Frist (2 Taktzeiten) ueberschritt und die wie ein Fehler galten.
+  videoFristen: number;
+  // Beginn der letzten 64 Video-Pruefungen (performance.now() des Content-Scripts, vom Content-Script selbst gestempelt) mit der Art:
+  // erst = erste Pruefung eines Videos, takt = Nachpruefung.
+  videoZeiten: Array<{ t: number; art: 'erst' | 'takt' }>;
 }
 
 // Host des Dokumentursprungs. In about:blank-, blob:- und srcdoc-Frames ist location.hostname leer, window.origin traegt dort den vom
@@ -70,9 +78,24 @@ export class Status {
   fehler = 0;
   sichtbarFreiMs: number | null = null;
   seiteFreiMs: number | null = null;
+  videoPruefungen = 0;
+  videoWechsel = 0;
+  videoFristen = 0;
+  private videoZeiten: Array<{ t: number; art: 'erst' | 'takt' }> = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly zaehle: () => Zaehlung) {}
+
+  // Eine Video-Pruefung beginnt (Zaehler und Zeitstempel fuer den Testhaken).
+  // `zeit` ist derselbe Augenblick, den das Budget zaehlt (ohne Rundung): so misst der Test genau das Fenster, das das Budget begrenzt.
+  zaehleVideoStart(art: 'erst' | 'takt', zeit: number): void {
+    this.videoPruefungen++;
+    if (this.aktiv) {
+      this.videoZeiten.push({ t: zeit, art });
+      if (this.videoZeiten.length > 64) this.videoZeiten.shift();
+    }
+    this.plane();
+  }
 
   // Millisekunden seit dem Start des Content-Scripts.
   seitStart(): number {
@@ -98,6 +121,10 @@ export class Status {
       fehler: this.fehler,
       sichtbarFreiMs: this.sichtbarFreiMs,
       seiteFreiMs: this.seiteFreiMs,
+      videoPruefungen: this.videoPruefungen,
+      videoWechsel: this.videoWechsel,
+      videoFristen: this.videoFristen,
+      videoZeiten: this.videoZeiten,
     };
     wurzel.setAttribute(ATTR_STATUS, JSON.stringify(anzeige));
   }

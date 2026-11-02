@@ -36,6 +36,8 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 - `npm run test:einheit` (Node, ohne Browser), `npm run test:chromium`, `npm run test:firefox`: einzeln (Browser-Tests brauchen einen Build mit Testhaken: `npm run build:test`, `build:test:firefox`, `zip:test:firefox`)
 - `VEIL_AUSGABE=<ordner>` waehlt einen anderen Ausgabeordner fuer Bau und Tests (z. B. wenn parallel gemessen wird); `VEIL_FIXTURE_PORT` und `VEIL_FIXTURE_PORT_FREMD` (Standard 47173 und 47175) die Ports des Testservers (`npm run fixtures` startet ihn von Hand)
 - `node scripts/messung/zonen.mjs|feed.mjs|kaltstart.mjs`: Messwerkzeuge Phase 2 (Treffer je Zone, Zeit bis sichtbarer Bereich frei, Kaltstart), kein Produktcode; lesen den Testbau aus `.output-test` (nach `npm test`), `VEIL_AUSGABE` waehlt einen anderen Ordner
+- `node scripts/messung/yunet.mjs --teil alles` (YuNet gegen die geschaetzten Gesichtsbaender, Modell aus `../04 Alt-Code Referenz/modelle/`), `node scripts/messung/video.mjs --laeufe 3 --dauer 30` (CPU-Last der laufenden Video-Nachpruefung); `scripts/messung/zonen.mjs` schaltet alle Zonen an und misst damit 320n plus YuNet
+- `VEIL_NUR=<Praefix> node tests/firefox/video.test.mjs`: nur die Video-Faelle mit diesem Namensanfang
 - `npm run pack:dummy`: Dummy-Pack aus synthetischen Bildern nach `.output-pack/dummy.miapack` (nie ins Repo); `npm run pack:bau -- --quelle <ordner> --aus <datei>`: Pack aus einem Ordner mit `pack.json` (spaeter `../02 Assets Mia/pack/`)
 - Weitere Schalter fuer Tests: `VEIL_FIREFOX_BIN=<pfad>` (anderer Firefox, z. B. 128 aus `../.werkzeuge.nosync/`, Pfad nie in Dateien schreiben), `VEIL_OHNE_TESTBILDER=1` (Render-Tests ohne `../05 Testbilder` laut ueberspringen statt rot), `VEIL_NUR_RELEASEPRUEFUNG=1` (nur die Suche nach Testhaken-Spuren im Release-Bau)
 - `npm run test:android`: Firefox fuer Android im Emulator (vorher `export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` und Emulator `veil-android15` starten); installiert die signierte XPI aus `.output/signed/`
@@ -48,9 +50,9 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 
 ## Aufbau
 - `entrypoints/`: `background.ts` (Chrome: Service Worker, legt `offscreen/` an; Firefox: Hintergrundskript mit Erkenner), `content/` (Schleier, CSS hide-first), `popup/`, `options/` (Einstellungsseite: Mia Pack importieren und entfernen)
-- `src/`: `nachrichten.ts` (Vertrag), `einstellungen.ts`, `erkenner/` (Modell, Zonen, Stile, Nachladen mit Netzgrenze, Warteschlange), `schleier/` (Beobachter, Pruefung, Anwenden, Shadow Roots, Adresse, Status), `pack/` (`vertrag.ts` Vertrag, `format.ts` Dateiformat `.miapack`, `db.ts`/`speicher.ts` IndexedDB, `patches.ts` Patch-Bilder fuer den Erkenner)
-- Spezifikation Phase 2: `../00 Planung/PHASE-2-BAUPLAN.md` (Nachrichten-Vertrag, Einstellungen, Auftraege, Nachtraege nach Pruefung, Abschnitt 9 Pack und Netzgrenze)
-- `public/`: Icons, `modelle/320n.onnx` (im Repo, siehe `data/MODELL-LIES-MICH.md`), `ort/` (WASM-Laufzeit, nicht im Repo); keine Mia-Bilder
+- `src/`: `nachrichten.ts` (Vertrag), `einstellungen.ts`, `erkenner/` (Modell 320n, YuNet fuer Gesichtszonen, Zonen, Stile, Nachladen mit Netzgrenze, Warteschlange), `schleier/` (Beobachter, Pruefung, Anwenden, Shadow Roots, Adresse, Status, `video.ts` laufende Video-Nachpruefung), `pack/` (`vertrag.ts` Vertrag, `format.ts` Dateiformat `.miapack`, `db.ts`/`speicher.ts` IndexedDB, `patches.ts` Patch-Bilder fuer den Erkenner)
+- Spezifikation Phase 2: `../00 Planung/PHASE-2-BAUPLAN.md` (Nachrichten-Vertrag, Einstellungen, Auftraege, Nachtraege nach Pruefung, Abschnitt 9 Pack und Netzgrenze, Abschnitt 10 Videos und YuNet); Entwurf Phase 3: `../00 Planung/PHASE-3-BAUPLAN.md`
+- `public/`: Icons, `modelle/320n.onnx` und `modelle/yunet-2023mar.onnx` (im Repo, siehe `data/MODELL-LIES-MICH.md`), `ort/` (WASM-Laufzeit, nicht im Repo); keine Mia-Bilder
 - `tests/einheit/`: Node-Tests; `tests/chromium/`: Playwright; `tests/firefox/`: geckodriver/WebDriver; `tests/fixtures/`: lokale Testseiten (Bilder vom Testserver aus `../05 Testbilder/` oder synthetisch)
 - `scripts/`: Hooks, Leck-Sperre, Pack-Bau, Release
 - `data/`: Datendateien (`links.json`, Standard-Ausnahmeliste, Quiz-Bank)

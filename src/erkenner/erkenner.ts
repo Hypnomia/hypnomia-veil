@@ -1,8 +1,9 @@
 // Erkenner: laedt das Modell 320n mit onnxruntime-web (WASM, 1 Thread), prueft Bilder nacheinander
 // und liefert Treffer, zusammengefuehrte Flaechen und auf Wunsch das zensierte Bild.
+// Ist eine Gesichtszone an, laeuft zusaetzlich das Gesichtsmodell YuNet (yunet.ts) fuer genauere Augen und Mund.
 
 import * as ort from 'onnxruntime-web/wasm';
-import { vervollstaendige } from '../einstellungen';
+import { vervollstaendige, type Einstellungen } from '../einstellungen';
 import type {
   AntwortErkennerStatus,
   AntwortPruefe,
@@ -16,7 +17,14 @@ import { geometrieFuer, MODELL_GROESSE, nachverarbeite } from './modell';
 import { blobAusDataUrl, ladeNach, type RefererSetzer } from './nachladen';
 import { Schranke } from './schranke';
 import { rendereZensur } from './stile';
-import { berechneFlaechen } from './zonen';
+import {
+  ladeYunetSitzung,
+  yunetLauf,
+  yunetVorverarbeitung,
+  type YunetGesicht,
+  type YunetSitzung,
+} from './yunet';
+import { berechneFlaechen, kombiniereGesichter } from './zonen';
 
 // Laengste Seite des Arbeitsbildes: so gross wird gerendert und so beziehen sich Boxen und `breite`/`hoehe` der Antwort.
 const MAX_SEITE = 1600;
@@ -65,6 +73,12 @@ let laeufe = 0;
 let wartend = 0;
 let kette: Promise<unknown> = Promise.resolve();
 let ladeFehler: { fehler: unknown; bis: number } | null = null;
+// Gesichtsmodell YuNet: eigene Sitzung, wird nach 320n im Hintergrund geladen. Scheitert das Laden, gilt der Weg ohne YuNet.
+let gesichtSitzung: YunetSitzung | null = null;
+let gesichtLadeVersprechen: Promise<YunetSitzung | null> | null = null;
+let gesichtFehlerBis = 0;
+// Anzahl der YuNet-Laeufe seit dem Start (ohne Warmlauf), fuer den Status.
+let gesichtLaeufe = 0;
 const schranke = new Schranke(PARALLELE_PRUEFUNGEN);
 let refererSetzer: RefererSetzer = async () => {};
 let tensorLeinwand: OffscreenCanvas | null = null;
@@ -76,6 +90,34 @@ export function setzeRefererSetzer(f: RefererSetzer): void {
 
 export function istBereit(): boolean {
   return session !== null;
+}
+
+// YuNet laden (einmal, Mehrfachaufrufe teilen sich den Lauf). Liefert null, wenn es nicht geht: kein Fehler fuer die Seite.
+function ladeGesicht(): Promise<YunetSitzung | null> {
+  if (gesichtSitzung) return Promise.resolve(gesichtSitzung);
+  if (jetzt() < gesichtFehlerBis) return Promise.resolve(null);
+  if (!gesichtLadeVersprechen) {
+    // Sitzung bauen und Warmlauf laufen in der gemeinsamen Reihe, nie gleichzeitig mit einer anderen Inferenz.
+    gesichtLadeVersprechen = ladeYunetSitzung((arbeit) => inReihe(arbeit).then((r) => r.wert))
+      .then((neu) => {
+        gesichtSitzung = neu;
+        return neu;
+      })
+      .catch((e: unknown) => {
+        gesichtFehlerBis = jetzt() + LADE_PAUSE_MS;
+        console.warn('Erkenner: YuNet nicht ladbar, es gilt der Weg ohne Gesichtsmodell', e);
+        return null;
+      })
+      .finally(() => {
+        gesichtLadeVersprechen = null;
+      });
+  }
+  return gesichtLadeVersprechen;
+}
+
+// Mindestens eine Gesichtszone an: dann braucht die Pruefung YuNet.
+function brauchtGesicht(zonen: Einstellungen['zonen']): boolean {
+  return zonen.eyes.an || zonen.mouth.an || zonen.face.an || zonen.head.an;
 }
 
 // Modell und Session aufbauen und mit einem Leerbild warmlaufen lassen. Mehrfachaufrufe teilen sich den Lauf.
@@ -93,18 +135,28 @@ export function ladeModell(): Promise<void> {
       if (!antwort.ok) throw new Error(`Modell nicht ladbar: HTTP ${antwort.status}`);
       const bytes = new Uint8Array(await antwort.arrayBuffer());
       const neu = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
-      const eingabe = neu.inputNames[0];
-      const ausgabe = neu.outputNames[0];
-      if (!eingabe || !ausgabe) throw new Error('Modell ohne Ein- oder Ausgabe');
-      const S = MODELL_GROESSE;
-      await neu.run({ [eingabe]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) });
-      tensorLeinwand = new OffscreenCanvas(S, S);
-      tensorKontext = tensorLeinwand.getContext('2d', { willReadFrequently: true });
+      let eingabe: string | undefined;
+      let ausgabe: string | undefined;
+      try {
+        eingabe = neu.inputNames[0];
+        ausgabe = neu.outputNames[0];
+        if (!eingabe || !ausgabe) throw new Error('Modell ohne Ein- oder Ausgabe');
+        const S = MODELL_GROESSE;
+        await neu.run({ [eingabe]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) });
+        tensorLeinwand = new OffscreenCanvas(S, S);
+        tensorKontext = tensorLeinwand.getContext('2d', { willReadFrequently: true });
+      } catch (e) {
+        // Scheitert etwas nach dem Bauen, die Sitzung nicht liegen lassen.
+        await neu.release().catch(() => {});
+        throw e;
+      }
       eingabeName = eingabe;
       ausgabeName = ausgabe;
       session = neu;
       ladeFehler = null;
       kaltstartMs = Math.round(jetzt() - t0);
+      // Erst jetzt, damit der Start von 320n nicht langsamer wird.
+      void ladeGesicht();
     })()
       .catch((e: unknown) => {
         ladeFehler = { fehler: e, bis: jetzt() + LADE_PAUSE_MS };
@@ -118,7 +170,17 @@ export function ladeModell(): Promise<void> {
 }
 
 export function status(): AntwortErkennerStatus {
-  return { ok: true, bereit: istBereit(), modell: '320n', kaltstartMs, laeufe, warteschlange: wartend + schranke.wartend };
+  return {
+    ok: true,
+    bereit: istBereit(),
+    modell: '320n',
+    kaltstartMs,
+    gesichtBereit: gesichtSitzung !== null,
+    gesichtKaltstartMs: gesichtSitzung ? gesichtSitzung.kaltstartMs : null,
+    gesichtLaeufe,
+    laeufe,
+    warteschlange: wartend + schranke.wartend,
+  };
 }
 
 // Bild auf 320 x 320 bringen (Seitenverhaeltnis bleibt, rechts und unten schwarz) und als RGB-Tensor 0 bis 1 aufbauen.
@@ -144,24 +206,65 @@ function baueTensor(quelle: CanvasImageSource, breite: number, hoehe: number): o
   return new ort.Tensor('float32', daten, [1, 3, S, S]);
 }
 
-// Laeufe der Session nacheinander; liefert Wartezeit und Rechenzeit getrennt.
-function nacheinander(tensor: ort.Tensor): Promise<{ warteMs: number; infMs: number; daten: Float32Array; dims: readonly number[] }> {
+// Laeufe aller Sessions nacheinander (eine gemeinsame Reihe); liefert Wartezeit, Rechenzeit und das Ergebnis.
+function inReihe<T>(arbeit: () => Promise<T>): Promise<{ warteMs: number; rechenMs: number; wert: T }> {
   const t0 = jetzt();
   wartend++;
   const lauf = kette.then(async () => {
     const start = jetzt();
+    const wert = await arbeit();
+    return { warteMs: start - t0, rechenMs: jetzt() - start, wert };
+  });
+  kette = lauf.catch(() => {}).finally(() => {
+    wartend--;
+  });
+  return lauf;
+}
+
+// Lauf von 320n; liefert Wartezeit und Rechenzeit getrennt.
+async function nacheinander(tensor: ort.Tensor): Promise<{ warteMs: number; infMs: number; daten: Float32Array; dims: readonly number[] }> {
+  const r = await inReihe(async () => {
     const aktuell = session;
     if (!aktuell) throw new Error('Erkenner nicht bereit');
     const aus = await aktuell.run({ [eingabeName]: tensor });
     const roh = aus[ausgabeName];
     if (!roh) throw new Error('Modell lieferte keine Ausgabe');
     laeufe++;
-    return { warteMs: start - t0, infMs: jetzt() - start, daten: roh.data as Float32Array, dims: roh.dims };
+    return { daten: roh.data as Float32Array, dims: roh.dims };
   });
-  kette = lauf.catch(() => {}).finally(() => {
-    wartend--;
-  });
-  return lauf;
+  return { warteMs: r.warteMs, infMs: r.rechenMs, daten: r.wert.daten, dims: r.wert.dims };
+}
+
+// Gesichter mit YuNet, wenn eine Gesichtszone an ist. `gesichter` ist null, wenn das Modell fehlt oder der Lauf scheitert
+// (dann gelten allein die Baender). Die Wartezeit auf das Laden zaehlt auch dann, wenn das Laden scheitert.
+async function sucheGesichter(
+  zonen: Einstellungen['zonen'],
+  quelle: CanvasImageSource,
+  breite: number,
+  hoehe: number,
+): Promise<{ gesichter: YunetGesicht[] | null; ms: number; warteMs: number } | null> {
+  if (!brauchtGesicht(zonen)) return null;
+  // Ist YuNet noch im Laden, wartet die Pruefung darauf; diese Zeit gehoert zur Wartezeit.
+  const tLade = jetzt();
+  const sitzung = await ladeGesicht();
+  const ladeWarteMs = jetzt() - tLade;
+  if (!sitzung) return { gesichter: null, ms: 0, warteMs: ladeWarteMs };
+  let warteMs = ladeWarteMs;
+  try {
+    const t0 = jetzt();
+    const tensor = yunetVorverarbeitung(sitzung, quelle, breite, hoehe);
+    const vorMs = jetzt() - t0;
+    const r = await inReihe(async () => {
+      // Gezaehlt werden Versuche, auch wenn der Lauf scheitert.
+      gesichtLaeufe++;
+      return yunetLauf(sitzung, tensor, breite, hoehe);
+    });
+    warteMs += r.warteMs;
+    return { gesichter: r.wert, ms: vorMs + r.rechenMs, warteMs };
+  } catch (err) {
+    console.warn('Erkenner: YuNet-Lauf fehlgeschlagen, es gilt der Weg ohne Gesichtsmodell', err);
+    return { gesichter: null, ms: 0, warteMs };
+  }
 }
 
 // Arbeitsbild: Original auf hoechstens MAX_SEITE begrenzt (OffscreenCanvas bei Verkleinerung, sonst die Bitmap selbst).
@@ -237,8 +340,12 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     const tVor = jetzt();
     const lauf = await nacheinander(tensor);
     const tInf = jetzt();
-    const treffer: Treffer[] = nachverarbeite(lauf.daten, lauf.dims, geometrieFuer(arbeit.breite, arbeit.hoehe), e.schwelle);
-    const flaechen = berechneFlaechen(treffer, e, arbeit.breite, arbeit.hoehe);
+    const rohTreffer: Treffer[] = nachverarbeite(lauf.daten, lauf.dims, geometrieFuer(arbeit.breite, arbeit.hoehe), e.schwelle);
+    const tRoh = jetzt();
+    const gesicht = await sucheGesichter(e.zonen, arbeit.quelle, arbeit.breite, arbeit.hoehe);
+    const tNachStart = jetzt();
+    const alle = gesicht?.gesichter ? kombiniereGesichter(rohTreffer, gesicht.gesichter, arbeit.breite, arbeit.hoehe) : rohTreffer;
+    const flaechen = berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe);
     const tNach = jetzt();
     let bild: string | undefined;
     if (n.rendern && flaechen.length > 0) {
@@ -256,12 +363,14 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
       netz: runde(tNetz - t0),
       dekod: runde(tDekod - tNetz),
       vor: runde(tVor - tDekod),
-      warte: runde(schrankeMs + lauf.warteMs),
+      warte: runde(schrankeMs + lauf.warteMs + (gesicht?.warteMs ?? 0)),
       inf: runde(lauf.infMs),
-      nach: runde(tNach - tInf),
+      nach: runde(tRoh - tInf + (tNach - tNachStart)),
       render: runde(tRender - tNach),
       gesamt: runde(tRender - t0),
+      ...(gesicht?.gesichter ? { gesicht: runde(gesicht.ms) } : {}),
     };
+    const treffer = alle;
     return bild === undefined
       ? { ok: true, id, breite: arbeit.breite, hoehe: arbeit.hoehe, treffer, flaechen, ms, kalt }
       : { ok: true, id, breite: arbeit.breite, hoehe: arbeit.hoehe, treffer, flaechen, bild, ms, kalt };

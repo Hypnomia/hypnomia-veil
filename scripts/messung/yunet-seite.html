@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>YuNet Messung: Start</title>
+</head>
+<body>
+  <p>Messseite YuNet gegen 320n (Kosten im Browser, WASM, 1 Thread). Ergebnis steht in data-ergebnis am html-Element.</p>
+  <script>
+    const lade = (src) => new Promise((ok, fehl) => {
+      const e = document.createElement('script');
+      e.src = src; e.onload = ok; e.onerror = () => fehl(new Error(`Laden fehlgeschlagen: ${src}`));
+      document.body.appendChild(e);
+    });
+    lade('/ort/ort.wasm.min.js').then(() => import('/yunet-seite.mjs')).catch((f) => {
+      document.documentElement.dataset.fehler = String(f);
+      document.documentElement.dataset.fertig = '1';
+    });
+  </script>
+</body>
+</html>

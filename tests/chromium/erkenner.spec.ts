@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { begrenzeBox, mitRand } from '../../src/erkenner/zonen';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -130,7 +131,7 @@ test('Erkenner: status und wecke', async () => {
   expect(s.modell).toBe('320n');
   // Kaltstart getrennt ausgewiesen: Modell laden, Session bauen, Leerlauf rechnen.
   expect(typeof s.kaltstartMs).toBe('number');
-  console.log(`chromium: Kaltstart ${s.kaltstartMs} ms`);
+  console.log(`chromium: Kaltstart ${s.kaltstartMs} ms, YuNet ${s.gesichtKaltstartMs} ms (bereit ${s.gesichtBereit})`);
   expect(s.kaltstartMs).toBeLessThan(2000);
   expect(s.laeufe).toBeGreaterThanOrEqual(2);
   expect(s.warteschlange).toBe(0);
@@ -149,6 +150,137 @@ test('Erkenner: Testbild aus dem sfw-Satz, rendern liefert JPEG, wenn Flaechen d
   expect(antwort.ok).toBe(true);
   if (antwort.flaechen.length > 0) expect(String(antwort.bild).startsWith('data:image/jpeg')).toBe(true);
   else expect(antwort.bild).toBeUndefined();
+});
+
+// Zonen-Einstellung mit genau diesen Zonen an (ohne `bedeckt`).
+function zonenNur(an: string[]): Record<string, { an: boolean; bedeckt?: boolean }> {
+  const z: Record<string, { an: boolean; bedeckt?: boolean }> = {};
+  for (const name of ZONEN_ALLE) z[name] = ZONEN_BEDECKBAR.includes(name) ? { an: an.includes(name), bedeckt: false } : { an: an.includes(name) };
+  return z;
+}
+
+const median = (zahlen: number[]): number => {
+  const s = [...zahlen].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] ?? 0;
+};
+
+// Feste Testbilder aus dem Satz sfw (nie im Repo): auf dem ersten findet YuNet ein Gesicht (320n deckt es auch), auf dem zweiten
+// findet nur 320n eines.
+const BILD_MIT_GESICHT = 'sfw-001-portraet.jpg';
+const BILD_NUR_320N = 'sfw-022-figur.jpg';
+
+function gesichtsNachricht(name: string, an: string[]) {
+  return pruefeNachricht(`${basis}/testbild/sfw/${encodeURIComponent(name)}`, {
+    einstellungen: { schwelle: 0.1, zonen: zonenNur(an), rand: 0.15, stil: 'mosaik' },
+  });
+}
+
+const mitte = (b: number[]): [number, number] => [b[0]! + b[2]! / 2, b[1]! + b[3]! / 2];
+
+test('Erkenner: Gesichtszone an, YuNet liefert Augen und Mund mit quelle yunet und meldet ms.gesicht', async () => {
+  const liste = await testbilder('sfw');
+  brauchtTestbilder(liste, 'sfw');
+  expect(liste).toContain(BILD_MIT_GESICHT);
+  const zeiten: number[] = [];
+  let antwort: any;
+  const laeufeVor = (await ausWorker(worker, { ziel: 'erkenner', typ: 'status' })).gesichtLaeufe;
+  expect(typeof laeufeVor).toBe('number');
+  for (let i = 0; i < 5; i++) {
+    antwort = await ausWorker(worker, gesichtsNachricht(BILD_MIT_GESICHT, ['eyes', 'mouth', 'face', 'head']));
+    expect(antwort.ok, antwort.fehler).toBe(true);
+    expect(typeof antwort.ms.gesicht).toBe('number');
+    zeiten.push(antwort.ms.gesicht);
+  }
+  expect((await ausWorker(worker, { ziel: 'erkenner', typ: 'status' })).gesichtLaeufe).toBe(laeufeVor + 5);
+  console.log(`chromium: ms.gesicht ${JSON.stringify(zeiten)} Median ${median(zeiten)} ms, ms ${JSON.stringify(antwort.ms)}`);
+  expect(median(zeiten)).toBeGreaterThan(0);
+  const zonenYunet = antwort.treffer.filter((t: any) => t.quelle === 'yunet').map((t: any) => t.zone);
+  expect(zonenYunet).toEqual(['face', 'head', 'eyes', 'mouth']);
+  // Kopf schluckt Gesicht, Augen und Mund (Verschachteltes entfaellt); nur Augen und Mund an: beide als eigene Flaechen
+  expect(antwort.flaechen.map((f: any) => f.zone)).toEqual(['head']);
+  const nurAugenMund = await ausWorker(worker, gesichtsNachricht(BILD_MIT_GESICHT, ['eyes', 'mouth']));
+  expect(nurAugenMund.ok, nurAugenMund.fehler).toBe(true);
+  expect(nurAugenMund.flaechen.map((f: any) => f.zone).sort()).toEqual(['eyes', 'mouth']);
+  // Lage: Augen und Mund im Gesicht, Augen ueber dem Mund
+  const box = (zone: string) => antwort.treffer.find((t: any) => t.quelle === 'yunet' && t.zone === zone).box as number[];
+  const [ex, ey] = mitte(box('eyes'));
+  const [mx, my] = mitte(box('mouth'));
+  const gesicht = box('face');
+  expect(ey).toBeLessThan(my);
+  for (const [x, y] of [[ex, ey], [mx, my]] as const) {
+    expect(x).toBeGreaterThan(gesicht[0]!);
+    expect(x).toBeLessThan(gesicht[0]! + gesicht[2]!);
+    expect(y).toBeGreaterThan(gesicht[1]!);
+    expect(y).toBeLessThan(gesicht[1]! + gesicht[3]!);
+  }
+  // Das 320n-Gesicht desselben Gesichts entfaellt (jedes Gesicht einmal)
+  expect(antwort.treffer.filter((t: any) => t.zone === 'face' && !t.quelle)).toHaveLength(0);
+
+  const s = await ausWorker(worker, { ziel: 'erkenner', typ: 'status' });
+  console.log(`chromium: status ${JSON.stringify(s)}`);
+  expect(s.gesichtBereit).toBe(true);
+  expect(typeof s.gesichtKaltstartMs).toBe('number');
+  expect(s.gesichtKaltstartMs).toBeLessThan(1500);
+  expect(s.warteschlange).toBe(0);
+});
+
+test('Erkenner: Gesichtszonen aus, kein YuNet-Lauf (kein ms.gesicht, keine Treffer mit quelle yunet)', async () => {
+  const liste = await testbilder('sfw');
+  brauchtTestbilder(liste, 'sfw');
+  const vor = (await ausWorker(worker, { ziel: 'erkenner', typ: 'status' })).gesichtLaeufe;
+  expect(typeof vor).toBe('number');
+  const antwort = await ausWorker(worker, gesichtsNachricht(BILD_MIT_GESICHT, ['breast', 'genitals', 'feet']));
+  expect(antwort.ok, antwort.fehler).toBe(true);
+  expect(antwort.ms.gesicht).toBeUndefined();
+  // Belegt am Zaehler: YuNet hat nicht gerechnet
+  expect((await ausWorker(worker, { ziel: 'erkenner', typ: 'status' })).gesichtLaeufe).toBe(vor);
+  expect(antwort.treffer.some((t: any) => t.quelle === 'yunet')).toBe(false);
+  // Das Gesicht aus 320n ist trotzdem ein Treffer (ohne quelle), nur nicht als Flaeche
+  expect(antwort.treffer.some((t: any) => t.zone === 'face')).toBe(true);
+  expect(antwort.flaechen.some((f: any) => ['eyes', 'mouth', 'face', 'head'].includes(f.zone))).toBe(false);
+});
+
+test('Erkenner: Gesicht nur aus 320n bekommt die verschobenen Baender, YuNet lief trotzdem', async () => {
+  const liste = await testbilder('sfw');
+  brauchtTestbilder(liste, 'sfw');
+  expect(liste).toContain(BILD_NUR_320N);
+  const antwort = await ausWorker(worker, gesichtsNachricht(BILD_NUR_320N, ['eyes', 'mouth']));
+  expect(antwort.ok, antwort.fehler).toBe(true);
+  expect(typeof antwort.ms.gesicht).toBe('number');
+  const g = antwort.treffer.find((t: any) => t.zone === 'face');
+  expect(g).toBeDefined();
+  expect(g.quelle).toBeUndefined();
+  expect(antwort.treffer.some((t: any) => t.quelle === 'yunet')).toBe(false);
+  // Erwartete Flaeche aus der 320n-Box mit derselben Rundung wie der Produktcode (Band mit begrenzeBox, danach mitRand), als Kanten
+  // [x1, y1, x2, y2]. `lage` ist der Beginn des Bandes in Anteilen der Hoehe (neu 0,18 und 0,62, alt 0,22 und 0,66).
+  const [gx, gy, gw, gh] = g.box as [number, number, number, number];
+  console.log(`chromium: 320n-Gesicht ${JSON.stringify(g.box)}, Hoehe ${gh} px, Bild ${antwort.breite} x ${antwort.hoehe}`);
+  expect(gh).toBeGreaterThanOrEqual(100);
+  const erwartet = (zone: 'eyes' | 'mouth', lage: number): number[] => {
+    const eyes = zone === 'eyes';
+    const band = begrenzeBox(gx + (eyes ? 0.05 : 0.2) * gw, gy + lage * gh, (eyes ? 0.9 : 0.6) * gw, 0.24 * gh, antwort.breite, antwort.hoehe);
+    const f = mitRand([{ zone, box: band }], 0.15, antwort.breite, antwort.hoehe)[0]!;
+    return [f.box[0], f.box[1], f.box[0] + f.box[2], f.box[1] + f.box[3]];
+  };
+  const kanten = (f: { box: number[] }): number[] => [f.box[0]!, f.box[1]!, f.box[0]! + f.box[2]!, f.box[1]! + f.box[3]!];
+  const abstand = (a: number[], b: number[]): number => Math.max(...a.map((v, i) => Math.abs(v - b[i]!)));
+  // Flaeche dem Gesicht ueber die Lage zuordnen: Mitte liegt in der 320n-Box
+  const imGesicht = (f: { zone: string; box: number[] }): boolean => {
+    const [cx, cy] = mitte(f.box);
+    return cx >= gx && cx <= gx + gw && cy >= gy && cy <= gy + gh;
+  };
+  const augen = antwort.flaechen.find((f: any) => f.zone === 'eyes' && imGesicht(f));
+  const mund = antwort.flaechen.find((f: any) => f.zone === 'mouth' && imGesicht(f));
+  expect(augen).toBeDefined();
+  expect(mund).toBeDefined();
+  const sollAugen = erwartet('eyes', 0.18);
+  const sollMund = erwartet('mouth', 0.62);
+  console.log(`chromium: Augen ${JSON.stringify(kanten(augen))} soll ${JSON.stringify(sollAugen)}, Mund ${JSON.stringify(kanten(mund))} soll ${JSON.stringify(sollMund)}`);
+  expect(abstand(kanten(augen), sollAugen)).toBeLessThanOrEqual(1);
+  expect(abstand(kanten(mund), sollMund)).toBeLessThanOrEqual(1);
+  // Die alte Lage (Augen ab 22 %, Mund ab 66 %) laege ausserhalb der Toleranz
+  expect(abstand(kanten(augen), erwartet('eyes', 0.22))).toBeGreaterThan(1);
+  expect(abstand(kanten(mund), erwartet('mouth', 0.66))).toBeGreaterThan(1);
 });
 
 test('Erkenner: Bild als Daten (Data-URL) und Rendern beider Stile', async () => {

@@ -40,7 +40,7 @@ function megabyte(bytes: number): string {
 
 function fehlerText(e: unknown): string {
   const nichtsGespeichert = ' Nothing was stored.';
-  if (!(e instanceof PackFehler)) return `Something went wrong while reading that file.${nichtsGespeichert}`;
+  if (!(e instanceof PackFehler)) return `Something went wrong while reading that file.${nichtsGespeichert} Try downloading the pack again.`;
   const code: PackFehlerCode = e.code;
   switch (code) {
     case 'zu-klein':
@@ -49,25 +49,25 @@ function fehlerText(e: unknown): string {
     case 'manifest-ungueltig':
     case 'format':
     case 'format-version':
-      return `That does not look like a Mia Pack, so I can't read it.${nichtsGespeichert}`;
+      return `That doesn't look like a Mia Pack, so I can't read it.${nichtsGespeichert}`;
     case 'zu-gross':
       return `That file is bigger than a pack is allowed to be (300 MB).${nichtsGespeichert}`;
     case 'bildmasse':
     case 'bild-zu-gross':
-      return `A picture inside is bigger than I accept (4096 pixels per side) or I can't read its size.${nichtsGespeichert}`;
+      return `A picture inside is too large (over 4096 pixels on a side), or its size can't be read.${nichtsGespeichert}`;
     case 'veil-zu-alt':
-      return `This pack needs a newer VEIL than the one you have. Update first, then try again.${nichtsGespeichert}`;
+      return `This pack needs a newer version of HYPNOMIA VEIL. Update first, then try again.${nichtsGespeichert}`;
     case 'sha256':
     case 'signatur':
     case 'utf8':
     case 'bereich':
     case 'ueberlappung':
     case 'lesefehler':
-      return `Something inside the pack does not add up. The file may be damaged or cut short.${nichtsGespeichert}`;
+      return `Something inside the pack doesn't add up. The file may be damaged or cut short.${nichtsGespeichert} Try downloading the pack again.`;
     case 'lizenz':
       return `The pack has no usable license text, and I don't add packs without one.${nichtsGespeichert}`;
     default:
-      return `The pack's contents don't follow my rules, so it stays out.${nichtsGespeichert}`;
+      return `The pack contains something that isn't allowed (only pictures, text and data files are), so it stays out.${nichtsGespeichert}`;
   }
 }
 
@@ -83,7 +83,7 @@ function zeichneStand(pack: PackKurz | null, verwaist = false): void {
   if (!pack) {
     // Verwaist: Bilder liegen noch auf dem Geraet, aber ohne Pack-Eintrag. Entfernbar, damit nichts Unbenutzbares zurueckbleibt.
     packStatus.textContent = verwaist
-      ? 'There are leftover pictures here without a pack record. Remove them to start clean.'
+      ? 'I found leftover pictures from an earlier pack. Remove them to start clean.'
       : 'No pack yet. Mosaic and Blur work without it.';
     packDaten.hidden = true;
     entfernenZeile.hidden = !verwaist;
@@ -149,7 +149,7 @@ dateiFeld.addEventListener('change', async () => {
     const geprueft = await pruefePack(quelleAusBlob(datei), browser.runtime.getManifest().version, (fertig, gesamt) => {
       fortschritt.max = Math.max(1, gesamt);
       fortschritt.value = fertig;
-      fortschrittText.textContent = `Checking file ${Math.min(fertig + 1, gesamt)} of ${gesamt}`;
+      fortschrittText.textContent = `Checking file ${Math.min(fertig + 1, gesamt)} of ${gesamt} in the pack`;
     });
     gewaehlt = { datei, geprueft };
     fortschrittZeile.hidden = true;
@@ -175,12 +175,12 @@ annehmen.addEventListener('click', async () => {
   fortschrittZeile.hidden = false;
   fortschritt.removeAttribute('value');
   // Faustwert: kurzzeitig bis etwa das Doppelte der Pack-Groesse an freiem Arbeitsspeicher (siehe src/pack/speicher.ts).
-  fortschrittText.textContent = `Putting the pictures away. This briefly needs free memory of up to about ${megabyte(geprueft.groesse * 2)}.`;
+  fortschrittText.textContent = `Storing the pictures. This can briefly use up to ${megabyte(geprueft.groesse * 2)} of memory.`;
   try {
     const { kurz, stilGesetzt } = await importierePack(datei, geprueft, (fertig, gesamt) => {
       fortschritt.max = Math.max(1, gesamt);
       fortschritt.value = fertig;
-      fortschrittText.textContent = `Putting the pictures away, file ${Math.min(fertig + 1, gesamt)} of ${gesamt}`;
+      fortschrittText.textContent = `Storing the pictures, file ${Math.min(fertig + 1, gesamt)} of ${gesamt}`;
     });
     vergissAuswahl();
     zeichneStand(kurz);
@@ -200,12 +200,12 @@ annehmen.addEventListener('click', async () => {
       vergissAuswahl();
       const abgleich = await gleicheAbUndZeige();
       if (abgleich?.kurz) {
-        zeigeMeldung('The pictures are stored, and I have put the pack record right. Pick Mia patch in the popup to use it.');
+        zeigeMeldung("The pictures are stored, and I've finished setting up the pack. Pick Mia patch in the popup to use it.");
       } else {
-        zeigeMeldung("The pictures are stored, but I couldn't record the pack yet. Open this page again and I will sort it out.", true);
+        zeigeMeldung("The pictures are stored, but I couldn't finish setting up the pack. Open this page again and I'll sort it out.", true);
       }
     } else {
-      zeigeMeldung("The pictures could not be stored, and nothing changed. Try again in a moment.", true);
+      zeigeMeldung("The pictures couldn't be stored, and nothing changed. Try again in a moment.", true);
     }
   } finally {
     setzeBeschaeftigt(false);
@@ -243,10 +243,10 @@ el<HTMLButtonElement>('entfernen-ja').addEventListener('click', async () => {
       if (abgleich && !abgleich.kurz && abgleich.ergebnis !== 'verwaiste-dateien') {
         zeigeMeldung('Pack removed. The cover style is back to Mosaic.');
       } else {
-        zeigeMeldung("The pictures are gone, but I couldn't update everything else. Open this page again and I will finish the cleanup.", true);
+        zeigeMeldung("The pictures are gone, but I couldn't update everything else. Open this page again and I'll finish the cleanup.", true);
       }
     } else {
-      zeigeMeldung('I could not remove the pictures just now, so nothing changed. Try again in a moment.', true);
+      zeigeMeldung("I couldn't remove the pictures just now, so nothing changed. Try again in a moment.", true);
     }
   } finally {
     setzeBeschaeftigt(false);
@@ -262,6 +262,6 @@ browser.storage.onChanged.addListener(horcher);
 window.addEventListener('pagehide', () => browser.storage.onChanged.removeListener(horcher), { once: true });
 
 void gleicheAbUndZeige().then((abgleich) => {
-  if (abgleich?.ergebnis === 'nachgeschrieben') zeigeMeldung('I found a pack whose record had gone missing, and put it right.');
-  else if (abgleich?.ergebnis === 'kurzfassung-entfernt') zeigeMeldung('A pack record had no pictures behind it. I cleaned that up.');
+  if (abgleich?.ergebnis === 'nachgeschrieben') zeigeMeldung('I found your pictures and set the pack up again.');
+  else if (abgleich?.ergebnis === 'kurzfassung-entfernt') zeigeMeldung('I found a pack entry with no pictures behind it and cleaned it up.');
 });

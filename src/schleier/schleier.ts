@@ -31,7 +31,7 @@ import {
   stelleWiederHer,
   starteBildTausch,
   verdeckeNurHintergrund,
-  vergiss,
+  vergiss as vergissElement,
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
@@ -40,7 +40,9 @@ import { Beobachter } from './beobachter';
 import {
   ATTR_SEITE,
   ATTR_STRICT,
+  ATTR_URTEIL,
   AUFRAEUM_VERZOEGERUNG_MS,
+  BLITZ_SPERRE_MS,
   GROSSFLAECHE_ANTEIL,
   HG_SELEKTOR,
   MIN_KANTE,
@@ -51,7 +53,13 @@ import {
   TAB_FRIST_MS,
   TAUSCH_MAX_MS,
   TESTHAKEN,
+  VIDEO_BUDGET_JE_S,
+  VIDEO_FREI_NACH,
+  VIDEO_LAENGSTE_SEITE,
+  VIDEO_NACHFRIST_AUTOPLAY_MS,
   VIDEO_NACHFRIST_MS,
+  VIDEO_TAKT_MS,
+  VIDEO_WECHSEL_MIN_MS,
   ZWEITER_VERSUCH_MS,
   type Art,
 } from './konstanten';
@@ -67,7 +75,8 @@ import {
   Zwischenspeicher,
 } from './pruefung';
 import { entferneWurzelStile, raeumeWurzelStileAuf, schalteWurzelStile } from './shadow';
-import { Status, testhakenAktiv, type Zaehlung } from './status';
+import { freigabeGesperrt, Status, testhakenAktiv, type Zaehlung } from './status';
+import { istSchleifenUmlauf, VideoTakt, type VideoErgebnis, type VideoUrteil } from './video';
 import { neuerZustand, type Zustand } from './zustand';
 
 export interface KontextLeicht {
@@ -76,8 +85,11 @@ export interface KontextLeicht {
 }
 
 type Ergebnis =
-  | { art: 'frei' }
-  | { art: 'verdeckt' }
+  // videoEcht: Video, das Urteil beruht auf einer echten Pruefung: es wird unter den Wechsel-Grenzen gezeigt, danach laeuft die Nachpruefung.
+  | { art: 'frei'; videoEcht?: true }
+  | { art: 'verdeckt'; videoEcht?: true }
+  // Video ohne Bilddaten (readyState unter 2 oder videoWidth 0): zurueck auf "wartet auf loadeddata", nicht endgueltig verdecken.
+  | { art: 'warte' }
   // endgueltig: eine Wiederholung bringt nichts (Netzgrenze: fehler 'privat'), das Element wird sofort verdeckt.
   | { art: 'fehler'; endgueltig?: boolean }
   | { art: 'zensiert'; bild: string }
@@ -129,6 +141,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
   let epoche = 0;
   // Wartezeit des zweiten Versuchs nach einem Fehler (Standard 10 s; nur der Testbau stellt sie per veil-test kuerzer).
   let zweiterVersuchMs = ZWEITER_VERSUCH_MS;
+  // Testhaken: kuenstliche Verzoegerung der Video-Antwort in ms (0 = keine), gesetzt ueber das Ereignis veil-test.
+  let videoVerzoegerungMs = 0;
   // Eingebettete Frames: Adresse des Tabs (eigene Ausnahmen gelten je Tab). null = unbekannt, dann zaehlt nur die eigene Adresse.
   const istRahmen = (() => {
     try {
@@ -157,6 +171,66 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return z;
   };
   const status = new Status(zaehle);
+
+  // ---------- Laufende Nachpruefung von Videos ----------
+
+  const video = new VideoTakt(
+    {
+      aktiv: () => aktiv && lebt(),
+      sichtbar: (el, z) => sichtbarJetzt(el, z),
+      pruefe: (el) => pruefeVideoBild(el),
+      beiStart: (art, zeit) => status.zaehleVideoStart(art, zeit),
+      beiFrist: () => {
+        status.videoFristen++;
+        status.plane();
+      },
+      angezeigt: (el, z) => videoAngezeigt(el, z),
+      beendet: (_el, z) => {
+        // Der Lauf endete, bevor sein Erst-Urteil gezeigt wurde (Element entfernt): das Video muss beim Wiedereinhaengen neu bewertet werden.
+        z.eingereiht = false;
+        z.videoEcht = false;
+      },
+      verwirf: (el, z) => {
+        vergiss(el, z, false);
+        if (aktiv) bewerte(el, z);
+      },
+      wende: (el, z, urteil: VideoUrteil) => {
+        if (z.urteil === null) {
+          // Erst-Urteil: wie jedes Urteil (Zeit fuer sichtbarFreiMs, Zaehlung).
+          if (urteil === 'frei') urteilFrei(el, z);
+          else urteilVerdeckt(el, z);
+          return;
+        }
+        // Wechsel im Takt: urteilMs und data-veil-ms bleiben, wie sie waren.
+        setzeUrteil(el, z, urteil, z.urteilMs);
+        status.videoWechsel++;
+        status.plane();
+      },
+    },
+    {
+      taktMs: VIDEO_TAKT_MS,
+      budgetJeS: VIDEO_BUDGET_JE_S,
+      freiNach: VIDEO_FREI_NACH,
+      wechselMinMs: VIDEO_WECHSEL_MIN_MS,
+      blitzSperreMs: BLITZ_SPERRE_MS,
+    },
+  );
+
+  // Wie anwenden.vergiss, beendet aber zuerst die Nachpruefung des Videos. Das Verbergen eines Videos mit Urteil zaehlt als Wechsel.
+  function vergiss(el: Element, z: Zustand, restore: boolean): void {
+    if (z.art === 'video' && el.getAttribute(ATTR_URTEIL) !== null) {
+      // Massgeblich ist, was das Element zeigt: auch ein vorlaeufig verdecktes Video (Urteil im Zustand leer) wird hier verborgen.
+      video.merkeWechsel(el as HTMLVideoElement);
+      status.videoWechsel++;
+    }
+    video.beende(z);
+    z.videoEcht = false;
+    vergissElement(el, z, restore);
+  }
+
+  function videoAdresse(el: HTMLVideoElement): string {
+    return el.currentSrc || el.src;
+  }
 
   // ---------- Attribute am Wurzelelement ----------
 
@@ -235,9 +309,27 @@ export function starteSchleier(ctx: KontextLeicht): void {
     planeStrictPruefung();
   }
 
+  // Was ein Video gerade zeigt: das Attribut data-veil (frei, verdeckt), sonst verborgen. Mit gesperrter Freigabe (Testhaken) setzt der Schleier
+  // nie ein Attribut, dann gilt das Urteil im Zustand.
+  function videoAngezeigt(el: HTMLVideoElement, z: Zustand): VideoUrteil | null {
+    if (TESTHAKEN && freigabeGesperrt()) return z.urteil === 'frei' || z.urteil === 'verdeckt' ? z.urteil : null;
+    const a = el.getAttribute(ATTR_URTEIL);
+    return a === 'frei' || a === 'verdeckt' ? a : null;
+  }
+
+  // Jedes Urteil eines Videos, das die Anzeige aendert, ist ein Wechsel: fuer die Bremse merken, fuer den Testhaken zaehlen. Steht das Attribut
+  // schon so da (vorlaeufig verdeckt, dann echtes Urteil "verdeckt"), ist es kein Wechsel. Die Adresse des Urteils wird festgehalten.
+  function zaehleVideoWechsel(el: HTMLVideoElement, z: Zustand, neu: VideoUrteil): void {
+    z.adresse = videoAdresse(el) || z.adresse;
+    if (videoAngezeigt(el, z) === neu) return;
+    video.merkeWechsel(el);
+    status.videoWechsel++;
+  }
+
   function urteilFrei(el: Element, z: Zustand): void {
     z.eingereiht = false;
     if (z.art === 'bild') z.adresse = bildAdresse(el as HTMLImageElement);
+    else if (z.art === 'video') zaehleVideoWechsel(el as HTMLVideoElement, z, 'frei');
     setzeUrteil(el, z, 'frei', status.seitStart());
     nachUrteil();
   }
@@ -255,6 +347,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function urteilVerdeckt(el: Element, z: Zustand): void {
     z.eingereiht = false;
     if (nurHintergrundVerdecken(el, z)) verdeckeNurHintergrund(el as HTMLElement, z);
+    if (z.art === 'video') zaehleVideoWechsel(el as HTMLVideoElement, z, 'verdeckt');
     setzeUrteil(el, z, 'verdeckt', status.seitStart());
     nachUrteil();
   }
@@ -330,6 +423,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
     }
     sichtBeobachter?.observe(el); // mehrfaches observe desselben Elements ist unschaedlich
     verfolgt.add(el);
+    // Ein Video, das aus dem Dokument fiel und mit anderer Quelle zurueckkam (die Ereignisse kamen ausserhalb des Dokuments): neu bewerten.
+    if (aktiv && z.art === 'video' && z.urteil !== null && z.adresse !== null) {
+      const jetzt = videoAdresse(el as HTMLVideoElement);
+      if (jetzt && jetzt !== z.adresse) vergiss(el, z, false);
+    }
+    // Ein Video mit echtem Urteil, das aus dem Dokument fiel und zurueckkam, laeuft wieder im Takt.
+    if (aktiv && z.art === 'video' && z.videoEcht && !z.video && (z.urteil === 'frei' || z.urteil === 'verdeckt')) {
+      video.registriere(el as HTMLVideoElement, z, z.urteil);
+    }
     if (aktiv) bewerte(el, z);
   }
 
@@ -376,6 +478,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (geladen) planeVideoNachfrist(el, z);
       return;
     }
+    // Nur Ton und kleine Videos (unter 32 x 32) werden ohne Pruefung und ohne Bremse freigegeben: dort gibt es keinen vollflaechigen Wechsel.
     if (el.videoWidth === 0) return urteilFrei(el, z); // nur Ton
     if (istKlein(el)) return urteilFrei(el, z);
     reihe(el, z);
@@ -383,12 +486,14 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   function planeVideoNachfrist(el: HTMLVideoElement, z: Zustand): void {
     if (z.timer) return;
+    // Autoplay (oder schon laufendes Abspielen): die Daten kommen gleich, bis zu 5 s unsichtbar statt vorlaeufig unscharf (kein Flackern).
+    const frist = el.autoplay || !el.paused ? VIDEO_NACHFRIST_AUTOPLAY_MS : VIDEO_NACHFRIST_MS;
     z.timer = setzeTimer(() => {
       z.timer = null;
       if (!aktiv || z.urteil || z.eingereiht || el.readyState >= 2) return;
       z.vorlaeufig = true;
       urteilVerdeckt(el, z);
-    }, VIDEO_NACHFRIST_MS);
+    }, frist);
   }
 
   function bewerteCanvas(el: HTMLCanvasElement, z: Zustand): void {
@@ -432,6 +537,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function reihe(el: Element, z: Zustand): void {
     if (!aktiv || z.eingereiht || z.urteil) return;
     z.eingereiht = true;
+    // Video: die Adresse schon jetzt festhalten, damit ein Quellenwechsel (loadstart) in der Warteschlange erkannt wird.
+    if (z.art === 'video') z.adresse = videoAdresse(el as HTMLVideoElement) || z.adresse;
     // Sichtbarkeit nur beim Einreihen messen; danach fuehrt der IntersectionObserver sie nach (kein Layout je Auswahl).
     if (!z.sichtMeldung) z.sichtbar = istSichtbar(el);
     wartend.add(el);
@@ -482,7 +589,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
           ergebnis = await pruefeBild(el as HTMLImageElement, z);
           break;
         case 'video':
-          ergebnis = await pruefeVideo(el as HTMLVideoElement);
+          ergebnis = await pruefeVideo(el as HTMLVideoElement, z);
           break;
         case 'canvas':
           ergebnis = await pruefeCanvas(el as HTMLCanvasElement);
@@ -501,9 +608,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function wendeErgebnisAn(el: Element, z: Zustand, e: Ergebnis): void {
     switch (e.art) {
       case 'frei':
+        if (e.videoEcht) return starteVideoTakt(el, z, 'frei');
         return urteilFrei(el, z);
       case 'verdeckt':
+        if (e.videoEcht) return starteVideoTakt(el, z, 'verdeckt');
         return urteilVerdeckt(el, z);
+      case 'warte':
+        // Keine Bilddaten (mehr): das Video wartet auf loadeddata (oder die Nachfrist), siehe bewerteVideo.
+        z.eingereiht = false;
+        return bewerteVideo(el as HTMLVideoElement, z);
       case 'fehler':
         return urteilFehler(el, z, e.endgueltig === true);
       case 'zensiert':
@@ -511,6 +624,12 @@ export function starteSchleier(ctx: KontextLeicht): void {
       case 'zensiertHg':
         return urteilZensiertHg(el as HTMLElement, z, e.wert);
     }
+  }
+
+  // Erst-Urteil eines Videos aus einer echten Pruefung: der Takt zeigt es (Verdecken sofort, Freigeben gebremst) und prueft danach laufend.
+  function starteVideoTakt(el: Element, z: Zustand, urteil: VideoUrteil): void {
+    z.videoEcht = true;
+    video.registriere(el as HTMLVideoElement, z, urteil);
   }
 
   // Antwort aus dem Zwischenspeicher oder frisch: entscheidet ueber das Urteil eines img.
@@ -587,15 +706,40 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return antwort.bild ? { art: 'zensiert', bild: antwort.bild } : { art: 'verdeckt' };
   }
 
-  async function pruefeVideo(el: HTMLVideoElement): Promise<Ergebnis> {
-    // Einzelbild per Canvas. Nicht lesbar: verdeckt (Entscheidung 21). Keine laufende Nachpruefung in dieser Session.
-    // Firefox: nur data:- und blob:-Videos werden gelesen; http(s)-Quellen, srcObject (MediaStream) und leere Adresse ohne Pruefung verdeckt.
-    const px = !el.srcObject && pixelLesenErlaubt(el.currentSrc || el.src) ? lesePixel(el, el.videoWidth, el.videoHeight) : null;
-    if (!px || !einstellungen) return { art: 'verdeckt' };
-    if (!(await wecke(lebt))) return { art: 'fehler' };
-    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, el.videoWidth, el.videoHeight, einstellungen, false, packStandFuer(einstellungen));
-    if (!a.ok) return { art: 'fehler' };
-    return a.flaechen.length ? { art: 'verdeckt' } : { art: 'frei' };
+  // Ein Einzelbild des Videos lesen und vom Erkenner pruefen lassen (erste und laufende Pruefung, Bild hoechstens 640 px).
+  // Firefox: nur data:- und blob:-Videos werden gelesen; http(s)-Quellen, srcObject (MediaStream) und leere Adresse sind 'unlesbar'.
+  async function pruefeVideoBild(el: HTMLVideoElement): Promise<VideoErgebnis | 'unlesbar'> {
+    const e = einstellungen;
+    const px = !el.srcObject && pixelLesenErlaubt(videoAdresse(el)) ? lesePixel(el, el.videoWidth, el.videoHeight, VIDEO_LAENGSTE_SEITE) : null;
+    if (!px || !e) return 'unlesbar';
+    // Testhaken: kuenstlich verzoegerte Antwort (haengender Erkenner), nur im Testbau, per veil-test gesetzt.
+    if (TESTHAKEN && videoVerzoegerungMs > 0) await new Promise<void>((fertig) => setTimeout(fertig, videoVerzoegerungMs));
+    if (!(await wecke(lebt))) return 'fehler';
+    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, px.breite, px.hoehe, e, false, packStandFuer(e));
+    if (!a.ok) return 'fehler';
+    return a.flaechen.length ? 'treffer' : 'sauber';
+  }
+
+  async function pruefeVideo(el: HTMLVideoElement, z: Zustand): Promise<Ergebnis> {
+    // Nicht lesbar: verdeckt ohne Takt (Entscheidung 21, 80). Echte Pruefung: das Urteil startet die laufende Nachpruefung.
+    z.adresse = videoAdresse(el) || z.adresse;
+    const generation = z.generation;
+    const sprungVorher = z.sprung;
+    // Die erste Pruefung zaehlt im Budget mit, wartet aber nicht darauf; laeuft noch eine Pruefung desselben Videos, wartet sie deren Ende ab
+    // (hoechstens 2 Taktzeiten). Danach muss sie noch gelten (Schleier an, Generation gleich) und das Video Bilddaten haben, sonst gibt es keine
+    // Anfrage und kein Budget und das Video wartet auf loadeddata (nicht endgueltig verdeckt).
+    const r = await video.pruefung(
+      el,
+      () => lebt() && aktiv && z.generation === generation && el.readyState >= 2 && el.videoWidth > 0,
+      () => pruefeVideoBild(el),
+    );
+    if (r === 'kein') return { art: 'warte' };
+    if (r === 'unlesbar') return { art: 'verdeckt' };
+    if (r === 'fehler') return { art: 'fehler' };
+    // Ein Sprung waehrend der Pruefung: das geprueft Bild kann veraltet sein. Ein Treffer gilt, ein "sauber" wird verworfen und das Video
+    // (es bleibt verborgen) neu geprueft.
+    if (r === 'sauber' && z.sprung !== sprungVorher) return { art: 'warte' };
+    return r === 'treffer' ? { art: 'verdeckt', videoEcht: true } : { art: 'frei', videoEcht: true };
   }
 
   async function pruefeCanvas(el: HTMLCanvasElement): Promise<Ergebnis> {
@@ -691,6 +835,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         z.sichtMeldung = true;
         z.sichtbar = e.isIntersecting;
         if (e.isIntersecting && !startphaseVorbei) z.sichtbarBeiStart = true;
+        if (z.video) video.sichtGeaendert(z.video);
       }
     });
   }
@@ -815,17 +960,35 @@ export function starteSchleier(ctx: KontextLeicht): void {
         return;
       }
       bewerte(el, z);
-    } else if (z.art === 'video' && e.type === 'loadeddata') {
-      if (z.vorlaeufig) {
-        // Vorlaeufig unscharf gezeigt (keine Daten bis jetzt): richtig pruefen. Das Attribut bleibt bis zum neuen Urteil stehen.
-        z.vorlaeufig = false;
-        z.urteil = null;
+    } else if (z.art === 'video' && (e.type === 'seeking' || e.type === 'seeked')) {
+      // Spruenge zaehlen schon vor dem ersten Urteil: eine Pruefung, die ueber einen Sprung hinweg lief, zeigt ein altes Bild (pruefeVideo).
+      // Der Umlauf bei loop ist kein Sprung (die Nachpruefung laeuft ohnehin im Takt weiter).
+      if (e.type === 'seeking') z.schleife = istSchleifenUmlauf(el as HTMLVideoElement);
+      if (!z.schleife) z.sprung++;
+      // Ein Video, das wegen eines Sprungs ohne Bilddaten wartete (kein neues loadeddata), wird nach dem Sprung neu bewertet.
+      if (e.type === 'seeked' && (el as HTMLVideoElement).readyState >= 2 && (z.vorlaeufig || (!z.urteil && !z.eingereiht))) bilddatenDa(el, z);
+    } else if (z.art === 'video' && (e.type === 'loadstart' || e.type === 'emptied')) {
+      // Quellenwechsel (Playlist, Feed mit wiederverwendetem Element): Urteil verwerfen, wieder verdecken, wie ein neues Video pruefen.
+      const adresse = videoAdresse(el as HTMLVideoElement);
+      if (z.adresse !== null && adresse !== z.adresse && e.type === 'loadstart') {
+        vergiss(el, z, false);
+        bewerte(el, z);
       }
-      bewerte(el, z);
+    } else if (z.art === 'video' && e.type === 'loadeddata') {
+      bilddatenDa(el, z);
     }
   }
 
-  const MEDIEN_EREIGNISSE = ['load', 'error', 'loadeddata'] as const;
+  function bilddatenDa(el: Element, z: Zustand): void {
+    if (z.vorlaeufig) {
+      // Vorlaeufig unscharf gezeigt (keine Daten bis jetzt): richtig pruefen. Das Attribut bleibt bis zum neuen Urteil stehen.
+      z.vorlaeufig = false;
+      z.urteil = null;
+    }
+    bewerte(el, z);
+  }
+
+  const MEDIEN_EREIGNISSE = ['load', 'error', 'loadeddata', 'loadstart', 'emptied', 'seeking', 'seeked'] as const;
   function hoereAb(ziel: Document | ShadowRoot): void {
     for (const name of MEDIEN_EREIGNISSE) ziel.addEventListener(name, beiMedienEreignis, true);
   }
@@ -860,7 +1023,10 @@ export function starteSchleier(ctx: KontextLeicht): void {
         wurzelnMitHoerer.add(new WeakRef(w));
       }
     },
-    entfernt: () => planeAufraeumen(),
+    entfernt: () => {
+      video.raeumeEntfernteAuf();
+      planeAufraeumen();
+    },
     istAus: () => aus,
     hinzugefuegt: (knoten) => {
       if (knoten === document.documentElement) wendeWurzelAttributeAn();
@@ -1115,6 +1281,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       }
     }
     verfolgt.clear();
+    video.stoppAlle();
     sichtBeobachter?.disconnect();
     schalteWurzelStile(true);
     wendeWurzelAttributeAn();
@@ -1172,8 +1339,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
     try {
       let detail = (e as CustomEvent).detail as unknown;
       if (typeof detail === 'string') detail = JSON.parse(detail);
-      const d = detail as { einstellungen?: unknown; zweiterVersuchMs?: unknown; erkennerStatus?: unknown } | null;
+      const d = detail as { einstellungen?: unknown; zweiterVersuchMs?: unknown; videoVerzoegerungMs?: unknown; erkennerStatus?: unknown } | null;
       if (typeof d?.zweiterVersuchMs === 'number' && d.zweiterVersuchMs >= 0) zweiterVersuchMs = d.zweiterVersuchMs;
+      if (typeof d?.videoVerzoegerungMs === 'number' && d.videoVerzoegerungMs >= 0) videoVerzoegerungMs = d.videoVerzoegerungMs;
       // Status des Erkenners abfragen (weckt eine beendete Ereignisseite): die Antwort steht samt der Nummer der Anfrage in data-veil-erkenner.
       if (typeof d?.erkennerStatus === 'number') {
         const nr = d.erkennerStatus;
@@ -1251,6 +1419,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     document.removeEventListener('visibilitychange', beiSichtbarkeit);
     beobachter.stopp();
     klassen.stopp();
+    video.stoppAlle();
     sichtBeobachter?.disconnect();
     for (const t of timer) clearTimeout(t);
     timer.clear();

@@ -36,8 +36,8 @@ test('Gesichtsbaender: Kopf, Augen und Mund aus der Gesichtsbox', () => {
   const z = gesichtsZonen([100, 100, 100, 100], 1000, 1000);
   assert.deepEqual(z.face, [100, 100, 100, 100]);
   assert.deepEqual(z.head, [65, 35, 170, 195]);
-  assert.deepEqual(z.eyes, [105, 122, 90, 24]);
-  assert.deepEqual(z.mouth, [120, 166, 60, 24]);
+  assert.deepEqual(z.eyes, [105, 118, 90, 24]);
+  assert.deepEqual(z.mouth, [120, 162, 60, 24]);
 });
 
 test('Gesichtsbaender: am Bildrand begrenzt', () => {

@@ -200,7 +200,7 @@ test('Einstellungsseite: ohne Pack leerer Stand, Popup sperrt Mia patch und verw
     await seite.goto(popupUrl());
     const patch = seite.locator('input[name="stil"][value="mia-patch"]');
     await expect(patch).toBeDisabled();
-    await expect(seite.locator('#pack-hinweis')).toContainText('locked');
+    await expect(seite.locator('#pack-hinweis')).toContainText('Add the Mia Pack');
     await expect(seite.locator('#pack-link')).toBeVisible();
     await expect(seite.locator('input[name="stil"][value="mosaik"]')).toBeChecked();
   } finally {
@@ -580,14 +580,14 @@ test('Abgleich beim Oeffnen: fehlende Kurzfassung wird nachgeschrieben, verwaist
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
     await seite.reload();
     await expect(seite.locator('#pack-status')).toContainText('Pack in place');
-    await expect(seite.locator('#meldung')).toContainText('put it right');
+    await expect(seite.locator('#meldung')).toContainText('set the pack up again');
     expect(await speicher(seite, 'pack')).toEqual(soll);
 
     // 2. Kurzfassung ohne Pack in IndexedDB: wird entfernt, der Stil geht zurueck auf Mosaik.
     await leereIdb(seite);
     await seite.reload();
     await expect(seite.locator('#pack-status')).toContainText('No pack yet');
-    await expect(seite.locator('#meldung')).toContainText('cleaned that up');
+    await expect(seite.locator('#meldung')).toContainText('cleaned it up');
     expect(await speicher(seite, 'pack')).toBeUndefined();
     expect((await speicher(seite, 'einstellungen')).stil).toBe('mosaik');
 
@@ -623,7 +623,7 @@ test('Einstellungsseite: Pack mit zu grossem Bild (5000 px) wird abgelehnt, nich
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#datei').setInputFiles(pfad);
-    await expect(seite.locator('#meldung')).toContainText('bigger than I accept');
+    await expect(seite.locator('#meldung')).toContainText('too large (over 4096 pixels');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     expect(await speicher(seite, 'pack')).toBeUndefined();
     expect(await zaehleIdb(seite)).toEqual({ dateien: 0, meta: 0 });

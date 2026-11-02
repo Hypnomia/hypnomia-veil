@@ -59,7 +59,8 @@ export interface NachrichtErkennerPruefe {
 }
 export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerPruefe;
 
-export interface Treffer { zone: Zone; bedeckt: boolean; score: number; box: Box }
+// quelle: welches Modell den Treffer lieferte (fehlt = 320n). Gesichtszonen aus YuNet tragen 'yunet' (PHASE-2-BAUPLAN 10.4).
+export interface Treffer { zone: Zone; bedeckt: boolean; score: number; box: Box; quelle?: '320n' | 'yunet' }
 export interface Flaeche { zone: Zone; box: Box }
 
 export interface ZeitenPruefung {
@@ -71,6 +72,8 @@ export interface ZeitenPruefung {
   nach: number;
   render: number;
   gesamt: number;
+  // Gesichtsmodell YuNet (nur wenn eine Gesichtszone an ist), Vorverarbeitung plus Inferenz plus Nachverarbeitung.
+  gesicht?: number;
 }
 
 export interface AntwortErkennerWecke { ok: true; bereit: boolean }
@@ -79,6 +82,11 @@ export interface AntwortErkennerStatus {
   bereit: boolean;
   modell: '320n';
   kaltstartMs: number | null;
+  // Gesichtsmodell YuNet: bereit und Kaltstart (Sitzung bauen), null solange nicht geladen.
+  gesichtBereit?: boolean;
+  gesichtKaltstartMs?: number | null;
+  // Anzahl der YuNet-Laeufe seit Start (Beleg, dass ohne Gesichtszonen nichts rechnet).
+  gesichtLaeufe?: number;
   laeufe: number;
   warteschlange: number;
 }

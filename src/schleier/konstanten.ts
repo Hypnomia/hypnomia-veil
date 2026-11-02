@@ -34,6 +34,17 @@ export const ANTWORT_MAX_MS = 20_000; // so lange wartet eine Pruefanfrage auf d
 export const GROSSFLAECHE_ANTEIL = 0.6; // Inline-Hintergrund ueber diesem Anteil der Fensterflaeche: bei Verdeckung nur der Hintergrund weg, kein Blur
 export const ZWEITER_VERSUCH_MS = 10_000;
 export const VIDEO_NACHFRIST_MS = 1000; // nach load: so lange auf Videodaten warten, danach unscharf zeigen (preload none oder metadata)
+// Laufende Nachpruefung von Videos (PHASE-2-BAUPLAN 10.1).
+// Nachpruefung: je Video hoechstens eine Pruefung in dieser Zeit (auch Sofortpruefungen), bleibt eine Antwort ueber 2 Taktzeiten aus, gilt das
+// wie ein Fehler (verdecken). Die erste Pruefung eines Videos ist davon ausgenommen (kein Taktabstand), wartet aber hoechstens 2 Taktzeiten auf
+// eine noch offene Pruefung desselben Videos.
+export const VIDEO_TAKT_MS = 1000;
+export const VIDEO_BUDGET_JE_S = 4; // je Dokument hoechstens so viele Video-Pruefungen je Sekunde
+export const VIDEO_LAENGSTE_SEITE = 640; // Einzelbild fuer die Pruefung (das Modell rechnet ohnehin auf 320)
+export const VIDEO_FREI_NACH = 3; // saubere Pruefungen in Folge, bis ein verdecktes Video wieder frei wird
+export const VIDEO_WECHSEL_MIN_MS = 1000; // zwischen zwei Urteilswechseln desselben Videos (Blitz-Grenze)
+export const BLITZ_SPERRE_MS = 334; // Freigaben im selben Dokument mindestens so weit auseinander (hoechstens 3 je Sekunde)
+export const VIDEO_NACHFRIST_AUTOPLAY_MS = 5000; // Autoplay ohne Daten nach load: so lange unsichtbar, bevor es vorlaeufig unscharf wird
 export const AUFRAEUM_VERZOEGERUNG_MS = 3000; // nach entfernten Knoten: so lange warten, dann Verweise auf getrennte Elemente loesen
 export const TAB_FRIST_MS = 1500; // eingebettete Frames: so lange auf die Adresse des Tabs warten, danach zaehlt nur die eigene Adresse
 export const ADRESS_TAKT_MS = 400; // Abfrage der eigenen Adresse, nur ohne Navigation API und nur bei vorhandenen Ausnahmen

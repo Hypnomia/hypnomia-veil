@@ -65,15 +65,16 @@ export function pixelLesenErlaubt(url: string): boolean {
   return /^(data|blob):/i.test(url);
 }
 
-// Zeichnet die Quelle auf ein Canvas (laengste Seite hoechstens 1280), prueft die Lesbarkeit mit getImageData(0, 0, 1, 1)
+// Zeichnet die Quelle auf ein Canvas (laengste Seite hoechstens `laengsteSeite`, Standard 1280), prueft die Lesbarkeit mit getImageData(0, 0, 1, 1)
 // und liefert ein JPEG als Data-URL. null = nicht lesbar (Canvas verschmutzt) oder keine Pixel.
 export function lesePixel(
   quelle: CanvasImageSource,
   breite: number,
   hoehe: number,
+  laengsteSeite: number = LAENGSTE_SEITE,
 ): { dataUrl: string; breite: number; hoehe: number } | null {
   if (!(breite > 0) || !(hoehe > 0)) return null;
-  const skala = Math.min(1, LAENGSTE_SEITE / Math.max(breite, hoehe));
+  const skala = Math.min(1, laengsteSeite / Math.max(breite, hoehe));
   const b = Math.max(1, Math.round(breite * skala));
   const h = Math.max(1, Math.round(hoehe * skala));
   try {

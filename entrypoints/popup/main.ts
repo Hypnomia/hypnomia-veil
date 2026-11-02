@@ -74,10 +74,10 @@ function musterFuerSeite(url: URL): string | null {
 // ---------- Anzeige ----------
 
 function statusText(e: Einstellungen): string {
-  if (e.pause) return "Paused. That's always allowed. Resume whenever you like, I'll be here.";
+  if (e.pause) return "Paused on every page. I'll be here when you want me back.";
   if (!seite) return 'Nothing to veil on this page. Everywhere else, I have it covered.';
-  if (passtAusnahme(seite, standardMuster)) return 'This one is on my never-touch list. Nothing is covered here.';
-  if (passtAusnahme(seite, e.ausnahmen)) return "I'm leaving this site alone, as you asked.";
+  if (passtAusnahme(seite, standardMuster)) return 'This site is on my never-touch list: banks, mail, that sort of thing. Nothing is covered here.';
+  if (passtAusnahme(seite, e.ausnahmen)) return "You asked me to skip this site, so I'm leaving it alone.";
   return "On watch. I'll keep the pages quiet for you.";
 }
 
@@ -120,7 +120,7 @@ function zeichneStil(e: Einstellungen): void {
   }
   packHinweis.textContent = frei
     ? `Mia patch uses ${pack?.bilder ?? 0} of my pictures from your pack.`
-    : 'Mia patch is locked until you add the Mia Pack.';
+    : 'Add the Mia Pack and I can cover things with my own pictures.';
   packLink.textContent = frei ? 'Mia Pack settings' : 'Add the Mia Pack';
 }
 
@@ -129,22 +129,22 @@ function zeichneAusnahme(e: Einstellungen): void {
   if (!seite || !muster) {
     ausnahmeKnopf.textContent = 'Leave this site alone';
     ausnahmeKnopf.disabled = true;
-    ausnahmeHinweis.textContent = 'Nothing to leave alone on this page.';
+    ausnahmeHinweis.textContent = 'Not available on this page.';
     return;
   }
   if (passtAusnahme(seite, standardMuster)) {
-    ausnahmeKnopf.textContent = 'Already on the never-touch list';
+    ausnahmeKnopf.textContent = 'On the never-touch list';
     ausnahmeKnopf.disabled = true;
     ausnahmeHinweis.textContent = `${muster} stays untouched. Banks and the like are always safe from me.`;
     return;
   }
   ausnahmeKnopf.disabled = false;
   if (passtAusnahme(seite, e.ausnahmen)) {
-    ausnahmeKnopf.textContent = 'Mia may return here';
+    ausnahmeKnopf.textContent = 'Let Mia back on this site';
     ausnahmeHinweis.textContent = `${muster} is on your list of sites I leave alone.`;
   } else {
     ausnahmeKnopf.textContent = 'Leave this site alone';
-    ausnahmeHinweis.textContent = `Adds ${muster} to your list. I'll stay out of it.`;
+    ausnahmeHinweis.textContent = `I'll skip ${muster} from now on. You can undo it here anytime.`;
   }
 }
 
@@ -173,7 +173,7 @@ for (const zone of ZONEN) {
     const bedeckt = document.createElement('input');
     bedeckt.type = 'checkbox';
     bedeckt.dataset.bedeckt = zone;
-    auch.append(bedeckt, document.createTextNode('also covered'));
+    auch.append(bedeckt, document.createTextNode('even when clothed'));
     zeile.append(auch);
   }
   zonenListe.append(zeile);

@@ -1,6 +1,7 @@
 // Zustand je beobachtetem Element (WeakMap, damit entfernte Elemente freigegeben werden koennen).
 
 import type { Art, Urteil } from './konstanten';
+import type { VideoLauf } from './video';
 
 export interface QuellenOriginal {
   el: Element;
@@ -57,6 +58,14 @@ export interface Zustand {
   vorlaeufig: boolean;
   // Der IntersectionObserver hat schon einmal gemeldet (dann gilt `sichtbar`, vorher die Messung beim Einreihen).
   sichtMeldung: boolean;
+  // Video: das Urteil beruht auf einer echten Pruefung (nicht vorlaeufig, nicht "nicht lesbar"): nur dann laeuft die Nachpruefung.
+  videoEcht: boolean;
+  // Video: Zaehler der Spruenge (seeking, seeked), auch vor dem ersten Urteil. Eine Pruefung, die ueber einen Sprung hinweg lief, zeigt ein
+  // altes Bild. `schleife`: der letzte Sprung war der Umlauf bei loop und zaehlt nicht.
+  sprung: number;
+  schleife: boolean;
+  // Video: laufende Nachpruefung (Takt, Hysterese), null = keine.
+  video: VideoLauf | null;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -80,6 +89,10 @@ export function neuerZustand(art: Art): Zustand {
     fehlerGesehen: false,
     vorlaeufig: false,
     sichtMeldung: false,
+    videoEcht: false,
+    sprung: 0,
+    schleife: false,
+    video: null,
     timer: null,
   };
 }
