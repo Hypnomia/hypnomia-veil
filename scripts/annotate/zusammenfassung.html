@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zusammenfassung der Soll-Zonen</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="seite">
+    <p><a class="link" href="/">Zurück zum Markieren</a></p>
+    <h1>Zusammenfassung</h1>
+    <p id="uebersicht" class="klein">Lade ...</p>
+
+    <h2>Zonen je Satz</h2>
+    <table class="tabelle">
+      <thead>
+        <tr>
+          <th rowspan="2">Zone</th>
+          <th colspan="2">nsfw</th>
+          <th colspan="2">sfw</th>
+        </tr>
+        <tr>
+          <th>sichtbar</th><th>bedeckt</th><th>sichtbar</th><th>bedeckt</th>
+        </tr>
+      </thead>
+      <tbody id="zeilen"></tbody>
+      <tfoot id="fuss"></tfoot>
+    </table>
+
+    <h2>Noch nicht markierte Bilder</h2>
+    <div id="unmarkiert"></div>
+  </main>
+  <script src="/zusammenfassung.js"></script>
+</body>
+</html>

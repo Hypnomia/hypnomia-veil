@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "stand": "2026-11-02",
+  "hinweis": "Entwurf Phase 0. Die Liste ist ungeprueft und muss in Phase 2 im Browser getestet und je Eintrag bestaetigt werden. Eintraege mit unsicher=true sind nicht belegt und werden zuerst geprueft.",
+  "gruppen": [
+    {
+      "name": "Banken und Sparkassen DACH",
+      "grund": "Beim Online-Banking darf kein Schleier die Eingabe von Zugangsdaten, TANs oder Freigaben stoeren.",
+      "muster": [
+        "sparkasse.de",
+        "sparkasse.at",
+        "vr.de",
+        {
+          "muster": "volksbank.de",
+          "unsicher": true
+        },
+        "deutsche-bank.de",
+        "commerzbank.de",
+        "ing.de",
+        "ing.at",
+        "dkb.de",
+        "comdirect.de",
+        "n26.com",
+        "postbank.de",
+        "norisbank.de",
+        "hypovereinsbank.de",
+        "consorsbank.de",
+        "targobank.de",
+        "santander.de",
+        "barclays.de",
+        "lbbw.de",
+        "flatex.de",
+        {
+          "muster": "degiro.de",
+          "unsicher": true
+        },
+        "bunq.com",
+        "erstebank.at",
+        "bankaustria.at",
+        "raiffeisen.at",
+        "bawag.at",
+        "easybank.at",
+        "raiffeisen.ch",
+        "ubs.com",
+        "postfinance.ch",
+        "zkb.ch",
+        "revolut.com",
+        "wise.com",
+        "traderepublic.com",
+        "scalable.capital"
+      ]
+    },
+    {
+      "name": "Bezahldienste",
+      "grund": "Zahlungsfenster und Freigaben muessen unverdeckt und unveraendert bleiben, damit nichts falsch bestaetigt wird.",
+      "muster": [
+        "paypal.com",
+        "klarna.com",
+        "checkout.stripe.com",
+        "js.stripe.com",
+        "hooks.stripe.com",
+        "billing.stripe.com",
+        "pay.google.com",
+        {
+          "muster": "applepay.cdn-apple.com",
+          "unsicher": true
+        },
+        "pay.amazon.com",
+        "sofort.com",
+        {
+          "muster": "giropay.de",
+          "unsicher": true
+        },
+        "adyen.com",
+        "mollie.com",
+        "braintreegateway.com",
+        "wero-wallet.eu",
+        "twint.ch"
+      ]
+    },
+    {
+      "name": "Captchas und Bot-Schutz",
+      "grund": "Captcha-Rahmen duerfen nicht verdeckt werden, sonst scheitert die Pruefung und die Seite sperrt den Zugang.",
+      "muster": [
+        "hcaptcha.com",
+        "google.com/recaptcha",
+        "gstatic.com/recaptcha",
+        "recaptcha.net",
+        "challenges.cloudflare.com",
+        "arkoselabs.com",
+        "geetest.com",
+        "friendlycaptcha.com",
+        "captcha-delivery.com",
+        "datadome.co",
+        "perimeterx.net"
+      ]
+    },
+    {
+      "name": "Konto und Anmeldeseiten",
+      "grund": "Anmeldemasken grosser Anbieter bleiben frei, damit Passwoerter, Passkeys und Zwei-Faktor-Schritte sicher funktionieren.",
+      "muster": [
+        "accounts.google.com",
+        "myaccount.google.com",
+        "appleid.apple.com",
+        "idmsa.apple.com",
+        "login.microsoftonline.com",
+        "login.live.com",
+        "account.microsoft.com",
+        "amazon.de/ap",
+        "amazon.com/ap",
+        "amazon.at/ap",
+        "facebook.com/login",
+        "instagram.com/accounts/login",
+        "linkedin.com/login",
+        "id.atlassian.com",
+        "github.com/login",
+        "login.yahoo.com",
+        "signin.ebay.de",
+        "auth0.com",
+        "okta.com",
+        "login.telekom.de"
+      ]
+    },
+    {
+      "name": "Behoerden und Verwaltung DACH",
+      "grund": "Amtliche Portale verlangen Identitaetsnachweise und Fristen, da darf nichts verdeckt oder verzoegert werden.",
+      "muster": [
+        "bund.de",
+        "elster.de",
+        "bzst.de",
+        "arbeitsagentur.de",
+        "deutsche-rentenversicherung.de",
+        "rentenversicherung.de",
+        "zoll.de",
+        "gematik.de",
+        "das-e-rezept-fuer-deutschland.de",
+        "oesterreich.gv.at",
+        "id-austria.gv.at",
+        "usp.gv.at",
+        "finanzonline.bmf.gv.at",
+        "elga.gv.at",
+        "ch.ch",
+        "admin.ch",
+        "swissid.ch"
+      ]
+    },
+    {
+      "name": "E-Mail",
+      "grund": "Webmail enthaelt Anmeldungen, Rechnungen und Bestaetigungscodes, die jederzeit lesbar sein muessen.",
+      "muster": [
+        "mail.google.com",
+        "outlook.live.com",
+        "outlook.office.com",
+        "outlook.office365.com",
+        "gmx.net",
+        "gmx.de",
+        "gmx.at",
+        "gmx.ch",
+        "web.de",
+        "mail.yahoo.com",
+        "proton.me",
+        "icloud.com/mail",
+        "posteo.de",
+        "mailbox.org",
+        "email.t-online.de",
+        "webmail.freenet.de",
+        "tuta.com",
+        "fastmail.com"
+      ]
+    },
+    {
+      "name": "Videokonferenzen",
+      "grund": "In Live-Gespraechen darf die Oberflaeche nicht verdeckt werden, sonst gehen Bedienelemente und Bild anderer Teilnehmer verloren.",
+      "muster": [
+        "zoom.us",
+        "zoom.com",
+        "teams.microsoft.com",
+        "teams.live.com",
+        {
+          "muster": "teams.cloud.microsoft",
+          "unsicher": true
+        },
+        "meet.google.com",
+        "webex.com",
+        "meet.jit.si",
+        "8x8.vc",
+        "whereby.com",
+        "goto.com"
+      ]
+    },
+    {
+      "name": "Gesundheit und Notfall",
+      "grund": "Arzttermine, Rezepte und Notfallinformationen muessen vollstaendig und ohne Ablenkung lesbar sein.",
+      "muster": [
+        "116117.de",
+        "gesund.bund.de",
+        "warnung.bund.de",
+        "telefonseelsorge.de",
+        "hilfetelefon.de",
+        "teleclinic.com",
+        "doctolib.de",
+        "jameda.de",
+        "zavamed.com",
+        "medgate.ch",
+        {
+          "muster": "kry.de",
+          "unsicher": true
+        },
+        "tk.de",
+        "aok.de",
+        "barmer.de",
+        "dak.de",
+        "gesundheitskasse.at",
+        "css.ch",
+        "helsana.ch"
+      ]
+    },
+    {
+      "name": "Arbeit und Lernen",
+      "grund": "Arbeitswerkzeuge und Lernplattformen werden produktiv genutzt, Eingriffe in die Ansicht stoeren Unterricht und Arbeit.",
+      "muster": [
+        "office.com",
+        "microsoft365.com",
+        "sharepoint.com",
+        "onedrive.live.com",
+        "docs.google.com",
+        "drive.google.com",
+        "calendar.google.com",
+        "slack.com",
+        "notion.so",
+        "atlassian.net",
+        "instructure.com",
+        "blackboard.com",
+        "moodlecloud.com"
+      ]
+    },
+    {
+      "name": "Shops mit Kasse",
+      "grund": "Nur Kassen- und Warenkorbpfade sind ausgenommen, damit Bestellungen nicht durch Verdeckung falsch ausgeloest werden, der Rest des Shops bleibt normal.",
+      "muster": [
+        "amazon.de/gp/buy",
+        "amazon.de/checkout",
+        "amazon.de/gp/cart",
+        "amazon.at/gp/buy",
+        "amazon.com/gp/buy",
+        "amazon.com/checkout",
+        {
+          "muster": "ebay.de/pay",
+          "unsicher": true
+        },
+        {
+          "muster": "pay.ebay.de",
+          "unsicher": true
+        },
+        {
+          "muster": "otto.de/checkout",
+          "unsicher": true
+        },
+        {
+          "muster": "zalando.de/checkout",
+          "unsicher": true
+        },
+        {
+          "muster": "mediamarkt.de/de/checkout",
+          "unsicher": true
+        },
+        {
+          "muster": "ikea.com/de/de/checkout",
+          "unsicher": true
+        },
+        "etsy.com/cart",
+        "etsy.com/checkout",
+        "checkout.shopify.com"
+      ]
+    }
+  ]
+}

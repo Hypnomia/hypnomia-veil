@@ -27,3 +27,12 @@ No connection to any Mia server, no analytics. The extension reloads images of t
 ## Development
 
 German documentation and comments; English interface. See `CLAUDE.md` for the working rules.
+
+Prerequisites for `npm test`:
+
+- Node 22 or newer.
+- Firefox installed. The test looks for it in the default macOS location; set `VEIL_FIREFOX_BIN` to the Firefox binary to use another one.
+- `geckodriver` in your `PATH`. If it is missing, Selenium Manager downloads it on the first run (needs network access).
+- Chromium for Playwright: `npm install` fetches it through the `postinstall` step (`npm run test:setup`).
+
+Commands: `npm test` builds both browsers and runs the Chromium and the Firefox test. Both must be green.

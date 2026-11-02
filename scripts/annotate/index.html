@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soll-Zonen markieren</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="kopf">
+    <div class="kopf-links">
+      <strong id="zaehler">Lade ...</strong>
+      <span id="fortschritt-text" class="klein"></span>
+    </div>
+    <div class="satzwahl" role="group" aria-label="Bildsatz">
+      <button type="button" class="satz" data-satz="nsfw" id="satz-nsfw">nsfw</button>
+      <button type="button" class="satz" data-satz="sfw" id="satz-sfw">sfw</button>
+    </div>
+    <a class="link" href="/zusammenfassung">Zusammenfassung</a>
+  </header>
+  <div class="balken" aria-hidden="true"><div id="balken-fuellung"></div></div>
+
+  <main class="haupt">
+    <section class="bildspalte">
+      <div class="bildrahmen">
+        <img id="bild" alt="Aktuelles Testbild" hidden>
+        <p id="leer" class="leer" hidden>In diesem Satz liegen noch keine Bilder.</p>
+      </div>
+      <p id="dateiname" class="klein dateiname"></p>
+    </section>
+
+    <section class="steuerspalte">
+      <table class="zonen" aria-label="Zonen">
+        <thead>
+          <tr><th>Zone</th><th>sichtbar (unbedeckt)</th><th>bedeckt/bekleidet</th></tr>
+        </thead>
+        <tbody id="zonen"></tbody>
+      </table>
+
+      <label class="kein-mensch">
+        <input type="checkbox" id="kein-mensch">
+        <span>kein Mensch im Bild <kbd>N</kbd></span>
+      </label>
+
+      <label class="notiz">
+        <span>Notiz</span>
+        <input type="text" id="notiz" maxlength="500" autocomplete="off" placeholder="optional, eine Zeile">
+      </label>
+
+      <div class="knoepfe">
+        <button type="button" id="zurueck">Zurück <kbd>←</kbd></button>
+        <button type="button" id="speichern-weiter" class="haupt-knopf">Speichern und weiter <kbd>→</kbd></button>
+        <button type="button" id="ueberspringen">Überspringen</button>
+      </div>
+      <p id="status" class="status" role="status"></p>
+
+      <p class="hilfe klein">
+        Tasten: <kbd>←</kbd> <kbd>→</kbd> blättern (speichert Änderungen automatisch),
+        <kbd>1</kbd> bis <kbd>0</kbd> schalten "sichtbar", <kbd>Umschalt</kbd> + Ziffer schaltet "bedeckt",
+        <kbd>S</kbd> speichert, <kbd>N</kbd> kein Mensch.
+      </p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
