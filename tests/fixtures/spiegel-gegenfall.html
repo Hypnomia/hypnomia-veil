@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <title>Veil Spiegel-Gegenfaelle</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; background: #111; color: #eee; }
+      .g { position: relative; width: 320px; height: 220px; margin: 0 0 8px; background: #222; }
+      .g video, .g canvas { position: absolute; display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- Gegenfaelle zur Spiegel-Regel (PHASE-3-BAUPLAN S7): Leinwaende, die KEIN Spiegel sind und darum selbst geprueft werden.
+         1. g-nsfw-klein: Leinwand mit Testbild, ein kleines Video (100 x 100) ueberdeckt sie zu weniger als 50 %.
+         2. g-sfw-klein: dasselbe mit einem neutralen Farbverlauf (frei).
+         3. g-nsfw-ton und g-sfw-ton: Leinwand mit Testbild beziehungsweise Farbverlauf unter einem grossen Video nur mit Ton (WAV): bindet nicht,
+            wird selbst geprueft (verdeckt beziehungsweise frei).
+         Das Bild kommt vom Testserver (gleicher Ursprung, lesbar), das Video aus einem Leinwand-Strom, das Tonvideo aus einer erzeugten WAV-Datei. -->
+    <div class="g" id="g1">
+      <video id="g-video-klein" muted autoplay playsinline style="left: 0; top: 0; width: 100px; height: 100px"></video>
+      <canvas id="g-nsfw-klein" width="200" height="200" style="left: 60px; top: 0; width: 200px; height: 200px"></canvas>
+    </div>
+    <div class="g" id="g2">
+      <video id="g-video-klein2" muted autoplay playsinline style="left: 0; top: 0; width: 100px; height: 100px"></video>
+      <canvas id="g-sfw-klein" width="200" height="200" style="left: 60px; top: 0; width: 200px; height: 200px"></canvas>
+    </div>
+    <div class="g" id="g3">
+      <video id="g-ton" muted autoplay playsinline style="left: 0; top: 0; width: 200px; height: 200px; opacity: 0"></video>
+      <canvas id="g-nsfw-ton" width="200" height="200" style="left: 0; top: 0; width: 200px; height: 200px"></canvas>
+    </div>
+    <div class="g" id="g4">
+      <video id="g-ton2" muted autoplay playsinline style="left: 0; top: 0; width: 200px; height: 200px; opacity: 0"></video>
+      <canvas id="g-sfw-ton" width="200" height="200" style="left: 0; top: 0; width: 200px; height: 200px"></canvas>
+    </div>
+    <script>
+      (function () {
+        var bild = new URLSearchParams(location.search).get('bild') || '';
+
+        function verlauf(c, versatz) {
+          var g = c.getContext('2d');
+          var v = g.createLinearGradient(0, 0, c.width, c.height);
+          v.addColorStop(0, 'hsl(' + versatz + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, c.width, c.height);
+        }
+
+        // Kleines Video aus einem Leinwand-Strom (neutraler Farbverlauf, laeuft).
+        function strom(video) {
+          var q = document.createElement('canvas');
+          q.width = 160;
+          q.height = 160;
+          var t = 0;
+          verlauf(q, 0);
+          setInterval(function () { verlauf(q, (t += 7) % 360); }, 60);
+          video.srcObject = q.captureStream(15);
+          video.play().catch(function () {});
+        }
+
+        // WAV mit 0,5 s Stille: ein Video-Element mit Ton und ohne Bild (videoWidth 0).
+        function wav() {
+          var n = 4000;
+          var daten = new ArrayBuffer(44 + n * 2);
+          var d = new DataView(daten);
+          var text = function (o, s) { for (var i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
+          text(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); text(8, 'WAVE'); text(12, 'fmt ');
+          d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true);
+          d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); text(36, 'data'); d.setUint32(40, n * 2, true);
+          return new Blob([daten], { type: 'audio/wav' });
+        }
+
+        function ladeBild() {
+          return new Promise(function (fertig, fehler) {
+            var i = new Image();
+            i.onload = function () { fertig(i); };
+            i.onerror = function () { fehler(new Error('Testbild nicht ladbar')); };
+            i.src = '/testbild/nsfw/' + encodeURIComponent(bild);
+          });
+        }
+
+        ladeBild().then(function (img) {
+          ['g-nsfw-klein', 'g-nsfw-ton'].forEach(function (id) {
+            var c = document.getElementById(id);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          });
+          verlauf(document.getElementById('g-sfw-klein'), 200);
+          strom(document.getElementById('g-video-klein'));
+          strom(document.getElementById('g-video-klein2'));
+          var ton = document.getElementById('g-ton');
+          ton.src = URL.createObjectURL(wav());
+          ton.play().catch(function () {});
+          verlauf(document.getElementById('g-sfw-ton'), 100);
+          var ton2 = document.getElementById('g-ton2');
+          ton2.src = URL.createObjectURL(wav());
+          ton2.play().catch(function () {});
+          document.documentElement.dataset.filmBereit = '1';
+        });
+
+        window.testUrteile = function () {
+          var aus = {};
+          var liste = document.querySelectorAll('video, canvas');
+          for (var i = 0; i < liste.length; i++) aus[liste[i].id] = liste[i].getAttribute('data-veil') || '';
+          return aus;
+        };
+      })();
+    </script>
+  </body>
+</html>

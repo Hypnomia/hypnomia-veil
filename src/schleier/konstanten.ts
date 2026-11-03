@@ -22,6 +22,11 @@ export type Urteil = 'frei' | 'zensiert' | 'verdeckt';
 export type Art = 'bild' | 'video' | 'canvas' | 'hintergrund' | 'klasse';
 
 export const MIN_KANTE = 32; // Elemente unter 32 x 32 werden sofort freigegeben
+// Vorrang in der Warteschlange (src/schleier/vorrang.ts): kleine Elemente (laengste dargestellte Seite unter diesem Wert) kommen nach den
+// grossen derselben Naehe; "nah" ist der Bereich zwei Bildschirmhoehen ueber und unter dem Sichtbereich (zweiter IntersectionObserver).
+export const VORRANG_KLEIN_PX = 150;
+export const VORRANG_NAH_FAKTOR = 2; // Bildschirmhoehen ueber und unter dem Sichtbereich
+export const VORRANG_NAH_RAND = `${VORRANG_NAH_FAKTOR * 100}% 0px`;
 export const PARALLEL = 3; // gleichzeitige Anfragen
 export const LAENGSTE_SEITE = 1280; // Canvas-Weg: laengste Seite
 export const JPEG_QUALITAET = 0.85;

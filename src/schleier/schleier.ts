@@ -38,6 +38,8 @@ import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } 
 import { AdressBeobachter } from './adresse';
 import { Beobachter } from './beobachter';
 import {
+  ATTR_MS,
+  ATTR_NUR_HG,
   ATTR_SEITE,
   ATTR_STRICT,
   ATTR_URTEIL,
@@ -60,6 +62,9 @@ import {
   VIDEO_NACHFRIST_MS,
   VIDEO_TAKT_MS,
   VIDEO_WECHSEL_MIN_MS,
+  VORRANG_KLEIN_PX,
+  VORRANG_NAH_FAKTOR,
+  VORRANG_NAH_RAND,
   ZWEITER_VERSUCH_MS,
   type Art,
 } from './konstanten';
@@ -75,9 +80,11 @@ import {
   Zwischenspeicher,
 } from './pruefung';
 import { entferneWurzelStile, raeumeWurzelStileAuf, schalteWurzelStile } from './shadow';
+import { leinwandLeer, Spiegel } from './spiegel';
 import { freigabeGesperrt, Status, testhakenAktiv, type Zaehlung } from './status';
 import { istSchleifenUmlauf, VideoTakt, type VideoErgebnis, type VideoUrteil } from './video';
 import { neuerZustand, type Zustand } from './zustand';
+import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
 
 export interface KontextLeicht {
   readonly isValid: boolean;
@@ -93,7 +100,9 @@ type Ergebnis =
   // endgueltig: eine Wiederholung bringt nichts (Netzgrenze: fehler 'privat'), das Element wird sofort verdeckt.
   | { art: 'fehler'; endgueltig?: boolean }
   | { art: 'zensiert'; bild: string }
-  | { art: 'zensiertHg'; wert: string };
+  | { art: 'zensiertHg'; wert: string }
+  // Leinwand ist Spiegel eines Videos: kein eigenes Urteil, sie folgt dem Video (spiegel.ts).
+  | { art: 'spiegel' };
 
 interface QuelleMitMass {
   quelle: Quelle;
@@ -174,6 +183,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // ---------- Laufende Nachpruefung von Videos ----------
 
+  // Zeit der letzten Freigabe eines Videos (oder eines Spiegels ausserhalb eines Video-Wechsels) im Dokument, fuer die Bremse der Spiegel.
+  let letzteVideoFreigabe = Number.NEGATIVE_INFINITY;
+
   const video = new VideoTakt(
     {
       aktiv: () => aktiv && lebt(),
@@ -197,11 +209,14 @@ export function starteSchleier(ctx: KontextLeicht): void {
       wende: (el, z, urteil: VideoUrteil) => {
         if (z.urteil === null) {
           // Erst-Urteil: wie jedes Urteil (Zeit fuer sichtbarFreiMs, Zaehlung).
-          if (urteil === 'frei') urteilFrei(el, z);
-          else urteilVerdeckt(el, z);
+          if (urteil === 'frei') {
+            letzteVideoFreigabe = performance.now();
+            urteilFrei(el, z);
+          } else urteilVerdeckt(el, z);
           return;
         }
         // Wechsel im Takt: urteilMs und data-veil-ms bleiben, wie sie waren.
+        if (urteil === 'frei') letzteVideoFreigabe = performance.now();
         setzeUrteil(el, z, urteil, z.urteilMs);
         status.videoWechsel++;
         status.plane();
@@ -216,6 +231,54 @@ export function starteSchleier(ctx: KontextLeicht): void {
     },
   );
 
+  // Spiegel-Leinwaende (PHASE-3-BAUPLAN S1 bis S7): eine Leinwand direkt neben einem Video, die es ueberdeckt, wird nie selbst geprueft und
+  // folgt dem Urteil ihres Videos (spiegel.ts). Die Wechsel im Takt gehen im selben Augenblick mit; Freigaben ausserhalb eines Video-Wechsels
+  // (Neubindung, Wiederfinden) laufen ueber dieselbe Bremse wie Videos.
+  const spiegel = new Spiegel(
+    {
+      zustand: (el) => zustaende.get(el),
+      angezeigt: (el, z) => videoAngezeigt(el, z),
+      setze: (c, z, urteil) => {
+        // Antworten aelterer Pruefungen dieser Leinwand (Warteschlange) gelten nicht mehr.
+        z.generation++;
+        z.eingereiht = false;
+        if (z.timer) clearTimeout(z.timer);
+        z.timer = null;
+        setzeUrteil(c, z, urteil, z.urteilMs ?? status.seitStart());
+        nachUrteil();
+      },
+      vergiss: (c, z) => {
+        vergissElement(c, z, false);
+        nachUrteil();
+      },
+      bewerte: (c, z) => {
+        if (aktiv) bewerte(c, z);
+      },
+      aktiv: () => aktiv && lebt(),
+      jetzt: () => performance.now(),
+      timer: (fn, ms) => {
+        const t = setzeTimer(fn, ms);
+        return () => {
+          clearTimeout(t);
+          timer.delete(t);
+        };
+      },
+      letzteFreigabe: () => letzteVideoFreigabe,
+      merkeFreigabe: (zeit) => {
+        letzteVideoFreigabe = Math.max(letzteVideoFreigabe, zeit);
+      },
+      gebunden: (c, z) => {
+        // Ein Spiegel wird nie selbst geprueft: Zeitgeber der eigenen Pruefung und Platz in der Warteschlange entfallen.
+        if (z.timer) clearTimeout(z.timer);
+        z.timer = null;
+        wartend.delete(c);
+      },
+    },
+    { minKante: MIN_KANTE, wechselMinMs: VIDEO_WECHSEL_MIN_MS, blitzSperreMs: BLITZ_SPERRE_MS, aufraeumMs: AUFRAEUM_VERZOEGERUNG_MS },
+  );
+  video.beiWechsel = (el) => spiegel.angleichen(el);
+  video.beiErgebnis = (el) => spiegel.pruefeNachbarn(el);
+
   // Wie anwenden.vergiss, beendet aber zuerst die Nachpruefung des Videos. Das Verbergen eines Videos mit Urteil zaehlt als Wechsel.
   function vergiss(el: Element, z: Zustand, restore: boolean): void {
     if (z.art === 'video' && el.getAttribute(ATTR_URTEIL) !== null) {
@@ -226,6 +289,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
     video.beende(z);
     z.videoEcht = false;
     vergissElement(el, z, restore);
+    // Spiegel (S3): wird das Video zurueckgesetzt, gehen seine Leinwaende mit zurueck; eine zurueckgesetzte Leinwand wird neu zugeordnet.
+    if (z.art === 'video') spiegel.angleichen(el as HTMLVideoElement);
+    else if (z.art === 'canvas') spiegel.loese(el as HTMLCanvasElement);
   }
 
   function videoAdresse(el: HTMLVideoElement): string {
@@ -331,6 +397,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (z.art === 'bild') z.adresse = bildAdresse(el as HTMLImageElement);
     else if (z.art === 'video') zaehleVideoWechsel(el as HTMLVideoElement, z, 'frei');
     setzeUrteil(el, z, 'frei', status.seitStart());
+    if (z.art === 'video') spiegel.beiVideoUrteil(el as HTMLVideoElement);
     nachUrteil();
   }
 
@@ -349,6 +416,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (nurHintergrundVerdecken(el, z)) verdeckeNurHintergrund(el as HTMLElement, z);
     if (z.art === 'video') zaehleVideoWechsel(el as HTMLVideoElement, z, 'verdeckt');
     setzeUrteil(el, z, 'verdeckt', status.seitStart());
+    if (z.art === 'video') spiegel.beiVideoUrteil(el as HTMLVideoElement);
     nachUrteil();
   }
 
@@ -420,6 +488,11 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (!z) {
       z = neuerZustand(art);
       zustaende.set(el, z);
+      // Neues Element: Urteil-Attribute, die nicht von diesem Script stammen (Seite oder frueheres Script), gelten nicht. Sonst hielte ein
+      // von der Seite gesetztes data-veil="frei" das Element ohne Pruefung sichtbar.
+      el.removeAttribute(ATTR_URTEIL);
+      el.removeAttribute(ATTR_NUR_HG);
+      if (ATTR_MS) el.removeAttribute(ATTR_MS);
     }
     sichtBeobachter?.observe(el); // mehrfaches observe desselben Elements ist unschaedlich
     verfolgt.add(el);
@@ -432,6 +505,11 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (aktiv && z.art === 'video' && z.videoEcht && !z.video && (z.urteil === 'frei' || z.urteil === 'verdeckt')) {
       video.registriere(el as HTMLVideoElement, z, z.urteil);
     }
+    // Spiegel (S7): die Zuordnung wird auch beim Entdecken geprueft. Ein Video (auch ohne Urteil) ordnet die Leinwaende in seiner Naehe neu ein;
+    // eine Leinwand mit Urteil oder Platz in der Schlange wird gegen ihr Video abgeglichen (weicht es ab: vergessen und neu bewertet). Ohne
+    // Urteil und ohne Platz in der Schlange ordnet bewerteCanvas zu.
+    if (aktiv && z.art === 'video') spiegel.beiVideoEntdeckt(el as HTMLVideoElement);
+    else if (aktiv && z.art === 'canvas' && (z.urteil !== null || z.eingereiht)) spiegel.ordne(el as HTMLCanvasElement, z);
     if (aktiv) bewerte(el, z);
   }
 
@@ -497,6 +575,12 @@ export function starteSchleier(ctx: KontextLeicht): void {
   }
 
   function bewerteCanvas(el: HTMLCanvasElement, z: Zustand): void {
+    // Spiegel eines Videos: nie selbst pruefen, das Urteil folgt dem Video (auch eine Leinwand ohne Flaeche, auch vor dem load-Ereignis).
+    if (spiegel.ordne(el, z)) {
+      if (z.timer) clearTimeout(z.timer);
+      z.timer = null;
+      return;
+    }
     if (istKlein(el)) return urteilFrei(el, z);
     if (!geladen || z.timer) return; // nach load, mit kleiner Verzoegerung
     z.timer = setzeTimer(() => {
@@ -539,39 +623,54 @@ export function starteSchleier(ctx: KontextLeicht): void {
     z.eingereiht = true;
     // Video: die Adresse schon jetzt festhalten, damit ein Quellenwechsel (loadstart) in der Warteschlange erkannt wird.
     if (z.art === 'video') z.adresse = videoAdresse(el as HTMLVideoElement) || z.adresse;
-    // Sichtbarkeit nur beim Einreihen messen; danach fuehrt der IntersectionObserver sie nach (kein Layout je Auswahl).
-    if (!z.sichtMeldung) z.sichtbar = istSichtbar(el);
+    // Groesse, Sichtbarkeit und Naehe nur beim Einreihen messen (ein Layout-Zugriff); danach fuehren die IntersectionObserver sie nach
+    // (kein Layout je Auswahl). Vor der ersten Meldung eines Beobachters gilt die Messung.
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) z.klein = istKleinDargestellt(r, VORRANG_KLEIN_PX);
+    if (!z.sichtMeldung) z.sichtbar = liegtImBereich(r, innerHeight, innerWidth, 0);
+    if (!z.nahMeldung) z.nah = liegtImBereich(r, innerHeight, innerWidth, nahFaktor);
     wartend.add(el);
     starteNaechste();
   }
 
+  // Vorrang in der Warteschlange (vorrang.ts): ein Durchlauf, keine Sortierung. Stufen: sichtbar gross, sichtbar klein, nah gross,
+  // nah klein, Rest; innerhalb der Stufe in Einreihungsfolge. Nichts wird ausgelassen: Stufe 5 kommt dran, sobald die vorderen leer sind.
   function waehleNaechstes(): Element | null {
-    let erstes: Element | null = null;
-    for (const el of wartend) {
+    return waehleNachVorrang(wartend, (el) => {
       const z = zustaende.get(el);
       if (!z) {
         wartend.delete(el);
-        continue;
+        return 0;
       }
       if (!el.isConnected) {
         // Aus dem Dokument gefallen: nicht mehr pruefen. Kommt es zurueck, meldet der Beobachter es erneut.
         wartend.delete(el);
         z.eingereiht = false;
-        continue;
+        return 0;
       }
-      if (z.sichtbar) return el; // Sichtbares zuerst
-      erstes ??= el;
-    }
-    return erstes;
+      return vorrangStufe(z.sichtbar, z.nah, z.klein);
+    });
   }
 
+  // Zwei Bildschirmhoehen ueber und unter dem Sichtbereich (derselbe Wert bildet VORRANG_NAH_RAND).
+  const nahFaktor = VORRANG_NAH_FAKTOR;
+  // Testhaken (nur Testbau, per veil-test): Halt sperrt den Start jeder Pruefung (die Warteschlange fuellt sich), die Verzoegerung haelt
+  // einen Platz der Parallelitaet vor jeder Pruefung fest (kuenstlich langsamer Erkenner).
+  let warteschlangeHalt = false;
+  let pruefVerzoegerungMs = 0;
+
   function starteNaechste(): void {
+    if (TESTHAKEN && warteschlangeHalt) return;
     while (aktiv && lebt() && laufend < PARALLEL && wartend.size) {
       const el = waehleNaechstes();
       if (!el) break;
       wartend.delete(el);
       laufend++;
-      void verarbeite(el).finally(() => {
+      const lauf =
+        TESTHAKEN && pruefVerzoegerungMs > 0
+          ? new Promise<void>((fertig) => setTimeout(fertig, pruefVerzoegerungMs)).then(() => verarbeite(el))
+          : verarbeite(el);
+      void lauf.finally(() => {
         laufend--;
         starteNaechste();
       });
@@ -592,7 +691,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
           ergebnis = await pruefeVideo(el as HTMLVideoElement, z);
           break;
         case 'canvas':
-          ergebnis = await pruefeCanvas(el as HTMLCanvasElement);
+          ergebnis = await pruefeCanvas(el as HTMLCanvasElement, z);
           break;
         default:
           ergebnis = await pruefeHintergrund(el, z);
@@ -606,7 +705,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
   }
 
   function wendeErgebnisAn(el: Element, z: Zustand, e: Ergebnis): void {
+    // Spiegel (S7): ein Ergebnis aus der Warteschlange wird vor dem Anwenden gegen den aktuellen Stand abgeglichen. Ist die Leinwand inzwischen
+    // Spiegel eines Videos, gilt nur dessen Urteil (kein veraltetes "frei" aus der Zeit vor der Zuordnung); ohne Urteil des Videos bleibt sie verborgen.
+    if (z.art === 'canvas' && (e.art === 'spiegel' || spiegel.ordne(el as HTMLCanvasElement, z))) {
+      z.eingereiht = false;
+      return;
+    }
     switch (e.art) {
+      case 'spiegel':
+        return;
       case 'frei':
         if (e.videoEcht) return starteVideoTakt(el, z, 'frei');
         return urteilFrei(el, z);
@@ -742,9 +849,14 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return r === 'treffer' ? { art: 'verdeckt', videoEcht: true } : { art: 'frei', videoEcht: true };
   }
 
-  async function pruefeCanvas(el: HTMLCanvasElement): Promise<Ergebnis> {
-    // Canvas ohne Lesezugriff sind meist Spiele und Diagramme: freigeben [Likely].
+  async function pruefeCanvas(el: HTMLCanvasElement, z: Zustand): Promise<Ergebnis> {
+    // Ein Spiegel wird nie gelesen (S4). Erst nach dem Einreihen als Spiegel erkannt: er nimmt das Urteil des Videos, ohne Urteil bleibt er
+    // verborgen (der naechste Urteilswechsel des Videos gleicht ihn an).
+    if (spiegel.ordne(el, z)) return { art: 'spiegel' };
+    // Canvas ohne Lesezugriff sind meist Spiele und Diagramme: freigeben [Likely]. Nicht so eine Leinwand, die einmal Spiegel war (S7): ein
+    // unlesbarer oder leerer Zugriff (WebGL) gibt sie nie frei, sie bleibt verdeckt, bis sie neu gebunden ist.
     const px = lesePixel(el, el.width, el.height);
+    if (spiegel.warSpiegel(el) && (!px || leinwandLeer(el))) return { art: 'verdeckt' };
     if (!px || !einstellungen) return { art: 'frei' };
     if (!(await wecke(lebt))) return { art: 'fehler' };
     const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, el.width, el.height, einstellungen, false, packStandFuer(einstellungen));
@@ -826,18 +938,37 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // ---------- Startphase und Strict ----------
 
-  let sichtBeobachter: IntersectionObserver | null = null;
+  // Zwei Beobachter (vorrang.ts): der erste meldet den Sichtbereich, der zweite den Bereich zwei Bildschirmhoehen darum (Vorrang "nah").
+  // Die Eintraege bringen das Rechteck mit: die dargestellte Groesse (klein) wird ohne Layout-Zugriff nachgefuehrt.
+  let sichtBeobachter: SichtBeobachter | null = null;
   if (typeof IntersectionObserver !== 'undefined') {
-    sichtBeobachter = new IntersectionObserver((eintraege) => {
-      for (const e of eintraege) {
-        const z = zustaende.get(e.target);
-        if (!z) continue;
-        z.sichtMeldung = true;
-        z.sichtbar = e.isIntersecting;
-        if (e.isIntersecting && !startphaseVorbei) z.sichtbarBeiStart = true;
-        if (z.video) video.sichtGeaendert(z.video);
-      }
-    });
+    const merkeGroesse = (z: Zustand, e: IntersectionObserverEntry) => {
+      const r = e.boundingClientRect;
+      if (r.width > 0 && r.height > 0) z.klein = istKleinDargestellt(r, VORRANG_KLEIN_PX);
+    };
+    sichtBeobachter = new SichtBeobachter(
+      (eintraege) => {
+        for (const e of eintraege) {
+          const z = zustaende.get(e.target);
+          if (!z) continue;
+          z.sichtMeldung = true;
+          z.sichtbar = e.isIntersecting;
+          merkeGroesse(z, e);
+          if (e.isIntersecting && !startphaseVorbei) z.sichtbarBeiStart = true;
+          if (z.video) video.sichtGeaendert(z.video);
+        }
+      },
+      (eintraege) => {
+        for (const e of eintraege) {
+          const z = zustaende.get(e.target);
+          if (!z) continue;
+          z.nahMeldung = true;
+          z.nah = e.isIntersecting;
+          merkeGroesse(z, e);
+        }
+      },
+      VORRANG_NAH_RAND,
+    );
   }
 
   let startPlan: ReturnType<typeof setTimeout> | null = null;
@@ -1102,9 +1233,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
         if (z) z.eingereiht = false;
       }
       sichtBeobachter?.unobserve(el);
+      // Kommt das Element zurueck, meldet der Beobachter neu: bis dahin gilt wieder die Messung beim Einreihen.
+      const zg = zustaende.get(el);
+      if (zg) zg.sichtMeldung = zg.nahMeldung = false;
     }
     for (const ref of wurzelnMitHoerer) if (!ref.deref()) wurzelnMitHoerer.delete(ref);
     raeumeWurzelStileAuf();
+    // Spiegel (S7): erst jetzt, nach der Verzoegerung, loest sich die Bindung einer Leinwand an ein entferntes Video. Ist ein Video noch zu jung
+    // getrennt, folgt ein weiterer Durchlauf.
+    if (spiegel.raeumeAuf() > 0) planeAufraeumen();
   }
 
   function beiLoad(): void {
@@ -1279,6 +1416,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (z && (warAktiv || z.urteil)) {
         vergiss(el, z, true);
       }
+      // Die Beobachter werden getrennt: nach der Pause wird Sicht und Naehe beim Einreihen neu gemessen.
+      if (z) z.sichtMeldung = z.nahMeldung = false;
     }
     verfolgt.clear();
     video.stoppAlle();
@@ -1339,9 +1478,22 @@ export function starteSchleier(ctx: KontextLeicht): void {
     try {
       let detail = (e as CustomEvent).detail as unknown;
       if (typeof detail === 'string') detail = JSON.parse(detail);
-      const d = detail as { einstellungen?: unknown; zweiterVersuchMs?: unknown; videoVerzoegerungMs?: unknown; erkennerStatus?: unknown } | null;
+      const d = detail as {
+        einstellungen?: unknown;
+        zweiterVersuchMs?: unknown;
+        videoVerzoegerungMs?: unknown;
+        pruefVerzoegerungMs?: unknown;
+        warteschlangeHalt?: unknown;
+        erkennerStatus?: unknown;
+      } | null;
       if (typeof d?.zweiterVersuchMs === 'number' && d.zweiterVersuchMs >= 0) zweiterVersuchMs = d.zweiterVersuchMs;
       if (typeof d?.videoVerzoegerungMs === 'number' && d.videoVerzoegerungMs >= 0) videoVerzoegerungMs = d.videoVerzoegerungMs;
+      // Vorrang-Tests: kuenstlich langsamer Erkenner (Bilder, Hintergruende) und angehaltene Warteschlange (Ende des Halts startet die Auswahl).
+      if (typeof d?.pruefVerzoegerungMs === 'number' && d.pruefVerzoegerungMs >= 0) pruefVerzoegerungMs = d.pruefVerzoegerungMs;
+      if (typeof d?.warteschlangeHalt === 'boolean') {
+        warteschlangeHalt = d.warteschlangeHalt;
+        if (!warteschlangeHalt) starteNaechste();
+      }
       // Status des Erkenners abfragen (weckt eine beendete Ereignisseite): die Antwort steht samt der Nummer der Anfrage in data-veil-erkenner.
       if (typeof d?.erkennerStatus === 'number') {
         const nr = d.erkennerStatus;

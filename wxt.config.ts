@@ -36,9 +36,22 @@ export default defineConfig({
   outDir: process.env.VEIL_AUSGABE ?? '.output',
   hooks: {
     'build:manifestGenerated': (_wxt, manifest) => {
-      const schleier = (manifest.content_scripts ?? []).find((cs) => (cs.js ?? []).some((j) => j.includes('content')));
+      // Gilt fuer jedes Content-Script (Schleier und Haken fuer Shadow Roots in der Seitenwelt): auf der Ausnahmeliste laeuft keins.
+      const skripte = manifest.content_scripts ?? [];
+      const finde = (datei: string) => skripte.find((cs) => (cs.js ?? []).includes(datei));
+      const schleier = finde('content-scripts/content.js');
+      const haken = finde('content-scripts/wurzel-haken.js');
       if (!schleier) throw new Error('Manifest-Hook: Content-Script des Schleiers nicht gefunden');
-      schleier.exclude_matches = standardAusnahmenManifest();
+      if (!haken) throw new Error('Manifest-Hook: Haken fuer Shadow Roots nicht gefunden');
+      // Beide muessen auf denselben Seiten und in denselben Frames laufen, sonst fehlte der Haken dort, wo der Schleier arbeitet.
+      for (const feld of ['matches', 'all_frames', 'match_about_blank', 'match_origin_as_fallback', 'run_at'] as const) {
+        const wert = (cs: object) => JSON.stringify((cs as Record<string, unknown>)[feld]);
+        if (wert(schleier) !== wert(haken)) {
+          throw new Error(`Manifest-Hook: Schleier und Haken unterscheiden sich in ${feld}`);
+        }
+      }
+      const ausnahmen = standardAusnahmenManifest();
+      for (const cs of skripte) cs.exclude_matches = ausnahmen;
     },
   },
   // Manifest V3 auch fuer Firefox (WXT nimmt dort sonst MV2).

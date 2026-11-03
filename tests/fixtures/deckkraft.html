@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Deckkraft-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      img, video, .hg { display: block; width: 120px; height: 90px; margin-bottom: 4px; }
+      .hg { background-size: cover; }
+      /* X-Muster: die Seite haelt das img selbst unsichtbar, daneben steht ein Element mit Inline-Hintergrund. */
+      .stumm { opacity: 0; }
+      .halb { opacity: 0.5; }
+      .sechs { opacity: 0.6; }
+      /* Einblenden: die Seite setzt spaeter eine Klasse, die von 0 auf 1 geht. */
+      .blende { opacity: 0; transition: opacity 0.2s; }
+      .blende.da { opacity: 1; }
+      /* Seitenregel mit opacity 1 (auch das darf vor dem Urteil nichts zeigen). */
+      .offen { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <!-- Testseite fuer D1 bis D4 (PHASE-3-BAUPLAN): Deckkraft, die die Seite festlegt, bleibt nach dem Urteil erhalten.
+         Alle Bilder sind synthetisch (Farbverlauf vom Testserver), der Erkenner findet nichts: Urteil "frei".
+         Das Video ohne Quelle und mit preload="none" bekommt nach load und kurzer Frist das vorlaeufige Urteil "verdeckt" (Blur). -->
+    <img id="x-img" class="stumm" src="/synthetisch/1.png" alt="" />
+    <div id="x-div" class="hg" style="background-image: url(/synthetisch/2.png)"></div>
+    <img id="einblenden" class="blende" src="/synthetisch/3.png" alt="" />
+    <img id="offen" class="offen" src="/synthetisch/4.png" alt="" />
+    <img id="halb" class="halb" src="/synthetisch/5.png" alt="" />
+    <video id="leer" class="sechs" preload="none" muted playsinline></video>
+    <img id="wechsel" class="offen" src="/synthetisch/6.png" alt="" />
+    <!-- Fremde Urteil-Attribute (von der Seite gesetzt): gelten nicht, das Element bleibt bis zum eigenen Urteil unsichtbar. -->
+    <img id="fremd-leer" class="offen" data-veil="" src="/synthetisch/11.png" alt="" />
+    <img id="fremd-x" class="offen" data-veil="x" src="/synthetisch/12.png" alt="" />
+    <img id="fremd-frei" class="offen" data-veil="frei" src="/synthetisch/13.png" alt="" />
+    <div id="wirt"></div>
+    <script>
+      // Offene Shadow Root mit denselben Mustern; die Seitenregeln stehen in der Wurzel selbst.
+      (function () {
+        var wirt = document.getElementById('wirt');
+        var wurzel = wirt.attachShadow({ mode: 'open' });
+        var vorlage = document.createElement('template');
+        vorlage.innerHTML =
+          '<style>img, video { display: block; width: 120px; height: 90px; margin-bottom: 4px; } .stumm { opacity: 0; } .halb { opacity: 0.5; } .sechs { opacity: 0.6; } .offen { opacity: 1; }</style>' +
+          '<img id="s-stumm" class="stumm" src="/synthetisch/7.png" alt="">' +
+          '<img id="s-halb" class="halb" src="/synthetisch/8.png" alt="">' +
+          '<img id="s-offen" class="offen" src="/synthetisch/9.png" alt="">' +
+          '<img id="s-wechsel" class="offen" src="/synthetisch/14.png" alt="">' +
+          '<video id="s-leer" class="sechs" preload="none" muted playsinline></video>';
+        // Anhaengen statt innerHTML auf der Wurzel: innerHTML wuerde einen vorab eingelegten Versteck-Stil wieder loeschen.
+        wurzel.appendChild(vorlage.content);
+        window.wurzel = wurzel;
+      })();
+      window.einblenden = function () {
+        document.getElementById('einblenden').classList.add('da');
+      };
+      document.documentElement.dataset.deckkraftBereit = '1';
+    </script>
+  </body>
+</html>

@@ -2,7 +2,7 @@
 // beim Start und bei jeder Mutation. Entdeckt Shadow Roots (auch geschlossene) und legt die Schleier-CSS hinein.
 
 import { HG_SELEKTOR, type Art } from './konstanten';
-import { versorgeWurzel, wurzelVon } from './shadow';
+import { sichereStil, versorgeWurzel, wurzelVon } from './shadow';
 
 const KANDIDAT = `img, video, canvas, ${HG_SELEKTOR}`;
 const ATTRIBUTE = ['src', 'srcset', 'style', 'class'];
@@ -10,6 +10,8 @@ const ATTRIBUTE = ['src', 'srcset', 'style', 'class'];
 const KEIN_HOST = new Set(['img', 'script', 'style', 'link', 'meta', 'br', 'hr', 'source', 'track', 'title', 'head', 'wbr']);
 const FRAME_BUDGET_MS = 3;
 const NACHFRIST_NACH_LOAD_MS = 2000;
+// Ereignis des Hakens in der Seitenwelt (entrypoints/wurzel-haken.content.ts) am Host einer neuen Shadow Root. Nur ein Hinweis.
+const HINWEIS_WURZEL = 'veil-wurzel';
 
 export interface BeobachterRueckrufe {
   // Kandidat gefunden (neu oder erneut gesehen).
@@ -61,7 +63,8 @@ export class Beobachter {
   // Beendet die Beobachtung (Pause, Ausnahme, Abbau). Unverarbeitete Mutationen werden verworfen.
   stopp(): void {
     this.laeuft = false;
-    for (const mo of this.beobachter.values()) {
+    for (const [wurzel, mo] of this.beobachter) {
+      wurzel.removeEventListener(HINWEIS_WURZEL, this.beiHinweis, true);
       mo.takeRecords();
       mo.disconnect();
     }
@@ -87,7 +90,22 @@ export class Beobachter {
     const mo = new MutationObserver((liste) => this.beiMutation(liste));
     mo.observe(wurzel, { childList: true, subtree: true, attributes: true, attributeFilter: ATTRIBUTE });
     this.beobachter.set(wurzel, mo);
+    // Der Haken meldet neue Wurzeln im Augenblick des Anlegens. Das Ereignis steigt auf (composed): jede beobachtete Wurzel hoert es, damit
+    // auch ein Host in einer geschlossenen Wurzel sein eigenes Ziel im Ereignispfad hat.
+    wurzel.addEventListener(HINWEIS_WURZEL, this.beiHinweis, true);
   }
+
+  // Hinweis, nichts weiter: gesucht wird die Wurzel wie bei jedem Host selbst (pruefeHost), der Inhalt des Ereignisses zaehlt nicht. Ein gefaelschtes
+  // Ereignis kostet hoechstens eine zusaetzliche Suche.
+  private readonly beiHinweis = (e: Event): void => {
+    if (!this.laeuft) return;
+    try {
+      const ziel = e.composedPath()[0];
+      if (ziel instanceof Element) this.pruefeHost(ziel);
+    } catch {
+      // Hinweis unbrauchbar: die Suche im naechsten Frame findet die Wurzel trotzdem
+    }
+  };
 
   private beiMutation(liste: MutationRecord[]): void {
     if (!this.laeuft) return;
@@ -95,6 +113,8 @@ export class Beobachter {
     let entfernt = false;
     for (const m of liste) {
       if (m.type === 'childList') {
+        // Wurzel geleert (innerHTML und Aehnliches): den eigenen Stil sofort wieder einlegen, noch in diesem Mikrotask.
+        if (m.removedNodes.length && m.target instanceof ShadowRoot) sichereStil(m.target);
         if (m.removedNodes.length) entfernt = true;
         for (const n of m.addedNodes) {
           if (n.nodeType !== 1) continue;
@@ -139,9 +159,10 @@ export class Beobachter {
   }
 
   private entdeckeWurzel(wurzel: ShadowRoot): void {
+    // Schon beobachtet (das composed-Ereignis des Hakens trifft jede Wurzel auf dem Pfad): nichts weiter zu tun.
+    if (this.beobachter.has(wurzel)) return;
     versorgeWurzel(wurzel, this.ruf.istAus());
     this.ruf.neueWurzel(wurzel);
-    if (this.beobachter.has(wurzel)) return;
     this.beobachteWurzel(wurzel);
     this.scanne(wurzel);
   }

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Vorrang-Testseite</title>
+    <style>
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 20000px; position: relative; }
+      img { position: absolute; display: block; }
+    </style>
+    <script>
+      // Protokoll der Urteile (data-veil) der Bilder in der Reihenfolge ihres Eintreffens: window.__urteile = [{ id, v, t }].
+      (function () {
+        window.__urteile = [];
+        var gesehen = {};
+        new MutationObserver(function (liste) {
+          for (var i = 0; i < liste.length; i++) {
+            var el = liste[i].target;
+            var v = el.getAttribute('data-veil');
+            if (el.localName !== 'img' || v === null || gesehen[el.id]) continue;
+            gesehen[el.id] = true;
+            window.__urteile.push({ id: el.id, v: v, t: performance.now() });
+          }
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-veil'] });
+      })();
+    </script>
+  </head>
+  <body>
+    <!-- Testseite fuer V1 bis V4 (PHASE-3-BAUPLAN): die Bilder liegen absolut an festen Stellen, bezogen auf die Fensterhoehe H.
+         Der Test legt sie gruppenweise per window.baueGruppe(name) an, in einer Folge, die NICHT der Stufenfolge entspricht (so entspricht die
+         Einreihungsfolge nicht den Stufen), und wartet nach jeder Gruppe, bis die Bilder geladen sind. Alle Bilder sind synthetisch (Farbverlauf
+         vom Testserver, 640 x 480), der Erkenner findet nichts. Gruppen und Ids (g-<gruppe>-<nr>, Gruppe der Id sg, sk, ng, nk oder fern):
+           sg    3 grosse sichtbare (200 x 110, ganz oben)                     Stufe 1
+           sk    5 kleine sichtbare (100 x 70, darunter)                       Stufe 2
+           ng    3 grosse nahe (ab 1,3 H)                                      Stufe 3
+           nk    2 kleine nahe (darunter)                                      Stufe 4
+           fz    fern 0 bis 7, ab 4 H dicht beieinander (4 gross, 4 klein)     Stufe 5; nach dem Scrollen auf window.ziel sichtbar
+           fn    fern 8 bis 11, bei 5,5 H                                      Stufe 5; nach dem Scrollen auf window.ziel nah (nicht sichtbar)
+           ff    fern 12 bis 29, ab 8 H                                        Stufe 5, bleiben auch nach dem Scrollen fern -->
+    <script>
+      window.GRUPPEN = ['ff', 'fz', 'nk', 'fn', 'ng', 'sk', 'sg'];
+      (function () {
+        var nr = 0;
+        function bild(gruppe, i, oben, links, breite, hoehe) {
+          var b = document.createElement('img');
+          b.id = 'g-' + gruppe + '-' + i;
+          b.alt = '';
+          b.style.top = Math.round(oben) + 'px';
+          b.style.left = links + 'px';
+          b.style.width = breite + 'px';
+          b.style.height = hoehe + 'px';
+          b.src = '/synthetisch/' + nr++ + '.png';
+          document.body.appendChild(b);
+        }
+        function fern(i, oben, links) {
+          var gross = i < 4 || (i >= 8 && i % 2 === 0);
+          bild('fern', i, oben, links, gross ? 200 : 100, gross ? 110 : 70);
+        }
+        window.baueGruppe = function (name) {
+          var H = window.innerHeight;
+          var i;
+          if (name === 'sg') for (i = 0; i < 3; i++) bild('sg', i, 10 + i * 120, 10, 200, 110);
+          if (name === 'sk') for (i = 0; i < 5; i++) bild('sk', i, 380, 10 + i * 110, 100, 70);
+          if (name === 'ng') for (i = 0; i < 3; i++) bild('ng', i, 1.3 * H + i * 130, 10, 200, 110);
+          if (name === 'nk') for (i = 0; i < 2; i++) bild('nk', i, 1.3 * H + 3 * 130 + i * 90, 10, 100, 70);
+          if (name === 'fz') for (i = 0; i < 8; i++) fern(i, i < 4 ? 4 * H + 10 : 4 * H + 140, 10 + (i % 4) * 210);
+          if (name === 'fn') for (i = 8; i < 12; i++) fern(i, 5.5 * H + (i - 8) * 130, 10);
+          if (name === 'ff') for (i = 12; i < 30; i++) fern(i, 8 * H + (i - 12) * 130, 10);
+          window.ziel = 4 * H;
+        };
+      })();
+      document.documentElement.dataset.vorrangBereit = '1';
+    </script>
+  </body>
+</html>

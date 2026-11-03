@@ -161,6 +161,12 @@ export class VideoTakt {
   private readonly haken: VideoHaken;
   private readonly g: VideoGrenzen;
 
+  // Rueckrufe fuer Spiegel-Leinwaende (spiegel.ts, gesetzt vom Schleier): `beiWechsel` unmittelbar nach jedem Urteilswechsel im Takt (im selben
+  // Augenblick, also ohne eigene Bremse), `beiErgebnis` bei jedem Ergebnis einer Takt-Pruefung (auch ohne Wechsel, vor der Entscheidung), damit
+  // die Zuordnung der Leinwaende neu vermessen wird.
+  beiWechsel: ((el: HTMLVideoElement, z: Zustand) => void) | null = null;
+  beiErgebnis: ((el: HTMLVideoElement, z: Zustand) => void) | null = null;
+
   constructor(haken: VideoHaken, g: VideoGrenzen) {
     this.haken = haken;
     this.g = g;
@@ -513,6 +519,7 @@ export class VideoTakt {
     if (lauf.fristTimer) clearTimeout(lauf.fristTimer);
     lauf.fristTimer = null;
     if (lauf.tot || lauf.z.generation !== generation || !this.haken.aktiv()) return;
+    this.beiErgebnis?.(lauf.el, lauf.z);
     const e: VideoErgebnis = ergebnis === 'unlesbar' ? 'fehler' : ergebnis;
     if (lauf.verfallen) {
       // Die Antwort kam nach der Frist: das Video ist schon verdeckt, die Antwort zeigt ein altes Bild und zaehlt nicht.
@@ -574,6 +581,7 @@ export class VideoTakt {
       lauf.stand.letzterWechsel = jetzt;
       if (lauf.soll === 'frei') this.letzteFreigabe = jetzt;
       this.haken.wende(lauf.el, lauf.z, lauf.soll);
+      this.beiWechsel?.(lauf.el, lauf.z);
       return;
     }
     lauf.wechselTimer = setTimeout(() => {

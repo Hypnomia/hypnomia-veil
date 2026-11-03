@@ -58,6 +58,12 @@ export interface Zustand {
   vorlaeufig: boolean;
   // Der IntersectionObserver hat schon einmal gemeldet (dann gilt `sichtbar`, vorher die Messung beim Einreihen).
   sichtMeldung: boolean;
+  // Vorrang in der Warteschlange (vorrang.ts): `klein` (laengste dargestellte Seite unter VORRANG_KLEIN_PX) wird beim Einreihen gemessen
+  // und von den Beobachtern nachgefuehrt; `nah` (im Bereich zwei Bildschirmhoehen um den Sichtbereich) kommt vom zweiten
+  // IntersectionObserver (`nahMeldung`: hat schon einmal gemeldet), davor aus der Messung beim Einreihen.
+  klein: boolean;
+  nah: boolean;
+  nahMeldung: boolean;
   // Video: das Urteil beruht auf einer echten Pruefung (nicht vorlaeufig, nicht "nicht lesbar"): nur dann laeuft die Nachpruefung.
   videoEcht: boolean;
   // Video: Zaehler der Spruenge (seeking, seeked), auch vor dem ersten Urteil. Eine Pruefung, die ueber einen Sprung hinweg lief, zeigt ein
@@ -89,6 +95,9 @@ export function neuerZustand(art: Art): Zustand {
     fehlerGesehen: false,
     vorlaeufig: false,
     sichtMeldung: false,
+    klein: false,
+    nah: false,
+    nahMeldung: false,
     videoEcht: false,
     sprung: 0,
     schleife: false,

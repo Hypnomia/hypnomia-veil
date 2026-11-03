@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <title>Veil X-Nachbau</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .beitrag { width: 320px; margin: 0 0 12px; border: 1px solid #ccc; padding: 6px; }
+      .kopf { display: flex; align-items: center; gap: 8px; }
+      .kopf img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+      /* Wie X: das img hat von der Seite Deckkraft 0, sichtbar ist der Nachbar mit Inline-Hintergrund derselben Art. */
+      .foto { position: relative; width: 300px; height: 160px; }
+      .foto img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+      .foto .hg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background-size: cover; }
+      video { display: block; width: 300px; height: 160px; }
+    </style>
+  </head>
+  <body>
+    <!-- Nachbau der Struktur der X-Timeline (keine kopierte Seite): Bild mit Deckkraft 0 plus Nachbar-div mit Inline-Hintergrund, Profilbilder,
+         Video mit Poster (das Video nimmt die Seite zur Laufzeit selbst auf, keine Mediendatei im Repo). Bilder ohne crossorigin. -->
+    <div class="beitrag">
+      <div class="kopf"><img id="x-avatar" src="/synthetisch/4.png" alt="" /> <span>Konto eins</span></div>
+      <div class="foto"><img id="x-nsfw-img" alt="" /><div id="x-nsfw-hg" class="hg"></div></div>
+    </div>
+    <div class="beitrag">
+      <div class="kopf"><img id="x-avatar2" src="/synthetisch/6.png" alt="" /> <span>Konto zwei</span></div>
+      <div class="foto"><img id="x-sfw-img" src="/synthetisch/7.png" alt="" /><div id="x-sfw-hg" class="hg" style="background-image: url(/synthetisch/7.png)"></div></div>
+    </div>
+    <div class="beitrag">
+      <div class="kopf"><img id="x-avatar3" src="/synthetisch/8.png" alt="" /> <span>Konto drei</span></div>
+      <video id="x-video" poster="/synthetisch/3.png" muted loop playsinline></video>
+    </div>
+    <script>
+      (function () {
+        var bild = new URLSearchParams(location.search).get('bild') || '';
+        var nsfw = '/testbild/nsfw/' + encodeURIComponent(bild);
+        document.getElementById('x-nsfw-img').src = nsfw;
+        document.getElementById('x-nsfw-hg').style.backgroundImage = 'url(' + nsfw + ')';
+        var quelle = document.createElement('canvas');
+        quelle.width = 320;
+        quelle.height = 240;
+        var versatz = 0;
+        function zeichne() {
+          var g = quelle.getContext('2d');
+          var v = g.createLinearGradient(0, 0, 320, 240);
+          v.addColorStop(0, 'hsl(' + (versatz += 20) + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, 320, 240);
+        }
+        zeichne();
+        var uhr = setInterval(zeichne, 50);
+        var aufnahme = new MediaRecorder(quelle.captureStream(20));
+        var stuecke = [];
+        aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+        aufnahme.onstop = function () {
+          clearInterval(uhr);
+          var film = document.getElementById('x-video');
+          film.src = URL.createObjectURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+          film.play().catch(function () {});
+          document.documentElement.dataset.filmBereit = '1';
+        };
+        aufnahme.start();
+        setTimeout(function () { aufnahme.stop(); }, 1200);
+
+        // Urteile aller Medien dieser Seite (fuer die Tests); Hintergrund-divs zaehlen mit.
+        window.testUrteile = function () {
+          var aus = {};
+          var liste = document.querySelectorAll('img, video, canvas, .hg');
+          for (var i = 0; i < liste.length; i++) aus[liste[i].id] = liste[i].getAttribute('data-veil') || '';
+          return aus;
+        };
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <title>Veil Testseite fuer spaete Shadow Roots</title>
+    <script>
+      // Eine Seite, die attachShadow selbst umhaengt, vor allen anderen Seitenskripten (?modus=eigener). Der Zaehler belegt, dass ihr Umhaenger lief.
+      window.__eigeneAufrufe = 0;
+      if (new URLSearchParams(location.search).get('modus') === 'eigener') {
+        var urspruenglich = Element.prototype.attachShadow;
+        Element.prototype.attachShadow = function (init) {
+          window.__eigeneAufrufe++;
+          return urspruenglich.call(this, init);
+        };
+      }
+    </script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .host { display: block; width: 240px; margin: 0 0 8px; }
+    </style>
+  </head>
+  <body>
+    <!-- Shadow Roots, die erst nach dem Einfuegen des Hosts entstehen (PHASE-3-BAUPLAN Auftrag R). Modus per ?modus=:
+         komponenten  Hosts stehen im Rumpf, die Komponenten werden erst kurz danach definiert (Upgrade legt die Wurzel an)
+         takt         Hosts werden per Skript eingefuegt, attachShadow folgt im naechsten Takt
+         eigener      wie takt, die Seite hat attachShadow vorher selbst umgehaengt
+         innerhtml    attachShadow, im selben Takt gleich shadowRoot.innerHTML = ... (leert die Wurzel); window.nochmal() tut es Sekunden spaeter erneut
+         dsd          Declarative Shadow DOM: der Parser legt die Wurzel an (template shadowrootmode), kein attachShadow-Aufruf
+         manuell      nichts geschieht von selbst: window.legeAn() baut die Hosts wie in takt (fuer die Pause-Faelle)
+         Je Modus sechs Hosts (offen und geschlossen im Wechsel) mit img und video in der Wurzel. Das Video nimmt die Seite zur Laufzeit auf
+         (keine Mediendatei im Repo); sobald es da ist, bekommen alle Videos die Quelle. Bilder: nsfw (Testbild), sonst synthetisch. -->
+    <div id="buehne"></div>
+    <script>
+      (function () {
+        var param = new URLSearchParams(location.search);
+        var modus = param.get('modus') || 'takt';
+        var bild = param.get('bild') || '';
+        var nsfw = '/testbild/nsfw/' + encodeURIComponent(bild);
+        var buehne = document.getElementById('buehne');
+        var wurzeln = {};
+        window.__wurzeln = wurzeln;
+        // Je Host: war das erste Element der Wurzel nach dem Fuellen das Bild der Seite (der Stil darf es nicht verdraengen)?
+        window.__ersteKinder = {};
+        var filmAdresse = null;
+        var videos = [];
+
+        // Sechs Hosts: Nummer n, offen bei geraden n, nsfw bei n = 0, 3, 4.
+        function inhaltFuer(n) {
+          return { id: n, modus: n % 2 === 0 ? 'open' : 'closed', nsfw: n === 0 || n === 3 || n === 4, quelle: '/synthetisch/' + (30 + n) + '.png' };
+        }
+
+        function fuelle(wurzel, n) {
+          var i = inhaltFuer(n);
+          var b = document.createElement('img');
+          b.id = 'w-img-' + n;
+          b.width = 240;
+          b.height = 150;
+          b.alt = '';
+          b.src = i.nsfw ? nsfw + '?n=' + n : i.quelle;
+          var v = document.createElement('video');
+          v.id = 'w-vid-' + n;
+          v.muted = true;
+          v.loop = true;
+          v.setAttribute('playsinline', '');
+          v.style.width = '240px';
+          v.style.height = '120px';
+          v.style.display = 'block';
+          wurzel.appendChild(b);
+          wurzel.appendChild(v);
+          window.__ersteKinder[n] = wurzel.firstElementChild === b;
+          videos.push(v);
+          if (filmAdresse) {
+            v.src = filmAdresse;
+            v.play().catch(function () {});
+          }
+        }
+
+        function wurzelAn(host, n) {
+          var w = host.attachShadow({ mode: inhaltFuer(n).modus });
+          wurzeln[host.id] = w;
+          fuelle(w, n);
+        }
+
+        function neuerHost(n, tag) {
+          var h = document.createElement(tag || 'div');
+          h.id = 'host-' + n;
+          h.className = 'host';
+          buehne.appendChild(h);
+          return h;
+        }
+
+        // takt: Hosts einfuegen, die Wurzeln folgen im naechsten Takt.
+        function legeTaktAn() {
+          var hosts = [];
+          for (var n = 0; n < 6; n++) hosts.push(neuerHost(n));
+          setTimeout(function () {
+            for (var n = 0; n < 6; n++) wurzelAn(hosts[n], n);
+          }, 0);
+        }
+        window.legeAn = legeTaktAn;
+
+        // innerhtml: Wurzel anlegen und sofort mit innerHTML fuellen (das Setzen entfernt alle Kinder der Wurzel, auch einen eingelegten Stil).
+        function fuelleHtml(w, n) {
+          var i = inhaltFuer(n);
+          w.innerHTML =
+            '<img id="w-img-' + n + '" width="240" height="150" alt="" src="' + (i.nsfw ? nsfw + '?n=' + n : i.quelle) + '">' +
+            '<video id="w-vid-' + n + '" muted loop playsinline style="display:block;width:240px;height:120px"></video>';
+          window.__ersteKinder[n] = w.firstElementChild && w.firstElementChild.id === 'w-img-' + n;
+          var v = w.getElementById('w-vid-' + n);
+          videos.push(v);
+          if (filmAdresse) {
+            v.src = filmAdresse;
+            v.play().catch(function () {});
+          }
+        }
+        function legeInnerAn() {
+          for (var n = 0; n < 6; n++) {
+            var h = neuerHost(n);
+            var w = h.attachShadow({ mode: inhaltFuer(n).modus });
+            wurzeln[h.id] = w;
+            fuelleHtml(w, n);
+          }
+        }
+        window.nochmal = function () {
+          for (var n = 0; n < 6; n++) fuelleHtml(wurzeln['host-' + n], n);
+        };
+
+        if (modus === 'komponenten') {
+          for (var n = 0; n < 6; n++) neuerHost(n, 'spaete-komponente');
+          setTimeout(function () {
+            customElements.define('spaete-komponente', class extends HTMLElement {
+              connectedCallback() {
+                var nr = Number(this.id.replace('host-', ''));
+                if (!wurzeln[this.id]) wurzelAn(this, nr);
+              }
+            });
+          }, 30);
+        } else if (modus === 'dsd') {
+          // Vom Parser angelegte Wurzel (offen): ein sauberes und ein Testbild, dazu ein Video.
+          document.write(
+            '<div id="host-dsd" class="host"><template shadowrootmode="open">' +
+              '<img id="w-img-dsd" width="240" height="150" alt="" src="/synthetisch/52.png">' +
+              '<img id="w-img-dsd-n" width="240" height="150" alt="" src="' + nsfw + '?n=dsd">' +
+              '<video id="w-vid-dsd" muted loop playsinline style="display:block;width:240px;height:120px"></video>' +
+              '</template></div>',
+          );
+          var dsdWurzel = document.getElementById('host-dsd').shadowRoot;
+          wurzeln['host-dsd'] = dsdWurzel;
+          videos.push(dsdWurzel.getElementById('w-vid-dsd'));
+        } else if (modus === 'innerhtml') {
+          legeInnerAn();
+        } else if (modus === 'takt' || modus === 'eigener') {
+          legeTaktAn();
+        }
+
+        // Video aufnehmen (neutral, 1,2 s).
+        var quelle = document.createElement('canvas');
+        quelle.width = 320;
+        quelle.height = 240;
+        var versatz = 0;
+        function zeichne() {
+          var g = quelle.getContext('2d');
+          var v = g.createLinearGradient(0, 0, 320, 240);
+          v.addColorStop(0, 'hsl(' + (versatz += 20) + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, 320, 240);
+        }
+        zeichne();
+        var uhr = setInterval(zeichne, 50);
+        var aufnahme = new MediaRecorder(quelle.captureStream(20));
+        var stuecke = [];
+        aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+        aufnahme.onstop = function () {
+          clearInterval(uhr);
+          filmAdresse = URL.createObjectURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+          for (var k = 0; k < videos.length; k++) {
+            videos[k].src = filmAdresse;
+            videos[k].play().catch(function () {});
+          }
+          document.documentElement.dataset.filmBereit = '1';
+        };
+        aufnahme.start();
+        setTimeout(function () { aufnahme.stop(); }, 1200);
+
+        // Zustand aller Medien in den Wurzeln: Urteil und berechnete Deckkraft (fuer die Tests).
+        window.testZustand = function () {
+          var aus = {};
+          Object.keys(wurzeln).forEach(function (k) {
+            var liste = wurzeln[k].querySelectorAll('img, video');
+            for (var i = 0; i < liste.length; i++) {
+              aus[liste[i].id] = { urteil: liste[i].getAttribute('data-veil') || '', deckkraft: getComputedStyle(liste[i]).opacity };
+            }
+          });
+          return aus;
+        };
+      })();
+    </script>
+  </body>
+</html>

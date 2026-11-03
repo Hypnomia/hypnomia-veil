@@ -7,7 +7,7 @@
 //   window.__unsichtbar   Kandidaten mit Urteil (frei, zensiert, verdeckt), die trotzdem nicht opacity 1 hatten
 //   window.__proben       Anzahl der Pruefungen, window.__wer: Beschreibung der Funde
 //   window.__strictGesehen / __strictOffen   Proben bei Strict (data-veil-strict ohne data-veil-seite): Seite unsichtbar bzw. faelschlich sichtbar
-// Waehrend die Seite aus ist (data-veil-seite="aus": Pause, Ausnahme) wird nicht gepruefte: dort soll alles sichtbar sein.
+// Waehrend die Seite aus ist (data-veil-seite="aus": Pause, Ausnahme) wird nicht geprueft: dort soll alles sichtbar sein.
 (function () {
   window.__aufblitzen = 0;
   window.__unsichtbar = 0;

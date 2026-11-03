@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <title>Veil Instagram-Nachbau</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #ringe { display: flex; gap: 8px; margin-bottom: 8px; }
+      #ringe canvas { width: 64px; height: 64px; border-radius: 50%; display: block; }
+      .beitrag { width: 320px; margin: 0 0 12px; }
+      .beitrag img, .beitrag video { display: block; width: 320px; height: 240px; object-fit: cover; }
+    </style>
+  </head>
+  <body>
+    <!-- Nachbau der Struktur von Instagram (keine kopierte Seite): Story-Ringe als kleine Leinwaende, Feldbilder mit crossorigin (gleicher und
+         fremder Ursprung mit CORS), ein Karussell mit Quellenwechsel am selben img (window.weiter()) und ein blob:-Video (zur Laufzeit aufgenommen,
+         keine Mediendatei im Repo). Die Seite zaehlt, ob das Karussell je "frei" war, waehrend seine Quelle das Testbild war (window.__karussellFalsch). -->
+    <div id="ringe"></div>
+    <div class="beitrag"><img id="ig-nsfw" crossorigin="anonymous" alt="" /></div>
+    <div class="beitrag"><img id="ig-sfw" crossorigin="anonymous" src="/synthetisch/11.png" alt="" /></div>
+    <div class="beitrag"><img id="ig-fremd-nsfw" crossorigin="anonymous" alt="" /></div>
+    <div class="beitrag"><img id="karussell" crossorigin="anonymous" src="/synthetisch/12.png" alt="" /></div>
+    <div class="beitrag"><video id="ig-video" muted loop playsinline></video></div>
+    <script>
+      (function () {
+        var bild = new URLSearchParams(location.search).get('bild') || '';
+        var nsfw = '/testbild/nsfw/' + encodeURIComponent(bild);
+        var fremdPort = Number(location.port) + 2;
+        document.getElementById('ig-nsfw').src = nsfw + '?a=1';
+        document.getElementById('ig-fremd-nsfw').src = 'http://127.0.0.1:' + fremdPort + nsfw + '?cors=1';
+
+        var ringe = document.getElementById('ringe');
+        for (var i = 0; i < 5; i++) {
+          var c = document.createElement('canvas');
+          c.id = 'ig-ring' + i;
+          c.width = 128;
+          c.height = 128;
+          var g = c.getContext('2d');
+          var v = g.createLinearGradient(0, 0, 128, 128);
+          v.addColorStop(0, 'hsl(' + (i * 50) + ', 90%, 55%)');
+          v.addColorStop(1, 'hsl(' + (i * 50 + 120) + ', 90%, 45%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, 128, 128);
+          ringe.appendChild(c);
+        }
+
+        // Karussell: dasselbe img bekommt eine neue Quelle (das Testbild). Es darf nie "frei" sein, solange seine Quelle das Testbild ist.
+        window.__karussellFalsch = 0;
+        window.weiter = function () { document.getElementById('karussell').src = nsfw + '?b=2'; };
+        function probe() {
+          var k = document.getElementById('karussell');
+          if (k.getAttribute('data-veil') === 'frei' && (k.getAttribute('src') || '').indexOf('/nsfw/') >= 0) window.__karussellFalsch++;
+        }
+        function schritt() {
+          setTimeout(probe, 0);
+          requestAnimationFrame(schritt);
+        }
+        requestAnimationFrame(schritt);
+
+        var quelle = document.createElement('canvas');
+        quelle.width = 320;
+        quelle.height = 240;
+        var versatz = 0;
+        function zeichne() {
+          var g2 = quelle.getContext('2d');
+          var v2 = g2.createLinearGradient(0, 0, 320, 240);
+          v2.addColorStop(0, 'hsl(' + (versatz += 20) + ', 80%, 60%)');
+          v2.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g2.fillStyle = v2;
+          g2.fillRect(0, 0, 320, 240);
+        }
+        zeichne();
+        var uhr = setInterval(zeichne, 50);
+        var aufnahme = new MediaRecorder(quelle.captureStream(20));
+        var stuecke = [];
+        aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+        aufnahme.onstop = function () {
+          clearInterval(uhr);
+          var film = document.getElementById('ig-video');
+          film.src = URL.createObjectURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+          film.play().catch(function () {});
+          document.documentElement.dataset.filmBereit = '1';
+        };
+        aufnahme.start();
+        setTimeout(function () { aufnahme.stop(); }, 1200);
+
+        window.testUrteile = function () {
+          var aus = {};
+          var liste = document.querySelectorAll('img, video, canvas');
+          for (var j = 0; j < liste.length; j++) aus[liste[j].id] = liste[j].getAttribute('data-veil') || '';
+          return aus;
+        };
+      })();
+    </script>
+  </body>
+</html>

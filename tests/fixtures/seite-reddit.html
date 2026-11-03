@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <title>Veil Reddit-Nachbau</title>
+    <script>
+      // Die Komponenten stehen vor dem Rumpf der Seite: ihre Shadow Roots entstehen beim Einhaengen (connectedCallback), wie bei schon
+      // definierten Komponenten mit serverseitig erzeugtem Rumpf.
+      (function () {
+        var bild = new URLSearchParams(location.search).get('bild') || '';
+        var nsfw = '/testbild/nsfw/' + encodeURIComponent(bild);
+        var wurzeln = {};
+        window.__wurzeln = wurzeln;
+
+        // Wie echte Komponenten: die Shadow Root entsteht beim Einhaengen des Elements (connectedCallback), nicht erst spaeter.
+        function bauePost(el, modus, id, quelle) {
+          var w = el.attachShadow({ mode: modus });
+          wurzeln[el.id] = w;
+          var b = document.createElement('img');
+          b.id = id;
+          b.loading = 'lazy';
+          b.width = 320;
+          b.height = 200;
+          b.alt = '';
+          b.src = quelle;
+          var absatz = document.createElement('p');
+          absatz.textContent = 'Beitrag ' + el.id;
+          w.appendChild(absatz);
+          w.appendChild(b);
+        }
+        customElements.define('post-offen', class extends HTMLElement {
+          connectedCallback() {
+            if (!this.shadowRoot) bauePost(this, 'open', 'rd-nsfw-offen', nsfw);
+          }
+        });
+        customElements.define('post-zu', class extends HTMLElement {
+          connectedCallback() {
+            if (wurzeln[this.id]) return;
+            bauePost(this, 'closed', this.dataset.id, this.dataset.nsfw ? nsfw + '?c=3' : this.dataset.quelle);
+          }
+        });
+        customElements.define('spieler-offen', class extends HTMLElement {
+          connectedCallback() {
+            if (this.shadowRoot) return;
+            var sw = this.attachShadow({ mode: 'open' });
+            wurzeln.s1 = sw;
+            var film = document.createElement('video');
+            film.id = 'rd-video';
+            film.muted = true;
+            film.loop = true;
+            film.setAttribute('playsinline', '');
+            film.style.width = '320px';
+            film.style.height = '200px';
+            sw.appendChild(film);
+            window.__film = film;
+          }
+        });
+      })();
+    </script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      post-offen, post-zu, spieler-offen { display: block; width: 320px; margin: 0 0 12px; }
+    </style>
+  </head>
+  <body>
+    <!-- Nachbau der Struktur von Reddit (keine kopierte Seite): eigene Elemente mit offenen und geschlossenen Shadow Roots, darin img mit
+         loading="lazy" und ein Player-Element mit Video in der Shadow Root (zur Laufzeit aufgenommen, keine Mediendatei im Repo).
+         Die Seite haelt die Wurzeln in window.__wurzeln, damit auch geschlossene fuer die Tests lesbar sind. -->
+    <post-offen id="p1"></post-offen>
+    <post-zu id="p2" data-id="rd-sfw-zu" data-quelle="/synthetisch/21.png"></post-zu>
+    <post-zu id="p3" data-id="rd-nsfw-zu" data-nsfw="1"></post-zu>
+    <spieler-offen id="s1"></spieler-offen>
+    <script>
+      (function () {
+        var wurzeln = window.__wurzeln;
+        var quellCanvas = document.createElement('canvas');
+        quellCanvas.width = 320;
+        quellCanvas.height = 240;
+        var versatz = 0;
+        function zeichne() {
+          var g = quellCanvas.getContext('2d');
+          var v = g.createLinearGradient(0, 0, 320, 240);
+          v.addColorStop(0, 'hsl(' + (versatz += 20) + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, 320, 240);
+        }
+        zeichne();
+        var uhr = setInterval(zeichne, 50);
+        var aufnahme = new MediaRecorder(quellCanvas.captureStream(20));
+        var stuecke = [];
+        aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+        aufnahme.onstop = function () {
+          clearInterval(uhr);
+          var film = window.__film;
+          film.src = URL.createObjectURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+          film.play().catch(function () {});
+          document.documentElement.dataset.filmBereit = '1';
+        };
+        aufnahme.start();
+        setTimeout(function () { aufnahme.stop(); }, 1200);
+
+        window.testUrteile = function () {
+          var aus = {};
+          Object.keys(wurzeln).forEach(function (k) {
+            var liste = wurzeln[k].querySelectorAll('img, video, canvas');
+            for (var i = 0; i < liste.length; i++) aus[liste[i].id] = liste[i].getAttribute('data-veil') || '';
+          });
+          return aus;
+        };
+      })();
+    </script>
+  </body>
+</html>

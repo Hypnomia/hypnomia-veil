@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/waechter.js"></script>
+    <script>
+      // Protokoll der Urteilswechsel von Videos und Leinwaenden (data-veil): Zeit im Rueckruf des MutationObserver samt Abspielposition des
+      // zugehoerigen Videos. window.__wechsel = [{ t, id, v (null = Attribut entfernt), ct }]. Jedes Video und jede Leinwand traegt die Eigenschaft
+      // __v (das Video seiner Karte); so geht das Protokoll auch in Shadow Roots und fuer ausgehaengte Videos.
+      // Die Probe je Bild prueft die Spiegel-Regel: keine Leinwand ist sichtbarer als ihr Video. Erlaubt sind dasselbe Urteil, kein Urteil (versteckt,
+      // sie hinkt hoechstens hinterher) und "verdeckt" bei einem freien Video. Verboten sind "frei" bei einem Video ohne Urteil oder mit "verdeckt"
+      // und "verdeckt" (unscharf sichtbar) bei einem Video ohne Urteil. Massgeblich ist das Urteil des Videos auch ausserhalb des Dokuments; getrennte Leinwaende zaehlen nicht.
+      // window.__abweichung zaehlt Verstoesse, window.__abweichungWer beschreibt sie.
+      (function () {
+        window.__wechsel = [];
+        window.__abweichung = 0;
+        window.__abweichungWer = [];
+        window.__karten = [];
+        function melde(liste) {
+          for (var i = 0; i < liste.length; i++) {
+            var el = liste[i].target;
+            if (el.localName !== 'video' && el.localName !== 'canvas') continue;
+            var v = el.__v || null;
+            window.__wechsel.push({ t: performance.now(), id: el.id, v: el.getAttribute('data-veil'), ct: v ? v.currentTime : -1 });
+          }
+        }
+        window.__beobachte = function (wurzel) {
+          new MutationObserver(melde).observe(wurzel, { subtree: true, attributes: true, attributeFilter: ['data-veil'] });
+        };
+        window.__beobachte(document);
+        function probe() {
+          for (var i = 0; i < window.__karten.length; i++) {
+            var k = window.__karten[i];
+            var soll = k.v.getAttribute('data-veil');
+            for (var j = 0; j < k.cs.length; j++) {
+              var c = k.cs[j];
+              if (!c.isConnected) continue;
+              var ist = c.getAttribute('data-veil');
+              var verboten = (ist === 'frei' && soll !== 'frei') || (ist === 'verdeckt' && soll === null);
+              if (verboten) {
+                window.__abweichung++;
+                if (window.__abweichungWer.length < 20) window.__abweichungWer.push(c.id + ' ' + ist + ' gegen Video ' + soll + ' @' + Math.round(performance.now()));
+              }
+            }
+          }
+        }
+        function schritt() {
+          setTimeout(probe, 0);
+          requestAnimationFrame(schritt);
+        }
+        requestAnimationFrame(schritt);
+      })();
+    </script>
+    <title>Veil TikTok-Nachbau</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; background: #111; color: #eee; }
+      .karte { position: relative; width: 270px; height: 300px; margin: 0 0 8px; background: #222; }
+      .ebene { position: relative; width: 270px; height: 300px; }
+      /* Wie TikTok: das Video selbst ist unsichtbar (Deckkraft 0 von der Seite), sichtbar ist die Leinwand in einem eigenen Huellelement daneben. */
+      .ebene video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
+      x-sr-wrap { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+      x-sr-wrap canvas.bild { width: 100%; height: 100%; display: block; }
+      #seitenleiste { position: absolute; left: 290px; top: 8px; }
+      #seitenleiste img { display: block; margin-bottom: 8px; object-fit: cover; }
+    </style>
+  </head>
+  <body>
+    <!-- Nachbau der Struktur von TikTok For You (keine kopierte Seite): zwei Karten mit je einem Video (Deckkraft 0) und einer Leinwand in x-sr-wrap, die
+         jedes Bild des Videos abmalt (2d, mit ?leinwand=webgl ueber WebGL), dazu eine zweite, leere Leinwand (0 x 0) im selben Behaelter. "Wischen"
+         (window.wische()) tauscht die Quellen beider Videos. Bilder ohne crossorigin. Das Video nimmt die Seite zur Laufzeit auf (MediaRecorder,
+         keine Mediendatei im Repo): Abschnitt 1 neutral 0 bis 3 s, Abschnitt 2 das Testbild ?bild=<name> aus dem Satz nsfw 3 bis 6 s, Abschnitt 3 neutral
+         6 bis 10 s, als blob: mit loop. Die Aufnahme liegt im localStorage; erst danach steht data-film-bereit="1" und die Karten werden angelegt. -->
+    <div id="buehne"></div>
+    <div id="seitenleiste">
+      <img id="avatar" width="48" height="48" src="/synthetisch/5.png" alt="" />
+      <img id="bild-sfw" width="150" height="110" src="/synthetisch/9.png" alt="" />
+      <img id="bild-nsfw" width="150" height="110" alt="" />
+    </div>
+    <script>
+      (function () {
+        var param = new URLSearchParams(location.search);
+        var bild = param.get('bild') || '';
+        var modus = param.get('leinwand') === 'webgl' ? 'webgl' : '2d';
+        var SCHLUESSEL = 'seite-tiktok-1:' + bild;
+        var TREFFER_VON = 3000;
+        var TREFFER_BIS = 6000;
+        var DAUER_MS = 10000;
+        var filmBlob = null;
+        var zeichner = [];
+
+        document.getElementById('bild-nsfw').src = '/testbild/nsfw/' + encodeURIComponent(bild);
+
+        function farbverlauf(g, b, h, versatz) {
+          var v = g.createLinearGradient(0, 0, b, h);
+          v.addColorStop(0, 'hsl(' + versatz + ', 80%, 60%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 90) + ', 80%, 40%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, b, h);
+        }
+
+        function ladeBild(name) {
+          return new Promise(function (fertig, fehler) {
+            var i = new Image();
+            i.onload = function () { fertig(i); };
+            i.onerror = function () { fehler(new Error('Testbild nicht ladbar')); };
+            i.src = '/testbild/nsfw/' + encodeURIComponent(name);
+          });
+        }
+
+        function nimmAuf() {
+          return ladeBild(bild).then(function (img) {
+            var skala = 640 / Math.max(img.naturalWidth, img.naturalHeight);
+            var b = Math.round(img.naturalWidth * skala);
+            var h = Math.round(img.naturalHeight * skala);
+            var leinwand = document.createElement('canvas');
+            leinwand.width = b;
+            leinwand.height = h;
+            var g = leinwand.getContext('2d');
+            var t0 = performance.now();
+            var zeichne = function () {
+              var t = performance.now() - t0;
+              if (t >= TREFFER_VON && t < TREFFER_BIS) g.drawImage(img, 0, 0, b, h);
+              else farbverlauf(g, b, h, (t / 25) % 360);
+              g.fillStyle = '#000';
+              g.fillRect((t / 10) % (b - 8), h - 8, 8, 8);
+            };
+            zeichne();
+            var uhr = setInterval(zeichne, 40);
+            var aufnahme = new MediaRecorder(leinwand.captureStream(25), { videoBitsPerSecond: 1500000 });
+            var stuecke = [];
+            aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+            return new Promise(function (fertig) {
+              aufnahme.onstop = function () {
+                clearInterval(uhr);
+                fertig(new Blob(stuecke, { type: aufnahme.mimeType }));
+              };
+              t0 = performance.now();
+              aufnahme.start();
+              setTimeout(function () { aufnahme.stop(); }, DAUER_MS);
+            });
+          });
+        }
+
+        function alsText(blob) {
+          return new Promise(function (fertig) {
+            var l = new FileReader();
+            l.onload = function () { fertig(String(l.result)); };
+            l.readAsDataURL(blob);
+          });
+        }
+
+        function ausText(text) {
+          var teile = text.split(',');
+          var typ = /^data:([^;,]+)/.exec(teile[0]);
+          var bin = atob(teile[1]);
+          var feld = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) feld[i] = bin.charCodeAt(i);
+          return new Blob([feld], { type: typ ? typ[1] : 'video/webm' });
+        }
+
+        function beschaffe() {
+          try {
+            var gespeichert = localStorage.getItem(SCHLUESSEL);
+            if (gespeichert) return Promise.resolve(ausText(gespeichert));
+          } catch (e) { /* ohne Speicher wird immer neu aufgenommen */ }
+          return nimmAuf().then(function (blob) {
+            return alsText(blob).then(function (text) {
+              try { localStorage.setItem(SCHLUESSEL, text); } catch (e) { /* zu gross: dann bei jedem Laden neu */ }
+              return blob;
+            });
+          });
+        }
+
+        // WebGL-Zeichner: malt das Video als Textur auf die Leinwand. null, wenn der Browser kein WebGL kann.
+        function webglZeichner(c) {
+          var gl = c.getContext('webgl');
+          if (!gl) return null;
+          function huelle(typ, text) {
+            var s = gl.createShader(typ);
+            gl.shaderSource(s, text);
+            gl.compileShader(s);
+            return s;
+          }
+          var p = gl.createProgram();
+          gl.attachShader(p, huelle(gl.VERTEX_SHADER, 'attribute vec2 a; varying vec2 u; void main() { u = (a + 1.0) * 0.5; u.y = 1.0 - u.y; gl_Position = vec4(a, 0.0, 1.0); }'));
+          gl.attachShader(p, huelle(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec2 u; uniform sampler2D t; void main() { gl_FragColor = texture2D(t, u); }'));
+          gl.linkProgram(p);
+          gl.useProgram(p);
+          var puffer = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, puffer);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+          var ort = gl.getAttribLocation(p, 'a');
+          gl.enableVertexAttribArray(ort);
+          gl.vertexAttribPointer(ort, 2, gl.FLOAT, false, 0, 0);
+          var textur = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, textur);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          return function (v) {
+            gl.viewport(0, 0, c.width, c.height);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            // Wie auf TikTok liest die Leinwand ausserhalb des Bildaufbaus leer (kein preserveDrawingBuffer): nach dem Zeigen wird der Puffer geleert,
+            // sodass jeder Lesezugriff zwischen zwei Bildern transparent liefert. Das gezeigte Bild bleibt, der naechste Bildaufbau malt neu.
+            setTimeout(function () {
+              gl.clearColor(0, 0, 0, 0);
+              gl.clear(gl.COLOR_BUFFER_BIT);
+            }, 0);
+          };
+        }
+
+        // Eine Karte: Video (Deckkraft 0) und in x-sr-wrap eine Leinwand plus eine leere Leinwand. ?schatten=1 baut die Karten in Shadow Roots
+        // (Karte 1 offen, Karte 2 geschlossen). ?spaet=<ms> haengt das Video erst so viele Millisekunden nach der Leinwand ein.
+        var schatten = param.get('schatten') === '1';
+        var spaet = Number(param.get('spaet') || 0);
+
+        function legeKarteAn(n) {
+          var karte = document.createElement('div');
+          karte.className = 'karte';
+          karte.id = 'karte' + n;
+          var ebene = document.createElement('div');
+          ebene.className = 'ebene';
+          var v = document.createElement('video');
+          v.id = 'v' + n;
+          v.muted = true;
+          v.loop = true;
+          v.autoplay = true;
+          v.setAttribute('playsinline', '');
+          var huelle = document.createElement('x-sr-wrap');
+          var c = document.createElement('canvas');
+          c.id = 'c' + n;
+          c.className = 'bild';
+          c.width = 270;
+          c.height = 300;
+          var leer = document.createElement('canvas');
+          leer.id = 'c' + n + '-leer';
+          leer.width = 0;
+          leer.height = 0;
+          huelle.appendChild(c);
+          huelle.appendChild(leer);
+          if (!spaet) ebene.appendChild(v);
+          ebene.appendChild(huelle);
+          karte.appendChild(ebene);
+          var buehne = document.getElementById('buehne');
+          if (schatten) {
+            // Offene Wurzel bei Karte 1, geschlossene bei Karte 2; die Stile der Seite gelten dort nicht, darum eigene.
+            var wirt = document.createElement('div');
+            wirt.id = 'wirt' + n;
+            var wurzel = wirt.attachShadow({ mode: n === 1 ? 'open' : 'closed' });
+            var stil = document.createElement('style');
+            stil.textContent =
+              '.karte { position: relative; width: 270px; height: 300px; margin: 0 0 8px; background: #222; } .ebene { position: relative; width: 270px; height: 300px; } ' +
+              '.ebene video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; } ' +
+              'x-sr-wrap { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; } x-sr-wrap canvas.bild { width: 100%; height: 100%; display: block; }';
+            wurzel.appendChild(stil);
+            wurzel.appendChild(karte);
+            buehne.appendChild(wirt);
+            window.__beobachte(wurzel);
+          } else {
+            buehne.appendChild(karte);
+          }
+          var zeichne = null;
+          if (modus === 'webgl') {
+            zeichne = webglZeichner(c);
+            document.documentElement.dataset.webgl = zeichne ? 'ja' : 'nein';
+          } else {
+            var g = c.getContext('2d');
+            zeichne = function (video) { g.drawImage(video, 0, 0, c.width, c.height); };
+          }
+          if (zeichne) zeichner.push({ v: v, zeichne: zeichne });
+          v.__v = v;
+          c.__v = v;
+          leer.__v = v;
+          var eintrag = { karte: karte, ebene: ebene, v: v, cs: [c, leer] };
+          window.__karten.push(eintrag);
+          var starte = function () {
+            v.src = URL.createObjectURL(filmBlob);
+            v.play().catch(function () {});
+          };
+          if (spaet) {
+            setTimeout(function () {
+              ebene.insertBefore(v, ebene.firstChild);
+              starte();
+            }, spaet);
+          } else {
+            starte();
+          }
+        }
+
+        function schritt() {
+          for (var i = 0; i < zeichner.length; i++) {
+            var z = zeichner[i];
+            if (z.v.readyState >= 2) z.zeichne(z.v);
+          }
+          requestAnimationFrame(schritt);
+        }
+
+        // "Wischen": beide Videos bekommen eine neue Quelle (wiederverwendete Elemente wie auf TikTok).
+        window.wische = function () {
+          for (var i = 0; i < window.__karten.length; i++) {
+            var v = window.__karten[i].v;
+            v.src = URL.createObjectURL(filmBlob);
+            v.play().catch(function () {});
+          }
+        };
+
+        // Haengt Teile einer Karte fuer ms Millisekunden aus dem Dokument und danach an derselben Stelle wieder ein: wer = 'video' (nur das Video)
+        // oder 'beide' (die ganze Ebene mit Video und Leinwaenden). Das Video spielt danach weiter (ausgehaengt pausiert es). Liefert ein Versprechen.
+        window.haengeAus = function (n, wer, ms) {
+          var k = window.__karten[n - 1];
+          var teil = wer === 'video' ? k.v : k.ebene;
+          var eltern = teil.parentNode;
+          var nach = teil.nextSibling;
+          eltern.removeChild(teil);
+          return new Promise(function (fertig) {
+            setTimeout(function () {
+              eltern.insertBefore(teil, nach);
+              k.v.play().catch(function () {});
+              fertig(true);
+            }, ms);
+          });
+        };
+
+        beschaffe().then(function (blob) {
+          filmBlob = blob;
+          legeKarteAn(1);
+          legeKarteAn(2);
+          requestAnimationFrame(schritt);
+          document.documentElement.dataset.filmBereit = '1';
+        });
+
+        // Urteile aller Medien dieser Seite (fuer die Tests), auch die in Shadow Roots.
+        window.testUrteile = function () {
+          var aus = {};
+          var liste = document.querySelectorAll('img, video, canvas');
+          for (var i = 0; i < liste.length; i++) aus[liste[i].id] = liste[i].getAttribute('data-veil') || '';
+          for (var j = 0; j < window.__karten.length; j++) {
+            var k = window.__karten[j];
+            aus[k.v.id] = k.v.getAttribute('data-veil') || '';
+            for (var m = 0; m < k.cs.length; m++) aus[k.cs[m].id] = k.cs[m].getAttribute('data-veil') || '';
+          }
+          return aus;
+        };
+      })();
+    </script>
+  </body>
+</html>

@@ -21,9 +21,9 @@ const RELEASEBAU = { WXT_TESTHAKEN: '', VEIL_AUSGABE: '.output-release-pruefung'
 //   videoVerzoegerungMs   Testhaken: kuenstlich verzoegerte Video-Antwort (veil-test)
 //   (videoZeiten und die anderen Schluessel des Status-Objekts stehen als Namen auch im Release-Bau, werden dort aber nie geschrieben:
 //   das Schreiben haengt an testhakenAktiv(). Gesucht wird darum nach dem Attributnamen data-veil-status, nicht nach den Schluesseln.)
-const TESTHAKEN_SPUREN = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'data-hypnomia-veil', 'veilHello', 'videoVerzoegerungMs'];
+const TESTHAKEN_SPUREN = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'data-hypnomia-veil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze'];
 // Diese Spuren schreibt der Testbau wirklich; die Gegenprobe verlangt sie dort (data-hypnomia-veil kommt nur als dataset-Name vor).
-const SPUREN_IM_TESTBAU = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'veilHello', 'videoVerzoegerungMs'];
+const SPUREN_IM_TESTBAU = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze'];
 
 // Fuehrt ein npm-Skript aus, reicht die Ausgabe durch und liefert Exit-Code sowie Text.
 function lauf(skript, umgebung = {}) {
