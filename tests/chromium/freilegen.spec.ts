@@ -62,9 +62,9 @@ async function aendereEinstellungen(teil: Record<string, any>): Promise<void> {
 }
 const klickeMitte = async (s: Page, r: { x: number; y: number; w: number; h: number }) => s.mouse.click(r.x + r.w / 2, r.y + r.h / 2);
 
-async function frischeSeite(): Promise<Page> {
+async function frischeSeite(url = SEITE): Promise<Page> {
   const s = await context.newPage();
-  await s.goto(SEITE);
+  await s.goto(url);
   await expect.poll(() => s.evaluate(() => document.documentElement.hasAttribute('data-veil-status')), { timeout: 10_000 }).toBe(true);
   // Verdeckt-Fall schnell erreichen (zweiter Versuch nach einem Fehler)
   await s.evaluate(() => document.dispatchEvent(new CustomEvent('veil-test', { detail: JSON.stringify({ zweiterVersuchMs: 500 }) })));
@@ -137,7 +137,7 @@ test('ohne Pack: nie ein Knopf', async () => {
   }
 });
 
-test('Pack importieren, Quiz ohne Verweigern, kurze Freilegen-Dauer', async () => {
+async function importierePack(): Promise<void> {
   const e = await extSeite();
   try {
     await e.locator('#datei').setInputFiles(packPfad);
@@ -147,7 +147,17 @@ test('Pack importieren, Quiz ohne Verweigern, kurze Freilegen-Dauer', async () =
   } finally {
     await e.close();
   }
-  await aendereEinstellungen({ pause: false, quiz: { verweigern: 0, freilegenMs: 3000 } });
+}
+const entfernePack = async () => {
+  const e = await extSeite();
+  await e.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
+  await e.close();
+};
+const oeffneTestRiegel = (s: Page, o: Record<string, unknown>) =>
+  s.evaluate((d) => document.dispatchEvent(new CustomEvent('veil-test', { detail: JSON.stringify(d) })), { riegel: { oeffne: o } });
+
+test('Pack importieren, Quiz ohne Verweigern, kurze Freilegen-Dauer', async () => {
+  await importierePack();  await aendereEinstellungen({ pause: false, quiz: { verweigern: 0, freilegenMs: 3000 } });
 });
 
 test('Knoepfe nur an zensierten Flaechen ab 80 px, nicht an verdeckt, Video und kleinem Bild', async () => {
@@ -176,6 +186,7 @@ test('Quiz loesen zeigt das Original, nach freilegenMs wieder zensiert, Dauer ge
       (window as any).__log = [];
       new MutationObserver(() => (window as any).__log.push([performance.now(), el.getAttribute('data-veil')])).observe(el, { attributes: true, attributeFilter: ['data-veil'] });
     });
+    const zensierteQuelle = await s.evaluate(() => document.getElementById('a')!.getAttribute('src'));
     await expect.poll(async () => (await knoepfe(s)).some((x) => x.id === 'a'), { timeout: 8000 }).toBe(true);
     await klickeMitte(s, (await knoepfe(s)).find((x) => x.id === 'a')!);
     await loeseRiegel(s);
@@ -189,7 +200,8 @@ test('Quiz loesen zeigt das Original, nach freilegenMs wieder zensiert, Dauer ge
     const dauer = tWeg - tFrei;
     expect(Math.abs(dauer - FREILEGEN_MS)).toBeLessThanOrEqual(300);
     await expect.poll(() => meldung(s), { timeout: 4000 }).toBe('Test censored again line.');
-    expect(await s.evaluate(() => (document.getElementById('a') as HTMLImageElement).getAttribute('src'))).toMatch(/^data:/);
+    // dieselbe zensierte Fassung, ohne neue Pruefung
+    expect(await s.evaluate(() => document.getElementById('a')!.getAttribute('src'))).toBe(zensierteQuelle);
     console.log(`chromium freilegen: Original ${Math.round(dauer)} ms sichtbar (Soll ${FREILEGEN_MS}), danach wieder zensiert`);
   } finally {
     await s.close();
@@ -259,6 +271,185 @@ test('Pause waehrend des Freilegens gibt frei, danach wird normal geprueft', asy
   } finally {
     await aendereEinstellungen({ quiz: { freilegenMs: 3000 } });
     await s.close();
+  }
+});
+
+test('nur lokale Pause (Hintergrund antwortet nie): Freilegen endet, neue Quelle wird wieder geprueft', async () => {
+  await aendereEinstellungen({ pause: false, quiz: { freilegenMs: 30000 } });
+  const s = await frischeSeite();
+  try {
+    await warteZensiert(s);
+    await expect.poll(async () => (await knoepfe(s)).some((x) => x.id === 'a'), { timeout: 8000 }).toBe(true);
+    await klickeMitte(s, (await knoepfe(s)).find((x) => x.id === 'a')!);
+    await loeseRiegel(s);
+    await expect.poll(() => veil(s, 'a'), { timeout: 8000 }).toBe('frei');
+    // Riegel eines anderen Grundes, dessen Pause-Nachricht nie ankommt
+    await oeffneTestRiegel(s, { frage: 'test-w1', pauseHaengt: true });
+    await expect.poll(async () => (await riegel(s))?.zustand, { timeout: 15_000 }).toBe('frage');
+    await s.waitForTimeout(600);
+    await klickeMitte(s, (await riegel(s)).pause);
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 5000 }).toBe(0);
+    expect(await s.evaluate(() => document.documentElement.getAttribute('data-veil-seite'))).not.toBe('aus'); // gespeicherte Pause kam nie an
+    // Die Seite wechselt die Quelle des freigelegten Bildes: das Freilegen steht nicht mehr im Weg, es wird wieder geprueft
+    await s.evaluate(() => document.getElementById('a')!.setAttribute('src', '/testbild/nsfw/IMG_0260.jpg?neu=1'));
+    await expect.poll(() => s.evaluate(() => document.getElementById('a')!.getAttribute('src')?.startsWith('data:')), { timeout: 40_000, intervals: [100] }).toBe(true);
+    await expect.poll(() => veil(s, 'a'), { timeout: 20_000 }).toBe('zensiert');
+    console.log('chromium freilegen: nur lokale Pause beendet das Freilegen, neue Quelle wird geprueft');
+  } finally {
+    await aendereEinstellungen({ quiz: { freilegenMs: 3000 } });
+    await s.close();
+  }
+});
+
+test('Quellwechsel waehrend des Freilegens: sofort verdeckt, nie ungeprueft sichtbar', async () => {
+  await aendereEinstellungen({ pause: false, quiz: { freilegenMs: 30000 } });
+  const s = await frischeSeite();
+  try {
+    await warteZensiert(s);
+    await expect.poll(async () => (await knoepfe(s)).some((x) => x.id === 'a'), { timeout: 8000 }).toBe(true);
+    await klickeMitte(s, (await knoepfe(s)).find((x) => x.id === 'a')!);
+    await loeseRiegel(s);
+    await expect.poll(() => veil(s, 'a'), { timeout: 8000 }).toBe('frei');
+    await s.evaluate(() => {
+      const el = document.getElementById('a')!;
+      (window as any).__log = [];
+      new MutationObserver(() => (window as any).__log.push(el.getAttribute('data-veil'))).observe(el, { attributes: true, attributeFilter: ['data-veil'] });
+      el.setAttribute('src', '/testbild/nsfw/IMG_0260.jpg?rotation=2');
+    });
+    await expect.poll(() => veil(s, 'a'), { timeout: 40_000, intervals: [50] }).toBe('zensiert');
+    const log: Array<string | null> = await s.evaluate(() => (window as any).__log);
+    expect(log[0]).toBeNull(); // sofort wieder verdeckt (Hide-first)
+    expect(log).not.toContain('frei');
+    // Hintergrund: Inline-Wert wechseln, solange freigelegt
+    await expect.poll(async () => (await knoepfe(s)).some((x) => x.id === 'hg'), { timeout: 8000 }).toBe(true);
+    await klickeMitte(s, (await knoepfe(s)).find((x) => x.id === 'hg')!);
+    await loeseRiegel(s);
+    await expect.poll(() => veil(s, 'hg'), { timeout: 8000 }).toBe('frei');
+    await s.evaluate(() => {
+      const el = document.getElementById('hg')!;
+      (window as any).__log2 = [];
+      new MutationObserver(() => (window as any).__log2.push(el.getAttribute('data-veil'))).observe(el, { attributes: true, attributeFilter: ['data-veil'] });
+      el.style.backgroundImage = "url('/testbild/nsfw/IMG_0260.jpg?rotation=3')";
+    });
+    await expect.poll(() => veil(s, 'hg'), { timeout: 40_000, intervals: [50] }).toBe('zensiert');
+    const log2: Array<string | null> = await s.evaluate(() => (window as any).__log2);
+    expect(log2[0]).toBeNull();
+    expect(log2).not.toContain('frei');
+    console.log('chromium freilegen: Quellwechsel beendet das Freilegen sofort (Bild und Hintergrund)');
+  } finally {
+    await aendereEinstellungen({ quiz: { freilegenMs: 3000 } });
+    await s.close();
+  }
+});
+
+test('eigene Ausnahme waehrend des Freilegens: alles frei, Knoepfe weg, danach wieder da', async () => {
+  const s = await frischeSeite();
+  try {
+    await warteZensiert(s);
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 8000 }).toBe(2);
+    await aendereEinstellungen({ ausnahmen: ['127.0.0.1'] });
+    await expect.poll(() => s.evaluate(() => document.documentElement.getAttribute('data-veil-seite')), { timeout: 8000 }).toBe('aus');
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 5000 }).toBe(0);
+    await aendereEinstellungen({ ausnahmen: [] });
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 40_000 }).toBe(2);
+    console.log('chromium freilegen: eigene Ausnahme nimmt die Knoepfe weg, danach kommen sie zurueck');
+  } finally {
+    await aendereEinstellungen({ ausnahmen: [] });
+    await s.close();
+  }
+});
+
+test('hoechstens 24 Knoepfe, nur im Sichtbereich', async () => {
+  const s = await frischeSeite(`http://127.0.0.1:${port}/freilegen-viele.html`);
+  try {
+    for (const id of ['v0', 'v39', 'u0']) await expect.poll(() => veil(s, id), { timeout: 90_000, intervals: [200] }).toBe('zensiert');
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 10_000 }).toBe(24);
+    const k = await knoepfe(s);
+    expect(k.every((x) => x.id.startsWith('v'))).toBe(true);
+    expect(k.every((x) => x.y >= 0 && x.y + x.h <= 720)).toBe(true);
+    await s.evaluate(() => window.scrollTo(0, document.getElementById('u0')!.getBoundingClientRect().top + scrollY - 50));
+    await expect.poll(async () => (await knoepfe(s)).map((x) => x.id).sort().join(','), { timeout: 8000 }).toBe('u0,u1,u2');
+    console.log('chromium freilegen: 24 Knoepfe im Sichtbereich, nach dem Scrollen nur die sichtbaren drei');
+  } finally {
+    await s.close();
+  }
+});
+
+test('Lagen: durchsichtige Ebene (Instagram-Muster) erlaubt den Knopf, Karussell beschneidet, deckende Ebene verhindert ihn', async () => {
+  const s = await frischeSeite(`http://127.0.0.1:${port}/freilegen-lagen.html`);
+  try {
+    for (const id of ['insta', 'k1', 'k2', 'bedeckt']) await expect.poll(() => veil(s, id), { timeout: 60_000, intervals: [100] }).toBe('zensiert');
+    await expect.poll(async () => (await knoepfe(s)).map((x) => x.id).sort().join(','), { timeout: 8000 }).toBe('insta,k1,k2');
+    const rect = await s.evaluate(() => {
+      const b = document.getElementById('karussell')!.getBoundingClientRect();
+      return { l: b.left, t: b.top, r: b.right, b: b.bottom };
+    });
+    for (const k of (await knoepfe(s)).filter((x) => x.id !== 'insta')) {
+      expect(k.x).toBeGreaterThanOrEqual(rect.l);
+      expect(k.x + k.w).toBeLessThanOrEqual(rect.r);
+      expect(k.y).toBeGreaterThanOrEqual(rect.t);
+      expect(k.y + k.h).toBeLessThanOrEqual(rect.b);
+    }
+    console.log('chromium freilegen: Lagen ok (insta mit Knopf, Karussell beschnitten, bedeckt ohne Knopf)');
+  } finally {
+    await s.close();
+  }
+});
+
+test('Ruhe: ohne Ereignis keine Dauermessung (Knopf bleibt, Frames ruhen)', async () => {
+  const s = await frischeSeite();
+  try {
+    await warteZensiert(s);
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 8000 }).toBe(2);
+    // Aufrufe von getBoundingClientRect zaehlen: nach dem Nachlauf duerfen es kaum noch welche sein
+    await s.waitForTimeout(800);
+    const zahl = await s.evaluate(async () => {
+      let n = 0;
+      const alt = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function () {
+        n++;
+        return alt.call(this);
+      };
+      await new Promise((ok) => setTimeout(ok, 1000));
+      Element.prototype.getBoundingClientRect = alt;
+      return n;
+    });
+    expect(zahl).toBeLessThan(10);
+    console.log(`chromium freilegen: in 1 s Ruhe ${zahl} Messungen`);
+  } finally {
+    await s.close();
+  }
+});
+
+test('Pack entfernt: offener Riegel schliesst, Freigelegtes ist sofort wieder zensiert', async () => {
+  const s = await frischeSeite();
+  try {
+    await warteZensiert(s);
+    await expect.poll(async () => (await knoepfe(s)).length, { timeout: 8000 }).toBe(2);
+    await klickeMitte(s, (await knoepfe(s)).find((x) => x.id === 'a')!);
+    await expect.poll(async () => (await riegel(s))?.zustand, { timeout: 15_000 }).toBe('frage');
+    await entfernePack();
+    await expect.poll(() => s.evaluate(() => document.querySelector('[data-veil-riegel-host]') !== null), { timeout: 5000 }).toBe(false);
+  } finally {
+    await s.close();
+  }
+  await importierePack();
+  await aendereEinstellungen({ quiz: { verweigern: 0, freilegenMs: 30000 } });
+  const t = await frischeSeite();
+  try {
+    await warteZensiert(t);
+    await expect.poll(async () => (await knoepfe(t)).some((x) => x.id === 'a'), { timeout: 8000 }).toBe(true);
+    const quelle = await t.evaluate(() => document.getElementById('a')!.getAttribute('src'));
+    await klickeMitte(t, (await knoepfe(t)).find((x) => x.id === 'a')!);
+    await loeseRiegel(t);
+    await expect.poll(() => veil(t, 'a'), { timeout: 8000 }).toBe('frei');
+    await entfernePack();
+    await expect.poll(() => veil(t, 'a'), { timeout: 3000 }).toBe('zensiert');
+    expect(await t.evaluate(() => document.getElementById('a')!.getAttribute('src'))).toBe(quelle);
+    console.log('chromium freilegen: Pack weg waehrend Freilegen, Bild sofort wieder zensiert (gleiche Fassung)');
+  } finally {
+    await aendereEinstellungen({ quiz: { freilegenMs: 3000 } });
+    await t.close();
   }
 });
 

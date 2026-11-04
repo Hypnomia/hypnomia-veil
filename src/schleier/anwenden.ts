@@ -224,6 +224,54 @@ export function stelleWiederHer(el: Element, z: Zustand): void {
   z.tauschLaeuft = false;
 }
 
+// Freilegen: zeigt das Original, ohne die gemerkten Daten zu verwerfen (bildOriginal, hgOriginal, eigen bleiben), damit die zensierte Fassung am Ende
+// direkt wieder eingesetzt werden kann.
+export function zeigeOriginal(el: Element, z: Zustand): void {
+  if (z.bildOriginal && el instanceof HTMLImageElement) {
+    const o = z.bildOriginal;
+    for (const q of o.quellen) {
+      setzeAttribut(q.el, 'srcset', q.srcset);
+      setzeAttribut(q.el, 'src', q.src);
+      setzeAttribut(q.el, 'sizes', q.sizes);
+    }
+    setzeAttribut(el, 'sizes', o.sizes);
+    setzeAttribut(el, 'srcset', o.srcset);
+    setzeAttribut(el, 'loading', o.loading);
+    setzeAttribut(el, 'src', o.src);
+    z.signatur = bildSignatur(el);
+  }
+  if (z.hgOriginal && el instanceof HTMLElement) {
+    if (z.hgOriginal.stil !== null) el.setAttribute('style', z.hgOriginal.stil);
+    else if (z.hgOriginal.wert) el.style.setProperty('background-image', z.hgOriginal.wert, z.hgOriginal.prio);
+    else el.style.removeProperty('background-image');
+    z.signatur = hintergrundWert(el);
+  }
+}
+
+// Gegenstueck: die gemerkte zensierte Fassung (z.eigen) wieder einsetzen. Ein Bild muss danach erst laden (tauschLaeuft setzt der Aufrufer).
+export function setzeZensurWieder(el: Element, z: Zustand): boolean {
+  if (!z.eigen) return false;
+  if (el instanceof HTMLImageElement && z.bildOriginal) {
+    el.removeAttribute('srcset');
+    el.removeAttribute('sizes');
+    for (const q of z.bildOriginal.quellen) {
+      q.el.removeAttribute('srcset');
+      q.el.removeAttribute('sizes');
+    }
+    el.setAttribute('loading', 'eager');
+    el.setAttribute('src', z.eigen);
+    z.signatur = bildSignatur(el);
+    return true;
+  }
+  if (el instanceof HTMLElement && z.hgOriginal) {
+    el.style.setProperty('background-image', z.eigen, 'important');
+    z.eigen = el.style.getPropertyValue('background-image');
+    z.signatur = z.eigen;
+    return true;
+  }
+  return false;
+}
+
 // Setzt das Element zurueck in "noch nicht beurteilt" (Attribut weg, Zeitgeber weg, laufende Antworten verworfen).
 // restore = false, wenn die Seite die Quelle selbst geaendert hat (die gemerkten Originale sind dann veraltet).
 export function vergiss(el: Element, z: Zustand, restore: boolean): void {

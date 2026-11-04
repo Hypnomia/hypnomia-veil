@@ -51,7 +51,7 @@ export class Meldung {
     host.style.setProperty('position', 'fixed', 'important');
     host.style.setProperty('z-index', '2147483647', 'important');
     host.style.setProperty('pointer-events', 'none', 'important');
-    (document.body ?? document.documentElement).append(host);
+    document.documentElement.append(host);
     this.host = host;
     this.kasten = kasten;
     this.feld = feld;

@@ -285,6 +285,29 @@ test('Dialog, Popover und Vollbild der Seite legen sich nicht ueber die Galerie'
   await setze({ pause: false });
 });
 
+test('modaler Dialog in einer Shadow Root der Seite wird geschlossen', async () => {
+  const seite = await oeffne(LISTE);
+  try {
+    await warteGalerie(seite);
+    const oben = () => seite.evaluate(() => document.elementFromPoint(50, 50)?.hasAttribute('data-veil-ersatz-host') === true);
+    await seite.evaluate(() => {
+      const h = document.createElement('div');
+      h.id = 'wurzel-host';
+      const w = h.attachShadow({ mode: 'open' });
+      w.innerHTML = '<dialog id="sd">Dialog in der Wurzel</dialog>';
+      document.body.appendChild(h);
+    });
+    await seite.waitForTimeout(100);
+    await seite.evaluate(() => (document.getElementById('wurzel-host')!.shadowRoot!.getElementById('sd') as HTMLDialogElement).showModal());
+    await expect
+      .poll(() => seite.evaluate(() => (document.getElementById('wurzel-host')!.shadowRoot!.getElementById('sd') as HTMLDialogElement).open), { timeout: 5000 })
+      .toBe(false);
+    expect(await oben()).toBe(true);
+  } finally {
+    await seite.close();
+  }
+});
+
 test('Wurzelelement ausgetauscht (document.open) und Aenderungen am Host: die Galerie kommt zurueck', async () => {
   const seite = await oeffne(LISTE);
   try {
@@ -413,9 +436,9 @@ test('Blitz-Grenze: schnelles Umschalten ergibt hoechstens 3 vollflaechige Wechs
         }
       }).observe(document.documentElement, { childList: true });
     });
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       await setze({ komplettErsatz: i % 2 === 1 });
-      await seite.waitForTimeout(120);
+      await seite.waitForTimeout(190); // 10 Umschaltungen in etwa 2 s
     }
     await setze({ komplettErsatz: true });
     await warteGalerie(seite);
@@ -425,8 +448,12 @@ test('Blitz-Grenze: schnelles Umschalten ergibt hoechstens 3 vollflaechige Wechs
     const zeiten = z.map((x) => x[1]);
     let hoechst = 0;
     for (const t of zeiten) hoechst = Math.max(hoechst, zeiten.filter((u) => u >= t && u < t + 1000).length);
-    console.log(`chromium: Wechsel der Galerie ${z.length}, hoechstens ${hoechst} je Sekunde`);
+    // Mit Abstand: auch in 1,25-s-Fenstern (Zeichenverzug des Browsers) kommen hoechstens 3 Wechsel vor.
+    let hoechst125 = 0;
+    for (const t of zeiten) hoechst125 = Math.max(hoechst125, zeiten.filter((u) => u >= t && u < t + 1250).length);
+    console.log(`chromium: Wechsel der Galerie ${z.length}, hoechstens ${hoechst} je 1-s-Fenster, hoechstens ${hoechst125} je 1,25-s-Fenster`);
     expect(hoechst).toBeLessThanOrEqual(3);
+    expect(hoechst125).toBeLessThanOrEqual(3);
     // Das Ende steht: Galerie da.
     expect(await hostDa(seite)).toBe(true);
   } finally {

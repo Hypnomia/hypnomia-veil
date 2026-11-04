@@ -359,6 +359,50 @@ try {
     await laeuft('haupt', 'Shadow Root nach dem Loesen');
   });
 
+  await fall('Rueckfall-Video gesperrt, danach Adapter-Treffer: nur dieser bleibt gesperrt, das andere bekommt den Ton zurueck und startet nicht', async () => {
+    await oeffneSeite(ADAPTER_SEITE);
+    await neuesVideo({ id: 'rueckfall', ziel: 'fremd', autoplay: true, abspielen: true, muted: false });
+    await bis('Rueckfall steht', async () => (await video('rueckfall')).paused, 10_000);
+    pruefe((await video('rueckfall')).muted === true, 'Rueckfall gesperrt: stumm');
+    await neuesVideo({ id: 'haupt', autoplay: true });
+    await bis('haupt steht', async () => (await video('haupt')).paused, 10_000);
+    await bis('Rueckfall: Ton zurueck', async () => (await video('rueckfall')).muted === false, 5000);
+    await warte(800);
+    pruefe((await video('rueckfall')).paused === true, 'Rueckfall startet nicht von selbst');
+    await bleibtStehen('haupt', 'Adapter-Hauptvideo nach dem Treffer');
+    pruefe((await video('haupt')).muted === true, 'Adapter-Hauptvideo bleibt stumm');
+  });
+
+  await fall('Leeres Platzhalter-Video in #player verdraengt das gesperrte Rueckfall-Video nicht; erst der echte Treffer', async () => {
+    await oeffneSeite(ADAPTER_SEITE);
+    await neuesVideo({ id: 'rueckfall', ziel: 'fremd', autoplay: true, abspielen: true, muted: false });
+    await bis('Rueckfall steht', async () => (await video('rueckfall')).paused, 10_000);
+    await driver.executeScript("const l = document.createElement('video'); l.id = 'platzhalter'; document.getElementById('player').appendChild(l);");
+    await warte(1200);
+    const r = await video('rueckfall');
+    pruefe(r.paused === true && r.muted === true, `Platzhalter verdraengt das Rueckfall-Video nicht (${JSON.stringify(r)})`);
+    await neuesVideo({ id: 'haupt', autoplay: true });
+    await bis('haupt steht', async () => (await video('haupt')).paused, 10_000);
+    await bis('Rueckfall: Ton zurueck', async () => (await video('rueckfall')).muted === false, 5000);
+  });
+
+  await fall('Video in einer deklarativen Shadow Root (template shadowrootmode) bekommt den Riegel', async () => {
+    await oeffneSeite();
+    await driver.executeScript(`
+      const h = document.createElement('div');
+      document.body.appendChild(h);
+      h.setHTMLUnsafe('<div id="dsd"><template shadowrootmode="open"><style>video{width:640px;height:360px;display:block}</style><video id="dsdv" autoplay muted playsinline></video></template></div>');
+      const v = document.getElementById('dsd').shadowRoot.getElementById('dsdv');
+      v.src = window.neueQuelle();
+      v.play().catch(() => {});`);
+    await riegelOffen();
+    const stand = () => driver.executeScript(`const v = document.getElementById('dsd').shadowRoot.getElementById('dsdv'); return { paused: v.paused, t: v.currentTime };`);
+    const x = await stand();
+    await warte(700);
+    const y = await stand();
+    pruefe(x.paused && y.paused && y.t - x.t < 0.02, `deklarative Wurzel: Video bleibt stehen (${JSON.stringify([x, y])})`);
+  });
+
   await fall('Galerie des Komplett-Ersatzes: kein Riegel; danach wieder Riegel', async () => {
     await oeffneSeite();
     await driver.executeScript("document.documentElement.setAttribute('data-veil-ersatz', '')");

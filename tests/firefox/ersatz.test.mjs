@@ -275,6 +275,17 @@ try {
   await bis('Galerie wieder oben', oben, 5000);
   pruefe(true, 'Popover der Seite: die Galerie kommt wieder nach oben');
   await driver.executeScript(`document.getElementById('pp').hidePopover();`);
+  // Modaler Dialog in einer offenen Shadow Root der Seite
+  await driver.executeScript(`
+    const h = document.createElement('div');
+    h.id = 'wurzel-host';
+    const w = h.attachShadow({ mode: 'open' });
+    w.innerHTML = '<dialog id="sd">Dialog in der Wurzel</dialog>';
+    document.body.appendChild(h);`);
+  await warte(150);
+  await driver.executeScript(`document.getElementById('wurzel-host').shadowRoot.getElementById('sd').showModal();`);
+  await bis('Wurzel-Dialog geschlossen', async () => (await driver.executeScript(`return document.getElementById('wurzel-host').shadowRoot.getElementById('sd').open;`)) === false, 5000);
+  pruefe(await oben(), 'modaler Dialog in einer Shadow Root der Seite wird geschlossen, die Galerie liegt oben');
   const host = `document.querySelector('[data-veil-ersatz-host]')`;
   await driver.executeScript(`${host}.hidePopover();`);
   await bis('Popover wieder offen', () => driver.executeScript(`return ${host}.matches(':popover-open');`), 5000);
@@ -361,9 +372,9 @@ try {
         for (const n of m.removedNodes) if (n.hasAttribute && n.hasAttribute('data-veil-ersatz-host')) z.push(['aus', performance.now()]);
       }
     }).observe(document.documentElement, { childList: true });`);
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     await setze({ komplettErsatz: i % 2 === 1 });
-    await warte(120);
+    await warte(190); // 10 Umschaltungen in etwa 2 s
   }
   await setze({ komplettErsatz: true });
   await warteGalerie('nach Umschalten');
@@ -372,8 +383,10 @@ try {
   const zeiten = z.map((x) => x[1]);
   let hoechst = 0;
   for (const s of zeiten) hoechst = Math.max(hoechst, zeiten.filter((u) => u >= s && u < s + 1000).length);
-  console.log(`firefox: Wechsel der Galerie ${z.length}, hoechstens ${hoechst} je Sekunde`);
-  pruefe(z.length > 1 && hoechst <= 3, `Blitz-Grenze: hoechstens 3 Wechsel je Sekunde (${hoechst} bei ${z.length})`);
+  let hoechst125 = 0;
+  for (const s of zeiten) hoechst125 = Math.max(hoechst125, zeiten.filter((u) => u >= s && u < s + 1250).length);
+  console.log(`firefox: Wechsel der Galerie ${z.length}, hoechstens ${hoechst} je 1-s-Fenster, hoechstens ${hoechst125} je 1,25-s-Fenster`);
+  pruefe(z.length > 1 && hoechst <= 3 && hoechst125 <= 3, `Blitz-Grenze mit Abstand: hoechstens 3 Wechsel je Sekunde und je 1,25 s (${hoechst}, ${hoechst125} bei ${z.length})`);
   pruefe(await hostDa(), 'Ende des Umschaltens: Galerie steht');
 
   // 7. Eigene Ausnahme

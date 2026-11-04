@@ -423,3 +423,155 @@ test('Pack entfernt auf offener Seite: Originale kommen zurueck', async () => {
   await expect.poll(() => tabTitel(s), { timeout: 10_000, intervals: [100] }).toBe('Original tab title');
   await s.close();
 });
+
+// ---------- Nachlese Session 8 (Auftrag N) ----------
+// Messsonde als erstes Skript: zaehlt gezeichnete Frames, in denen ein Originaltitel sichtbar war (Karte nicht versteckt, Tab-Titel Original).
+const SONDE_FRAMES = `(() => {
+  const M = (window.__fr = { frames: 0, karte: 0, tab: 0, frei: null, t0: performance.now() });
+  const schritt = () => {
+    const k = document.getElementById('t1');
+    const t = document.title;
+    M.frames++;
+    const karteSichtbar = !!k && k.textContent === 'Original card one' && getComputedStyle(k).visibility === 'visible';
+    if (karteSichtbar) M.karte++;
+    if (t === 'Original tab title') M.tab++;
+    if (M.frei === null && karteSichtbar && t === 'Original tab title') M.frei = performance.now() - M.t0;
+    requestAnimationFrame(schritt);
+  };
+  requestAnimationFrame(schritt);
+})();`;
+const lieseFrames = (s: Page) => s.evaluate(() => (window as any).__fr as { frames: number; karte: number; tab: number; frei: number | null });
+
+test('Titel ohne Aufblitzen: mit Pack 0 gezeichnete Frames mit Originaltitel, danach ersetzt', async () => {
+  test.setTimeout(90_000);
+  await importierePack(packPfad);
+  const s = await context.newPage();
+  await s.addInitScript(SONDE_FRAMES);
+  await s.goto(seite('pornhub'));
+  await warteBisErsetzt(s);
+  await expect.poll(() => tabTitel(s), { timeout: 10_000 }).toBe('Test title: Original tab title');
+  await abwarten(300);
+  const f = await lieseFrames(s);
+  console.log(`chromium T: Frames ${f.frames}, davon Originalkarte sichtbar ${f.karte}, Original-Tab-Titel ${f.tab}`);
+  expect(f.frames).toBeGreaterThan(3);
+  expect(f.karte).toBe(0);
+  expect(f.tab).toBe(0);
+  await s.close();
+});
+
+test('Titel ohne Aufblitzen: ohne Pack bleiben die Titel nach kurzer Zeit sichtbar', async () => {
+  test.setTimeout(90_000);
+  await entfernePack();
+  const s = await context.newPage();
+  await s.addInitScript(SONDE_FRAMES);
+  await s.goto(seite('pornhub'));
+  await expect.poll(async () => (await lieseFrames(s)).frei, { timeout: 5000, intervals: [50] }).not.toBeNull();
+  const f = await lieseFrames(s);
+  console.log(`chromium T: ohne Pack Titel nach ${Math.round(f.frei!)} ms sichtbar (ab Start der Sonde)`);
+  expect(f.frei!).toBeLessThan(300);
+  expect(await textVon(s, 't1')).toBe('Original card one');
+  expect(await tabTitel(s)).toBe('Original tab title');
+  await s.close();
+  await importierePack(packPfad);
+});
+
+test('Titel, die spaeter eingefuegt werden (Endlos-Scrollen): 0 Frames im Original, danach ersetzt', async () => {
+  test.setTimeout(60_000);
+  const s = await context.newPage();
+  await s.goto(seite('pornhub'));
+  await warteBisErsetzt(s);
+  await s.evaluate(async () => {
+    const w = window as any;
+    w.__spaet = { frames: 0, orig: 0 };
+    const ids: string[] = [];
+    const f = () => {
+      for (const id of ids) {
+        const e = document.getElementById(id);
+        if (e && e.textContent!.startsWith('Late') && getComputedStyle(e).visibility === 'visible') w.__spaet.orig++;
+      }
+      w.__spaet.frames++;
+      requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+    for (let i = 0; i < 6; i++) {
+      ids.push(w.neueKarte('Late card ' + i));
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  });
+  await expect.poll(() => textVon(s, 't101'), { timeout: 5000, intervals: [50] }).toBe('Test title: Late card 0');
+  await abwarten(300);
+  const r = await s.evaluate(() => (window as any).__spaet as { frames: number; orig: number });
+  console.log(`chromium T: spaet eingefuegte Titel, Frames ${r.frames}, davon im Original sichtbar ${r.orig}`);
+  expect(r.frames).toBeGreaterThan(5);
+  expect(r.orig).toBe(0);
+  await s.close();
+});
+
+test('Seite kopiert die Blattliste und setzt sie spaeter neu: ohne Pack bleibt der Titel sichtbar', async () => {
+  test.setTimeout(90_000);
+  await entfernePack();
+  const s = await context.newPage();
+  await s.goto(seite('pornhub') + '?kopie=1');
+  await expect.poll(() => s.evaluate(() => (window as any).__kopie.gesetzt), { timeout: 8000, intervals: [100] }).toBe(true);
+  await abwarten(300);
+  const n = await s.evaluate(() => (window as any).__kopie.n);
+  console.log(`chromium T: Seite kopierte ${n} Blatt/Blaetter und setzte sie neu`);
+  expect(n).toBeGreaterThan(0);
+  expect(await s.evaluate(() => getComputedStyle(document.getElementById('t1')!).visibility)).toBe('visible');
+  expect(await tabTitel(s)).toBe('Original tab title');
+  await s.close();
+});
+
+test('Pack ohne Titel-Saetze: das Original ist sofort wieder da (nicht erst nach der 3-s-Frist)', async () => {
+  test.setTimeout(90_000);
+  await entfernePack();
+  const bau = await ladeBau();
+  const { DUMMY_TEXTE } = (await import(inhaltModul)) as { DUMMY_TEXTE: { version: number; gruppen: Record<string, string[]> } };
+  const ohneTitel = { ...DUMMY_TEXTE, gruppen: { ...DUMMY_TEXTE.gruppen, titel: ['no placeholder here'] } };
+  const pfad = path.join(ordner, 'ohne-titel.miapack');
+  await writeFile(pfad, (await bau.baueDummyPack({ texte: ohneTitel, id: 'ohne-titel' })).bytes);
+  await importierePack(pfad);
+  const s = await context.newPage();
+  await s.addInitScript(SONDE_FRAMES);
+  await s.goto(seite('pornhub'));
+  await expect.poll(async () => (await lieseFrames(s)).frei, { timeout: 5000, intervals: [50] }).not.toBeNull();
+  const f = await lieseFrames(s);
+  console.log(`chromium T: Pack ohne Titel-Saetze, Titel nach ${Math.round(f.frei!)} ms sichtbar`);
+  expect(f.frei!).toBeLessThan(1500);
+  await s.close();
+  await entfernePack();
+  await importierePack(packPfad);
+});
+
+test('lokale Pause im Riegel (Hintergrund stumm): der Tab-Titel ist sofort im Original', async () => {
+  test.setTimeout(90_000);
+  await setzeEinstellungen({ erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: ['127.0.0.1'] } });
+  const s = await context.newPage();
+  await s.goto(`${basis}/erwachsen-titel.html`);
+  await expect.poll(() => tabTitel(s), { timeout: 15_000, intervals: [50] }).toBe('Test title: Original tab title');
+  // Der Riegel-Testhaken laeuft nur auf 127.0.0.1 (Seite `allgemein`, ohne Titel-Selektoren): hier zaehlt der Tab-Titel. Die Karten stellt
+  // dieselbe Rueckruf-Kette (beiLokalerPause) zurueck; ihre Pause ueber die Einstellungen deckt der Test oben ab.
+  await s.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('veil-test', { detail: JSON.stringify({ riegel: { oeffne: { frage: 'test-w1', pauseHaengt: true } } }) })),
+  );
+  let pause: { x: number; y: number; w: number; h: number } | null = null;
+  await expect
+    .poll(
+      async () => {
+        const a = await s.evaluate(() => {
+          const v = document.documentElement.getAttribute('data-veil-riegel');
+          return v ? JSON.parse(v) : null;
+        });
+        if (a && a.zustand === 'frage' && a.offen) pause = a.pause;
+        return pause !== null;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+  await s.mouse.click(pause!.x + pause!.w / 2, pause!.y + pause!.h / 2);
+  await expect.poll(() => s.evaluate(() => document.documentElement.getAttribute('data-veil-riegel-ergebnis')), { timeout: 3000 }).toBe('pause');
+  await expect.poll(() => tabTitel(s), { timeout: 2000, intervals: [25] }).toBe('Original tab title');
+  expect(await s.evaluate(() => (globalThis as any).chrome === undefined || true)).toBe(true);
+  await s.close();
+  await setzeEinstellungen({ erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] } });
+});

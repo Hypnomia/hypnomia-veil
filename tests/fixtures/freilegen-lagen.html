@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Freilegen Lagen</title>
+<style>
+  body { margin: 0; }
+  .reihe { display: flex; flex-wrap: wrap; gap: 20px; padding: 10px; }
+  .block { position: relative; width: 300px; height: 300px; }
+  .block img { position: absolute; left: 0; top: 0; width: 300px; height: 300px; }
+  /* Instagram-Muster: das Bild reagiert nicht auf Zeiger, eine durchsichtige Ebene (Link) liegt darueber */
+  #insta { pointer-events: none; }
+  .klick { position: absolute; left: 0; top: 0; width: 300px; height: 300px; display: block; }
+  /* Karussell: overflow hidden, die Folien ragen heraus */
+  #karussell { position: relative; width: 250px; height: 250px; overflow: hidden; }
+  #schiene { position: absolute; left: 0; top: 0; width: 500px; height: 250px; transform: translateX(-100px); }
+  #schiene img { position: absolute; top: 0; width: 250px; height: 250px; }
+  #k1 { left: 0; } #k2 { left: 250px; }
+  /* deckende Ebene ueber dem Bild */
+  .deckel { position: absolute; left: 0; top: 0; width: 300px; height: 300px; background: #c33; }
+</style></head>
+<body>
+<!-- Auftrag F: Lagen. insta: Knopf erscheint (durchsichtige Ebene darueber). k1, k2: Knopf liegt im sichtbaren Teil des Karussells.
+     bedeckt: deckende Ebene darueber, kein Knopf. -->
+<div class="reihe">
+  <div class="block"><img id="insta" src="/testbild/nsfw/IMG_0260.jpg"><a class="klick" href="#insta"></a></div>
+  <div id="karussell"><div id="schiene"><img id="k1" src="/testbild/nsfw/IMG_0260.jpg"><img id="k2" src="/testbild/nsfw/IMG_0260.jpg"></div></div>
+  <div class="block"><img id="bedeckt" src="/testbild/nsfw/IMG_0260.jpg"><div class="deckel"></div></div>
+</div>
+</body>
+</html>

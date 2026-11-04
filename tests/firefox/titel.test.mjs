@@ -371,6 +371,63 @@ try {
   await entfernePack();
   await bisText('Pack entfernt: Karte zurueck', 't1', 'Original card one', 10_000);
   await bisTab('Pack entfernt: Tab-Titel zurueck', 'Original tab title', 10_000);
+
+  // 15. Titel ohne Aufblitzen (Nachlese Session 8): mit Pack kein gezeichneter Frame mit Originaltitel, ohne Pack bleiben die Titel sichtbar
+  await entfernePack();
+  await importierePack(packPfad);
+  await driver.get(seite('pornhub') + '?sonde=1');
+  await bisText('Sonde: Karte ersetzt', 't1', 'Test title: Original card one');
+  await bisTab('Sonde: Tab-Titel ersetzt', 'Test title: Original tab title');
+  await warte(400);
+  const f1 = await driver.executeScript(() => window.__fr);
+  console.log(`firefox T: Frames ${f1.frames}, davon Originalkarte sichtbar ${f1.karte}, Original-Tab-Titel ${f1.tab}`);
+  pruefe(f1.frames > 3 && f1.karte === 0 && f1.tab === 0, `mit Pack: 0 gezeichnete Frames mit Originaltitel (${JSON.stringify(f1)})`);
+  await entfernePack();
+  await driver.get(seite('pornhub') + '?sonde=1');
+  await bis('Sonde: ohne Pack sichtbar', async () => (await driver.executeScript(() => window.__fr)).frei !== null, 10_000);
+  const f2 = await driver.executeScript(() => window.__fr);
+  console.log(`firefox T: ohne Pack Titel nach ${Math.round(f2.frei)} ms sichtbar (ab Start der Sonde)`);
+  pruefe(f2.frei < 400 && (await textVon('t1')) === 'Original card one' && (await tabTitel()) === 'Original tab title', `ohne Pack bleiben die Titel sichtbar (${Math.round(f2.frei)} ms)`);
+
+  // 16. Spaet eingefuegte Titel: 0 Frames im Original
+  await importierePack(packPfad);
+  await driver.get(seite('pornhub'));
+  await bisText('spaet: Karte 1 ersetzt', 't1', 'Test title: Original card one');
+  await driver.executeScript(`
+    const w = window;
+    w.__spaet = { frames: 0, orig: 0, fertig: false };
+    const ids = [];
+    const f = () => {
+      for (const id of ids) {
+        const e = document.getElementById(id);
+        if (e && e.textContent.startsWith('Late') && getComputedStyle(e).visibility === 'visible') w.__spaet.orig++;
+      }
+      w.__spaet.frames++;
+      requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+    (async () => {
+      for (let i = 0; i < 6; i++) {
+        ids.push(w.neueKarte('Late card ' + i));
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      w.__spaet.fertig = true;
+    })();`);
+  await bis('spaet: fertig', async () => (await driver.executeScript(() => window.__spaet)).fertig, 10_000);
+  await bisText('spaet: Karte ersetzt', 't101', 'Test title: Late card 0', 5000);
+  await warte(300);
+  const sp = await driver.executeScript(() => window.__spaet);
+  console.log(`firefox T: spaet eingefuegte Titel, Frames ${sp.frames}, davon im Original sichtbar ${sp.orig}`);
+  pruefe(sp.frames > 5 && sp.orig === 0, `spaet eingefuegte Titel: 0 Frames im Original (${JSON.stringify(sp)})`);
+
+  // 17. Seite kopiert die Blattliste und setzt sie spaeter neu (ohne Pack)
+  await entfernePack();
+  await driver.get(seite('pornhub') + '?kopie=1');
+  await bis('Kopie: neu gesetzt', async () => (await driver.executeScript(() => window.__kopie)).gesetzt, 8000);
+  await warte(300);
+  const kp = await driver.executeScript(() => window.__kopie);
+  console.log(`firefox T: Seite kopierte ${kp.n} Blatt/Blaetter und setzte sie neu`);
+  pruefe((await driver.executeScript(() => getComputedStyle(document.getElementById('t1')).visibility)) === 'visible' && (await tabTitel()) === 'Original tab title', 'Kopie der Blattliste neu gesetzt: Titel bleibt sichtbar');
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);
   code = 1;

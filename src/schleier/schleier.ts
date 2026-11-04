@@ -28,10 +28,12 @@ import {
   istEigenesBild,
   setzeHintergrund,
   setzeUrteil,
+  setzeZensurWieder,
   stelleWiederHer,
   starteBildTausch,
   verdeckeNurHintergrund,
   vergiss as vergissElement,
+  zeigeOriginal,
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
@@ -304,6 +306,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
     },
   });
 
+  // Bilder, bei denen nach dem Freilegen das erste load des Originals noch aussteht.
+  const ersteLoadAus = new WeakSet<Element>();
   // Freilegen (Auftrag F, freilegen.ts): zensierte Flaechen mit Knopf und Quiz kurz aufdecken. Die Steuerung bleibt hier.
   const freilegen = new Freilegen({
     lebt,
@@ -312,17 +316,46 @@ export function starteSchleier(ctx: KontextLeicht): void {
     elemente: () => verfolgt,
     legeFrei: (el, z, bisMs) => {
       // Original zurueck und als frei zeigen; das Urteil `zensiert` bleibt im Zustand, Beobachter und Pruefung lassen das Element in Ruhe.
-      stelleWiederHer(el, z);
+      if (el instanceof HTMLImageElement && z.pruefAdresse) ersteLoadAus.add(el);
+      zeigeOriginal(el, z); // gemerkte Daten bleiben: das Ende setzt die zensierte Fassung direkt wieder ein
       z.freigelegt = { bisMs };
       el.setAttribute(ATTR_URTEIL, 'frei');
     },
-    zensiereWieder: (el, z) => {
-      // Hide-first: das Zuruecksetzen nimmt data-veil sofort weg (Element unsichtbar), danach wird neu geprueft.
-      wartend.delete(el);
-      vergiss(el, z, false);
-      if (aktiv) bewerte(el, z);
+    beendeOhneZensur: (_el, z) => {
+      z.freigelegt = null; // lokale Pause: das Original bleibt, ab jetzt gilt wieder die normale Beobachtung
     },
-    zeitgeber: (fn, ms) => setzeTimer(fn, ms),
+    zensiereWieder: (el, z) => {
+      // Hide-first: data-veil geht sofort weg (Element unsichtbar), dann kommt die gemerkte zensierte Fassung direkt wieder. Nur ohne gemerkte Fassung
+      // wird neu geprueft.
+      wartend.delete(el);
+      z.freigelegt = null;
+      el.removeAttribute(ATTR_URTEIL);
+      if (!setzeZensurWieder(el, z)) {
+        vergiss(el, z, false);
+        if (aktiv) bewerte(el, z);
+        return;
+      }
+      if (el instanceof HTMLImageElement) {
+        z.tauschLaeuft = true; // das load-Ereignis des eigenen Bildes schliesst den Tausch (schliesseTausch)
+        if (z.timer) clearTimeout(z.timer);
+        z.timer = setzeTimer(() => {
+          z.timer = null;
+          if (!z.tauschLaeuft) return;
+          stelleWiederHer(el, z);
+          urteilVerdeckt(el, z);
+        }, TAUSCH_MAX_MS);
+      } else {
+        setzeUrteil(el, z, 'zensiert', z.urteilMs);
+        nachUrteil();
+      }
+    },
+    zeitgeber: (fn, ms) => {
+      const t = setzeTimer(fn, ms);
+      return () => {
+        clearTimeout(t);
+        timer.delete(t);
+      };
+    },
   });
 
   // Eine echte Pruefung eines Bildes ist ausgegangen: fuer das Erkennen am Inhalt zaehlen. Die Zaehlung braucht den Adressbeobachter (Seitenwechsel).
@@ -606,6 +639,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     const adresse = bildAdresse(el);
     const treffer = speicher.hole(schluesselFuer(adresse));
     z.adresse = adresse; // auch im Cache-Pfad: die Zaehlung am Inhalt nutzt sie als Schluessel
+    z.pruefAdresse = adresse;
     if (treffer) return wendeAntwortAn(el, z, treffer);
     reihe(el, z);
   }
@@ -862,6 +896,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   async function pruefeBild(el: HTMLImageElement, z: Zustand): Promise<Ergebnis> {
     const adresse = bildAdresse(el);
     z.adresse = adresse;
+    z.pruefAdresse = adresse;
     z.inhalt = null;
     if (netzgrenzeSperrt(adresse)) return { art: 'fehler', endgueltig: true };
     const antwort = await frageNach(adresse, () => {
@@ -1147,7 +1182,17 @@ export function starteSchleier(ctx: KontextLeicht): void {
       return;
     }
     if (!aktiv) return;
-    if (z.freigelegt) return; // freigelegt: das Original laedt gerade wieder, kein Quellenwechsel
+    // Freigelegt: das erste load nach dem Zurueckstellen des Originals gehoert zum geprueften Original, wenn die Adresse dieselbe ist.
+    // Eine andere Adresse (entfernte source, media oder sizes gewechselt) ist ein anderes Bild: neu pruefen.
+    if (z.freigelegt && e.type === 'load' && ersteLoadAus.has(el)) {
+      ersteLoadAus.delete(el);
+      if (el instanceof HTMLImageElement && bildAdresse(el) === z.pruefAdresse) {
+        z.adresse = z.pruefAdresse;
+        return;
+      }
+      neuePruefung(el, z, false);
+      return;
+    }
     if (z.art === 'bild' && el instanceof HTMLImageElement) {
       if (e.type === 'error') z.fehlerGesehen = true;
       if (z.erwarteLoad) {
@@ -1239,7 +1284,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (aktiv && knoten.localName === 'source' && knoten.parentElement?.tagName === 'PICTURE') {
         const img = knoten.parentElement.querySelector(':scope > img');
         const zi = img ? zustaende.get(img) : undefined;
-        if (img instanceof HTMLImageElement && zi && !zi.freigelegt && bildSignatur(img) !== zi.signatur) neuePruefung(img, zi, true);
+        if (img instanceof HTMLImageElement && zi && bildSignatur(img) !== zi.signatur) neuePruefung(img, zi, true);
       }
       if (aktiv && geladen) klassen.planeKnoten(knoten);
     },
@@ -1255,7 +1300,6 @@ export function starteSchleier(ctx: KontextLeicht): void {
           if (el.matches(HG_SELEKTOR)) entdecke(el, 'hintergrund');
           return;
         }
-        if (z.freigelegt) return; // nach Ablauf wird ohnehin neu geprueft
         if (z.art !== 'hintergrund' && z.art !== 'klasse') return;
         // Inline-Hintergrund: derselbe Wert wie bei der Beurteilung (bei var() der berechnete). Klassen-Hintergrund: nur der eigene Inline-Wert.
         const aktuell = z.art === 'hintergrund' ? hintergrundWert(el) : hintergrundInline(el);
@@ -1276,7 +1320,6 @@ export function starteSchleier(ctx: KontextLeicht): void {
         entdecke(ziel, 'bild');
         return;
       }
-      if (z.freigelegt) return; // nach Ablauf wird ohnehin neu geprueft
       if (bildSignatur(ziel) === z.signatur) return; // eigene Aenderung (Tausch) oder gleicher Wert
       if (z.ersetzt && vorschau.ersetzeSofort(ziel, z)) return; // Vorschau-Rotation: gleiches Pack-Bild sofort wieder einsetzen
       neuePruefung(ziel, z, true);

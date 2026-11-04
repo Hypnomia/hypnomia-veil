@@ -15,6 +15,7 @@ import {
   beschneide,
   istAbgelaufen,
   istFreilegbar,
+  FREILEGEN_MAX_KNOEPFE,
   KNOPF_BREITE,
   KNOPF_HOEHE,
   knopfPosition,
@@ -28,6 +29,10 @@ import { Meldung } from './meldung';
 import { testhakenAktiv } from './status';
 import type { Zustand } from './zustand';
 
+// Entwurfstext (der Texter liest gegen).
+// So lange wird nach dem letzten Ereignis in jedem Bild weiter gemessen.
+const NACHLAUF_MS = 500;
+const KEIN_QUIZ = 'No quiz for you right now, pet. Try again in a moment.';
 const ABBILD_ATTR: string = TESTHAKEN ? 'data-veil-freilegen' : '';
 
 // Entwurfstexte, falls das Pack keine Saetze liefert (der Texter liest gegen). Die eingebauten Rueckfaelle der Quiz-Saetze kennen diese Gruppen nicht.
@@ -58,7 +63,10 @@ export interface FreilegenRueckrufe {
   legeFrei(el: Element, z: Zustand, bisMs: number): void;
   // Original sofort wegnehmen (Hide-first) und neu pruefen.
   zensiereWieder(el: Element, z: Zustand): void;
-  zeitgeber(fn: () => void, ms: number): ReturnType<typeof setTimeout>;
+  // Liefert die Abbruchfunktion des Zeitgebers.
+  zeitgeber(fn: () => void, ms: number): () => void;
+  // Lokale Pause: das Freilegen endet, das Original bleibt (die Pause gibt ohnehin alles frei), danach wird wieder normal geprueft.
+  beendeOhneZensur(el: Element, z: Zustand): void;
 }
 
 export class Freilegen {
@@ -69,7 +77,11 @@ export class Freilegen {
   private kandidaten = new Set<Element>();
   private sichtbar = new Set<Element>();
   private knoepfe = new Map<Element, HTMLButtonElement>();
-  private offen = new Map<Element, ReturnType<typeof setTimeout>>();
+  private offen = new Map<Element, () => void>();
+  private abbruch: AbortController | null = null;
+  private mo: MutationObserver | null = null;
+  private letzteAufraeumung = 0;
+  private nachlaufBis = 0;
   private host: HTMLElement | null = null;
   private flaeche: HTMLElement | null = null;
   private io: IntersectionObserver | null = null;
@@ -117,14 +129,26 @@ export class Freilegen {
           if (!ei.target.isConnected) this.kandidaten.delete(ei.target);
         }
       }
-      this.plane();
+      this.anstoss();
     });
-    this.ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.plane());
+    this.ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.anstoss());
     window.addEventListener('scroll', this.beiBewegung, { capture: true, passive: true });
     window.addEventListener('resize', this.beiBewegung, { passive: true });
     document.addEventListener('visibilitychange', this.beiSicht);
+    document.addEventListener('fullscreenchange', this.beiBewegung);
+    document.addEventListener('transitionend', this.beiBewegung, { capture: true, passive: true });
+    document.addEventListener('animationend', this.beiBewegung, { capture: true, passive: true });
+    // Verschiebungen ohne Scrollen (nachgeladener Inhalt, einklappender Kopf): Aenderungen im Dokument planen eine neue Messung.
+    if (typeof MutationObserver !== 'undefined') {
+      this.mo = new MutationObserver(this.beiBewegung);
+      this.mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+    }
     // Knopf "Pause Mia" im Riegel: sofort alles weg (Zeitgeber, Knoepfe, Meldung), auch wenn die gespeicherte Pause nie ankommt.
     this.lokalAb = beiLokalerPause(() => {
+      for (const el of this.offen.keys()) {
+        const z = this.r.zustand(el);
+        if (z) this.r.beendeOhneZensur(el, z);
+      }
       this.an = false;
       this.stoppe(false);
     });
@@ -138,8 +162,16 @@ export class Freilegen {
   // zensiereOffene: Pack oder Freischaltung weg, aber kein Pause: freigelegte Flaechen sofort wieder zensieren.
   private stoppe(zensiereOffene: boolean): void {
     const offene = [...this.offen.keys()];
-    for (const t of this.offen.values()) clearTimeout(t);
+    for (const abbrechen of this.offen.values()) abbrechen();
     this.offen.clear();
+    this.abbruch?.abort();
+    this.abbruch = null;
+    this.riegelOffen = false;
+    this.mo?.disconnect();
+    this.mo = null;
+    document.removeEventListener('fullscreenchange', this.beiBewegung);
+    document.removeEventListener('transitionend', this.beiBewegung, true);
+    document.removeEventListener('animationend', this.beiBewegung, true);
     window.removeEventListener('scroll', this.beiBewegung, true);
     window.removeEventListener('resize', this.beiBewegung);
     document.removeEventListener('visibilitychange', this.beiSicht);
@@ -176,7 +208,7 @@ export class Freilegen {
   // Wird bei jedem neuen Urteil und jedem Zuruecksetzen eines Elements gerufen (anwenden.ts).
   beiUrteil(el: Element, z: Zustand): void {
     if (!z.freigelegt && this.offen.has(el)) {
-      clearTimeout(this.offen.get(el));
+      this.offen.get(el)?.();
       this.offen.delete(el);
     }
     if (!this.an) return;
@@ -195,12 +227,17 @@ export class Freilegen {
 
   // Urteil und Art; die Groesse wird beim Positionieren gemessen.
   private freilegbar(el: Element, z: Zustand, breite = 1e6, hoehe = 1e6): boolean {
-    return istFreilegbar({ art: z.art, urteil: z.urteil, ersetzt: !!z.ersetzt, freigelegt: !!z.freigelegt, breite, hoehe }) && el.isConnected;
+    return istFreilegbar({ art: z.art, urteil: z.urteil, ersetzt: !!z.ersetzt, freigelegt: !!z.freigelegt, breite, hoehe }) && !z.tauschLaeuft && el.isConnected;
   }
 
   // ---------- Knoepfe ----------
 
-  private readonly beiBewegung = (): void => this.plane();
+  // Ereignis, nach dem sich Lagen aendern koennten: danach hoechstens NACHLAUF_MS lang in jedem Bild messen (Animationen laufen aus), dann ruhen.
+  private readonly beiBewegung = (): void => this.anstoss();
+  private anstoss(): void {
+    this.nachlaufBis = performance.now() + NACHLAUF_MS;
+    this.plane();
+  }
   private readonly beiSicht = (): void => {
     if (document.hidden) return;
     // Zeitgeber ruhender Tabs kommen verspaetet: Abgelaufenes sofort wieder zensieren.
@@ -232,20 +269,97 @@ export class Freilegen {
     host.style.setProperty('inset', '0', 'important');
     host.style.setProperty('pointer-events', 'none', 'important');
     host.style.setProperty('z-index', '2147483646', 'important');
-    (document.body ?? document.documentElement).append(host);
+    document.documentElement.append(host); // nicht an body: ein transform dort verschobe die festen Knoepfe
     this.host = host;
     this.flaeche = flaeche;
     // Der Host war weg (Seite hat ihn entfernt): alte Knoepfe haengen an der alten Flaeche.
     this.knoepfe.clear();
   }
 
-  // Misst zuerst alles, schreibt danach (kein Layout-Thrashing).
+  // Eine Ebene, die das Bild ganz deckt, selbst aber nichts zeigt (durchsichtiger Link oder Klickfang, Instagram-Muster): sie verdeckt nichts.
+  private durchsichtig(t: Element, voll: Rechteck): boolean {
+    try {
+      if (t.matches('img, video, canvas, svg, iframe, picture, object, embed')) return false;
+      const b = t.getBoundingClientRect();
+      if (b.left > voll.links || b.top > voll.oben || b.right < voll.rechts || b.bottom < voll.unten) return false; // deckt nicht das ganze Bild
+      const cs = getComputedStyle(t);
+      if (cs.backgroundImage !== 'none' || cs.visibility === 'hidden') return cs.visibility === 'hidden';
+      const farbe = cs.backgroundColor;
+      if (farbe !== 'transparent' && !/^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)$/.test(farbe)) return false;
+      return (t.textContent ?? '').trim() === '';
+    } catch {
+      return false;
+    }
+  }
+
+  // Der Knopfpunkt muss zur Flaeche gehoeren: liegt dort etwas anderes obenauf (klebender Kopf, Karussell, deckende Ebene), kommt kein Knopf.
+  // Ein Vorfahre als Treffer gilt (Bild mit pointer-events: none), denn der Punkt liegt schon innerhalb aller Beschneidungen der Vorfahren.
+  private oben(el: Element, x: number, y: number, voll: Rechteck): boolean {
+    try {
+      const wurzel = el.getRootNode() as Document | ShadowRoot;
+      const liste = (typeof wurzel.elementsFromPoint === 'function' ? wurzel : document).elementsFromPoint(x, y);
+      for (const t of liste) {
+        if (t === this.host) continue;
+        if (t === el || el.contains(t) || t.contains(el)) return true;
+        if (this.durchsichtig(t, voll)) continue;
+        return false;
+      }
+    } catch {
+      return true;
+    }
+    return false; // leere Liste (Punkt ausserhalb): kein Beweis, kein Knopf
+  }
+
+  // Sichtbarer Teil des Rechtecks nach den Beschneidungen aller Vorfahren mit overflow ungleich visible (Karussell, Scroll-Behaelter).
+  private beschneideVorfahren(el: Element, r: Rechteck): Rechteck | null {
+    let aktuell: Rechteck | null = r;
+    try {
+      if (getComputedStyle(el).position === 'fixed') return r;
+      let p: Element | null = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
+      while (p && aktuell && p !== document.documentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+          const b = p.getBoundingClientRect();
+          aktuell = {
+            links: cs.overflowX !== 'visible' ? Math.max(aktuell.links, b.left) : aktuell.links,
+            rechts: cs.overflowX !== 'visible' ? Math.min(aktuell.rechts, b.right) : aktuell.rechts,
+            oben: cs.overflowY !== 'visible' ? Math.max(aktuell.oben, b.top) : aktuell.oben,
+            unten: cs.overflowY !== 'visible' ? Math.min(aktuell.unten, b.bottom) : aktuell.unten,
+          };
+          if (aktuell.rechts <= aktuell.links || aktuell.unten <= aktuell.oben) return null;
+        }
+        p = p.parentElement ?? ((p.getRootNode() as ShadowRoot).host ?? null);
+      }
+    } catch {
+      return aktuell;
+    }
+    return aktuell;
+  }
+
+  // Elemente, die nie sichtbar waren und aus dem Dokument fielen, bleiben sonst in `kandidaten` haengen.
+  private fegeKandidaten(): void {
+    const jetzt = performance.now();
+    if (jetzt - this.letzteAufraeumung < 2000) return;
+    this.letzteAufraeumung = jetzt;
+    for (const el of [...this.kandidaten]) {
+      if (el.isConnected) continue;
+      this.kandidaten.delete(el);
+      this.sichtbar.delete(el);
+      this.io?.unobserve(el);
+      this.ro?.unobserve(el);
+    }
+  }
+
+  // Misst zuerst alles, schreibt danach (kein Layout-Thrashing). Der teure Treffertest laeuft erst nach der Auswahl und nur fuer die Gewaehlten.
   private ordne(): void {
     if (!this.an || !this.r.lebt()) return;
-    const bw = innerWidth;
-    const bh = innerHeight;
+    this.fegeKandidaten();
+    // Fenstermass ohne Bildlaufleiste, wie im Riegel (im Quirks-Modus gilt body).
+    const wurzelMass = document.compatMode === 'BackCompat' ? document.body : document.documentElement;
+    const bw = wurzelMass?.clientWidth || innerWidth;
+    const bh = wurzelMass?.clientHeight || innerHeight;
     const gemessen: Array<Anwaerter<{ el: Element; sicht: Rechteck }>> = [];
-    if (!this.riegelOffen && this.r.aktiv()) {
+    if (!this.riegelOffen && this.r.aktiv() && !document.fullscreenElement) {
       for (const el of [...this.sichtbar]) {
         const z = this.r.zustand(el);
         if (!z || !el.isConnected) {
@@ -255,11 +369,18 @@ export class Freilegen {
         const b = el.getBoundingClientRect();
         if (!this.freilegbar(el, z, b.width, b.height)) continue;
         const voll: Rechteck = { links: b.left, oben: b.top, rechts: b.right, unten: b.bottom };
-        const sicht = beschneide(voll, bw, bh);
+        const fenster = beschneide(voll, bw, bh);
+        const sicht = fenster ? this.beschneideVorfahren(el, fenster) : null;
         if (sicht && knopfPosition(sicht)) gemessen.push({ ziel: { el, sicht }, rechteck: voll });
       }
     }
-    const gewaehlt = waehleKnoepfe(gemessen);
+    // Die Groessten zuerst; wer den Treffertest nicht besteht, macht Platz fuer den Naechsten.
+    const gewaehlt: typeof gemessen = [];
+    for (const g of waehleKnoepfe(gemessen, gemessen.length)) {
+      if (gewaehlt.length >= FREILEGEN_MAX_KNOEPFE) break;
+      const pos = knopfPosition(g.ziel.sicht)!;
+      if (this.oben(g.ziel.el, pos.x + KNOPF_BREITE / 2, pos.y + KNOPF_HOEHE / 2, g.rechteck)) gewaehlt.push(g);
+    }
     if (gewaehlt.length > 0) this.baueHost();
     const behalten = new Set(gewaehlt.map((g) => g.ziel.el));
     for (const [el, knopf] of this.knoepfe) {
@@ -281,6 +402,7 @@ export class Freilegen {
       abbild.push({ id: g.ziel.el.id, x: Math.round(pos.x), y: Math.round(pos.y), w: KNOPF_BREITE, h: KNOPF_HOEHE });
     }
     this.schreibeAbbild(JSON.stringify({ knoepfe: abbild, offen: this.offen.size }));
+    if (gewaehlt.length > 0 && performance.now() < this.nachlaufBis) this.plane(); // kurz nach einem Ereignis jedes Bild messen, danach ruhen
   }
 
   private baueKnopf(el: Element): HTMLButtonElement {
@@ -301,13 +423,18 @@ export class Freilegen {
     this.riegelOffen = true;
     this.plane();
     let erg: 'geloest' | 'pause' | 'abgebrochen' = 'abgebrochen';
+    const abbruch = new AbortController();
+    this.abbruch = abbruch;
     try {
-      erg = await zeigeRiegel({ grund: 'freilegen', anker: el });
+      erg = await zeigeRiegel({ grund: 'freilegen', anker: el, signal: abbruch.signal });
     } catch {
       erg = 'abgebrochen';
     }
+    if (this.abbruch === abbruch) this.abbruch = null;
     this.riegelOffen = false;
-    if (!this.an || !this.r.lebt()) return;
+    if (abbruch.signal.aborted || !this.an || !this.r.lebt()) return;
+    // Kein Quiz moeglich (Bank fehlt, zu wenige Fragen, anderer Riegel offen): kurze Meldung statt eines Knopfs, der nichts tut.
+    if (erg === 'abgebrochen') this.meldung.zeige(KEIN_QUIZ, 'nein');
     if (erg === 'geloest') {
       const z = this.r.zustand(el);
       if (z && this.r.aktiv() && this.freilegbar(el, z)) this.beginne(el, z);
@@ -331,13 +458,12 @@ export class Freilegen {
   }
 
   private ende(el: Element): void {
-    const t = this.offen.get(el);
-    if (t) clearTimeout(t);
+    this.offen.get(el)?.();
     this.offen.delete(el);
     const z = this.r.zustand(el);
     if (!z?.freigelegt) return; // Pause, neue Einstellungen oder Quellwechsel haben es schon zurueckgesetzt
     this.r.zensiereWieder(el, z);
-    void this.sage('wiederZensiert', 'schmollen');
+    if (el.isConnected) void this.sage('wiederZensiert', 'schmollen');
     this.plane();
   }
 

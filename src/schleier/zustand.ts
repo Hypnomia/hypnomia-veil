@@ -89,6 +89,8 @@ export interface Zustand {
   // Freilegen (Auftrag F, Session 8): das Original ist nach geloestem Quiz bis `bisMs` (performance.now()) sichtbar; der Beobachter prueft
   // waehrenddessen nicht, danach wird wieder zensiert. null = nicht freigelegt.
   freigelegt: { bisMs: number } | null;
+  // Bild: Adresse des Originals bei der Pruefung (bleibt, wenn das Urteil die Quelle gegen die zensierte Fassung tauscht). Das Freilegen vergleicht damit.
+  pruefAdresse: string | null;
 }
 
 export function neuerZustand(art: Art): Zustand {
@@ -123,5 +125,6 @@ export function neuerZustand(art: Art): Zustand {
     inhalt: null,
     ohneVorschau: false,
     freigelegt: null,
+    pruefAdresse: null,
   };
 }

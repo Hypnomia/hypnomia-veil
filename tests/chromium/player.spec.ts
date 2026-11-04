@@ -406,6 +406,77 @@ test('Video in offener Shadow Root bekommt den Riegel', async () => {
   }
 });
 
+test('Rueckfall-Video gesperrt, danach erscheint ein Adapter-Treffer: nur dieser bleibt gesperrt, das andere bekommt den Ton zurueck und startet nicht', async () => {
+  const s = await oeffneSeite(ADAPTER_SEITE);
+  try {
+    await neuesVideo(s, { id: 'rueckfall', ziel: 'fremd', autoplay: true, abspielen: true, muted: false });
+    await expect.poll(async () => (await video(s, 'rueckfall')).paused, { timeout: 10_000 }).toBe(true);
+    expect((await video(s, 'rueckfall')).muted).toBe(true); // gesperrt: stumm
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await expect.poll(async () => (await video(s, 'haupt')).paused, { timeout: 10_000 }).toBe(true);
+    // Das Rueckfall-Video ist kein Ziel mehr: Ton zurueck (es war nicht stumm), kein Selbststart
+    await expect.poll(async () => (await video(s, 'rueckfall')).muted, { timeout: 5000, intervals: [50] }).toBe(false);
+    await s.waitForTimeout(800);
+    expect((await video(s, 'rueckfall')).paused).toBe(true);
+    await bleibtStehen(s, 'haupt');
+    expect((await video(s, 'haupt')).muted).toBe(true);
+  } finally {
+    await s.close();
+  }
+});
+
+test('Leeres Platzhalter-Video in #player verdraengt das gesperrte Rueckfall-Video nicht; erst der echte Treffer tut es', async () => {
+  const s = await oeffneSeite(ADAPTER_SEITE);
+  try {
+    await neuesVideo(s, { id: 'rueckfall', ziel: 'fremd', autoplay: true, abspielen: true, muted: false });
+    await expect.poll(async () => (await video(s, 'rueckfall')).paused, { timeout: 10_000 }).toBe(true);
+    await s.evaluate(() => {
+      const leer = document.createElement('video'); // ohne Quelle
+      leer.id = 'platzhalter';
+      document.getElementById('player')!.appendChild(leer);
+    });
+    await s.waitForTimeout(1200);
+    const r = await video(s, 'rueckfall');
+    expect(r.paused).toBe(true);
+    expect(r.muted).toBe(true); // weiter gesperrt
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await expect.poll(async () => (await video(s, 'haupt')).paused, { timeout: 10_000 }).toBe(true);
+    await expect.poll(async () => (await video(s, 'rueckfall')).muted, { timeout: 5000, intervals: [50] }).toBe(false);
+  } finally {
+    await s.close();
+  }
+});
+
+test('Video in einer deklarativen Shadow Root (template shadowrootmode) bekommt den Riegel', async () => {
+  const s = await oeffneSeite();
+  try {
+    await s.evaluate(() => {
+      const h = document.createElement('div');
+      document.body.appendChild(h);
+      (h as any).setHTMLUnsafe(
+        '<div id="dsd"><template shadowrootmode="open"><style>video{width:640px;height:360px;display:block}</style><video id="dsdv" autoplay muted playsinline></video></template></div>',
+      );
+    });
+    await s.evaluate(() => {
+      const v = document.getElementById('dsd')!.shadowRoot!.getElementById('dsdv') as HTMLVideoElement;
+      v.src = (window as any).neueQuelle();
+      v.play().catch(() => {});
+    });
+    await riegelOffen(s);
+    const stand = () => s.evaluate(() => {
+      const v = document.getElementById('dsd')!.shadowRoot!.getElementById('dsdv') as HTMLVideoElement;
+      return { paused: v.paused, t: v.currentTime };
+    });
+    const a = await stand();
+    await s.waitForTimeout(700);
+    const b = await stand();
+    expect(a.paused && b.paused).toBe(true);
+    expect(b.t - a.t).toBeLessThan(0.02);
+  } finally {
+    await s.close();
+  }
+});
+
 test('Galerie des Komplett-Ersatzes (html[data-veil-ersatz]): kein Riegel, das Video laeuft; danach wieder Riegel', async () => {
   const s = await oeffneSeite();
   try {

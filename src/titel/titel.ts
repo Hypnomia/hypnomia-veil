@@ -16,6 +16,7 @@ import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, 
 import { pruefeTexte, type Texte } from '../quiz/vertrag';
 import { AdressBeobachter } from '../schleier/adresse';
 import type { KontextLeicht } from '../schleier/schleier';
+import { MARKE, TitelFrueh } from './frueh';
 import { istEigenerText, TITEL_TAGS, titelMitKommentar } from './logik';
 
 // Mindestabstand zwischen zwei Durchlaeufen (ms): bei Endlos-Scrollen und Neuaufbau durch die Seite sparsam bleiben.
@@ -53,6 +54,10 @@ function istOberste(): boolean {
 export function starteTitel(ctx: KontextLeicht): void {
   // Titel liegen in der obersten Seite; in Rahmen laeuft dieses Modul gar nicht (Ausnahmen gelten je Tab, siehe Adresse der obersten Seite).
   if (!istOberste()) return;
+  // Titel ohne Aufblitzen: auf Listen-Seiten gleich beim Start verstecken, bis die Lage entschieden ist (src/titel/frueh.ts).
+  const frueh = new TitelFrueh();
+  frueh.starte();
+  let packFertig = false;
   let abgebaut = false;
   let einstellungen: Einstellungen | null = null;
   let pack: PackKurz | null = null;
@@ -124,14 +129,16 @@ export function starteTitel(ctx: KontextLeicht): void {
     if (fristTimer) clearTimeout(fristTimer);
     if (laedtSchluessel === schluessel) laedtSchluessel = null;
     if (!lebt() || schluesselVonPack(pack) !== schluessel) return;
-    if (geladen && geladen.gruppen.titel && geladen.gruppen.titel.length > 0) {
+    if (geladen) {
+      // Gueltige Saetze (auch ohne Gruppe `titel`): das Ergebnis ist endgueltig; ohne Titel-Saetze gibt pruefeLage das Original frei.
       texte = geladen;
       texteSchluessel = schluessel;
       ladeVersuche = 0;
       pruefeLage();
       return;
     }
-    // Keine gueltigen Saetze: nichts aendern. Der Hintergrund kann gerade erst aufwachen, darum ein paar spaetere Versuche.
+    // Keine Antwort: nichts aendern. Der Hintergrund kann gerade erst aufwachen, darum ein paar spaetere Versuche; danach gibt das Original frei.
+    if (ladeVersuche >= MAX_LADEVERSUCHE) frueh.gibFrei();
     if (ladeVersuche < MAX_LADEVERSUCHE) {
       ladeVersuche++;
       if (ladeTimer) clearTimeout(ladeTimer);
@@ -161,6 +168,7 @@ export function starteTitel(ctx: KontextLeicht): void {
     steuereAdresse();
     if (!bedingungenErfuellt()) {
       beendeEinsatz();
+      if (frueh.istEntschieden || lageKlarOhneEinsatz()) frueh.gibFrei();
       return;
     }
     const schluessel = schluesselVonPack(pack)!;
@@ -174,9 +182,22 @@ export function starteTitel(ctx: KontextLeicht): void {
     }
     if (!saetzeAktuell()) {
       beendeEinsatz();
+      if (texte !== null || ladeVersuche >= MAX_LADEVERSUCHE) frueh.gibFrei();
       return;
     }
     starteBeobachter();
+  }
+
+  // Steht fest, dass hier nichts ersetzt wird (dann zeigt sich das Original sofort)? Offen bleibt es, solange Pack oder Einstellungen fehlen
+  // oder nur die Listen-Zuordnung des Schleiers noch aussteht.
+  function lageKlarOhneEinsatz(): boolean {
+    if (!packFertig) return false;
+    if (!istFreigeschaltet(pack, 'erwachsen:titel')) return true;
+    const e = einstellungen;
+    if (!e) return false;
+    if (e.pause || istLokalePause(e) || !e.erwachsen.an) return true;
+    if (passtAusnahme(adresseFuerAusnahmen(), e.ausnahmen)) return true;
+    return erwachsenStatus().liste !== null;
   }
 
   // Pause, Ausnahme, Pack weg, Seite nicht (mehr) auf der Liste: Beobachter ab, Originale sofort zurueck.
@@ -293,7 +314,11 @@ export function starteTitel(ctx: KontextLeicht): void {
     tiefe.clear();
     flache.clear();
     for (const el of ziele) verarbeiteElement(el, saetze);
+    // Erster Durchlauf nach der Entscheidung: Original-Tab-Titel zurueck und gleich ersetzt. Die Versteck-Regel bleibt fuer spaeter eingefuegte
+    // Titel stehen (sie versteckt nur Titel ohne Marke) und faellt mit dem Ende des Einsatzes.
+    frueh.stelleTitelHer();
     verarbeiteTabTitel(saetze);
+    frueh.entscheide();
     raeumeMerkliste();
   }
 
@@ -335,6 +360,8 @@ export function starteTitel(ctx: KontextLeicht): void {
   }
 
   function verarbeiteElement(el: Element, saetze: readonly string[]): void {
+    // Bearbeitet gilt auch ohne Kommentar: die Marke nimmt das Element aus der Versteck-Regel (src/titel/frueh.ts).
+    if (!el.hasAttribute(MARKE)) el.setAttribute(MARKE, '');
     const link = el.closest('a');
     const schluessel = attrUrsprung(el) ?? (link ? attrUrsprung(link) : null) ?? undefined;
     const knoten = titelKnoten(el);
@@ -494,6 +521,7 @@ export function starteTitel(ctx: KontextLeicht): void {
   const packHoerer = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
     if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen)) return;
     packGehoert = true;
+    packFertig = true;
     pack = kurzAusRoh(aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue);
     sichereEinstellungen();
     beiAenderung();
@@ -501,7 +529,10 @@ export function starteTitel(ctx: KontextLeicht): void {
   browser.storage.onChanged.addListener(packHoerer);
   const statusAb = beiErwachsenStatus(() => beiAenderung());
   // Die Pause im Riegel gilt sofort, auch wenn der Hintergrund nicht antwortet.
-  const lokalAb = beiLokalerPause(() => beendeEinsatz());
+  const lokalAb = beiLokalerPause(() => {
+    beendeEinsatz();
+    frueh.gibFrei();
+  });
   // Adresswechsel ohne Neuladen (pushState, popstate): Ausnahmen mit Pfad greifen dann neu.
   const adresse = new AdressBeobachter(
     () => location.href,
@@ -511,6 +542,7 @@ export function starteTitel(ctx: KontextLeicht): void {
   ladePackKurz()
     .catch(() => null)
     .then((p) => {
+      packFertig = true;
       if (!packGehoert) pack = p;
       sichereEinstellungen();
       beiAenderung();
@@ -521,6 +553,7 @@ export function starteTitel(ctx: KontextLeicht): void {
     abgebaut = true;
     stoppeBeobachter();
     stelleZurueck();
+    frueh.gibFrei();
     if (ladeTimer) clearTimeout(ladeTimer);
     adresse.stopp();
     lokalAb();

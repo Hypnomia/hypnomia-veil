@@ -7,6 +7,9 @@ export class MedienStopp {
   private an = false;
   private readonly alt = new Map<HTMLMediaElement, boolean>(); // vorheriger muted-Wert
   private takt: ReturnType<typeof setInterval> | undefined;
+  private beob: MutationObserver | null = null;
+  // Die Galerie kann erscheinen, bevor die Seite fertig geparst ist: Medien, die erst danach ins Dokument kommen, sofort greifen.
+  private readonly beiGeladen = (): void => this.fege();
 
   private readonly beiPlay = (e: Event): void => {
     if (e.target instanceof HTMLMediaElement) this.halte(e.target);
@@ -31,6 +34,20 @@ export class MedienStopp {
     this.an = true;
     for (const art of ['play', 'playing', 'volumechange']) document.addEventListener(art, this.beiPlay, true);
     this.fege();
+    document.addEventListener('DOMContentLoaded', this.beiGeladen);
+    try {
+      this.beob = new MutationObserver((liste) => {
+        for (const m of liste) {
+          for (const n of m.addedNodes) {
+            if (n instanceof HTMLMediaElement) this.halte(n);
+            else if (n.nodeType === 1) for (const k of (n as Element).querySelectorAll<HTMLMediaElement>('video, audio')) this.halte(k);
+          }
+        }
+      });
+      this.beob.observe(document, { childList: true, subtree: true });
+    } catch {
+      // ohne Beobachter bleiben Fegen, Takt und play-Listener
+    }
     this.takt = setInterval(() => this.fege(), SWEEP_MS);
   }
 
@@ -39,6 +56,9 @@ export class MedienStopp {
     this.an = false;
     for (const art of ['play', 'playing', 'volumechange']) document.removeEventListener(art, this.beiPlay, true);
     clearInterval(this.takt);
+    this.beob?.disconnect();
+    this.beob = null;
+    document.removeEventListener('DOMContentLoaded', this.beiGeladen);
     for (const [m, war] of this.alt) {
       try {
         m.muted = war;

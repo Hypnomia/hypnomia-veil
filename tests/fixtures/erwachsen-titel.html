@@ -2,6 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Messsonde (nur mit ?sonde=1): zaehlt gezeichnete Frames, in denen Originalkarte (nicht versteckt) oder Original-Tab-Titel zu sehen waren.
+      if (/[?&]sonde=1/.test(location.search)) {
+        var M = (window.__fr = { frames: 0, karte: 0, tab: 0, frei: null, t0: performance.now() });
+        var schritt = function () {
+          var k = document.getElementById('t1');
+          var t = document.title;
+          M.frames++;
+          var karteSichtbar = !!k && k.textContent === 'Original card one' && getComputedStyle(k).visibility === 'visible';
+          if (karteSichtbar) M.karte++;
+          if (t === 'Original tab title') M.tab++;
+          if (M.frei === null && karteSichtbar && t === 'Original tab title') M.frei = performance.now() - M.t0;
+          requestAnimationFrame(schritt);
+        };
+        requestAnimationFrame(schritt);
+      }
+    </script>
+    <script>
+      // Seite, die die Blattliste kopiert und spaeter neu setzt (nur mit ?kopie=1): ein Blatt der Erweiterung darf dann nichts mehr verstecken.
+      if (/[?&]kopie=1/.test(location.search)) {
+        var kopie = Array.prototype.slice.call(document.adoptedStyleSheets);
+        window.__kopie = { n: kopie.length, gesetzt: false };
+        setTimeout(function () {
+          try { document.adoptedStyleSheets = kopie; } catch (e) { /* verweigert */ }
+          window.__kopie.gesetzt = true;
+        }, 1500);
+      }
+    </script>
     <title>Original tab title</title>
     <style>
       body { margin: 0; padding: 8px; font-family: sans-serif; }

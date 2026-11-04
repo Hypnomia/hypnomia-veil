@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Freilegen viele</title>
+<style>body { margin: 0; } .reihe { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; } img { display: block; } #unten { margin-top: 3000px; }</style></head>
+<body>
+<!-- Auftrag F: 40 zensierte Flaechen im Sichtbereich (mehr als 24 Knoepfe gibt es nie) und 3 weit darunter (erst nach dem Scrollen im Sichtbereich). -->
+<div class="reihe" id="oben"></div>
+<div class="reihe" id="unten"></div>
+<script>
+  function bild(id, ziel) {
+    var i = document.createElement('img');
+    i.id = id; i.width = 100; i.height = 100; i.src = '/testbild/nsfw/IMG_0260.jpg';
+    document.getElementById(ziel).append(i);
+  }
+  for (var n = 0; n < 40; n++) bild('v' + n, 'oben');
+  for (var m = 0; m < 3; m++) bild('u' + m, 'unten');
+</script>
+</body>
+</html>

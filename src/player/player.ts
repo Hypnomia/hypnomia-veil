@@ -157,25 +157,33 @@ export function startePlayer(ctx: KontextLeicht): void {
   }
 
   // Hauptvideo: Adapter-Treffer, sonst das groesste sichtbare Video. Bereits gesperrte bleiben dabei (ausser nach Adresswechsel).
+  let trefferBereit = false; // gilt nach dem letzten bestimmeZiele: ein Adapter-Treffer ist gesperrt oder geloest
   function bestimmeZiele(haltefest: boolean): Set<HTMLVideoElement> {
     const alle = alleVideos().filter((v) => !ausgeschlossen(v));
     const adapter = adapterFuer(erwachsenStatus().liste);
     const sel = adapter.player ?? [];
-    const treffer = alle.filter((v) =>
-      sel.some((s) => {
+    // Als Treffer zaehlt nur ein Video mit Quelle und Groesse: ein leeres oder unsichtbares Platzhalter-Video verdraengt kein Rueckfall-Video.
+    const treffer = alle.filter((v) => {
+      if (quelle(v) === '') return false;
+      const g = groesse(v);
+      if (!(g.breite > 0 && g.hoehe > 0)) return false;
+      return sel.some((s) => {
         try {
           return v.matches(s) || !!v.closest(s);
         } catch {
           return false;
         }
-      }),
-    );
+      });
+    });
     const ziele = new Set<HTMLVideoElement>(treffer);
     if (!ziele.size) {
       const gross = waehleGroessten(alle.map((v) => ({ el: v, ...groesse(v) })));
       if (gross) ziele.add(gross);
     }
-    if (haltefest) for (const v of gesperrt.keys()) ziele.add(v);
+    // Gesperrte bleiben Ziel, solange sie als Rueckfall galten. Erst wenn ein Adapter-Treffer selbst gesperrt oder geloest ist, ist nur noch er
+    // Ziel: ein frueher gesperrtes Rueckfall-Video wird dann in durchsuche() ohne Selbststart freigegeben.
+    trefferBereit = treffer.some((t) => gesperrt.has(t) || !ungeloest(t));
+    if (haltefest && !trefferBereit) for (const v of gesperrt.keys()) ziele.add(v);
     return ziele;
   }
   // Fuer einzelne Ereignisse: erst das eine Video ausschliessen, die Zielmenge gilt kurz (kein Layout je Ereignis).
@@ -367,14 +375,17 @@ export function startePlayer(ctx: KontextLeicht): void {
       }
     }
     for (const w of lebendeWurzeln()) verbindeWurzel(w);
-    const ziele = bestimmeZiele(haltefest);
-    for (const v of [...gesperrt.keys()]) {
-      if (!v.isConnected) entsperre(v, false);
-      else if (!ziele.has(v)) entsperre(v, true);
-    }
-    for (const v of ziele) {
+    // Erst die neuen Ziele sperren, dann pruefen, wer kein Ziel mehr ist (das Rueckfall-Video faellt erst, wenn der Treffer gesperrt ist).
+    for (const v of bestimmeZiele(haltefest)) {
       if (gesperrt.has(v) || !ungeloest(v) || quelle(v) === '' || !willSpielen(v)) continue;
       void starteRiegel(v, sperre(v, true));
+    }
+    const ziele = bestimmeZiele(haltefest);
+    const nurTreffer = trefferBereit;
+    for (const v of [...gesperrt.keys()]) {
+      if (!v.isConnected) entsperre(v, false);
+      // Ein Adapter-Treffer verdraengt das Rueckfall-Video: Ton zurueck, aber kein Selbststart. Sonst wie bisher (Video laeuft weiter).
+      else if (!ziele.has(v)) entsperre(v, !nurTreffer);
     }
   }
 
@@ -462,7 +473,10 @@ export function startePlayer(ctx: KontextLeicht): void {
       }
       if (m.removedNodes.length && gesperrt.size) video = true;
       for (const n of m.addedNodes) {
-        if (n.nodeType === 1 && (n.nodeName === 'VIDEO' || (n as Element).querySelector('video'))) video = true;
+        if (n.nodeType !== 1) continue;
+        if (n.nodeName === 'VIDEO' || (n as Element).querySelector('video')) video = true;
+        // Offene Shadow Roots, die der Haken nicht meldet (deklarative Wurzeln aus <template shadowrootmode>).
+        if (sammleOffene(n as Element)) video = true;
       }
     }
     if (video) plane();
@@ -493,12 +507,48 @@ export function startePlayer(ctx: KontextLeicht): void {
     } catch {
       // Dokument weg
     }
+    // Beim Start auch die offenen Wurzeln einbeziehen, die der Haken nicht gemeldet hat (deklarative Shadow Roots), und noch einmal, wenn der
+    // Parser fertig ist (eine Parser-Pause kann Wurzeln an den Beobachtern vorbeigeschoben haben).
+    nachlesen();
+    document.addEventListener('DOMContentLoaded', nachlesen);
+    window.addEventListener('load', nachlesen);
+  }
+  function nachlesen(): void {
+    if (verbunden && document.documentElement && sammleOffene(document.documentElement)) plane();
+  }
+
+  // Merkt eine Wurzel (aus dem Hinweis des Hakens oder aus `element.shadowRoot`). Gibt zurueck, ob sie neu war.
+  function merkeWurzel(w: ShadowRoot): boolean {
+    if (wurzelMerk.has(w)) return false;
+    wurzelMerk.add(w);
+    wurzeln.add(new WeakRef(w));
+    if (verbunden) verbindeWurzel(w);
+    return true;
+  }
+
+  // Alle offenen Wurzeln unter `start` (samt `start` selbst) einbeziehen, auch verschachtelte. Gibt zurueck, ob eine neu war.
+  function sammleOffene(start: Element | ShadowRoot): boolean {
+    let neu = false;
+    const gang = document.createTreeWalker(start, NodeFilter.SHOW_ELEMENT);
+    let el: Element | null = start instanceof Element ? start : (gang.nextNode() as Element | null);
+    while (el) {
+      const w = el.shadowRoot;
+      // Nur in neue Wurzeln hinabsteigen: eine bekannte Wurzel hat ihren eigenen Beobachter.
+      if (w && merkeWurzel(w)) {
+        neu = true;
+        sammleOffene(w);
+      }
+      el = gang.nextNode() as Element | null;
+    }
+    return neu;
   }
   function trenne(): void {
     if (!verbunden) return;
     verbunden = false;
     for (const [typ, fn] of medienHorcher) document.removeEventListener(typ, fn, true);
     document.removeEventListener('fullscreenchange', beiVollbild, true);
+    document.removeEventListener('DOMContentLoaded', nachlesen);
+    window.removeEventListener('load', nachlesen);
     beobachter.disconnect();
     for (const [w, mo] of wurzelBeobachter) {
       for (const [typ, fn] of medienHorcher) w.removeEventListener(typ, fn, true);
@@ -518,13 +568,8 @@ export function startePlayer(ctx: KontextLeicht): void {
     } catch {
       w = null;
     }
-    if (!w || wurzelMerk.has(w)) return;
-    wurzelMerk.add(w);
-    wurzeln.add(new WeakRef(w));
-    if (verbunden) {
-      verbindeWurzel(w);
-      plane();
-    }
+    if (!w || !merkeWurzel(w)) return;
+    if (verbunden) plane();
   }
   document.addEventListener('veil-wurzel', beiWurzelHinweis, true);
 

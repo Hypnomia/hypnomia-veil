@@ -30,6 +30,7 @@ const STUFE_FRUEH = '';
 const STUFE_GALERIE = 'galerie';
 const LADE_FRIST_MS = 3000;
 const MAX_RETTUNGEN_JE_MINUTE = 30;
+const RAEUME_AB_WURZELN = 200; // ab dieser Zahl gemerkter Wurzeln raeumen wir tote und abgehaengte aus
 const FENSTER_RETTUNG_MS = 60_000;
 
 // Steht die Verdeckung gerade (Fruehphase oder Galerie)? Andere Teile (Player-Riegel) ruhen dann.
@@ -60,6 +61,11 @@ export function starteErsatz(ctx: KontextLeicht): void {
   let trenneWache: (() => void) | null = null;
   let rettungGeplant = false;
   const rettungen: number[] = [];
+  // Shadow Roots der Seite (Meldung `veil-wurzel` des Hakens in der Seitenwelt): modale Dialoge darin schliesst die Wache ebenfalls.
+  const wurzeln = new Set<WeakRef<ShadowRoot>>();
+  const wurzelMerk = new WeakSet<ShadowRoot>();
+  let offenBeobachter: MutationObserver | null = null;
+  let sammeln = frueherKandidat(location.href);
 
   const lebt = () => !abgebaut && ctx.isValid;
 
@@ -132,6 +138,42 @@ export function starteErsatz(ctx: KontextLeicht): void {
     return !!w && w.getAttribute(ATTR_ERSATZ) === STUFE_GALERIE && g.host.parentNode === w && g.steht() && g.lageOk();
   }
 
+  function beobachteWurzel(w: ShadowRoot): void {
+    try {
+      offenBeobachter?.observe(w, { subtree: true, attributes: true, attributeFilter: ['open', 'popover'] });
+    } catch {
+      // Wurzel nicht mehr beobachtbar
+    }
+  }
+
+  // Wie player.ts: die Wurzel des gemeldeten Hosts, auch eine geschlossene (ueber die Erweiterungs-Schnittstelle).
+  // Ehrliche Luecken: deklarative Shadow Roots (template shadowrootmode) meldet der Haken nicht; ob Chrome geschlossene Wurzeln ueber die
+  // Erweiterungs-Schnittstelle herausgibt, ist nicht geprueft; auf eigenen Seiten, die erst nach dem Laden der Einstellungen als Kandidat
+  // gelten, fehlen Wurzeln, die vorher entstanden sind.
+  function beiWurzelHinweis(e: Event): void {
+    // Gesammelt wird nur, wo der Ersatz in Frage kommt (Liste oder Ersatz gilt), sonst wuchse die Liste auf jeder Seite ohne Zweck.
+    if (!sammeln) return;
+    const host = (e.composedPath()[0] ?? e.target) as Element | null;
+    if (!host || host.nodeType !== 1) return;
+    let w: ShadowRoot | null = null;
+    try {
+      w = host.shadowRoot ?? (browser as unknown as { dom?: { openOrClosedShadowRoot?: (x: Element) => ShadowRoot | null } }).dom?.openOrClosedShadowRoot?.(host) ?? null;
+      if (!w) w = (host as unknown as { openOrClosedShadowRoot?: ShadowRoot | null }).openOrClosedShadowRoot ?? null;
+    } catch {
+      w = null;
+    }
+    if (!w || wurzelMerk.has(w)) return;
+    wurzelMerk.add(w);
+    wurzeln.add(new WeakRef(w));
+    if (wurzeln.size > RAEUME_AB_WURZELN) {
+      for (const ref of wurzeln) if (!ref.deref()?.host.isConnected) wurzeln.delete(ref);
+    }
+    beobachteWurzel(w);
+    // Nur raeumen, wenn die Galerie wirklich steht (ein gefaelschter Hinweis der Seite darf keine Dialoge schliessen).
+    if (galerie && trenneWache !== null && istOk(galerie)) raeumeAuf();
+  }
+  document.addEventListener('veil-wurzel', beiWurzelHinweis, true);
+
   // Schliesst, was sich ueber die Galerie legen oder sie lahmlegen wuerde: modale Dialoge (machen sie inert), Vollbild; ein anderes
   // offenes Popover holt die Galerie danach wieder nach oben.
   function raeumeAuf(): void {
@@ -141,6 +183,18 @@ export function starteErsatz(ctx: KontextLeicht): void {
       for (const d of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) if (d.matches(':modal')) d.close();
     } catch {
       // :modal unbekannt oder Dialog im Umbau
+    }
+    for (const ref of wurzeln) {
+      const w = ref.deref();
+      if (!w) {
+        wurzeln.delete(ref);
+        continue;
+      }
+      try {
+        for (const d of w.querySelectorAll<HTMLDialogElement>('dialog[open]')) if (d.matches(':modal')) d.close();
+      } catch {
+        // :modal unbekannt oder Dialog im Umbau
+      }
     }
     try {
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
@@ -208,6 +262,11 @@ export function starteErsatz(ctx: KontextLeicht): void {
     hostBeob.observe(g.host, { attributes: true });
     const offenBeob = new MutationObserver(raeumeAuf); // Dialoge und Popover der Seite
     offenBeob.observe(wurzel, { subtree: true, attributes: true, attributeFilter: ['open', 'popover'] });
+    offenBeobachter = offenBeob;
+    for (const ref of wurzeln) {
+      const w = ref.deref();
+      if (w) beobachteWurzel(w);
+    }
     const beiToggle = (e: Event): void => {
       const neu = (e as Event & { newState?: string }).newState;
       if (e.target === g.host) {
@@ -220,6 +279,7 @@ export function starteErsatz(ctx: KontextLeicht): void {
       beob.disconnect();
       hostBeob.disconnect();
       offenBeob.disconnect();
+      if (offenBeobachter === offenBeob) offenBeobachter = null;
       document.removeEventListener('toggle', beiToggle, true);
       document.removeEventListener('fullscreenchange', raeumeAuf, true);
     };
@@ -228,11 +288,12 @@ export function starteErsatz(ctx: KontextLeicht): void {
   // ----- Bewerten -----
   function bewerte(e: Einstellungen, pack: PackKurz | null): void {
     if (!lebt()) return;
-    const gilt = !istLokalePause() && ersatzGilt(e, pack, { href: location.href, hostname: location.hostname, pathname: location.pathname });
+    const gilt = !istLokalePause(e) && ersatzGilt(e, pack, { href: location.href, hostname: location.hostname, pathname: location.pathname });
     if (!gilt) {
       loese();
       return;
     }
+    sammeln = true;
     if (galerie) return; // steht schon
     // Schon verdeckt (frueh erkannt): kein weiterer Wechsel. Sonst ist das Erscheinen ein vollflaechiger Wechsel und wartet ggf. auf die Grenze.
     const warte = verdeckt ? 0 : zaehler.erscheinenIn();
@@ -292,6 +353,7 @@ export function starteErsatz(ctx: KontextLeicht): void {
     abgebaut = true;
     window.removeEventListener('pagehide', beiPagehide);
     window.removeEventListener('pageshow', beiPageshow);
+    document.removeEventListener('veil-wurzel', beiWurzelHinweis, true);
     meldeAb();
     clearTimeout(fristUhr);
     try {

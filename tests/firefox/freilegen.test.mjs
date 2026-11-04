@@ -65,6 +65,7 @@ async function bis(beschreibung, fn, frist = 8000) {
 let driver;
 let server;
 let ordner;
+let packPfad;
 let inhaltFenster;
 
 // ---------- Erweiterungsseiten ----------
@@ -137,8 +138,8 @@ const veil = (id) => driver.executeScript("const e = document.getElementById(arg
 const seiteAus = () => driver.executeScript("return document.documentElement.getAttribute('data-veil-seite')");
 const srcVon = (id) => driver.executeScript("return document.getElementById(arguments[0]).getAttribute('src')", id);
 
-async function frischeSeite() {
-  await driver.get(SEITE);
+async function frischeSeite(url = SEITE) {
+  await driver.get(url);
   await bis('Content-Script', () => driver.executeScript("return document.documentElement.hasAttribute('data-veil-status')"), 15_000);
 }
 async function klickeAuf(r) {
@@ -175,6 +176,18 @@ async function loeseRiegel() {
   throw new Error('Riegel nicht zu loesen');
 }
 
+async function importierePack() {
+    await oeffne('options.html');
+    await driver.findElement(By.css('#datei')).sendKeys(packPfad);
+    await bis('Lizenz', () => driver.findElement(By.css('#lizenz-block')).isDisplayed());
+    await driver.findElement(By.css('#annehmen')).click();
+    await bis('Pack-Titel', async () => (await driver.findElement(By.css('#pack-titel')).getText()).includes('Dummy pack'));
+    await imSeitenkontext(`await api.storage.local.set({ quizWarnungGesehen: true }); return true;`);
+    await schliesse();
+}
+const testBefehl = (d) => driver.executeScript("document.dispatchEvent(new CustomEvent('veil-test', { detail: arguments[0] }))", JSON.stringify(d));
+const quelleVon = (id) => driver.executeScript("return document.getElementById(arguments[0]).getAttribute('src')", id);
+
 let code = 0;
 async function fall(name, fn) {
   if (process.env.VEIL_FALL && !process.env.VEIL_FALL.split('|').some((n) => name.includes(n)) && !name.startsWith('Pack importieren')) return;
@@ -191,7 +204,7 @@ async function fall(name, fn) {
 try {
   ordner = await mkdtemp(path.join(tmpdir(), 'veil-ff-freilegen-'));
   const bau = await baueDummyPack({ quiz: { version: 1, fragen: FRAGEN } });
-  const packPfad = path.join(ordner, 'dummy.miapack');
+  packPfad = path.join(ordner, 'dummy.miapack');
   await writeFile(packPfad, bau.bytes);
   if (!existsSync(path.join(wurzel, '..', '05 Testbilder', 'nsfw', 'IMG_0260.jpg')) && process.env.VEIL_OHNE_TESTBILDER !== '1') {
     throw new Error('Freilegen-Test braucht ../05 Testbilder/nsfw/IMG_0260.jpg');
@@ -216,13 +229,7 @@ try {
   });
 
   await fall('Pack importieren, Quiz ohne Verweigern, kurze Dauer', async () => {
-    await oeffne('options.html');
-    await driver.findElement(By.css('#datei')).sendKeys(packPfad);
-    await bis('Lizenz', () => driver.findElement(By.css('#lizenz-block')).isDisplayed());
-    await driver.findElement(By.css('#annehmen')).click();
-    await bis('Pack-Titel', async () => (await driver.findElement(By.css('#pack-titel')).getText()).includes('Dummy pack'));
-    await imSeitenkontext(`await api.storage.local.set({ quizWarnungGesehen: true }); return true;`);
-    await schliesse();
+    await importierePack();
     await einstellungenMerge({ pause: false, quiz: { verweigern: 0, freilegenMs: FREILEGEN_MS } });
   });
 
@@ -242,6 +249,7 @@ try {
     await warteZensiert();
     await driver.executeScript(`const el = document.getElementById('a'); window.__log = [];
       new MutationObserver(() => window.__log.push([performance.now(), el.getAttribute('data-veil')])).observe(el, { attributes: true, attributeFilter: ['data-veil'] });`);
+    const zensierteQuelle = await srcVon('a');
     await klickeAuf(await knopfBis('a'));
     await loeseRiegel();
     await bis('frei', async () => (await veil('a')) === 'frei', 8000);
@@ -254,7 +262,7 @@ try {
     const dauer = tWeg - tFrei;
     pruefe(Math.abs(dauer - FREILEGEN_MS) <= 300, `Dauer ${Math.round(dauer)} ms`);
     await bis('Meldung wieder zensiert', async () => (await meldung()) === 'Test censored again line.', 4000);
-    pruefe(String(await srcVon('a')).startsWith('data:'), 'zensierte Fassung wieder eingesetzt');
+    pruefe((await srcVon('a')) === zensierteQuelle, 'dieselbe zensierte Fassung wieder eingesetzt');
     console.log(`firefox freilegen: Original ${Math.round(dauer)} ms sichtbar (Soll ${FREILEGEN_MS}), danach wieder zensiert`);
   });
 
@@ -304,6 +312,104 @@ try {
     await warte(500);
     pruefe((await veil('a')) === 'zensiert', 'bleibt zensiert (kein Rest-Freilegen)');
     console.log(`firefox freilegen: Pause waehrend Freilegen, ${Date.now() - t0} ms nach Pause-Ende wieder zensiert`);
+    await einstellungenMerge({ quiz: { freilegenMs: FREILEGEN_MS } });
+  });
+
+  await fall('nur lokale Pause: Freilegen endet, neue Quelle wird wieder geprueft', async () => {
+    await einstellungenMerge({ pause: false, quiz: { freilegenMs: 30000 } });
+    await frischeSeite();
+    await warteZensiert();
+    await klickeAuf(await knopfBis('a'));
+    await loeseRiegel();
+    await bis('frei', async () => (await veil('a')) === 'frei', 8000);
+    await testBefehl({ riegel: { oeffne: { frage: 'test-w1', pauseHaengt: true } } });
+    await bis('Riegel', async () => {
+      const x = await riegel();
+      return x && x.zustand === 'frage' ? x : null;
+    }, 15_000);
+    await warte(600);
+    await klickeAuf((await riegel()).pause);
+    await bis('Knoepfe weg', async () => (await knoepfe()).length === 0, 5000);
+    pruefe((await seiteAus()) !== 'aus', 'gespeicherte Pause kam nie an');
+    await driver.executeScript("document.getElementById('a').setAttribute('src', '/testbild/nsfw/IMG_0260.jpg?neu=1')");
+    await bis('neue Quelle geprueft', async () => String(await srcVon('a')).startsWith('data:'), 60_000);
+    await bis('wieder zensiert', async () => (await veil('a')) === 'zensiert', 20_000);
+    await einstellungenMerge({ quiz: { freilegenMs: FREILEGEN_MS } });
+  });
+
+  await fall('Quellwechsel waehrend des Freilegens: sofort verdeckt, nie ungeprueft sichtbar', async () => {
+    await einstellungenMerge({ pause: false, quiz: { freilegenMs: 30000 } });
+    await frischeSeite();
+    await warteZensiert();
+    for (const [id, aendere] of [
+      ['a', "el.setAttribute('src', '/testbild/nsfw/IMG_0260.jpg?rotation=2')"],
+      ['hg', "el.style.backgroundImage = \"url('/testbild/nsfw/IMG_0260.jpg?rotation=3')\""],
+    ]) {
+      await klickeAuf(await knopfBis(id));
+      await loeseRiegel();
+      await bis(`${id} frei`, async () => (await veil(id)) === 'frei', 8000);
+      await driver.executeScript(`const el = document.getElementById('${id}'); window.__log = [];
+        new MutationObserver(() => window.__log.push(el.getAttribute('data-veil'))).observe(el, { attributes: true, attributeFilter: ['data-veil'] });
+        ${aendere}`);
+      await bis(`${id} zensiert`, async () => (await veil(id)) === 'zensiert', 60_000);
+      const log = await driver.executeScript('return window.__log');
+      pruefe(log[0] === null && !log.includes('frei'), `${id}: sofort verdeckt, nie frei (${JSON.stringify(log)})`);
+    }
+    await einstellungenMerge({ quiz: { freilegenMs: FREILEGEN_MS } });
+  });
+
+  await fall('eigene Ausnahme: Knoepfe weg, danach wieder da', async () => {
+    await frischeSeite();
+    await warteZensiert();
+    await bis('2 Knoepfe', async () => (await knoepfe()).length === 2, 10_000);
+    await einstellungenMerge({ ausnahmen: ['127.0.0.1'] });
+    await bis('Seite aus', async () => (await seiteAus()) === 'aus', 8000);
+    await bis('Knoepfe weg', async () => (await knoepfe()).length === 0, 5000);
+    await einstellungenMerge({ ausnahmen: [] });
+    await bis('Knoepfe zurueck', async () => (await knoepfe()).length === 2, 60_000);
+  });
+
+  await fall('hoechstens 24 Knoepfe, nur im Sichtbereich', async () => {
+    await frischeSeite(`${basis}/freilegen-viele.html`);
+    for (const id of ['v0', 'v39', 'u0']) await bis(`${id} zensiert`, async () => (await veil(id)) === 'zensiert', 120_000);
+    await bis('24 Knoepfe', async () => (await knoepfe()).length === 24, 10_000);
+    const k = await knoepfe();
+    pruefe(k.every((x) => x.id.startsWith('v')), 'nur Flaechen im Sichtbereich');
+    await driver.executeScript("window.scrollTo(0, document.getElementById('u0').getBoundingClientRect().top + window.scrollY - 50)");
+    await bis('u0 bis u2', async () => (await knoepfe()).map((x) => x.id).sort().join(',') === 'u0,u1,u2', 8000);
+  });
+
+  await fall('Lagen: durchsichtige Ebene, Karussell beschnitten, deckende Ebene', async () => {
+    await frischeSeite(`${basis}/freilegen-lagen.html`);
+    for (const id of ['insta', 'k1', 'k2', 'bedeckt']) await bis(`${id} zensiert`, async () => (await veil(id)) === 'zensiert', 90_000);
+    await bis('Knoepfe', async () => (await knoepfe()).map((x) => x.id).sort().join(',') === 'insta,k1,k2', 8000);
+    const rect = await driver.executeScript("const b = document.getElementById('karussell').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom };");
+    for (const k of (await knoepfe()).filter((x) => x.id !== 'insta')) {
+      pruefe(k.x >= rect.l && k.x + k.w <= rect.r && k.y >= rect.t && k.y + k.h <= rect.b, `${k.id} im Karussell`);
+    }
+  });
+
+  await fall('Pack entfernt: offener Riegel schliesst, Freigelegtes sofort wieder zensiert', async () => {
+    await frischeSeite();
+    await warteZensiert();
+    await klickeAuf(await knopfBis('a'));
+    await bis('Riegel', async () => {
+      const x = await riegel();
+      return x && x.zustand === 'frage' ? x : null;
+    }, 15_000);
+    await ausErweiterung(`await api.storage.local.remove('pack'); return true;`);
+    await bis('Riegel zu', async () => !(await driver.executeScript("return document.querySelector('[data-veil-riegel-host]') !== null")), 5000);
+    await importierePack();
+    await einstellungenMerge({ quiz: { verweigern: 0, freilegenMs: 30000 } });
+    await frischeSeite();
+    await warteZensiert();
+    const quelle = await srcVon('a');
+    await klickeAuf(await knopfBis('a'));
+    await loeseRiegel();
+    await bis('frei', async () => (await veil('a')) === 'frei', 8000);
+    await ausErweiterung(`await api.storage.local.remove('pack'); return true;`);
+    await bis('wieder zensiert', async () => (await veil('a')) === 'zensiert', 3000);
+    pruefe((await srcVon('a')) === quelle, 'gleiche zensierte Fassung');
     await einstellungenMerge({ quiz: { freilegenMs: FREILEGEN_MS } });
   });
 
