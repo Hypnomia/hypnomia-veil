@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Erkennen am Inhalt (Testbilder, Auftrag E)</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #bilder { display: flex; flex-wrap: wrap; gap: 6px; }
+      #bilder img { width: 160px; height: 120px; object-fit: cover; }
+    </style>
+  </head>
+  <body>
+    <p>Bilder aus dem Satz <code id="satz"></code></p>
+    <button id="wechsel" onclick="history.pushState({}, '', '?seite=2')">Seitenwechsel ohne Neuladen</button>
+    <button id="neu" onclick="neueAnsicht()">Neue Ansicht (Seitenwechsel und neue Bilder)</button>
+    <div id="bilder"></div>
+    <script>
+      // ?satz=nsfw|sfw (Standard nsfw), ?n=Anzahl (Standard 16)
+      var q = new URLSearchParams(location.search);
+      var satz = q.get('satz') === 'sfw' ? 'sfw' : 'nsfw';
+      var n = Number(q.get('n') || 16);
+      document.getElementById('satz').textContent = satz;
+      var ansicht = 0;
+      var liste = [];
+      function zeige() {
+        var ziel = document.getElementById('bilder');
+        ziel.textContent = '';
+        liste.slice(0, n).forEach(function (name) {
+          var b = document.createElement('img');
+          b.src = '/testbild/' + satz + '/' + encodeURIComponent(name) + (ansicht ? '?ansicht=' + ansicht : '');
+          ziel.appendChild(b);
+        });
+      }
+      window.neueAnsicht = function () {
+        ansicht++;
+        history.pushState({}, '', '?seite=' + (ansicht + 2));
+        zeige();
+      };
+      fetch('/api/testbilder?satz=' + satz).then(function (r) { return r.json(); }).then(function (d) {
+        liste = d.bilder;
+        zeige();
+        document.documentElement.setAttribute('data-bilder-da', String(Math.min(n, d.bilder.length)));
+      });
+    </script>
+  </body>
+</html>

@@ -4,6 +4,7 @@
 // gar nicht. Eigene Ausnahmen und Pause prueft der Schleier zur Laufzeit.
 import './style.css';
 import { starteSchleier } from '../../src/schleier/schleier';
+import { bindeKontext } from '../../src/riegel/riegel';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -13,6 +14,8 @@ export default defineContentScript({
   matchOriginAsFallback: true,
   cssInjectionMode: 'manifest',
   main(ctx) {
+    // Phase 4: Tastenschutz fuer den Riegel sofort (vor allen Seitenskripten), dann der Schleier.
+    bindeKontext(ctx);
     starteSchleier(ctx);
   },
 });

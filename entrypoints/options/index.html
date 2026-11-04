@@ -17,6 +17,10 @@
       <section aria-labelledby="stand-titel" id="stand">
         <h2 id="stand-titel">Your pack</h2>
         <p id="pack-status" role="status" aria-live="polite"></p>
+        <div id="begruessung" class="mia-zeile" hidden>
+          <img id="begruessung-chibi" class="chibi" alt="" width="96" height="96" hidden />
+          <p id="begruessung-text"></p>
+        </div>
         <dl id="pack-daten" hidden>
           <div><dt>Title</dt><dd id="pack-titel"></dd></div>
           <div><dt>Version</dt><dd id="pack-version"></dd></div>
@@ -61,6 +65,41 @@
         </div>
 
         <p id="meldung" role="status" aria-live="polite"></p>
+      </section>
+
+      <section aria-labelledby="erw-titel" id="erwachsen">
+        <h2 id="erw-titel">Adult sites</h2>
+        <p id="erw-pack-hinweis" class="hinweis"></p>
+
+        <h3>Your own sites</h3>
+        <p class="hinweis">My list covers the big names. Add any other site by its address, like example.com, and I’ll treat it the same.</p>
+        <form id="seite-form" class="zeile">
+          <input id="seite-feld" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Site address" placeholder="example.com" />
+          <button id="seite-add" class="klein" type="submit">Add</button>
+        </form>
+        <p id="seite-meldung" role="status" aria-live="polite"></p>
+        <ul id="seiten-liste" class="liste"></ul>
+
+        <h3>Quiz</h3>
+        <div class="regel">
+          <label for="verweigern">How often I refuse a right answer</label>
+          <output id="verweigern-wert" for="verweigern"></output>
+        </div>
+        <input id="verweigern" type="range" min="0" max="30" step="1" />
+        <p class="hinweis">Never twice in a row. Pause Mia is always free, whatever I say.</p>
+
+        <div class="regel">
+          <label for="freilegen">How long a picture stays uncovered after a quiz</label>
+          <output id="freilegen-wert" for="freilegen"></output>
+        </div>
+        <input id="freilegen" type="range" min="3" max="30" step="1" />
+
+        <h3>Calm mode</h3>
+        <label class="schalter">
+          <input id="ruhig" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>Calm mode</strong><small>slower spiral, no moving or flashing words.</small></span>
+        </label>
       </section>
 
       <footer>

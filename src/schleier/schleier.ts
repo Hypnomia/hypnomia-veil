@@ -35,6 +35,9 @@ import {
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
+import { SteigerungMelder } from './steigerung-melder';
+import { setzeZensiertMelder } from './anwenden';
+import { setzeZonenAnpassung } from './pruefung';
 import { AdressBeobachter } from './adresse';
 import { Beobachter } from './beobachter';
 import {
@@ -81,8 +84,11 @@ import {
 } from './pruefung';
 import { entferneWurzelStile, raeumeWurzelStileAuf, schalteWurzelStile } from './shadow';
 import { leinwandLeer, Spiegel } from './spiegel';
+import { testRiegel } from '../riegel/testhaken';
 import { freigabeGesperrt, Status, testhakenAktiv, type Zaehlung } from './status';
 import { istSchleifenUmlauf, VideoTakt, type VideoErgebnis, type VideoUrteil } from './video';
+import { inhaltAusTreffern, zaehltFuerInhalt } from '../adapter/inhalt';
+import { Vorschau } from './vorschau';
 import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
 
@@ -279,6 +285,30 @@ export function starteSchleier(ctx: KontextLeicht): void {
   video.beiWechsel = (el) => spiegel.angleichen(el);
   video.beiErgebnis = (el) => spiegel.pruefeNachbarn(el);
 
+  // Vorschau-Tausch und Erkennen am Inhalt (Auftrag E, vorschau.ts): die Steuerung bleibt hier, die Klasse bekommt ihre Zugriffe als Rueckrufe.
+  const vorschau = new Vorschau({
+    lebt,
+    aktiv: () => aktiv && lebt(),
+    bewerte: (el, z) => bewerte(el, z),
+    zeitgeber: (fn, ms) => setzeTimer(fn, ms),
+    hintergrundFertig: (el, z) => {
+      z.eingereiht = false;
+      setzeUrteil(el, z, 'zensiert', status.seitStart());
+      nachUrteil();
+    },
+  });
+
+  // Eine echte Pruefung eines Bildes ist ausgegangen: fuer das Erkennen am Inhalt zaehlen. Die Zaehlung braucht den Adressbeobachter (Seitenwechsel).
+  // Treffer fuers Erkennen am Inhalt: unbedeckte Brust, Genitalien oder Po in der Antwort, unabhaengig von Zonen, Stufe und Stil.
+  function inhaltAusAntwort(a: AntwortPruefeOk): 'frei' | 'treffer' {
+    return inhaltAusTreffern(a.treffer);
+  }
+
+  function zaehleInhalt(z: Zustand, urteil: 'frei' | 'treffer'): void {
+    vorschau.zaehle(z, urteil);
+    if (!istRahmen && vorschau.brauchtAdresse()) adressen.start();
+  }
+
   // Wie anwenden.vergiss, beendet aber zuerst die Nachpruefung des Videos. Das Verbergen eines Videos mit Urteil zaehlt als Wechsel.
   function vergiss(el: Element, z: Zustand, restore: boolean): void {
     if (z.art === 'video' && el.getAttribute(ATTR_URTEIL) !== null) {
@@ -467,6 +497,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   }
 
   function scheitereTausch(el: HTMLImageElement, z: Zustand): void {
+    if (z.ersetzt) return vorschau.scheitert(el, z); // eingesetzte Vorschau nicht ladbar: normaler Schleier statt Blur
     if (z.timer) clearTimeout(z.timer);
     z.timer = null;
     stelleWiederHer(el, z);
@@ -521,6 +552,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       case 'bild':
         return bewerteBild(el as HTMLImageElement, z);
       case 'video':
+        if (vorschau.versteckeVideo(el, z)) return; // Hover-Vorschauvideo auf Erwachsenenseiten: nie zeigen
         return bewerteVideo(el as HTMLVideoElement, z);
       case 'canvas':
         return bewerteCanvas(el as HTMLCanvasElement, z);
@@ -531,6 +563,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   function bewerteBild(el: HTMLImageElement, z: Zustand): void {
     z.signatur = bildSignatur(el);
+    if (vorschau.versuche(el, z)) return; // Erwachsenenseite: Vorschaubild gegen ein Pack-Bild tauschen, ohne Pruefung
     // Ohne Quelle gibt es nichts zu zeigen. Setzt die Seite spaeter eine src, meldet das der Beobachter.
     if (el.complete && !el.currentSrc && !el.getAttribute('src')) return urteilFrei(el, z);
     if (!bildGeladen(el)) {
@@ -545,6 +578,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (istKlein(el)) return urteilFrei(el, z);
     const adresse = bildAdresse(el);
     const treffer = speicher.hole(schluesselFuer(adresse));
+    z.adresse = adresse; // auch im Cache-Pfad: die Zaehlung am Inhalt nutzt sie als Schluessel
     if (treffer) return wendeAntwortAn(el, z, treffer);
     reihe(el, z);
   }
@@ -610,6 +644,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     const wert = hintergrundQuelle(el, z);
     z.signatur = z.art === 'klasse' ? null : wert;
     if (z.eigen && wert === z.eigen) return urteilFrei(el, z);
+    if (vorschau.versuche(el, z)) return; // Erwachsenenseite: Vorschaubild gegen ein Pack-Bild tauschen, ohne Pruefung
     const ebenen = zerlegeEbenen(wert).filter((e) => pruefbareAdresse(e));
     if (!ebenen.length) return urteilFrei(el, z);
     if (istKlein(el)) return urteilFrei(el, z);
@@ -711,6 +746,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
       z.eingereiht = false;
       return;
     }
+    // Erkennen am Inhalt: nur echte Pruefungen mit Antwort des Erkenners (z.inhalt), nie Ausfaelle, Videos oder verdeckte Bilder ohne Treffer.
+    if (z.inhalt && zaehltFuerInhalt(z.art, e.art)) zaehleInhalt(z, z.inhalt);
+    z.inhalt = null;
     switch (e.art) {
       case 'spiegel':
         return;
@@ -741,6 +779,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // Antwort aus dem Zwischenspeicher oder frisch: entscheidet ueber das Urteil eines img.
   function wendeAntwortAn(el: HTMLImageElement, z: Zustand, a: AntwortPruefeOk): void {
+    zaehleInhalt(z, inhaltAusAntwort(a));
     if (!a.flaechen.length) return urteilFrei(el, z);
     if (a.bild) return urteilZensiertBild(el, z, a.bild);
     urteilVerdeckt(el, z);
@@ -796,6 +835,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   async function pruefeBild(el: HTMLImageElement, z: Zustand): Promise<Ergebnis> {
     const adresse = bildAdresse(el);
     z.adresse = adresse;
+    z.inhalt = null;
     if (netzgrenzeSperrt(adresse)) return { art: 'fehler', endgueltig: true };
     const antwort = await frageNach(adresse, () => {
       const m = bildMass(el);
@@ -809,6 +849,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     });
     if (!antwort) return { art: 'frei' };
     if (!antwort.ok) return fehlerErgebnis(antwort);
+    z.inhalt = inhaltAusAntwort(antwort);
     if (!antwort.flaechen.length) return { art: 'frei' };
     return antwort.bild ? { art: 'zensiert', bild: antwort.bild } : { art: 'verdeckt' };
   }
@@ -900,12 +941,14 @@ export function starteSchleier(ctx: KontextLeicht): void {
   }
 
   async function pruefeHintergrund(el: Element, z: Zustand): Promise<Ergebnis> {
+    z.inhalt = null;
     const wert = hintergrundQuelle(el, z);
     const neu: string[] = [];
     let geaendert = false;
     let verdeckt = false;
     let fehler = false;
     let endgueltig = false;
+    let inhalt: 'frei' | 'treffer' | null = null;
     for (const ebene of zerlegeEbenen(wert)) {
       const url = pruefbareAdresse(ebene);
       if (!url) {
@@ -918,6 +961,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         continue;
       }
       const a = await frageNach(url, () => hintergrundQuelleBauen(url));
+      if (a?.ok) inhalt = inhalt === 'treffer' ? 'treffer' : inhaltAusAntwort(a);
       if (!a) neu.push(ebene);
       else if (!a.ok) {
         fehler = true;
@@ -932,6 +976,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       } else verdeckt = true;
     }
     if (fehler) return endgueltig ? { art: 'fehler', endgueltig: true } : { art: 'fehler' };
+    z.inhalt = inhalt;
     if (verdeckt) return { art: 'verdeckt' };
     return geaendert ? { art: 'zensiertHg', wert: neu.join(', ') } : { art: 'frei' };
   }
@@ -1130,6 +1175,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   // Die Seite hat die Quelle geaendert: neu beurteilen. Das Element wird sofort wieder verdeckt (data-veil weg).
   function neuePruefung(el: Element, z: Zustand, wartetAufLoad: boolean): void {
     wartend.delete(el);
+    z.ohneVorschau = false; // neue Quelle: der Tausch darf es wieder versuchen
     vergiss(el, z, false);
     if (!aktiv) return;
     if (wartetAufLoad && el instanceof HTMLImageElement && (el.getAttribute('src') || el.getAttribute('srcset') || el.parentElement?.tagName === 'PICTURE')) {
@@ -1161,6 +1207,12 @@ export function starteSchleier(ctx: KontextLeicht): void {
     istAus: () => aus,
     hinzugefuegt: (knoten) => {
       if (knoten === document.documentElement) wendeWurzelAttributeAn();
+      // Eine nachtraeglich eingefuegte source im picture wuerde das getauschte Bild uebersteuern: wie eine Aenderung der Quelle behandeln.
+      if (aktiv && knoten.localName === 'source' && knoten.parentElement?.tagName === 'PICTURE') {
+        const img = knoten.parentElement.querySelector(':scope > img');
+        const zi = img ? zustaende.get(img) : undefined;
+        if (img instanceof HTMLImageElement && zi && bildSignatur(img) !== zi.signatur) neuePruefung(img, zi, true);
+      }
       if (aktiv && geladen) klassen.planeKnoten(knoten);
     },
     geaendert: (el, attribut) => {
@@ -1196,6 +1248,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         return;
       }
       if (bildSignatur(ziel) === z.signatur) return; // eigene Aenderung (Tausch) oder gleicher Wert
+      if (z.ersetzt && vorschau.ersetzeSofort(ziel, z)) return; // Vorschau-Rotation: gleiches Pack-Bild sofort wieder einsetzen
       neuePruefung(ziel, z, true);
     },
   });
@@ -1289,6 +1342,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     () => location.href,
     () => {
       if (!lebt()) return;
+      vorschau.beiAdresswechsel(); // Erkennen am Inhalt beginnt auf der neuen Seite neu
       if (einstellungen) wendeEinstellungenAn(einstellungen);
       // Nur melden, wenn es Rahmen gibt, die es betrifft (kein Rahmen: nichts weiterzureichen).
       if (window.frames.length === 0) return;
@@ -1339,7 +1393,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         }
       }
     } else {
-      adressen.stopp();
+      if (!vorschau.brauchtAdresse()) adressen.stopp(); // die Zaehlung am Inhalt braucht ihn weiter
       if (inhaltHoererAn) {
         inhaltHoererAn = false;
         browser.runtime.onMessage.removeListener(beiInhaltNachricht);
@@ -1353,13 +1407,17 @@ export function starteSchleier(ctx: KontextLeicht): void {
   // Das Mia Pack gehoert zum Pruefstand, solange der Stil Mia-Patch ist: wird das Pack ersetzt (neues `importiert`) oder erst jetzt
   // freigeschaltet, rechnen offene Tabs neu, auch wenn die Einstellungen selbst gleich bleiben. Gelesen wird nur storage.local.pack.
   let packKurz: PackKurz | null = null;
+  // Steigerung der Zensur (Auftrag S): wirksame Stufe gehoert zum Pruefstand; aendert sie sich, wird neu geprueft.
+  const steigerung = new SteigerungMelder(!istRahmen, () => {
+    if (einstellungen) wendeEinstellungenAn(einstellungen);
+  });
   // packStand fuer die Anfrage an den Erkenner: nur bei Stil mia-patch (importiert des Packs, sonst 0), sonst weggelassen.
   function packStandFuer(e: Einstellungen): number | undefined {
     return e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : undefined;
   }
   function pruefRelevant(e: Einstellungen): string {
     const stil = wirksamerStil(e.stil, packKurz);
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.stil, stil, e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : 0]);
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.stil, stil, e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : 0, vorschau.stand(), steigerung.stufe()]);
   }
 
   function beiPackAenderung(aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void {
@@ -1388,6 +1446,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     for (const el of verfolgt) {
       const z = zustaende.get(el);
       if (!z) continue;
+      z.ohneVorschau = false; // neuer Stand (Pack, Schalter): der Tausch darf es wieder versuchen
       if (z.urteil || z.eingereiht || z.tauschLaeuft) vergiss(el, z, true);
     }
     for (const el of verfolgt) {
@@ -1446,6 +1505,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function wendeEinstellungenAn(neu: Einstellungen): void {
     if (abgebaut) return;
     einstellungen = neu;
+    vorschau.aktualisiere(neu, packKurz); // vor dem Pruefstand: Liste, Schalter und Pack gehoeren dazu
+    steigerung.aktualisiere(neu, packKurz, istAusFuer(neu)); // ebenso: die wirksame Stufe haengt an Pack und Pause; auf Ausnahmen keine Meldung
     beobachteAdressen(neu);
     const stand = aktualisierePruefstand(neu);
     const sollAus = istAusFuer(neu);
@@ -1485,6 +1546,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         pruefVerzoegerungMs?: unknown;
         warteschlangeHalt?: unknown;
         erkennerStatus?: unknown;
+        riegel?: unknown;
       } | null;
       if (typeof d?.zweiterVersuchMs === 'number' && d.zweiterVersuchMs >= 0) zweiterVersuchMs = d.zweiterVersuchMs;
       if (typeof d?.videoVerzoegerungMs === 'number' && d.videoVerzoegerungMs >= 0) videoVerzoegerungMs = d.videoVerzoegerungMs;
@@ -1494,6 +1556,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
         warteschlangeHalt = d.warteschlangeHalt;
         if (!warteschlangeHalt) starteNaechste();
       }
+      // Phase 4 (Auftrag Q): Riegel oeffnen, Abbild in data-veil-riegel (src/riegel/testhaken.ts).
+      if (d?.riegel) testRiegel(d.riegel);
       // Status des Erkenners abfragen (weckt eine beendete Ereignisseite): die Antwort steht samt der Nummer der Anfrage in data-veil-erkenner.
       if (typeof d?.erkennerStatus === 'number') {
         const nr = d.erkennerStatus;
@@ -1531,6 +1595,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
   window.addEventListener('load', beiLoad, { once: true });
   planeStartphasenEnde(STARTPHASE_MAX_MS);
   beobachter.start(); // sofort sammeln, auswerten erst nach dem Laden der Einstellungen
+  setzeZonenAnpassung((e) => steigerung.zonenFuer(e));
+  setzeZensiertMelder((el) => steigerung.zensiert(el));
+  const steigerungGeladen = steigerung.start();
   if (document.readyState === 'complete') beiLoad();
   status.plane();
 
@@ -1548,7 +1615,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     beiPackAenderung(aenderungen, bereich);
   };
   browser.storage.onChanged.addListener(packHoerer);
-  Promise.all([ladeEinstellungen().catch(() => vervollstaendige(undefined)), packLaden]).then(async ([e, pack]) => {
+  Promise.all([ladeEinstellungen().catch(() => vervollstaendige(undefined)), packLaden, steigerungGeladen]).then(async ([e, pack]) => {
     if (!packGehoert) packKurz = pack;
     if (!ausEinstellungGehoert && istRahmen && e.ausnahmen.length > 0) {
       tabGefragt = true;
@@ -1565,6 +1632,13 @@ export function starteSchleier(ctx: KontextLeicht): void {
     aktiv = false;
     abmelden();
     browser.storage.onChanged.removeListener(packHoerer);
+    setzeZonenAnpassung(null);
+    setzeZensiertMelder(null);
+    try {
+      steigerung.stopp();
+    } catch {
+      // Abbau geht weiter, auch wenn der Melder nicht sauber stoppt.
+    }
     adressen.stopp();
     if (inhaltHoererAn) browser.runtime.onMessage.removeListener(beiInhaltNachricht);
     inhaltHoererAn = false;
@@ -1598,6 +1672,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (w) hoereAuf(w);
     }
     if (TESTHAKEN) document.removeEventListener('veil-test', beiTestEreignis);
+    vorschau.raeumeAuf();
     window.removeEventListener('load', beiLoad);
     entferneWurzelStile();
     status.raeumeAuf();

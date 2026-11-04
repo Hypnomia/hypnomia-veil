@@ -1,8 +1,9 @@
 // Pack-Bau (PHASE-2-BAUPLAN Abschnitt 9.5). Schreibt eine `.miapack`-Datei (Format: src/pack/format.ts).
 //   npm run pack:bau -- --quelle <ordner> --aus <datei>   Ordner mit pack.json und den Dateien
 //   npm run pack:dummy [-- --aus <datei>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
-// pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch"], "lizenz": "<Name der Lizenzdatei>",
-//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz", "stufe"?: "tease"|"hot"|"explicit" }] }
+// pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch", ...], "lizenz": "<Name der Lizenzdatei>",
+//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi",
+//                            "stufe"?: "tease"|"hot"|"explicit" }] }   (vorschau braucht eine Stufe, quiz und texte hoechstens einmal)
 // `datei` ist der Pfad unter dem Quellordner (Standard: gleich `name`), `typ` wird sonst aus der Endung geschlossen.
 // Die Ausgabe landet nie im Repo: erlaubt sind Orte ausserhalb des Repos und Ordner `.output*` darin (ignoriert).
 // Mia-Bilder liest nur der echte Bau (spaeter aus dem Assets-Ordner neben dem Repo); das Dummy-Pack erzeugt seine Bilder zur Laufzeit.
@@ -11,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PackFehler, pruefePack, quelleAusBytes, schreibePack } from '../../src/pack/format.ts';
+import { DUMMY_QUIZ, DUMMY_TEXTE } from './dummy-inhalte.mjs';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -65,6 +67,33 @@ async function dummyBild(a, b, breite = 480, hoehe = 360) {
   return new Uint8Array(await sharp(px, { raw: { width: breite, height: hoehe, channels: 3 } }).webp({ lossless: true }).toBuffer());
 }
 
+// Vorschau-Bilder des Dummy-Packs (Phase 4): Lila und Orange, gut unterscheidbar von den Patch-Farben, von Hauttoenen und vom Rahmen.
+export const DUMMY_VORSCHAU_FARBEN = [
+  [[150, 40, 200], [250, 150, 0]],
+  [[90, 20, 160], [255, 200, 0]],
+  [[200, 60, 255], [200, 100, 0]],
+  [[120, 0, 120], [240, 240, 60]],
+];
+
+// Chibi-Platzhalter mit Transparenz: ein farbiger Kreis auf durchsichtigem Grund (Tests pruefen, dass die Ecken durchsichtig bleiben).
+async function dummyChibi(farbe, seite = 256) {
+  const { default: sharp } = await import('sharp');
+  const px = Buffer.alloc(seite * seite * 4);
+  const r = seite / 2;
+  for (let y = 0; y < seite; y++) {
+    for (let x = 0; x < seite; x++) {
+      const i = (y * seite + x) * 4;
+      const drin = (x - r) ** 2 + (y - r) ** 2 < (r * 0.8) ** 2;
+      px[i] = farbe[0];
+      px[i + 1] = farbe[1];
+      px[i + 2] = farbe[2];
+      px[i + 3] = drin ? 255 : 0;
+    }
+  }
+  return new Uint8Array(await sharp(px, { raw: { width: seite, height: seite, channels: 4 } }).webp({ lossless: true }).toBuffer());
+}
+export const DUMMY_CHIBI_POSEN = ['jubeln', 'schmollen', 'sprechblase'];
+
 function lizenzTextDummy() {
   try {
     return readFileSync(path.join(wurzel, 'LIZENZ-MIA-INHALTE.md'), 'utf8');
@@ -95,6 +124,21 @@ export async function baueDummyPack(opts = {}) {
       stufe: i % 2 === 0 ? 'tease' : 'hot',
     });
   }
+  // Phase 4 (PHASE-4-BAUPLAN Abschnitt 8 Punkt 11): Vorschau-Bilder, Chibis, Quiz-Bank und Saetze. `opts.ohnePhase4` baut ein Pack
+  // wie vor 0.4.0 (nur Patches), fuer Tests "Pack ohne die neuen Freischaltungen".
+  const phase4 = !opts.ohnePhase4;
+  if (phase4) {
+    for (let i = 0; i < DUMMY_VORSCHAU_FARBEN.length; i++) {
+      const [a, b] = DUMMY_VORSCHAU_FARBEN[i];
+      dateien.push({ name: `vorschau/dummy-${i + 1}.webp`, typ: 'image/webp', daten: await dummyBild(a, b, 640, 360), rolle: 'vorschau', stufe: 'explicit' });
+    }
+    for (let i = 0; i < DUMMY_CHIBI_POSEN.length; i++) {
+      dateien.push({ name: `chibi/${DUMMY_CHIBI_POSEN[i]}.webp`, typ: 'image/webp', daten: await dummyChibi(DUMMY_VORSCHAU_FARBEN[i][1]), rolle: 'chibi' });
+    }
+    const json = (x) => new TextEncoder().encode(JSON.stringify(x, null, 1));
+    dateien.push({ name: 'quiz.json', typ: 'application/json', daten: json(opts.quiz ?? DUMMY_QUIZ), rolle: 'quiz' });
+    dateien.push({ name: 'texte.json', typ: 'application/json', daten: json(opts.texte ?? DUMMY_TEXTE), rolle: 'texte' });
+  }
   const bytes = await pruefeErgebnis(await schreibePack(
     {
       id: opts.id ?? 'dummy',
@@ -102,11 +146,20 @@ export async function baueDummyPack(opts = {}) {
       titel: 'Dummy pack (synthetic pictures)',
       erstellt: new Date().toISOString(),
       mindestVeil: paketJson.version,
-      freischaltungen: ['stil:mia-patch'],
+      freischaltungen: phase4
+        ? ['stil:mia-patch', 'erwachsen:vorschau', 'erwachsen:quiz', 'erwachsen:titel', 'erwachsen:ersatz', 'quiz:freilegen', 'zensur:steigerung', 'chibi:pack']
+        : ['stil:mia-patch'],
     },
     dateien,
   ));
-  return { bytes, farben: paare.flat(), bilder: paare.length };
+  return {
+    bytes,
+    farben: paare.flat(),
+    bilder: paare.length,
+    vorschauFarben: phase4 ? DUMMY_VORSCHAU_FARBEN.flat() : [],
+    vorschau: phase4 ? DUMMY_VORSCHAU_FARBEN.length : 0,
+    chibis: phase4 ? DUMMY_CHIBI_POSEN.length : 0,
+  };
 }
 
 // Baut ein Pack aus einem Quellordner mit pack.json.

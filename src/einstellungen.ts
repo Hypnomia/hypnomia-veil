@@ -25,7 +25,29 @@ export interface Einstellungen {
   rand: number;
   zonen: Record<Zone, ZonenEinstellung>;
   ausnahmen: string[];
+  // Ruhig-Modus (Blitz-Grenzen, CLAUDE.md Regel 9): keine laufenden Woerter, langsamere Spirale. `prefers-reduced-motion` wirkt zusaetzlich.
+  ruhig: boolean;
+  // Phase 4 (PHASE-4-BAUPLAN Abschnitt 2): wirkt nur mit Pack und der passenden Freischaltung.
+  erwachsen: ErwachsenEinstellung;
+  quiz: QuizEinstellung;
 }
+
+export interface ErwachsenEinstellung {
+  an: boolean; // Pornoseiten-Modus (Standard an, wirkt nur mit Pack)
+  komplettErsatz: boolean; // Umleitung auf die Mia-Galerie (Standard aus, Entscheidung 100)
+  erkennenAmInhalt: boolean; // Zusatz zur Liste: Seite am Inhalt erkennen (nur Quiz und Freilegen, nie Vorschau oder Umleitung)
+  eigeneSeiten: string[]; // vom Nutzer ergaenzte Hosts (gleiche Schreibweise wie `ausnahmen`, nur Hosts)
+}
+
+export interface QuizEinstellung {
+  verweigern: number; // Anteil richtiger Antworten, die Mia trotzdem verweigert (nie zweimal hintereinander)
+  freilegenMs: number; // wie lange eine zensierte Flaeche nach geloestem Quiz frei bleibt
+}
+
+export const VERWEIGERN_MIN = 0;
+export const VERWEIGERN_MAX = 0.3;
+export const FREILEGEN_MIN_MS = 3000;
+export const FREILEGEN_MAX_MS = 30000;
 
 export const SCHWELLE_MIN = 0.1;
 export const SCHWELLE_MAX = 0.25;
@@ -51,7 +73,19 @@ export const STANDARD: Einstellungen = {
     armpits: { an: false, bedeckt: false },
   },
   ausnahmen: [],
+  ruhig: false,
+  erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
+  quiz: { verweigern: 0.1, freilegenMs: 10000 },
 };
+
+// Liste von Hosts oder Mustern: nur Texte, getrimmt, klein, ohne Leere und Doppelte.
+function textListe(roh: unknown): string[] {
+  if (!Array.isArray(roh)) return [];
+  return [...new Set(roh.filter((m): m is string => typeof m === 'string').map((m) => m.trim().toLowerCase()).filter(Boolean))];
+}
+
+const objekt = (x: unknown): Record<string, unknown> => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {});
+const wahr = (x: unknown, standard: boolean): boolean => (typeof x === 'boolean' ? x : standard);
 
 function begrenze(wert: unknown, min: number, max: number, standard: number): number {
   const z = typeof wert === 'number' && Number.isFinite(wert) ? wert : standard;
@@ -80,6 +114,24 @@ export function vervollstaendige(roh: unknown): Einstellungen {
     ausnahmen: Array.isArray(r.ausnahmen)
       ? r.ausnahmen.filter((m): m is string => typeof m === 'string').map((m) => m.trim().toLowerCase()).filter(Boolean)
       : [],
+    ruhig: wahr(r.ruhig, STANDARD.ruhig),
+    erwachsen: (() => {
+      const e = objekt(r.erwachsen);
+      const s = STANDARD.erwachsen;
+      return {
+        an: wahr(e.an, s.an),
+        komplettErsatz: wahr(e.komplettErsatz, s.komplettErsatz),
+        erkennenAmInhalt: wahr(e.erkennenAmInhalt, s.erkennenAmInhalt),
+        eigeneSeiten: textListe(e.eigeneSeiten),
+      };
+    })(),
+    quiz: (() => {
+      const q = objekt(r.quiz);
+      return {
+        verweigern: begrenze(q.verweigern, VERWEIGERN_MIN, VERWEIGERN_MAX, STANDARD.quiz.verweigern),
+        freilegenMs: Math.round(begrenze(q.freilegenMs, FREILEGEN_MIN_MS, FREILEGEN_MAX_MS, STANDARD.quiz.freilegenMs)),
+      };
+    })(),
   };
 }
 

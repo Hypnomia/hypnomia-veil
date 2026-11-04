@@ -1,0 +1,457 @@
+// Vorschau-Tausch und Erkennen am Inhalt im Content-Script (Auftrag E, PHASE-4-BAUPLAN Abschnitt 8 Punkte 1 bis 3).
+// - Auf Erwachsenenseiten (Liste und eigene Seiten, Einstellung erwachsen.an, Freischaltung erwachsen:vorschau) wird jedes Vorschaubild
+//   (img und Inline-Hintergrund in einem Link zu einer Videoseite, ab 80 px Kante) OHNE Pruefung gegen ein Pack-Bild getauscht. Das Element
+//   bleibt bis zum Tausch verdeckt (Hide-first), das Pack-Bild kommt als Data-URL ueber den Erkenner (rolle `vorschau`).
+// - Hover-Vorschauvideos in solchen Links werden nie gezeigt (sie bekommen kein Urteil und bleiben unsichtbar).
+// - Kommt kein Bild (Fehler, Pack kaputt, Tausch scheitert, z. B. wegen einer strengen Seiten-CSP): normaler Schleier fuer dieses Element.
+// - Zaehlt die echten Pruefungen von Bildern auf Seiten, die nicht auf der Liste stehen (Erkennen am Inhalt, src/adapter/inhalt.ts).
+// Die Steuerung bleibt in schleier.ts; diese Klasse bekommt ihre Zugriffe als Rueckrufe.
+
+import { adapterFuer, istHoverVideo, istVorschau, VORSCHAU_MIN_KANTE } from '../adapter';
+import { InhaltsZaehler, type InhaltsUrteil } from '../adapter/inhalt';
+import { seiteFuer, TEST_DOMAIN, type SeitenName } from '../adapter/liste';
+import { erwachsenStatus, setzeErwachsenStatus } from '../adapter/status';
+import type { Einstellungen } from '../einstellungen';
+import type { AntwortFehler, AntwortPackBild, NachrichtErkennerPackBild } from '../nachrichten';
+import { istFreigeschaltet, type PackKurz } from '../pack/vertrag';
+import { bildSignatur, hintergrundWert, setzeBildSofortNeu, setzeHintergrund, stelleWiederHer, starteBildTausch } from './anwenden';
+import { ANTWORT_MAX_MS, TAUSCH_MAX_MS } from './konstanten';
+import { urlAusEbene, vergissWecken, wecke, zerlegeEbenen } from './pruefung';
+import { testhakenAktiv } from './status';
+import { VorschauSpeicher } from './vorschau-speicher';
+import type { ErsetztInfo, Zustand } from './zustand';
+
+// Quellen, die eine Seite fuer verzoegertes Laden in Attribute legt (die echte Adresse steht dort, nicht in src).
+const LAZY_ATTRIBUTE = ['data-src', 'data-original', 'data-lazy-src', 'data-thumb_url', 'data-mediumthumb', 'data-image', 'data-poster'];
+const SCHLUESSEL_MAX = 512;
+const TRANSPORT_SPERRE_MS = 5000;
+// Testhaken nur im Testbau (WXT_TESTHAKEN=1): ohne Schalter faellt der Name des Attributs samt Code beim Bauen weg (Release-Pruefung).
+const TESTHAKEN_E: boolean = import.meta.env.WXT_TESTHAKEN === '1';
+const ATTR_ERWACHSEN = TESTHAKEN_E ? 'data-veil-erwachsen' : '';
+
+export interface VorschauRueckrufe {
+  lebt(): boolean;
+  aktiv(): boolean;
+  // Normaler Schleier fuer das Element (Pruefung), wenn der Tausch nicht klappt.
+  bewerte(el: Element, z: Zustand): void;
+  // Zeitgeber, den Pause und Abbau aufraeumen.
+  zeitgeber(fn: () => void, ms: number): ReturnType<typeof setTimeout>;
+  // Hintergrund ist getauscht: Urteil `zensiert` setzen und weiterplanen (Bilder schliessen ueber das load-Ereignis).
+  hintergrundFertig(el: Element, z: Zustand): void;
+}
+
+// Eine Anfrage an den Erkenner. 'transport': keine verwertbare Antwort (nicht geweckt, Zeitgrenze, Empfaenger weg).
+function frageErkenner(lebt: () => boolean): (schluessel: string) => Promise<AntwortPackBild | AntwortFehler | 'transport'> {
+  return async (schluessel) => {
+    if (!(await wecke(lebt))) return 'transport';
+    const nachricht: NachrichtErkennerPackBild = { ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel };
+    let uhr: ReturnType<typeof setTimeout> | undefined;
+    const zeit = new Promise<null>((fertig) => {
+      uhr = setTimeout(() => fertig(null), ANTWORT_MAX_MS);
+    });
+    try {
+      const a = (await Promise.race([browser.runtime.sendMessage(nachricht) as Promise<AntwortPackBild | AntwortFehler | undefined>, zeit])) as
+        | AntwortPackBild
+        | AntwortFehler
+        | undefined
+        | null;
+      if (a && a.ok === false) return a;
+      return a && a.ok === true && typeof a.dataUrl === 'string' && a.dataUrl.startsWith('data:image/') ? a : 'transport';
+    } catch {
+      return 'transport';
+    } finally {
+      clearTimeout(uhr);
+    }
+  };
+}
+
+// Mit einem zweiten Versuch nach einem Transportfehler (frisch wecken). null = endgueltig kein Bild; wirft bei bleibendem Transportfehler.
+function holeVomErkenner(lebt: () => boolean): (schluessel: string) => Promise<AntwortPackBild | null> {
+  const einmal = frageErkenner(lebt);
+  return async (schluessel) => {
+    let a = await einmal(schluessel);
+    if (a === 'transport') {
+      vergissWecken();
+      a = await einmal(schluessel);
+    }
+    if (a === 'transport') throw new Error('Erkenner nicht erreichbar');
+    return a.ok === true ? a : null;
+  };
+}
+
+export class Vorschau {
+  private liste: SeitenName | null = null;
+  private tausch = false;
+  private erkennen = false;
+  private importiert = 0;
+  private readonly zaehler = new InhaltsZaehler();
+  private readonly speicher: VorschauSpeicher;
+  private fehlgeschlagen = 0;
+  private sperreBis = 0;
+  private gruende: string[] = [];
+  private testTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(private readonly r: VorschauRueckrufe, speicher?: VorschauSpeicher) {
+    this.speicher = speicher ?? new VorschauSpeicher(holeVomErkenner(() => r.lebt()));
+  }
+
+  // ---------- Zustand der Seite ----------
+
+  // Neu berechnen, wenn sich Einstellungen oder Pack aendern. Erster Bestandteil des Pruefstands (siehe stand()).
+  aktualisiere(e: Einstellungen, pack: PackKurz | null): void {
+    const liste = e.erwachsen.an ? seiteFuer(location.href, e.erwachsen.eigeneSeiten) : null;
+    const neuTausch = liste !== null && istFreigeschaltet(pack, 'erwachsen:vorschau');
+    const neuImportiert = pack?.importiert ?? 0;
+    // Anderes Pack oder anderer Schalter: gehaltene Bilder gehoeren zum alten Stand.
+    if (neuTausch !== this.tausch || (neuTausch && neuImportiert !== this.importiert)) this.speicher.leere();
+    this.liste = liste;
+    this.tausch = neuTausch;
+    this.importiert = neuImportiert;
+    // Erkennen am Inhalt: nur fuer Quiz und Freilegen, darum nur mit einer dieser Freischaltungen und nur ausserhalb der Liste.
+    this.erkennen =
+      e.erwachsen.an &&
+      e.erwachsen.erkennenAmInhalt &&
+      liste === null &&
+      (istFreigeschaltet(pack, 'erwachsen:quiz') || istFreigeschaltet(pack, 'quiz:freilegen'));
+    if (!this.erkennen) this.zaehler.neuStart();
+    this.melde();
+  }
+
+  // Beitrag zum Pruefstand: ein anderer Wert beginnt eine neue Epoche und beurteilt alles neu (Schalter, Liste, Pack).
+  stand(): string {
+    return `${this.tausch ? 1 : 0}|${this.liste ?? ''}|${this.tausch ? this.importiert : 0}`;
+  }
+
+  // Tauscht diese Seite Vorschaubilder?
+  get tauscht(): boolean {
+    return this.tausch;
+  }
+
+  private melde(): void {
+    setzeErwachsenStatus({ liste: this.liste, amInhalt: this.erkennen && this.zaehler.amInhalt });
+    this.planeTestStatus();
+  }
+
+  // ---------- Tausch ----------
+
+  // Qualifiziert das Element als Vorschaubild? Groesse (dargestellt, sonst natuerlich) und Aufbau (Adapter).
+  private qualifiziert(el: Element): DOMRect | null {
+    const r = el.getBoundingClientRect();
+    let b = r.width;
+    let h = r.height;
+    if ((b <= 0 || h <= 0) && el instanceof HTMLImageElement && el.naturalWidth > 0) {
+      b = el.naturalWidth;
+      h = el.naturalHeight;
+    }
+    if (b < VORSCHAU_MIN_KANTE || h < VORSCHAU_MIN_KANTE) return null;
+    return istVorschau(Vorschau.ueberSchatten(el), adapterFuer(this.liste), location.href) ? r : null;
+  }
+
+  // closest geht nicht ueber Shadow-Grenzen: ohne Treffer wird am Host der Shadow Root weitergesucht.
+  private static naechster(el: Element, selektor: string): Element | null {
+    let n: Element | null = el;
+    while (n) {
+      const t = n.closest(selektor);
+      if (t) return t;
+      const wurzel = n.getRootNode();
+      n = wurzel instanceof ShadowRoot ? wurzel.host : null;
+    }
+    return null;
+  }
+
+  private static ueberSchatten(el: Element): { matches(s: string): boolean; closest(s: string): Element | null } {
+    return { matches: (s) => el.matches(s), closest: (s) => Vorschau.naechster(el, s) };
+  }
+
+  // Schluessel der Wahl: wenn moeglich die Video-Kennung aus dem Link (alle Bilder eines Videos gleich), sonst die echte Quelle
+  // (Lazy-Attribute vor src), absolut und ohne Query und Fragment.
+  private schluesselBild(el: HTMLImageElement): string {
+    let quelle = '';
+    for (const a of LAZY_ATTRIBUTE) {
+      const w = el.getAttribute(a);
+      if (w && !w.startsWith('data:')) {
+        quelle = w;
+        break;
+      }
+    }
+    if (!quelle) quelle = el.currentSrc || el.getAttribute('src') || '';
+    return this.kuerze(quelle, el);
+  }
+
+  private static ohneAbfrage(adresse: string): string {
+    if (!adresse || adresse.startsWith('data:') || adresse.startsWith('blob:')) return '';
+    try {
+      const u = new URL(adresse, document.baseURI);
+      return `${u.origin}${u.pathname}`;
+    } catch {
+      return '';
+    }
+  }
+
+  private static videoKennung(href: string): string | null {
+    for (const muster of [/[?&]viewkey=([\w-]+)/i, /\/videos\/([^/?#]+)/i, /\/video[-.]?([\w]+)\//i, /\/video\/([\w-]+)/i, /\/post\/([\w-]+)/i]) {
+      const t = muster.exec(href);
+      if (t?.[1]) return t[1];
+    }
+    return null;
+  }
+
+  private kuerze(quelle: string, el: Element): string {
+    const href = Vorschau.naechster(el, 'a[href]')?.getAttribute('href') ?? '';
+    const kennung = Vorschau.videoKennung(href);
+    if (kennung) return `video:${kennung}`.slice(0, SCHLUESSEL_MAX);
+    return (Vorschau.ohneAbfrage(quelle) || Vorschau.ohneAbfrage(href) || 'leer').slice(0, SCHLUESSEL_MAX);
+  }
+
+  // Schluessel fuer einen Hintergrund: erste url-Ebene, sonst der Link.
+  private schluesselHg(el: Element, wert: string): string {
+    for (const e of zerlegeEbenen(wert)) {
+      const u = urlAusEbene(e);
+      if (u && !u.startsWith('data:')) return this.kuerze(u, el);
+    }
+    return this.kuerze('', el);
+  }
+
+  // Versucht den Tausch fuer ein img oder einen Inline-Hintergrund. true = der Tausch uebernimmt das Element (laeuft oder ist fertig),
+  // false = der normale Schleier ist dran.
+  versuche(el: Element, z: Zustand): boolean {
+    if (!this.tausch || z.ohneVorschau || !this.r.aktiv() || !this.r.lebt() || performance.now() < this.sperreBis) return false;
+    let schluessel: string;
+    let mass: DOMRect | null;
+    if (z.art === 'bild' && el instanceof HTMLImageElement) {
+      mass = this.qualifiziert(el); // die einzige Messung je Element
+      if (!mass) return false;
+      schluessel = this.schluesselBild(el);
+    } else if (z.art === 'hintergrund' && el instanceof HTMLElement) {
+      const wert = hintergrundWert(el);
+      if (!zerlegeEbenen(wert).some((e) => urlAusEbene(e))) return false;
+      mass = this.qualifiziert(el);
+      if (!mass) return false;
+      schluessel = this.schluesselHg(el, wert);
+    } else return false;
+
+    z.eingereiht = true; // belegt das Element, bis die Antwort da ist (bewerte laeuft nicht doppelt)
+    const generation = z.generation;
+    const jetzt = this.speicher.sofort(schluessel);
+    if (jetzt) {
+      this.stapele(el, z, jetzt, mass, schluessel, generation);
+      return true;
+    }
+    void this.speicher.hole(schluessel).then(
+      (a) => {
+        if (!this.r.lebt() || !this.r.aktiv() || z.generation !== generation) return;
+        if (!a) return this.scheitert(el, z, 'kein Bild');
+        this.stapele(el, z, a, mass!, schluessel, generation);
+      },
+      () => {
+        // Transportfehler (auch nach dem zweiten Versuch): dieses Element geht den normalen Weg, der Tausch pausiert kurz. Kein dauerhaftes ohneVorschau.
+        if (!this.r.lebt() || !this.r.aktiv() || z.generation !== generation) return;
+        this.sperreBis = performance.now() + TRANSPORT_SPERRE_MS;
+        this.fehlgeschlagen++;
+        if (this.gruende.length < 8) this.gruende.push('Transport');
+        z.eingereiht = false;
+        this.planeTestStatus();
+        this.r.bewerte(el, z);
+      },
+    );
+    return true;
+  }
+
+  private merkeStile(el: HTMLElement, z: Zustand, setze: Array<[string, string]>): ErsetztInfo {
+    const info: ErsetztInfo = z.ersetzt ?? { stile: [] };
+    for (const [name, wert] of setze) {
+      if (!info.stile.some((s) => s.name === name)) {
+        info.stile.push({ name, wert: el.style.getPropertyValue(name), prio: el.style.getPropertyPriority(name) });
+      }
+      el.style.setProperty(name, wert, 'important');
+    }
+    return info;
+  }
+
+  // Schreibzugriffe gebuendelt: Messungen (qualifiziert) und Stil-Schreibvorgaenge des Tauschs wechseln sich sonst je Karte ab und erzwingen
+  // bei Feeds mit hunderten Karten jedes Mal ein neues Layout. Das Element bleibt bis dahin verdeckt (Hide-first).
+  private stapel: Array<{ el: Element; z: Zustand; a: AntwortPackBild; mass: DOMRect; schluessel: string; generation: number }> = [];
+  private stapelPlan: ReturnType<typeof setTimeout> | null = null;
+
+  private stapele(el: Element, z: Zustand, a: AntwortPackBild, mass: DOMRect, schluessel: string, generation: number): void {
+    this.stapel.push({ el, z, a, mass, schluessel, generation });
+    if (this.stapelPlan) return;
+    this.stapelPlan = setTimeout(() => {
+      this.stapelPlan = null;
+      const liste = this.stapel;
+      this.stapel = [];
+      for (const t of liste) {
+        if (!this.r.lebt() || !this.r.aktiv() || t.z.generation !== t.generation) continue;
+        this.tausche(t.el, t.z, t.a, t.mass, t.schluessel);
+      }
+    }, 0);
+  }
+
+  // Die Seite hat Quelle oder srcset eines getauschten Bildes geaendert und der Schluessel bleibt gleich: sofort aus dem Zwischenspeicher
+  // neu einsetzen, ohne auf das Laden des Originals zu warten (Vorschau-Rotation beim Darueberfahren).
+  ersetzeSofort(el: HTMLImageElement, z: Zustand): boolean {
+    if (!this.tausch || !z.ersetzt?.schluessel || !this.r.aktiv() || z.tauschLaeuft) return false;
+    if (this.schluesselBild(el) !== z.ersetzt.schluessel) return false;
+    const a = this.speicher.sofort(z.ersetzt.schluessel);
+    if (!a) return false;
+    z.eigen = a.dataUrl;
+    setzeBildSofortNeu(el, z, a.dataUrl);
+    return true;
+  }
+
+  private tausche(el: Element, z: Zustand, a: AntwortPackBild, mass: DOMRect, schluessel: string): void {
+    z.eingereiht = false;
+    if (z.art === 'bild' && el instanceof HTMLImageElement) {
+      // Formatfuellend, Seitenverhaeltnis der Flaeche bleibt: object-fit und festes Verhaeltnis der bisherigen Darstellung.
+      const stile: Array<[string, string]> = [['object-fit', 'cover']];
+      if (mass.width > 0 && mass.height > 0) stile.push(['aspect-ratio', `${mass.width} / ${mass.height}`]);
+      z.ersetzt = this.merkeStile(el, z, stile);
+      z.ersetzt.schluessel = schluessel;
+      starteBildTausch(el, z, a.dataUrl);
+      // Das load-Ereignis (schleier.ts) schliesst den Tausch; kommt es nicht, greift nach TAUSCH_MAX_MS der normale Schleier.
+      if (z.timer) clearTimeout(z.timer);
+      z.timer = this.r.zeitgeber(() => {
+        z.timer = null;
+        if (z.tauschLaeuft) this.scheitert(el, z, 'Zeit');
+      }, TAUSCH_MAX_MS);
+    } else if (el instanceof HTMLElement) {
+      // Hintergrund: Pack-Bild vorladen, damit beim Setzen nichts Leeres aufblitzt; das Element ist bis dahin verdeckt.
+      const generation = z.generation;
+      const probe = new Image();
+      probe.decoding = 'async';
+      let erledigt = false;
+      const weiter = (ok: boolean) => {
+        if (erledigt) return;
+        erledigt = true;
+        if (!this.r.lebt() || !this.r.aktiv() || z.generation !== generation) return;
+        if (!ok) return this.scheitert(el, z, 'Hintergrund nicht ladbar');
+        setzeHintergrund(el, z, `url("${a.dataUrl}")`);
+        z.ersetzt = this.merkeStile(el, z, [
+          ['background-size', 'cover'],
+          ['background-position', 'center'],
+          ['background-repeat', 'no-repeat'],
+        ]);
+        z.ersetzt.schluessel = schluessel;
+        this.r.hintergrundFertig(el, z);
+      };
+      probe.addEventListener('load', () => weiter(true), { once: true });
+      probe.addEventListener('error', () => weiter(false), { once: true });
+      this.r.zeitgeber(() => weiter(false), TAUSCH_MAX_MS);
+      probe.src = a.dataUrl;
+    }
+    this.planeTestStatus();
+  }
+
+  // Kein Bild oder Tausch gescheitert: Original zurueck, dieses Element faellt auf den normalen Schleier.
+  scheitert(el: Element, z: Zustand, grund = 'Ladefehler'): void {
+    this.fehlgeschlagen++;
+    if (this.gruende.length < 8) this.gruende.push(grund);
+    if (z.timer) clearTimeout(z.timer);
+    z.timer = null;
+    stelleWiederHer(el, z);
+    z.ohneVorschau = true;
+    z.eingereiht = false;
+    // Die Rueckkehr der Originale ist keine Aenderung der Seite: Signatur nachfuehren, sonst startete der Beobachter eine neue Pruefung.
+    if (el instanceof HTMLImageElement) z.signatur = bildSignatur(el);
+    this.planeTestStatus();
+    this.r.bewerte(el, z);
+  }
+
+  // Hover-Vorschauvideo in einer Vorschau-Karte: im Tausch-Modus nie zeigen (kein Urteil, bleibt durch Hide-first unsichtbar).
+  versteckeVideo(el: Element, z: Zustand): boolean {
+    if (!this.tausch || !this.r.aktiv()) return false;
+    const adapter = adapterFuer(this.liste);
+    if (!istHoverVideo(Vorschau.ueberSchatten(el), adapter)) return false;
+    // Nur stumme Vorschau-Schleifen: Beitragsvideos und Player (Bedienelemente, Ton, Player-Selektor) bleiben beim normalen Schleier.
+    const v = el as HTMLVideoElement;
+    if (v.controls || !v.muted) return false;
+    if (adapter.player?.length && adapter.player.some((s) => { try { return !!Vorschau.naechster(el, s); } catch { return false; } })) return false;
+    this.beobachteVideo(v, z);
+    try {
+      (el as HTMLVideoElement).pause();
+    } catch {
+      // nicht abspielbar: nichts zu tun
+    }
+    return true;
+  }
+
+  // Ein beim Einfuegen stummes Video kann spaeter Ton und Bedienelemente bekommen (Beitragsvideo, Player): dann normal pruefen statt dauerhaft
+  // verstecken. Ein Hoerer je Video auf volumechange, play und loadedmetadata.
+  private readonly beobachtet = new WeakSet<Element>();
+  private beobachteVideo(v: HTMLVideoElement, z: Zustand): void {
+    if (this.beobachtet.has(v)) return;
+    this.beobachtet.add(v);
+    const pruefe = () => {
+      if (!this.r.lebt() || !this.r.aktiv()) return;
+      if (v.controls || !v.muted) {
+        for (const e of ['volumechange', 'play', 'loadedmetadata']) v.removeEventListener(e, pruefe);
+        this.beobachtet.delete(v);
+        if (!z.urteil && !z.eingereiht) this.r.bewerte(v, z);
+      }
+    };
+    for (const e of ['volumechange', 'play', 'loadedmetadata']) v.addEventListener(e, pruefe);
+  }
+
+  // ---------- Erkennen am Inhalt ----------
+
+  // Eine echte Pruefung eines Bildes ist ausgegangen (frei oder Treffer). Eingesetzte Vorschau-Bilder und Videos kommen hier nie an.
+  zaehle(z: Zustand, urteil: InhaltsUrteil): void {
+    if (!this.erkennen || (z.art !== 'bild' && z.art !== 'hintergrund')) return;
+    const schluessel = z.adresse && !z.adresse.startsWith('data:') ? z.adresse : z.signatur && !z.signatur.startsWith('data:') ? z.signatur : '';
+    if (!schluessel) return;
+    if (this.zaehler.zaehle(schluessel.slice(0, SCHLUESSEL_MAX), urteil)) this.melde();
+    else this.planeTestStatus();
+  }
+
+  // Braucht der Schleier den Adressbeobachter fuer die Zaehlung (Seitenwechsel ohne Neuladen)?
+  brauchtAdresse(): boolean {
+    return this.erkennen && (this.zaehler.stand.gesamt > 0 || this.zaehler.amInhalt);
+  }
+
+  // Seitenwechsel ohne Neuladen: die Erkennung beginnt neu.
+  beiAdresswechsel(): void {
+    this.zaehler.neuStart();
+    this.melde();
+  }
+
+  // ---------- Testhaken ----------
+
+  // Nur im Testbau, auf Testhosts und auf der Testdomain: Stand als Attribut am Wurzelelement (data-veil-erwachsen).
+  private planeTestStatus(): void {
+    if (!TESTHAKEN_E || this.testTimer) return;
+    if (!testhakenAktiv() && !location.hostname.endsWith(TEST_DOMAIN)) return;
+    this.testTimer = setTimeout(() => {
+      this.testTimer = null;
+      const wurzel = document.documentElement;
+      if (!wurzel) return;
+      const s = erwachsenStatus();
+      wurzel.setAttribute(
+        ATTR_ERWACHSEN,
+        JSON.stringify({
+          liste: s.liste,
+          amInhalt: s.amInhalt,
+          tausch: this.tausch,
+          erkennen: this.erkennen,
+          abrufe: this.speicher.abrufe,
+          bilder: this.speicher.anzahlBilder,
+          bytes: this.speicher.anzahlBytes,
+          fehlgeschlagen: this.fehlgeschlagen,
+          gruende: this.gruende,
+          zaehlung: this.zaehler.stand,
+        }),
+      );
+    }, 30);
+  }
+
+  // Abbau (Erweiterung wird entfernt oder neu geladen).
+  raeumeAuf(): void {
+    if (this.testTimer) clearTimeout(this.testTimer);
+    this.testTimer = null;
+    if (this.stapelPlan) clearTimeout(this.stapelPlan);
+    this.stapelPlan = null;
+    this.stapel = [];
+    this.speicher.leere();
+    if (TESTHAKEN_E) document.documentElement?.removeAttribute(ATTR_ERWACHSEN);
+    setzeErwachsenStatus({ liste: null, amInhalt: false });
+  }
+}

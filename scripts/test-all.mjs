@@ -19,11 +19,13 @@ const RELEASEBAU = { WXT_TESTHAKEN: '', VEIL_AUSGABE: '.output-release-pruefung'
 //   hypnomiaVeil, data-hypnomia-veil   Lebenszeichen-Attribut der Hallo-Tests (dataset.hypnomiaVeil)
 //   veilHello             Lebenszeichen der Hallo-Tests in storage.local (Hintergrund, nur im Testbau)
 //   videoVerzoegerungMs   Testhaken: kuenstlich verzoegerte Video-Antwort (veil-test)
+//   steigerungUhrVor, veil-steigerung-takt   Testhaken der Steigerung (Uhr vorstellen, kurzer Melde-Takt)
+//   veil-erwachsen        Testdomain veil-erwachsen.test fuer Erwachsenenseiten (src/adapter/liste.ts, Phase 4)
 //   (videoZeiten und die anderen Schluessel des Status-Objekts stehen als Namen auch im Release-Bau, werden dort aber nie geschrieben:
 //   das Schreiben haengt an testhakenAktiv(). Gesucht wird darum nach dem Attributnamen data-veil-status, nicht nach den Schluesseln.)
-const TESTHAKEN_SPUREN = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'data-hypnomia-veil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze'];
+const TESTHAKEN_SPUREN = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'data-hypnomia-veil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze', 'veil-erwachsen', 'data-veil-riegel', 'steigerungUhrVor', 'veil-steigerung-takt'];
 // Diese Spuren schreibt der Testbau wirklich; die Gegenprobe verlangt sie dort (data-hypnomia-veil kommt nur als dataset-Name vor).
-const SPUREN_IM_TESTBAU = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze'];
+const SPUREN_IM_TESTBAU = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze', 'veil-erwachsen', 'data-veil-riegel', 'steigerungUhrVor', 'veil-steigerung-takt'];
 
 // Fuehrt ein npm-Skript aus, reicht die Ausgabe durch und liefert Exit-Code sowie Text.
 function lauf(skript, umgebung = {}) {

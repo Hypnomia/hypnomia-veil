@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'wxt';
 import { manifestMuster, musterAusListe } from './scripts/ausnahmen-muster.mjs';
@@ -31,10 +31,36 @@ function standardAusnahmenManifest(): string[] {
   return manifestMuster(musterAusListe(liste));
 }
 
+// Demo-Chibis (Entscheidung 102, src/chibi.ts): suesse SFW-Chibis aus `../02 Assets Mia/chibi/<pose>.webp` kommen beim Bau nach
+// `chibi/` in die Erweiterung, nie ins Repo (CLAUDE.md Regel 3). Fehlt der Ordner, faellt die Oberflaeche auf Text zurueck; der Bau warnt.
+// Nur Dateien mit bekannter Pose (Liste wie CHIBI_POSEN in src/chibi.ts).
+const CHIBI_POSEN_BAU = ['schild', 'sprechblase', 'arme', 'nein', 'zwinkern', 'jubeln', 'schmollen', 'spirale', 'thron'];
+function demoChibis(): { absoluteSrc: string; relativeDest: string }[] {
+  const ordner = fileURLToPath(new URL('../02 Assets Mia/chibi/', import.meta.url));
+  if (!existsSync(ordner)) {
+    console.warn('Demo-Chibis: Ordner 02 Assets Mia/chibi fehlt, die Erweiterung zeigt Text statt Chibis.');
+    return [];
+  }
+  return readdirSync(ordner)
+    .filter((d) => d.endsWith('.webp') && CHIBI_POSEN_BAU.includes(d.slice(0, -5)))
+    .map((d) => ({ absoluteSrc: `${ordner}${d}`, relativeDest: `chibi/${d}` }));
+}
+
+function galerieMatchesChrome(): string[] {
+  const liste = JSON.parse(readFileSync(new URL('./data/erwachsenenseiten.json', import.meta.url), 'utf8'));
+  const domains: string[] = (liste.seiten ?? []).flatMap((e: { domains?: string[] }) => e.domains ?? []);
+  const muster = domains.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]);
+  if (process.env.WXT_TESTHAKEN === '1') muster.push('*://*.veil-erwachsen.test/*');
+  return [...new Set(muster)];
+}
+
 export default defineConfig({
   // VEIL_AUSGABE erlaubt einen zweiten Ausgabeordner (z. B. waehrend eine Messung auf .output laeuft).
   outDir: process.env.VEIL_AUSGABE ?? '.output',
   hooks: {
+    'build:publicAssets': (_wxt, dateien) => {
+      dateien.push(...demoChibis());
+    },
     'build:manifestGenerated': (_wxt, manifest) => {
       // Gilt fuer jedes Content-Script (Schleier und Haken fuer Shadow Roots in der Seitenwelt): auf der Ausnahmeliste laeuft keins.
       const skripte = manifest.content_scripts ?? [];
@@ -87,8 +113,16 @@ export default defineConfig({
       // unlimitedStorage: das Mia Pack liegt in IndexedDB und ist groesser als die Grenze von storage.local (Entscheidung 25).
       'unlimitedStorage',
       // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
-      ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen', 'declarativeNetRequestWithHostAccess']),
+      ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen']),
+      // Phase 4, Umleitung (Auftrag U): dynamische Regel in beiden Browsern. WithHostAccess zeigt in Chrome und Firefox keine eigene
+      // Installationswarnung (Firefox: nur `declarativeNetRequest` hat den Text "Block content on any page").
+      'declarativeNetRequestWithHostAccess',
     ],
+    // Komplett-Ersatz (Phase 4, Auftrag U), Zwischenstand bis Session 8 (Entscheidung 107: die Galerie kommt dann in die Seite, keine
+    // Webseite soll VEIL erkennen koennen). Chrome: nur die Listen-Domains (im Testbau zusaetzlich die Testdomain); Adresszeile und Links in
+    // Listen-Seiten gehen, Links von fremden Seiten und eigene Seiten per Link enden in der Fehlerseite. `use_dynamic_url` scheitert mit der
+    // DNR-Umleitung (gemessen). Firefox: die Adresse ist je Installation zufaellig, dort darf es `*://*/*` bleiben.
+    web_accessible_resources: [{ resources: ['galerie.html'], matches: browser === 'firefox' ? ['*://*/*'] : galerieMatchesChrome() }],
     // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
     host_permissions: ['<all_urls>'],
     // onnxruntime-web braucht WebAssembly in Erweiterungsseiten (Entscheidung 58).

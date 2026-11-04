@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Quiz-Testseite</title>
+    <style>body{font:16px sans-serif;margin:0}#player{width:640px;height:360px;background:#223;color:#fff;margin:20px}</style>
+    <script>
+      // Eine Seite, die f, m und die Leertaste selbst abfaengt (wie ein Videoplayer): jedes Ereignis wird gezaehlt und verhindert.
+      window.tasten = { f: 0, m: 0, leer: 0, sonst: 0 };
+      function zaehle(e) {
+        var k = e.key;
+        if (k === 'f' || k === 'F') window.tasten.f++;
+        else if (k === 'm' || k === 'M') window.tasten.m++;
+        else if (k === ' ' || e.code === 'Space') window.tasten.leer++;
+        else return;
+        e.preventDefault();
+      }
+      // Eingabeereignisse sind composed und tragen `data`: eine neugierige Seite liest damit mit
+      window.eingaben = [];
+      ['beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend'].forEach(function (t) {
+        window.addEventListener(t, function (e) { window.eingaben.push(t + ':' + (e.data || '')); }, true);
+        document.addEventListener(t, function (e) { window.eingaben.push(t + ':' + (e.data || '')); }, false);
+      });
+      ['keydown', 'keyup', 'keypress'].forEach(function (t) {
+        window.addEventListener(t, zaehle, true);
+        document.addEventListener(t, zaehle, true);
+        document.addEventListener(t, zaehle, false);
+        window.addEventListener(t, zaehle, false);
+      });
+    </script>
+  </head>
+  <body>
+    <div id="player">Player-Platzhalter</div>
+    <input id="draussen" aria-label="outside" />
+  </body>
+</html>

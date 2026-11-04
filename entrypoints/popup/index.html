@@ -55,6 +55,38 @@
         <p id="ausnahme-hinweis" class="hinweis"></p>
       </section>
 
+      <section id="erwachsen" aria-labelledby="erwachsen-titel">
+        <h2 id="erwachsen-titel">Adult sites</h2>
+        <div class="mia-zeile">
+          <img id="erwachsen-chibi" class="chibi" alt="" width="64" height="64" hidden />
+          <p id="erwachsen-hinweis" class="hinweis"></p>
+        </div>
+        <div id="erwachsen-schalter">
+          <label class="schalter">
+            <input id="erw-an" type="checkbox" role="switch" />
+            <span class="regler" aria-hidden="true"></span>
+            <span class="text"><strong>Adult-site mode</strong><small>on the sites I know, I swap the thumbnails for mine</small></span>
+          </label>
+          <label class="schalter" id="erw-ersatz-zeile">
+            <input id="erw-ersatz" type="checkbox" role="switch" />
+            <span class="regler" aria-hidden="true"></span>
+            <span class="text"><strong>Full replacement</strong><small>Careful: listed adult sites open my gallery instead. Pause Mia or an exception gets you the real site.</small></span>
+          </label>
+          <label class="schalter">
+            <input id="erw-inhalt" type="checkbox" role="switch" />
+            <span class="regler" aria-hidden="true"></span>
+            <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal. Pages I only spot by their content are never swapped or redirected.</small></span>
+          </label>
+        </div>
+        <button id="erwachsen-pack-link" class="klein" type="button">Add the Mia Pack</button>
+        <div id="steigerung" hidden>
+          <h3>Mia's grip</h3>
+          <p id="stufe-zeile" class="stufe"></p>
+          <p id="stufe-zeit" class="hinweis"></p>
+          <p id="stufe-text" class="hinweis"></p>
+        </div>
+      </section>
+
       <footer>
         <span id="version"></span>
         <span>Pausing and uninstalling are always allowed.</span>

@@ -271,3 +271,48 @@ footer {
     transition: none;
   }
 }
+
+/* Abschnitt "Adult sites" */
+#erwachsen-schalter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#erwachsen h3 {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--leise);
+}
+
+#erwachsen button.klein {
+  margin-top: 8px;
+}
+
+.mia-zeile {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chibi {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.stufe {
+  margin: 2px 0 0;
+  font-weight: 650;
+  color: var(--akzent);
+}
+
+#stufe-zeit {
+  font-variant-numeric: tabular-nums;
+}
+
+[hidden] {
+  display: none !important;
+}

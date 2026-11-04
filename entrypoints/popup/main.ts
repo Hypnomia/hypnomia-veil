@@ -14,6 +14,10 @@ import {
   type Stil,
   type Zone,
 } from '../../src/einstellungen';
+import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type SteigerungStand } from '../../src/steigerung';
+import { STUFEN_TEXT, formatiereRest, hatErwachsenFunktionen, posePopup, waehleSatz } from '../../src/oberflaeche/erwachsen';
+import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
+import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
 
 const ZONEN_NAMEN: Record<Zone, string> = {
@@ -48,6 +52,24 @@ const ausnahmeHinweis = el<HTMLParagraphElement>('ausnahme-hinweis');
 const stilFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stil"]')];
 const packHinweis = el<HTMLParagraphElement>('pack-hinweis');
 const packLink = el<HTMLButtonElement>('pack-link');
+
+const erwAn = el<HTMLInputElement>('erw-an');
+const erwErsatz = el<HTMLInputElement>('erw-ersatz');
+const erwErsatzZeile = el<HTMLLabelElement>('erw-ersatz-zeile');
+const erwInhalt = el<HTMLInputElement>('erw-inhalt');
+const erwSchalter = el<HTMLDivElement>('erwachsen-schalter');
+const erwHinweis = el<HTMLParagraphElement>('erwachsen-hinweis');
+const erwPackLink = el<HTMLButtonElement>('erwachsen-pack-link');
+const erwChibi = el<HTMLImageElement>('erwachsen-chibi');
+const steigerungBlock = el<HTMLDivElement>('steigerung');
+const stufeZeile = el<HTMLParagraphElement>('stufe-zeile');
+const stufeZeit = el<HTMLParagraphElement>('stufe-zeit');
+const stufeText = el<HTMLParagraphElement>('stufe-text');
+
+let stand: SteigerungStand = vervollstaendigeStand(undefined);
+let texte: Texte | null = null;
+const zufall = Math.random(); // ein Satz je Oeffnen des Popups, kein Flackern bei jeder Aenderung
+let chibiPose = '';
 
 let aktuell: Einstellungen | null = null;
 let pack: PackKurz | null = null;
@@ -105,6 +127,7 @@ function zeichne(e: Einstellungen): void {
   }
 
   zeichneAusnahme(e);
+  zeichneErwachsen(e);
 }
 
 // Stilwahl: Mia patch ist ohne Pack gesperrt (Hinweis auf das Pack), mit Pack waehlbar. Angezeigt wird der Stil, der wirklich gilt.
@@ -146,6 +169,95 @@ function zeichneAusnahme(e: Einstellungen): void {
     ausnahmeKnopf.textContent = 'Leave this site alone';
     ausnahmeHinweis.textContent = `I'll skip ${muster} from now on. You can undo it here anytime.`;
   }
+}
+
+// ---------- Adult sites ----------
+
+// Schalter nur mit Pack (und passender Freischaltung), sonst ein Hinweis. Die Steigerung nur mit `zensur:steigerung`.
+function zeichneErwachsen(e: Einstellungen): void {
+  // Drei Lagen: kein Pack (Hinweis und Weg zum Pack), Pack ohne Erwachsenen-Freischaltung (Abschnitt bleibt still), Pack mit Funktionen.
+  const mitErw = hatErwachsenFunktionen(pack);
+  const mitSteigerung = istFreigeschaltet(pack, 'zensur:steigerung');
+  const ohnePack = !pack;
+  el<HTMLElement>('erwachsen').hidden = !ohnePack && !mitErw && !mitSteigerung;
+  erwSchalter.hidden = !mitErw;
+  // Die Saetze zu Adult-site mode nur mit `erwachsen:vorschau`; sonst bleibt der Hinweis verborgen (ausser ohne Pack).
+  erwHinweis.hidden = !ohnePack && !istFreigeschaltet(pack, 'erwachsen:vorschau');
+  erwPackLink.hidden = !ohnePack;
+  erwAn.checked = e.erwachsen.an;
+  erwErsatz.checked = e.erwachsen.komplettErsatz;
+  erwInhalt.checked = e.erwachsen.erkennenAmInhalt;
+  erwAn.closest('label')!.hidden = !istFreigeschaltet(pack, 'erwachsen:vorschau');
+  erwErsatzZeile.hidden = !istFreigeschaltet(pack, 'erwachsen:ersatz');
+  steigerungBlock.hidden = !mitSteigerung;
+  if (ohnePack) {
+    erwHinweis.textContent = 'These sites need the Mia Pack. Add it and I’ll look after them properly.';
+  } else if (e.pause) {
+    erwHinweis.textContent = "Paused, so I'm keeping my hands off these sites too.";
+  } else {
+    erwHinweis.textContent = e.erwachsen.an ? "I know the usual places. Nothing there gets by me." : 'Adult-site mode is off. I’m leaving these sites alone.';
+  }
+  zeichneStufe(e);
+}
+
+function zeichneStufe(e: Einstellungen): void {
+  const hat = istFreigeschaltet(pack, 'zensur:steigerung');
+  const a = anzeigeStufe(stand, Date.now());
+  const pose = posePopup(e.pause, hat ? a.stufe : 0);
+  if (pose !== chibiPose) {
+    chibiPose = pose;
+    erwChibi.dataset.pose = pose;
+    void zeigeChibi(erwChibi, pose, pack);
+  }
+  // Sekundentakt nur, solange die Steigerung sichtbar ist.
+  if (hat && tickerId === null) tickerId = window.setInterval(() => aktuell && zeichneStufe(aktuell), 1000);
+  if (!hat && tickerId !== null) {
+    clearInterval(tickerId);
+    tickerId = null;
+  }
+  if (!hat) return;
+  stufeZeile.textContent = `Level ${a.stufe} of 4`;
+  // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.
+  if (a.stufe === 0) stufeZeit.textContent = 'Nothing to count down yet.';
+  else if (e.pause || a.pausiert) stufeZeit.textContent = "Paused, so the clock stands still. It picks up where it stopped.";
+  else stufeZeit.textContent = `Next level down in ${formatiereRest(a.bisAbsenkungMs ?? 0)}`;
+  const gruppe = texte?.gruppen[`stufe${a.stufe}` as 'stufe1'];
+  stufeText.textContent = waehleSatz(a.stufe === 0 ? undefined : gruppe, STUFEN_TEXT[a.stufe], zufall);
+}
+let tickerId: number | null = null;
+window.addEventListener('pagehide', () => {
+  if (tickerId !== null) clearInterval(tickerId);
+  tickerId = null;
+});
+
+erwAn.addEventListener('change', () => void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, an: erwAn.checked } })));
+erwErsatz.addEventListener('change', () => void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, komplettErsatz: erwErsatz.checked } })));
+erwInhalt.addEventListener('change', () => void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, erkennenAmInhalt: erwInhalt.checked } })));
+erwPackLink.addEventListener('click', () => {
+  void browser.runtime.openOptionsPage().then(() => window.close());
+});
+
+async function ladeStand(): Promise<void> {
+  const a = await browser.storage.local.get(STEIGERUNG_SCHLUESSEL);
+  stand = vervollstaendigeStand(a[STEIGERUNG_SCHLUESSEL]);
+}
+
+async function ladeTexte(): Promise<void> {
+  const kennung = pack ? `${pack.id}|${pack.importiert}` : '';
+  if (!pack || (!hatErwachsenFunktionen(pack) && !istFreigeschaltet(pack, 'zensur:steigerung'))) {
+    texte = null;
+    return;
+  }
+  let neu: Texte | null = null;
+  try {
+    const antwort = (await browser.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'texte' })) as { ok?: boolean; daten?: unknown };
+    const d = antwort?.daten as Texte | null | undefined;
+    neu = d && typeof d === 'object' && 'gruppen' in d ? d : null;
+  } catch {
+    neu = null;
+  }
+  // Nur uebernehmen, wenn das Pack in der Zwischenzeit nicht gewechselt hat.
+  if (pack && `${pack.id}|${pack.importiert}` === kennung) texte = neu;
 }
 
 // ---------- Zonen aufbauen ----------
@@ -247,9 +359,16 @@ el<HTMLSpanElement>('version').textContent = `v${browser.runtime.getManifest().v
 const abmelden = beiEinstellungsAenderung(zeichne);
 // Das Pack (storage.local.pack) kann sich aendern, waehrend das Popup offen ist (Import auf der Einstellungsseite).
 const packHorcher = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
+  if (bereich === 'local' && STEIGERUNG_SCHLUESSEL in aenderungen) {
+    stand = vervollstaendigeStand(aenderungen[STEIGERUNG_SCHLUESSEL]?.newValue);
+    if (aktuell) zeichneStufe(aktuell);
+  }
   if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen)) return;
   const neu = aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue as PackKurz | undefined;
   pack = neu && typeof neu === 'object' && typeof neu.id === 'string' ? neu : null;
+  chibiPose = '';
+  texte = null;
+  void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
   if (aktuell) zeichne(aktuell);
 };
 browser.storage.onChanged.addListener(packHorcher);
@@ -265,5 +384,8 @@ window.addEventListener(
 void (async () => {
   seite = await leseSeite();
   pack = await ladePackKurz().catch(() => null);
+  await ladeStand().catch(() => undefined);
   zeichne(await ladeEinstellungen());
+  // Pack-Texte danach nachladen, nur die Stufen-Anzeige neu zeichnen.
+  void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
 })();

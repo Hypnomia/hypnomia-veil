@@ -28,6 +28,13 @@ export interface HintergrundOriginal {
   stil: string | null;
 }
 
+// Eigene Inline-Stile, die der Vorschau-Tausch (vorschau.ts) gesetzt hat, mit den Werten davor (Pause stellt sie zurueck).
+export interface ErsetztInfo {
+  // Schluessel der Wahl (Video-Kennung oder Quelle), unter dem das Pack-Bild eingesetzt wurde: bleibt er nach einer Quellaenderung gleich, wird sofort neu eingesetzt.
+  schluessel?: string;
+  stile: Array<{ name: string; wert: string; prio: string }>;
+}
+
 export interface Zustand {
   art: Art;
   // Wird bei jedem Zuruecksetzen erhoeht: Antworten zu einer aelteren Generation werden verworfen (Rennen bei schnell wechselnder src).
@@ -73,6 +80,12 @@ export interface Zustand {
   // Video: laufende Nachpruefung (Takt, Hysterese), null = keine.
   video: VideoLauf | null;
   timer: ReturnType<typeof setTimeout> | null;
+  // Vorschau-Tausch (Auftrag E): das Element zeigt ein Pack-Bild statt der Seite (wird nicht geprueft). null = nicht ersetzt.
+  ersetzt: ErsetztInfo | null;
+  // Erkennen am Inhalt: Ergebnis der letzten echten Pruefung dieses Elements ('treffer' = unbedeckte Brust, Genitalien oder Po erkannt), null = keine Wertung.
+  inhalt: 'frei' | 'treffer' | null;
+  // Der Tausch ist fuer dieses Element gescheitert (kein Bild, Seiten-CSP): es geht den normalen Weg, bis die Seite die Quelle aendert.
+  ohneVorschau: boolean;
 }
 
 export function neuerZustand(art: Art): Zustand {
@@ -103,5 +116,8 @@ export function neuerZustand(art: Art): Zustand {
     schleife: false,
     video: null,
     timer: null,
+    ersetzt: null,
+    inhalt: null,
+    ohneVorschau: false,
   };
 }

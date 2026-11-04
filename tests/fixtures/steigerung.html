@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Steigerung</title></head>
+<body>
+<!-- Auftrag S: synthetisches Bild (Canvas, kein echter Inhalt), damit der Erkenner je Pruefung einmal laeuft. -->
+<div id="ort"></div>
+<script>
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#3a7'; g.fillRect(0, 0, 320, 240);
+  g.fillStyle = '#e9c'; g.beginPath(); g.arc(160, 110, 60, 0, Math.PI * 2); g.fill();
+  const img = new Image();
+  img.id = 'bild';
+  img.width = 320; img.height = 240;
+  img.src = c.toDataURL('image/png');
+  document.getElementById('ort').append(img);
+</script>
+</body>
+</html>

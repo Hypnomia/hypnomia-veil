@@ -4,6 +4,8 @@
 // Das Pack ist nur Daten. Nichts daraus wird ausgefuehrt; Texte kommen als String zurueck und gehoeren per `textContent` angezeigt.
 
 import type { Freischaltung, PackDateiEintrag, PackManifest, Rolle, Stufe } from './vertrag';
+// Laufzeit-Werte aus vertrag.ts (ROLLEN, BENOETIGT) stehen hier als Kopie: diese Datei hat keine Laufzeit-Importe. Die Typpruefung unten
+// stellt sicher, dass die Kopien zum Vertrag passen.
 
 // ---------- Grenzen und Kennungen ----------
 export const PACK_KENNUNG = 'MIAPACK1';
@@ -21,12 +23,38 @@ const ID_MUSTER = /^[a-z0-9-]{1,40}$/;
 const VERSION_MUSTER = /^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/;
 const SHA_MUSTER = /^[0-9a-f]{64}$/;
 const TYPEN: readonly PackDateiEintrag['typ'][] = ['image/webp', 'image/jpeg', 'image/png', 'text/plain', 'application/json'];
-const ROLLEN: readonly Rolle[] = ['patch', 'lizenz'];
+const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi'] as const satisfies readonly Rolle[];
+type _RollenVollstaendig = Exclude<Rolle, (typeof ROLLEN)[number]> extends never ? true : never;
+const _rollenVollstaendig: _RollenVollstaendig = true;
+void _rollenVollstaendig;
+// Bild-Rollen und JSON-Rollen (JSON: hoechstens eine Datei, Typ application/json, muss als JSON lesbar sein).
+const BILD_ROLLEN: readonly Rolle[] = ['patch', 'vorschau', 'chibi'];
+const JSON_ROLLEN: readonly Rolle[] = ['quiz', 'texte'];
 const STUFEN: readonly Stufe[] = ['tease', 'hot', 'explicit'];
 
 // Was diese Version der Erweiterung freischalten kann (muss zu FREISCHALTUNGEN in vertrag.ts passen; die Typpruefung unten
 // stellt sicher, dass hier nichts steht, was der Vertrag nicht kennt, und nichts fehlt). Unbekanntes im Pack wird verworfen.
-const BEKANNTE_FREISCHALTUNGEN = ['stil:mia-patch'] as const satisfies readonly Freischaltung[];
+const BEKANNTE_FREISCHALTUNGEN = [
+  'stil:mia-patch',
+  'erwachsen:vorschau',
+  'erwachsen:quiz',
+  'erwachsen:titel',
+  'erwachsen:ersatz',
+  'quiz:freilegen',
+  'zensur:steigerung',
+  'chibi:pack',
+] as const satisfies readonly Freischaltung[];
+// Kopie von BENOETIGT aus vertrag.ts: welche Rolle eine Freischaltung braucht (null = keine Datei).
+const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
+  'stil:mia-patch': 'patch',
+  'erwachsen:vorschau': 'vorschau',
+  'erwachsen:quiz': 'quiz',
+  'erwachsen:titel': 'texte',
+  'erwachsen:ersatz': 'vorschau',
+  'quiz:freilegen': 'quiz',
+  'zensur:steigerung': null,
+  'chibi:pack': 'chibi',
+};
 type _Vollstaendig = Exclude<Freischaltung, (typeof BEKANNTE_FREISCHALTUNGEN)[number]> extends never ? true : never;
 const _vollstaendig: _Vollstaendig = true;
 void _vollstaendig;
@@ -231,6 +259,20 @@ export interface GeprueftesPack {
   datenStart: number;
   // Anzahl Dateien mit Rolle `patch`.
   patches: number;
+  // Anzahl Dateien je Rolle (Phase 4). JSON-Rollen zaehlen nur, wenn die Datei als JSON lesbar war.
+  rollen: Record<Rolle, number>;
+  // Inhalt der JSON-Dateien (Rollen `quiz`, `texte`) als geparstes JSON, ungeprueft gegen das Schema (das prueft src/quiz/vertrag.ts
+  // beim Import in speicher.ts). Fehlt die Rolle oder war die Datei kein JSON: undefined.
+  json: Partial<Record<Rolle, unknown>>;
+}
+
+// Freischaltungen, deren Datei fehlt, verwerfen (eine Freischaltung gilt nur mit gueltiger Datei). `gueltig(rolle)` sagt, ob die
+// Rolle vorhanden und brauchbar ist. Wird auch von speicher.ts nach der Schema-Pruefung der JSON-Dateien aufgerufen.
+export function filtereFreischaltungen(freischaltungen: readonly Freischaltung[], gueltig: (rolle: Rolle) => boolean): Freischaltung[] {
+  return freischaltungen.filter((f) => {
+    const rolle = BENOETIGT[f];
+    return rolle === null || gueltig(rolle);
+  });
 }
 
 export type Fortschritt = (fertig: number, gesamt: number) => void;
@@ -292,14 +334,21 @@ export function pruefeManifest(roh: unknown, eigeneVersion: string, datenLaenge:
     if (typeof d.sha256 !== 'string' || !SHA_MUSTER.test(d.sha256)) throw new PackFehler('sha256', `sha256 hat nicht die Form 64 Hex-Zeichen (${name})`);
     const eintrag: PackDateiEintrag = { name, typ: d.typ as PackDateiEintrag['typ'], offset: d.offset, laenge: d.laenge, sha256: d.sha256 };
     if (d.rolle !== undefined) {
-      if (typeof d.rolle !== 'string' || !(ROLLEN as readonly string[]).includes(d.rolle)) throw new PackFehler('rolle', `Rolle unbekannt (${name})`);
-      eintrag.rolle = d.rolle as Rolle;
+      if (typeof d.rolle !== 'string') throw new PackFehler('rolle', `Rolle ist kein Text (${name})`);
+      // Unbekannte Rollen (aus spaeteren Versionen) verwerfen statt ablehnen (Entscheidung 100): die Datei bleibt ohne Rolle.
+      if ((ROLLEN as readonly string[]).includes(d.rolle)) eintrag.rolle = d.rolle as Rolle;
     }
     if (d.stufe !== undefined) {
       if (typeof d.stufe !== 'string' || !(STUFEN as readonly string[]).includes(d.stufe)) throw new PackFehler('stufe', `Stufe unbekannt (${name})`);
       eintrag.stufe = d.stufe as Stufe;
     }
-    if (eintrag.rolle === 'patch' && !istBild(eintrag.typ)) throw new PackFehler('rolle', `Rolle patch nur fuer Bilder (${name})`);
+    if (eintrag.rolle && BILD_ROLLEN.includes(eintrag.rolle) && !istBild(eintrag.typ)) {
+      throw new PackFehler('rolle', `Rolle ${eintrag.rolle} nur fuer Bilder (${name})`);
+    }
+    if (eintrag.rolle && JSON_ROLLEN.includes(eintrag.rolle) && eintrag.typ !== 'application/json') {
+      throw new PackFehler('rolle', `Rolle ${eintrag.rolle} nur fuer application/json (${name})`);
+    }
+    if (eintrag.rolle === 'vorschau' && !eintrag.stufe) throw new PackFehler('stufe', `Rolle vorschau braucht eine Stufe (${name})`);
     dateien.push(eintrag);
   }
 
@@ -310,6 +359,12 @@ export function pruefeManifest(roh: unknown, eigeneVersion: string, datenLaenge:
     if (sortiert[i]!.offset < vorher.offset + vorher.laenge) {
       throw new PackFehler('ueberlappung', `${vorher.name} und ${sortiert[i]!.name} ueberlappen`);
     }
+  }
+
+  // JSON-Rollen hoechstens einmal.
+  for (const rolle of JSON_ROLLEN) {
+    const anzahl = dateien.filter((d) => d.rolle === rolle).length;
+    if (anzahl > 1) throw new PackFehler('rolle', `Rolle ${rolle} hoechstens einmal, gefunden ${anzahl}`);
   }
 
   // Genau eine Lizenzdatei: Rolle `lizenz`, Typ text/plain, `lizenz` zeigt darauf.
@@ -371,6 +426,8 @@ export async function pruefePack(quelle: PackQuelle, eigeneVersion: string, fort
   // Jede Datei lesen, Hash vergleichen, Signatur bzw. UTF-8 pruefen. Nach Dateiposition, damit der Lesekopf nur vorwaerts laeuft.
   let lizenzText = '';
   let patches = 0;
+  const rollen = Object.fromEntries(ROLLEN.map((r) => [r, 0])) as Record<Rolle, number>;
+  const json: Partial<Record<Rolle, unknown>> = {};
   const reihenfolge = [...manifest.dateien].sort((a, b) => a.offset - b.offset);
   let fertig = 0;
   fortschritt?.(0, reihenfolge.length);
@@ -387,13 +444,23 @@ export async function pruefePack(quelle: PackQuelle, eigeneVersion: string, fort
     } else {
       const text = dekodiereUtf8(bytes, d.name);
       if (d.rolle === 'lizenz') lizenzText = text;
+      if (d.rolle && JSON_ROLLEN.includes(d.rolle)) {
+        // Kaputtes JSON lehnt das Pack nicht ab: die Rolle zaehlt dann nicht, ihre Freischaltungen fallen weg.
+        try {
+          json[d.rolle] = JSON.parse(text);
+        } catch {
+          json[d.rolle] = undefined;
+        }
+      }
     }
     if (d.rolle === 'patch') patches++;
+    if (d.rolle && (!JSON_ROLLEN.includes(d.rolle) || json[d.rolle] !== undefined)) rollen[d.rolle]++;
     fertig++;
     fortschritt?.(fertig, reihenfolge.length);
   }
   if (lizenzText.trim().length === 0) throw new PackFehler('lizenz', 'Lizenztext ist leer');
-  return { manifest, lizenzText, groesse, datenStart, patches };
+  const gefiltert: PackManifest = { ...manifest, freischaltungen: filtereFreischaltungen(manifest.freischaltungen as Freischaltung[], (r) => rollen[r] > 0) };
+  return { manifest: gefiltert, lizenzText, groesse, datenStart, patches, rollen, json };
 }
 
 // ---------- Schreiben ----------

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nachbau xvideos (synthetisch, Auftrag E)</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .kopf { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+      .liste { display: flex; flex-wrap: wrap; gap: 8px; }
+      .karte { display: block; width: 320px; position: relative; }
+      .karte img.vorschau { width: 320px; height: 180px; display: block; }
+      .karte video { position: absolute; left: 0; top: 0; width: 320px; height: 180px; }
+      .tabelle img { width: 280px; height: 210px; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="kopf">
+      <a href="/"><img id="logo" alt="logo" width="120" height="40" src="/synthetisch/90.png" /></a>
+      <a href="/profil"><img id="avatar" alt="avatar" width="48" height="48" src="/synthetisch/91.png" /></a>
+    </div>
+    <div class="liste" id="liste">
+      <a class="karte" id="k1" href="/video12345678/test_clip">
+        <img class="vorschau thumb-inside" id="v1" alt="Vorschau 1" width="320" height="180" src="/synthetisch/11.png" />
+        <video id="h1" muted loop preload="none" class="preview"></video>
+      </a>
+      <a class="karte" id="k2" href="/video12345678/test_clip">
+        <img class="vorschau thumb-inside" id="v2" alt="Vorschau 2" width="320" height="180" src="/synthetisch/12.png" />
+        <video id="h2" muted loop preload="none" class="preview"></video>
+      </a>
+      <a class="karte" id="k3" href="/video12345678/test_clip">
+        <img class="vorschau thumb-inside" id="v3" alt="Vorschau 3" width="320" height="180" src="/synthetisch/13.png" />
+        <video id="h3" muted loop preload="none" class="preview"></video>
+      </a>
+      <a class="karte" id="k4" href="/video12345678/test_clip">
+        <img class="vorschau thumb-inside" id="v4" alt="Vorschau 4" width="320" height="180" src="/synthetisch/14.png" />
+        <video id="h4" muted loop preload="none" class="preview"></video>
+      </a>
+      <a class="karte" id="k5" href="/video12345678/test_clip">
+        <img class="vorschau thumb-inside" id="v5" alt="Vorschau 5" width="320" height="180" src="/synthetisch/15.png" />
+        <video id="h5" muted loop preload="none" class="preview"></video>
+      </a>
+      <a class="karte" id="k6" href="/video12345678/test_clip">
+        <img class="vorschau thumb-inside" id="v6" alt="Vorschau 6" width="320" height="180" src="/synthetisch/16.png" />
+        <video id="h6" muted loop preload="none" class="preview"></video>
+      </a>
+    </div>
+  </body>
+</html>

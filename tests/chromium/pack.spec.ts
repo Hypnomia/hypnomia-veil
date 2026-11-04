@@ -132,6 +132,9 @@ const ausWorker = (n: unknown): Promise<any> => worker.evaluate((m) => (globalTh
 const speicher = (seite: Page, schluessel: string) =>
   seite.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as Record<string, any>)[k], schluessel);
 
+// Dateien im Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau-Bilder, 3 Chibis, Quiz, Texte.
+const DUMMY_DATEIEN = 16;
+
 // Anzahl Dateien in der Pack-Datenbank, direkt aus IndexedDB (Seite am Erweiterungs-Ursprung).
 function zaehleIdb(seite: Page): Promise<{ dateien: number; meta: number }> {
   return seite.evaluate(
@@ -246,11 +249,14 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
     await expect(seite.locator('#lizenz-block')).toBeHidden();
 
     const pack = await speicher(seite, 'pack');
-    expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, freischaltungen: ['stil:mia-patch'], groesse: packBytes });
+    // Dummy-Pack ab Phase 4: alle acht Freischaltungen, 4 Vorschau-Bilder, 3 Chibis (scripts/pack/baue-pack.mjs).
+    expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, vorschau: 4, chibis: 3, groesse: packBytes });
+    expect(pack.freischaltungen).toContain('stil:mia-patch');
+    expect(pack.freischaltungen).toHaveLength(8);
     expect(typeof pack.importiert).toBe('number');
     const einstellungen = await speicher(seite, 'einstellungen');
     expect(einstellungen.stil).toBe('mia-patch');
-    expect(await zaehleIdb(seite)).toEqual({ dateien: 7, meta: 2 });
+    expect(await zaehleIdb(seite)).toEqual({ dateien: DUMMY_DATEIEN, meta: 2 });
 
     await seite.goto(popupUrl());
     const patch = seite.locator('input[name="stil"][value="mia-patch"]');
@@ -299,8 +305,8 @@ test('Update der Erweiterung (neue Version, gleiches Profil): Pack, Kurzfassung 
     await expect(nachher.locator('#pack-titel')).toHaveText('Dummy pack (synthetic pictures)');
     expect(await speicher(nachher, 'pack')).toEqual(vorher);
     expect((await speicher(nachher, 'einstellungen')).stil).toBe('mia-patch');
-    expect(await zaehleIdb(nachher)).toEqual({ dateien: 7, meta: 2 });
-    console.log(`chromium: nach Neustart mit Version ${versionVorher} -> 9.9.9 Pack, Kurzfassung und 7 Dateien in IndexedDB vorhanden`);
+    expect(await zaehleIdb(nachher)).toEqual({ dateien: DUMMY_DATEIEN, meta: 2 });
+    console.log(`chromium: nach Neustart mit Version ${versionVorher} -> 9.9.9 Pack, Kurzfassung und ${DUMMY_DATEIEN} Dateien in IndexedDB vorhanden`);
   } finally {
     await nachher.close();
   }
@@ -469,7 +475,8 @@ test('Pack ersetzen: zweiter Import ersetzt das erste Pack, der Erkenner liest d
     // Zweites Pack mit anderen Farben ersetzt das erste (gleiche Titelzeile, andere Pack-ID).
     await importiere(warmPfad, 'Dummy');
     expect((await speicher(seite, 'pack')).id).toBe('warm');
-    expect(await zaehleIdb(seite)).toEqual({ dateien: 4, meta: 2 });
+    // Warmes Dummy-Pack: Lizenz, 3 Patches, 4 Vorschau-Bilder, 3 Chibis, Quiz, Texte.
+    expect(await zaehleIdb(seite)).toEqual({ dateien: 13, meta: 2 });
     const zweite = await ausWorker(pruefeNachricht(bild.dataUrl, 'mia-patch'));
     expect(zweite.ok, zweite.fehler).toBe(true);
     const a2 = await analysiere(probe, zweite.bild, groessteBox(zweite.flaechen), warm.farben);

@@ -4,7 +4,11 @@
 // Firefox: startet den Erkenner im selben Kontext und setzt Referer per webRequest (blocking).
 import { aendereEinstellungen } from '../src/einstellungen';
 import { fehlerAntwortFuer } from '../src/erkenner/antwort';
-import { istFuer, type AntwortTab, type NachrichtHintergrund, type NachrichtInhaltTab } from '../src/nachrichten';
+import { HINTERGRUND_TYPEN, istFuer, type AntwortTab, type NachrichtHintergrund, type NachrichtInhaltTab } from '../src/nachrichten';
+// Phase 4: je Auftrag ein Handler-Modul (Orchestrator verdrahtet, Bauer fuellen nur ihr Modul).
+import { bearbeitePackDaten } from '../src/hintergrund/quiz';
+import { bearbeiteSteigerung, starteSteigerung } from '../src/hintergrund/steigerung';
+import { bearbeiteUmleitung, starteUmleitung } from '../src/hintergrund/umleitung';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -204,6 +208,10 @@ export default defineBackground(() => {
     });
   }
 
+  // Phase 4: Listener der Handler-Module oben im Skript registrieren (Ereignisseite und Service Worker wachen dafuer auf).
+  starteSteigerung();
+  starteUmleitung();
+
   // Chrome: Offscreen-Dokument bei Installation und Browserstart anlegen.
   if (import.meta.env.CHROME) {
     const anlegen = () => stelleOffscreenSicher().catch((e) => console.warn('Offscreen-Dokument: Anlegen fehlgeschlagen', e));
@@ -229,6 +237,13 @@ export default defineBackground(() => {
         const antwort: AntwortTab = { ok: true, url: absender?.tab?.url ?? null };
         return antwort;
       }
+      case 'packdaten':
+        return bearbeitePackDaten(n);
+      case 'steigerung-minute':
+      case 'steigerung-uhr':
+        return bearbeiteSteigerung(n, absender);
+      case 'umleitung-abgleich':
+        return bearbeiteUmleitung(n);
       default:
         return undefined;
     }
@@ -237,7 +252,7 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener((nachricht: unknown, absender: AbsenderMitTab | undefined, antworte: (antwort: unknown) => void) => {
     // Firefox: der Erkenner lebt in diesem Kontext; Nachrichten fuer ihn hier beantworten.
     if (erkenner && istFuer(nachricht, 'erkenner')) {
-      if (nachricht.typ !== 'wecke' && nachricht.typ !== 'status' && nachricht.typ !== 'pruefe') return undefined;
+      if (nachricht.typ !== 'wecke' && nachricht.typ !== 'status' && nachricht.typ !== 'pruefe' && nachricht.typ !== 'packbild') return undefined;
       erkenner
         .then((m) => m.bearbeiteErkennerNachricht(nachricht, absender))
         .then(
@@ -248,7 +263,7 @@ export default defineBackground(() => {
     }
     if (!istFuer(nachricht, 'hintergrund')) return undefined;
     const n = nachricht as NachrichtHintergrund;
-    if (n.typ !== 'wecke' && n.typ !== 'referer' && n.typ !== 'pause' && n.typ !== 'tab' && n.typ !== 'adresse') return undefined;
+    if (!(HINTERGRUND_TYPEN as readonly string[]).includes(n.typ)) return undefined;
     bearbeiteHintergrund(n, absender).then(antworte, (e) => antworte(fehlerAntwortFuer(nachricht, e)));
     return true;
   });

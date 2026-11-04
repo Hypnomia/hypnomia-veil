@@ -243,7 +243,7 @@ try {
   pruefe(pack && pack.id === 'dummy' && pack.bilder === 6 && pack.groesse === bau.bytes.byteLength, `storage.local.pack stimmt (${JSON.stringify(pack)})`);
   pruefe((await speicher('einstellungen'))?.stil === 'mia-patch', 'Stil steht auf mia-patch');
   const voll = await zaehleIdb();
-  pruefe(voll.dateien === 7 && voll.meta === 2, `IndexedDB: 7 Dateien, 2 Meta-Eintraege (${JSON.stringify(voll)})`);
+  pruefe(voll.dateien === 16 && voll.meta === 2, `IndexedDB: 16 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, Quiz, Texte), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
 
   // 4. Seite neu oeffnen: Stand bleibt
   await schliesse();
@@ -277,7 +277,7 @@ try {
   } else {
     console.log(`firefox: nach runtime.reload() nach ${Date.now() - tReload} ms: Pack ${nachReload.pack?.id}, ${nachReload.idb.dateien} Dateien, Stil ${nachReload.stil}`);
     pruefe(JSON.stringify(nachReload.pack) === JSON.stringify(packVor), 'nach runtime.reload() ist storage.local.pack unveraendert');
-    pruefe(nachReload.idb.dateien === 7 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
+    pruefe(nachReload.idb.dateien === 16 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
     pruefe(nachReload.stil === stilVor && stilVor === 'mia-patch', `nach runtime.reload() steht der Stil auf ${stilVor}`);
   }
 

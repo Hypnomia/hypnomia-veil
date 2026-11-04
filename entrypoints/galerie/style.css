@@ -1,0 +1,137 @@
+/* Galerie des Komplett-Ersatzes: hell und pastellfarben, Farben wie Popup und Einstellungsseite. */
+:root {
+  --grund: #fff5fa;
+  --karte: #ffffff;
+  --text: #4f3345;
+  --leise: #86647a;
+  --akzent: #b03f7a;
+  --akzent-hell: #f9d6e7;
+  --pastell: #e9def9;
+  --linie: #f0cfe0;
+  --fokus: #6a4bc4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.14em;
+  color: var(--akzent);
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  color: var(--akzent);
+}
+
+h2.klein-titel {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--leise);
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+.leise {
+  color: var(--leise);
+}
+
+.kopf {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--karte);
+  border: 1px solid var(--linie);
+  border-radius: 16px;
+}
+
+.chibi img {
+  display: block;
+  max-width: 160px;
+  max-height: 160px;
+  width: auto;
+  height: auto;
+}
+
+.bilder {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.bilder img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--pastell);
+}
+
+.knopf,
+.pause {
+  display: inline-block;
+  padding: 8px 16px;
+  margin-right: 8px;
+  border: 1px solid var(--akzent);
+  border-radius: 999px;
+  background: var(--akzent-hell);
+  color: var(--akzent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.knopf:hover,
+.pause:hover {
+  background: var(--akzent);
+  color: #fff;
+}
+
+.knopf:focus-visible,
+.pause:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--leise);
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .kopf {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -19,13 +19,48 @@ export const PACK_SPEICHER_SCHLUESSEL = 'pack';
 
 // ---------- Freischaltungen ----------
 // Was ein Pack freischalten kann. Unbekannte Eintraege im Pack werden beim Import verworfen (ein Pack kann nichts
-// freischalten, was diese Version der Erweiterung nicht kennt). Weitere kommen mit Phase 4 bis 6 dazu.
-export const FREISCHALTUNGEN = ['stil:mia-patch'] as const;
+// freischalten, was diese Version der Erweiterung nicht kennt). Phase 4 (PHASE-4-BAUPLAN Abschnitte 2, 8 bis 10):
+//   erwachsen:vorschau  Vorschaubilder auf Erwachsenenseiten werden Mia (Rolle `vorschau`)
+//   erwachsen:quiz      Quiz vor jedem Video auf Erwachsenenseiten (Rolle `quiz`)
+//   erwachsen:titel     Videotitel mit Mias Kommentar (Rolle `texte`, Gruppe `titel`)
+//   erwachsen:ersatz    Komplett-Ersatz: Umleitung auf die Mia-Galerie (Rolle `vorschau`)
+//   quiz:freilegen      zensierte Flaeche per Quiz kurz freilegen (Rolle `quiz`)
+//   zensur:steigerung   Steigerung der Zensur (Entscheidung 101), braucht keine Datei
+//   chibi:pack          frechere Chibis aus dem Pack (Rolle `chibi`); die suessen Demo-Chibis gibt es ohne Pack
+export const FREISCHALTUNGEN = [
+  'stil:mia-patch',
+  'erwachsen:vorschau',
+  'erwachsen:quiz',
+  'erwachsen:titel',
+  'erwachsen:ersatz',
+  'quiz:freilegen',
+  'zensur:steigerung',
+  'chibi:pack',
+] as const;
 export type Freischaltung = (typeof FREISCHALTUNGEN)[number];
 
 export type Stufe = 'tease' | 'hot' | 'explicit';
 // Rolle einer Datei im Pack. `patch`: Bild fuer den Stil Mia-Patch. `lizenz`: Lizenztext (genau eine Datei, Pflicht).
-export type Rolle = 'patch' | 'lizenz';
+// `vorschau`: Bild fuer Vorschau-Tausch und Galerie (Stufe Pflicht). `quiz`: Quiz-Bank als JSON (hoechstens eine Datei,
+// Schema src/quiz/vertrag.ts). `texte`: Mias Saetze als JSON (hoechstens eine Datei, Schema src/quiz/vertrag.ts). `chibi`: Chibi-Bild
+// (WebP mit Transparenz, Name enthaelt die Pose, siehe src/chibi.ts). Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
+export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi';
+export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi'];
+// Rollen, die hoechstens einmal vorkommen duerfen (JSON-Dateien).
+export const EINZEL_ROLLEN: readonly Rolle[] = ['quiz', 'texte'];
+
+// Eine Freischaltung gilt nur, wenn das Pack die Datei dafuer gueltig mitbringt (Entscheidung 100, Pruefer-Fund 5).
+// `null`: braucht keine Datei. Bilder: mindestens ein Bild dieser Rolle. JSON: die Datei ist da und besteht die Schema-Pruefung.
+export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
+  'stil:mia-patch': 'patch',
+  'erwachsen:vorschau': 'vorschau',
+  'erwachsen:quiz': 'quiz',
+  'erwachsen:titel': 'texte',
+  'erwachsen:ersatz': 'vorschau',
+  'quiz:freilegen': 'quiz',
+  'zensur:steigerung': null,
+  'chibi:pack': 'chibi',
+};
 
 // Eintrag im Pack-Manifest (siehe src/pack/format.ts fuer Dateiaufbau und Grenzen).
 export interface PackDateiEintrag {
@@ -79,7 +114,10 @@ export interface PackKurz {
   version: string;
   titel: string;
   freischaltungen: Freischaltung[];
-  bilder: number;
+  bilder: number; // Anzahl Patch-Bilder (Rolle `patch`)
+  // Phase 4: Anzahl Bilder je Rolle. Fehlen bei Packs, die vor 0.4.0 importiert wurden (dann 0, ladePackKurz fuellt auf).
+  vorschau: number;
+  chibis: number;
   groesse: number;
   importiert: number;
 }
@@ -97,6 +135,19 @@ export function wirksamerStil(stil: Stil, pack: PackKurz | null | undefined): St
 // Liest die Kurzfassung aus storage.local (Popup, Optionsseite, Content-Script).
 export async function ladePackKurz(): Promise<PackKurz | null> {
   const ablage = await browser.storage.local.get(PACK_SPEICHER_SCHLUESSEL);
-  const p = ablage[PACK_SPEICHER_SCHLUESSEL] as PackKurz | undefined;
-  return p && typeof p === 'object' && typeof p.id === 'string' ? p : null;
+  return kurzAusRoh(ablage[PACK_SPEICHER_SCHLUESSEL]);
+}
+
+// Kurzfassung aus einem rohen storage-Wert (auch fuer storage.onChanged): fehlende Zaehler werden 0, sonst null.
+export function kurzAusRoh(roh: unknown): PackKurz | null {
+  const p = roh as Partial<PackKurz> | undefined;
+  if (!p || typeof p !== 'object' || typeof p.id !== 'string') return null;
+  const zahl = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : 0);
+  return {
+    ...(p as PackKurz),
+    freischaltungen: Array.isArray(p.freischaltungen) ? p.freischaltungen : [],
+    bilder: zahl(p.bilder),
+    vorschau: zahl(p.vorschau),
+    chibis: zahl(p.chibis),
+  };
 }

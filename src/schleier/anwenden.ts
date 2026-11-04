@@ -4,6 +4,9 @@ import { ATTR_MS, ATTR_NUR_HG, ATTR_URTEIL, TESTHAKEN, type Urteil } from './kon
 import { freigabeGesperrt, testhakenAktiv } from './status';
 import type { BildOriginal, Zustand } from './zustand';
 
+// Kennzeichen eines eingesetzten Vorschau-Bildes (Pack-Bild statt Seitenbild), neben data-veil="zensiert".
+export const ATTR_ERSETZT = 'data-veil-ersetzt';
+
 // ---------- Signaturen (erkennen, ob die Seite die Quelle geaendert hat) ----------
 
 // Quelle eines img samt source-Geschwistern im picture.
@@ -37,7 +40,15 @@ export function hintergrundWert(el: Element): string {
 
 // ---------- Urteil setzen ----------
 
+// Steigerung der Zensur (Auftrag S): wird gerufen, wenn ein Element neu das Urteil `zensiert` bekommt (nicht beim Wiederanwenden).
+let beiNeuemZensiert: ((el: Element) => void) | null = null;
+export function setzeZensiertMelder(fn: ((el: Element) => void) | null): void {
+  beiNeuemZensiert = fn;
+}
+
 export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number | null): void {
+  // Eingesetzte Vorschauen sind keine Treffer: nicht fuer die Steigerung melden, aber kennzeichnen (Freilegen unterscheidet sie).
+  if (urteil === 'zensiert' && z.urteil !== 'zensiert' && !z.ersetzt) beiNeuemZensiert?.(el);
   z.urteil = urteil;
   z.urteilMs = ms;
   // Elemente, die per Klasse gestaltet sind, werden vorab nie versteckt: "frei" braucht kein Attribut. "zensiert" setzt einen
@@ -47,6 +58,7 @@ export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number 
   // Testhaken "Freigabe sperren" (nur Testbau, nur Testhost): das Urteil gilt, aber das Element wird nie sichtbar.
   if (TESTHAKEN && freigabeGesperrt()) return;
   el.setAttribute(ATTR_URTEIL, urteil);
+  if (z.ersetzt && urteil === 'zensiert') el.setAttribute(ATTR_ERSETZT, '');
   // Zeitstempel nur im Testbau auf Testhosts.
   if (TESTHAKEN && ms !== null && testhakenAktiv()) el.setAttribute(ATTR_MS, String(ms));
 }
@@ -54,10 +66,27 @@ export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number 
 function loescheAttribute(el: Element): void {
   el.removeAttribute(ATTR_URTEIL);
   el.removeAttribute(ATTR_NUR_HG);
+  el.removeAttribute(ATTR_ERSETZT);
   if (TESTHAKEN) el.removeAttribute(ATTR_MS);
 }
 
 // ---------- Bild tauschen ----------
+
+// Data-URLs, die dieses Skript selbst als src gesetzt hat (begrenzt): ein solches src ist nie ein Original der Seite.
+// Nur eine Kennung je URL (Laenge und FNV-Hash), nicht die Data-URL selbst (bis 600.000 Zeichen).
+const eigeneUrls = new Set<string>();
+function kennung(url: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < url.length; i++) {
+    h ^= url.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${url.length}:${h}`;
+}
+function merkeEigene(url: string): void {
+  if (eigeneUrls.size >= 256) eigeneUrls.clear();
+  eigeneUrls.add(kennung(url));
+}
 
 function merkeBild(el: HTMLImageElement): BildOriginal {
   const quellen: BildOriginal['quellen'] = [];
@@ -68,12 +97,16 @@ function merkeBild(el: HTMLImageElement): BildOriginal {
     }
   }
   return {
-    src: el.getAttribute('src'),
+    src: eigenesSrc(el.getAttribute('src')) ? null : el.getAttribute('src'),
     srcset: el.getAttribute('srcset'),
     sizes: el.getAttribute('sizes'),
     loading: el.getAttribute('loading'),
     quellen,
   };
+}
+
+function eigenesSrc(src: string | null): boolean {
+  return src !== null && src.startsWith('data:') && eigeneUrls.has(kennung(src));
 }
 
 function setzeAttribut(el: Element, name: string, wert: string | null): void {
@@ -93,14 +126,35 @@ export function starteBildTausch(el: HTMLImageElement, z: Zustand, bild: string)
   }
   // Ein zurueckgehaltenes (lazy) Bild wuerde das zensierte Bild nie laden.
   el.setAttribute('loading', 'eager');
+  merkeEigene(bild);
   z.eigen = bild;
   z.tauschLaeuft = true;
   el.setAttribute('src', bild);
   z.signatur = bildSignatur(el);
 }
 
+// Auch currentSrc muss das eigene Bild sein: waehlt der Browser nach dem Tausch ein Original (neue source, sizes oder media), ist das load keins von uns.
 export function istEigenesBild(el: HTMLImageElement, z: Zustand): boolean {
-  return !!z.eigen && el.getAttribute('src') === z.eigen;
+  return !!z.eigen && el.getAttribute('src') === z.eigen && (!el.currentSrc || el.currentSrc === z.eigen);
+}
+
+// Die Seite hat nach dem Tausch Quelle oder srcset geaendert (z. B. Vorschau-Rotation beim Darueberfahren), das Pack-Bild bleibt dasselbe:
+// die neuen Werte der Seite werden als Originale gemerkt (Pause stellt den letzten Stand her) und das Pack-Bild sofort wieder eingesetzt.
+export function setzeBildSofortNeu(el: HTMLImageElement, z: Zustand, bild: string): void {
+  if (z.bildOriginal) {
+    const src = el.getAttribute('src');
+    if (!eigenesSrc(src)) z.bildOriginal.src = src;
+    z.bildOriginal.srcset = el.getAttribute('srcset');
+    z.bildOriginal.sizes = el.getAttribute('sizes');
+  }
+  el.removeAttribute('srcset');
+  el.removeAttribute('sizes');
+  for (const q of z.bildOriginal?.quellen ?? []) {
+    q.el.removeAttribute('srcset');
+    q.el.removeAttribute('sizes');
+  }
+  if (el.getAttribute('src') !== bild) el.setAttribute('src', bild);
+  z.signatur = bildSignatur(el);
 }
 
 // ---------- Hintergrund tauschen ----------
@@ -126,6 +180,17 @@ export function verdeckeNurHintergrund(el: HTMLElement, z: Zustand): void {
 
 // ---------- Wiederherstellen und Vergessen ----------
 
+// Stellt die Inline-Stile zurueck, die der Vorschau-Tausch gesetzt hat (object-fit, aspect-ratio, Hintergrund-Groesse).
+function stelleErsetztWiederHer(el: Element, z: Zustand): void {
+  const info = z.ersetzt;
+  z.ersetzt = null;
+  if (!info || !(el instanceof HTMLElement)) return;
+  for (const s of info.stile) {
+    if (s.wert) el.style.setProperty(s.name, s.wert, s.prio);
+    else el.style.removeProperty(s.name);
+  }
+}
+
 // Stellt die Originalquelle her (Pause, Abbau). Das Urteil selbst bleibt unangetastet, siehe vergiss().
 export function stelleWiederHer(el: Element, z: Zustand): void {
   if (z.bildOriginal && el instanceof HTMLImageElement) {
@@ -145,6 +210,7 @@ export function stelleWiederHer(el: Element, z: Zustand): void {
     else if (z.hgOriginal.wert) el.style.setProperty('background-image', z.hgOriginal.wert, z.hgOriginal.prio);
     else el.style.removeProperty('background-image');
   }
+  stelleErsetztWiederHer(el, z);
   z.bildOriginal = null;
   z.hgOriginal = null;
   z.eigen = null;
@@ -156,6 +222,7 @@ export function stelleWiederHer(el: Element, z: Zustand): void {
 export function vergiss(el: Element, z: Zustand, restore: boolean): void {
   if (restore) stelleWiederHer(el, z);
   else {
+    stelleErsetztWiederHer(el, z);
     z.bildOriginal = null;
     z.hgOriginal = null;
     z.eigen = null;
@@ -166,6 +233,7 @@ export function vergiss(el: Element, z: Zustand, restore: boolean): void {
   z.timer = null;
   z.generation++;
   z.urteil = null;
+  z.inhalt = null;
   z.eingereiht = false;
   z.erwarteLoad = false;
   z.versuche = 0;

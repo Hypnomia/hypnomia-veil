@@ -126,3 +126,11 @@ export async function leseDatei(name: string): Promise<PackDateiGespeichert | nu
     return d ?? null;
   });
 }
+
+// Namen aller Dateien einer Rolle aus dem Meta (sortiert, stabil fuer die Wahl je Quelle). Phase 4: Vorschau, Chibi, Quiz, Texte.
+// Nur mit gueltiger Freischaltung benutzen (istFreigeschaltet in vertrag.ts); ohne Pack: leere Liste.
+export async function leseNamenMitRolle(rolle: NonNullable<PackDateiGespeichert['rolle']>): Promise<string[]> {
+  const meta = await leseMeta();
+  if (!meta) return [];
+  return meta.dateien.filter((d) => d.rolle === rolle).map((d) => d.name).sort();
+}

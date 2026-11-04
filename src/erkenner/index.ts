@@ -3,6 +3,7 @@
 
 import { istFuer, type NachrichtErkenner } from '../nachrichten';
 import { fehlerAntwortFuer } from './antwort';
+import { lieferePackBild } from './packbild';
 import { istBereit, ladeModell, pruefe, setzeRefererSetzer, status } from './erkenner';
 import { herkunftFuerEntscheidung, type AbsenderHerkunft, type RefererSetzer } from './nachladen';
 
@@ -32,6 +33,8 @@ export function bearbeiteErkennerNachricht(nachricht: unknown, absender?: Absend
       const referer = n.quelle && n.quelle.art === 'url' ? (n.quelle.referer ?? '') : '';
       return pruefe(n, herkunftFuerEntscheidung(referer, absender));
     }
+    case 'packbild':
+      return lieferePackBild(n);
     default:
       return undefined;
   }

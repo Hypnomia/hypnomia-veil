@@ -345,7 +345,12 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     const gesicht = await sucheGesichter(e.zonen, arbeit.quelle, arbeit.breite, arbeit.hoehe);
     const tNachStart = jetzt();
     const alle = gesicht?.gesichter ? kombiniereGesichter(rohTreffer, gesicht.gesichter, arbeit.breite, arbeit.hoehe) : rohTreffer;
-    const flaechen = berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe);
+    // Steigerung Stufe 4: ein Treffer einer Frau verdeckt das ganze Bild (eine Flaeche ueber alles), sonst die Zonen wie eingestellt.
+    // Aus den rohen 320n-Treffern: kombiniereGesichter ersetzt ein FACE_FEMALE durch die (geschlechtslosen) YuNet-Treffer.
+    const frau = n.einstellungen?.ganzVerdecken === true ? rohTreffer.find((t) => t.weiblich) : undefined;
+    const flaechen = frau
+      ? [{ zone: frau.zone, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number] }]
+      : berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe);
     const tNach = jetzt();
     let bild: string | undefined;
     if (n.rendern && flaechen.length > 0) {

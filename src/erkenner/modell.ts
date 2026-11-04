@@ -31,6 +31,11 @@ export const ZUORDNUNG: Readonly<Record<string, readonly [Zone, boolean]>> = {
   FACE_FEMALE: ['face', false], FACE_MALE: ['face', false],
 };
 
+// Klassen, die eine Frau anzeigen (Steigerung Stufe 4, `ganzVerdecken`).
+export const WEIBLICHE_KLASSEN: ReadonlySet<string> = new Set([
+  'FACE_FEMALE', 'FEMALE_BREAST_EXPOSED', 'FEMALE_BREAST_COVERED', 'FEMALE_GENITALIA_EXPOSED', 'FEMALE_GENITALIA_COVERED',
+]);
+
 // Abbildung der Originalgroesse auf das 320er Feld (Seitenverhaeltnis bleibt, Auffuellen rechts und unten).
 export interface Geometrie {
   skala: number;
@@ -104,6 +109,8 @@ export function nachverarbeite(daten: Float32Array, dims: readonly number[], geo
       bedeckt: zuordnung[1],
       score: Math.round(k.score * 1000) / 1000,
       box: [Math.trunc(k.box[0]), Math.trunc(k.box[1]), Math.max(1, Math.trunc(k.box[2])), Math.max(1, Math.trunc(k.box[3]))],
+      // Klasse einer Frau (Gesicht oder Koerperteil): Steigerung Stufe 4 verdeckt dann das ganze Bild (src/steigerung.ts).
+      ...(WEIBLICHE_KLASSEN.has(name!) ? { weiblich: true as const } : {}),
     });
   }
   return treffer;

@@ -3,6 +3,14 @@
 
 import type { Einstellungen } from '../einstellungen';
 import type { AntwortPruefe, AntwortPruefeOk, NachrichtErkennerPruefe, Quelle } from '../nachrichten';
+import type { WirksameZonen } from '../steigerung';
+
+// Steigerung der Zensur (Auftrag S): der Schleier setzt hier, welche Zonen der Erkenner bei der aktuellen Stufe bekommt (null = die
+// eingestellten). So bleiben alle Aufrufe von sendePruefe unveraendert.
+let zonenAnpassung: ((e: Einstellungen) => WirksameZonen | null) | null = null;
+export function setzeZonenAnpassung(fn: ((e: Einstellungen) => WirksameZonen | null) | null): void {
+  zonenAnpassung = fn;
+}
 import {
   ANTWORT_MAX_MS,
   JPEG_QUALITAET,
@@ -108,6 +116,7 @@ export async function sendePruefe(
   packStand?: number,
 ): Promise<AntwortPruefe> {
   const id = `${idPraefix}-${++zaehler}`;
+  const angepasst = zonenAnpassung?.(e) ?? null;
   const nachricht: NachrichtErkennerPruefe = {
     ziel: 'erkenner',
     typ: 'pruefe',
@@ -115,7 +124,14 @@ export async function sendePruefe(
     quelle,
     breite,
     hoehe,
-    einstellungen: { schwelle: e.schwelle, zonen: e.zonen, rand: e.rand, stil: e.stil, ...(packStand === undefined ? {} : { packStand }) },
+    einstellungen: {
+      schwelle: e.schwelle,
+      zonen: angepasst?.zonen ?? e.zonen,
+      rand: e.rand,
+      stil: e.stil,
+      ...(packStand === undefined ? {} : { packStand }),
+      ...(angepasst?.ganzVerdecken ? { ganzVerdecken: true } : {}),
+    },
     rendern,
   };
   // Zeitgrenze: ein haengender Erkenner (oder ein haengender Bildserver beim Nachladen) darf das Element nicht ewig offen halten.

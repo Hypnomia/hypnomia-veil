@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nachbau allgemein, dynamisch (synthetisch, Auftrag E)</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .reihe { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: flex-start; }
+      .reihe img.fest, .reihe .feld { width: 320px; height: 180px; display: block; }
+      #breit { width: 300px; }
+      #breit img { width: 100%; height: auto; display: block; }
+      .gleiche img { width: 90px; height: 90px; }
+    </style>
+  </head>
+  <body>
+    <div class="reihe">
+      <!-- Lazy-Load: die Seite legt die echte Adresse in data-src und setzt sie spaeter. -->
+      <a href="/video/9"><img id="lazy" class="fest" alt="lazy" width="320" height="180" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="/synthetisch/31.png" /></a>
+      <!-- picture mit srcset: die Quelle darf nicht durchschlagen. -->
+      <a href="/video/8"><picture><source id="pq" srcset="/synthetisch/32.png 1x, /synthetisch/33.png 2x" /><img id="pimg" class="fest" alt="picture" width="320" height="180" src="/synthetisch/34.png" /></picture></a>
+      <!-- Quellwechsel nach dem Laden (Feed mit wiederverwendetem Element). -->
+      <a href="/video/7"><img id="wechsel" class="fest" alt="wechsel" width="320" height="180" src="/synthetisch/35.png" /></a>
+      <!-- Inline-Hintergrund in einem Link. -->
+      <a href="/video/6"><div id="hg" class="feld" style="background-image: url(/synthetisch/37.png)"></div></a>
+      <!-- Sprite: Inline-Hintergrund mit background-position. -->
+      <a href="/video/3"><div id="spr" class="feld" style="background-image: url(/synthetisch/43.png); background-position: -10px -10px"></div></a>
+      <!-- Shadow Root: Link und Bild liegen darin. -->
+      <div id="schatten"></div>
+      <!-- picture, in das die Seite spaeter eine source einfuegt. -->
+      <a href="/video/2"><picture id="qpic"><img id="qimg" class="fest" alt="quelle" width="320" height="180" src="/synthetisch/44.png" /></picture></a>
+      <!-- Stummes Video in einem Link (wirkt wie ein Hover-Vorschauvideo), bekommt spaeter Ton: dann normal pruefen. -->
+      <a href="/video/ton"><video id="stumm-video" muted loop width="320" height="180"></video></a>
+      <!-- Beitragsvideo mit Bedienelementen in einem Link: kein Hover-Vorschauvideo. -->
+      <a href="/video/1"><video id="player-video" controls width="320" height="180"></video></a>
+      <!-- Vorschau-Rotation: die Seite setzt beim Darueberfahren alle paar hundert ms eine neue src. -->
+      <a href="/video/rotation"><img id="rot" class="fest" alt="rot" width="320" height="180" src="/synthetisch/50.png" /></a>
+      <!-- Shadow Root am Link: das Bild liegt in der Wurzel, der Link am Host im Light DOM. -->
+      <a href="/video/schatten2"><div id="host2"></div></a>
+      <!-- Absolute Startseiten-Links und fremde Werbe-Links (Rueckfall): bleiben beim normalen Schleier. -->
+      <a id="start-abs"><img id="logo-abs" alt="logo abs" width="200" height="100" src="/synthetisch/51.png" /></a>
+      <a href="http://werbung.example/aktion/1"><img id="werbung" alt="werbung" width="200" height="100" src="/synthetisch/52.png" /></a>
+      <!-- Zu klein (unter 80 px) und Link auf die Startseite: beides bleibt beim normalen Schleier. -->
+      <a href="/video/5"><img id="klein" alt="klein" width="60" height="60" src="/synthetisch/38.png" /></a>
+      <a href="/"><img id="logo" alt="logo" width="200" height="100" src="/synthetisch/90.png" /></a>
+      <!-- Bild ausserhalb eines Links: kein vorschau-Zusammenhang. -->
+      <img id="frei-stehend" class="fest" alt="frei stehend" width="320" height="180" src="/synthetisch/40.png" />
+      <!-- Seitenverhaeltnis der Flaeche: Breite 100 %, Hoehe aus dem Bild (4:3). -->
+      <div id="breit"><a href="/video/4"><img id="breit-img" alt="breit" src="/synthetisch/41.png" /></a></div>
+    </div>
+    <div class="reihe gleiche" id="gleiche"></div>
+    <script>
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          var l = document.getElementById('lazy');
+          l.src = l.getAttribute('data-src');
+        }, 800);
+      });
+      var wurzel = document.getElementById('schatten').attachShadow({ mode: 'open' });
+      wurzel.innerHTML = '<a href="/video/s1"><img id="s-img" width="320" height="180" src="/synthetisch/46.png"></a>';
+      document.getElementById('host2').attachShadow({ mode: 'open' }).innerHTML = '<img id="s2-img" width="320" height="180" src="/synthetisch/53.png">';
+      document.getElementById('start-abs').href = location.origin + '/';
+      window.rotiere = function () {
+        var el = document.getElementById('rot');
+        window.__rotLog = [];
+        var n = 0;
+        var alle = setInterval(function () {
+          n++;
+          el.src = '/synthetisch/' + (60 + n) + '.png';
+          if (n >= 8) { clearInterval(alle); }
+        }, 120);
+        var probe = setInterval(function () {
+          window.__rotLog.push(el.getAttribute('data-veil') + '|' + (el.currentSrc || '').slice(0, 15) + '|' + getComputedStyle(el).opacity);
+          if (n >= 8) { clearInterval(probe); window.__rotFertig = true; }
+        }, 10);
+      };
+      window.tonAn = function () { document.getElementById('stumm-video').muted = false; document.getElementById('stumm-video').dispatchEvent(new Event('volumechange')); };
+      window.fuegeSourceEin = function () {
+        var q = document.createElement('source');
+        q.srcset = '/synthetisch/45.png';
+        document.getElementById('qpic').insertBefore(q, document.getElementById('qimg'));
+      };
+      window.wechsle = function () {
+        document.getElementById('wechsel').src = '/synthetisch/36.png';
+      };
+      window.fuegeGleicheEin = function (n) {
+        var ziel = document.getElementById('gleiche');
+        for (var i = 0; i < n; i++) {
+          var a = document.createElement('a');
+          a.href = '/video/gleich';
+          var b = document.createElement('img');
+          b.width = 90;
+          b.height = 90;
+          b.src = '/synthetisch/42.png';
+          a.appendChild(b);
+          ziel.appendChild(a);
+        }
+      };
+    </script>
+  </body>
+</html>

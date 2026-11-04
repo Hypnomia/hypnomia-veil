@@ -1,6 +1,6 @@
 {
   "name": "hypnomia-veil",
-  "version": "0.0.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "zip:firefox": "wxt zip -b firefox",
     "lint": "tsc --noEmit",
     "test:chromium": "playwright test tests/chromium",
-    "test:firefox": "node tests/firefox/hello.test.mjs && node tests/firefox/schleier.test.mjs && node tests/firefox/popup.test.mjs && node tests/firefox/pack.test.mjs && node tests/firefox/leerlauf.test.mjs && node tests/firefox/video.test.mjs && node tests/firefox/gesicht.test.mjs && node tests/firefox/vorrang.test.mjs && node tests/firefox/seiten.test.mjs && node tests/firefox/wurzel.test.mjs",
+    "test:firefox": "node tests/firefox/hello.test.mjs && node tests/firefox/schleier.test.mjs && node tests/firefox/popup.test.mjs && node tests/firefox/pack.test.mjs && node tests/firefox/leerlauf.test.mjs && node tests/firefox/video.test.mjs && node tests/firefox/gesicht.test.mjs && node tests/firefox/vorrang.test.mjs && node tests/firefox/seiten.test.mjs && node tests/firefox/wurzel.test.mjs && node tests/firefox/erwachsen.test.mjs && node tests/firefox/quiz.test.mjs && node tests/firefox/umleitung.test.mjs && node tests/firefox/oberflaeche-erwachsen.test.mjs && node --experimental-strip-types tests/firefox/steigerung.test.mjs",
     "test:android": "node tests/android/hello.test.mjs",
     "test": "node scripts/test-all.mjs",
     "postinstall": "wxt prepare && npm run test:setup",

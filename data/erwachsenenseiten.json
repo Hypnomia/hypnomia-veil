@@ -1,0 +1,12 @@
+{
+  "LIES-MICH": "Liste der Erwachsenenseiten fuer den Pornoseiten-Modus (PHASE-4-BAUPLAN Abschnitt 2, src/adapter/liste.ts). Je Seite der Adapter-Name und alle Domains (Spiegel eingeschlossen); Subdomains zaehlen mit. Seiten ohne eigenen Adapter nutzen den allgemeinen Rueckfall. Nur diese Liste und die eigenen Seiten des Nutzers werden umgeleitet (Komplett-Ersatz), nie am Inhalt erkannte Seiten.",
+  "seiten": [
+    { "seite": "pornhub", "domains": ["pornhub.com", "pornhub.org", "pornhub.net", "pornhubpremium.com"] },
+    { "seite": "xhamster", "domains": ["xhamster.com", "xhamster.desi", "xhamster2.com", "xhamster3.com", "xhamster18.com", "xhamster19.com", "xhamster.one"] },
+    { "seite": "xvideos", "domains": ["xvideos.com", "xvideos.es", "xvideos2.com", "xvideos3.com", "xvideos-ar.com"] },
+    { "seite": "xnxx", "domains": ["xnxx.com", "xnxx.tv", "xnxx.es"] },
+    { "seite": "onlyfans", "domains": ["onlyfans.com"] },
+    { "seite": "fansly", "domains": ["fansly.com"] },
+    { "seite": "allgemein", "domains": ["redtube.com", "youporn.com", "tube8.com", "spankbang.com", "eporner.com", "txxx.com", "porntrex.com", "hqporner.com", "youjizz.com", "motherless.com", "thumbzilla.com", "beeg.com"] }
+  ]
+}
