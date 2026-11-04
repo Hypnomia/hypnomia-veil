@@ -337,3 +337,30 @@ input[type='range'] {
 .schalter small {
   color: var(--leise);
 }
+
+/* Phase 5: Abschnitt "Mia’s control" */
+#kontrolle select,
+#kontrolle input[type='number'] {
+  font: inherit;
+  color: var(--text);
+  background: var(--karte);
+  border: 1px solid var(--linie);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+#kontrolle input[type='number'] {
+  width: 5em;
+}
+
+.warnblock {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--akzent);
+  border-radius: 10px;
+  background: var(--akzent-hell);
+}
+
+#kontrolle [hidden] {
+  display: none;
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nachbau Erwachsenenseite (synthetisch, Auftrag W)</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .zeile { margin: 0 0 12px 0; }
+      #e-flaeche { width: 300px; height: 250px; background: #ccd; }
+      #e-link-gross img { display: block; width: 300px; height: 250px; }
+      #e-link-gross { display: block; width: 300px; height: 250px; }
+      #e-kopf { width: 728px; height: 90px; background: #ddd; }
+      #e-video { display: block; width: 300px; height: 250px; background: #000; }
+    </style>
+  </head>
+  <body>
+    <div class="zeile"><div id="e-flaeche">plain box</div></div>
+    <div class="zeile"><a id="e-link-gross" href="/video/12345"><img id="e-vorschau" alt="thumb" src="/synthetisch/21.png" /></a></div>
+    <div class="zeile"><a id="e-karte-link" href="/video/777"><div id="e-karte" style="width: 300px; height: 250px; background: #fcf">card</div></a></div>
+    <div class="zeile"><video id="e-video" muted preload="none"></video></div>
+    <div class="zeile"><div id="e-kopf">banner size by size only</div></div>
+    <div class="zeile"><div id="e-klein" style="width: 200px; height: 100px; background: #cfc">no format</div></div>
+    <script>
+      // Spaeter kommt ein Video in die Flaeche (etwa ein Player, der nachlaedt).
+      window.fuegeVideoEin = () => document.getElementById('e-flaeche').append(document.createElement('video'));
+    </script>
+  </body>
+</html>

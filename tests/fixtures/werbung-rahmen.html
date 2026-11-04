@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Werbe-Rahmen (synthetisch, Auftrag W)</title>
+    <style>body { margin: 0; background: #36c; color: #fff; font: 20px sans-serif; }</style>
+  </head>
+  <body>
+    <p>Fake ad frame</p>
+    <video id="v" width="120" height="120" autoplay loop></video>
+    <script>
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 64;
+      const g = c.getContext('2d');
+      let n = 0;
+      setInterval(() => {
+        g.fillStyle = `hsl(${(n += 23) % 360} 80% 50%)`;
+        g.fillRect(0, 0, 64, 64);
+      }, 50);
+      const v = document.getElementById('v');
+      v.srcObject = c.captureStream(10);
+      v.muted = false;
+      v.play().catch(() => {
+        v.muted = true;
+        v.play().catch(() => {});
+      });
+      // Die Anzeige versucht es immer wieder von selbst.
+      if (new URLSearchParams(location.search).get('retry') !== '0') setInterval(() => v.play().catch(() => {}), 400);
+    </script>
+  </body>
+</html>

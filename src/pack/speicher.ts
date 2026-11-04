@@ -15,6 +15,7 @@ import {
 import { PackFehler, filtereFreischaltungen, sha256, type Fortschritt, type GeprueftesPack } from './format';
 import { pruefeQuizBank, pruefeTexte } from '../quiz/vertrag';
 import {
+  filtereNachGruppen,
   FREISCHALTUNGEN,
   PACK_META_SCHLUESSEL,
   PACK_SPEICHER_SCHLUESSEL,
@@ -52,6 +53,7 @@ export function kurzAusMeta(meta: PackMeta): PackKurz {
     bilder: meta.dateien.filter((d) => d.rolle === 'patch').length,
     vorschau: meta.dateien.filter((d) => d.rolle === 'vorschau').length,
     chibis: meta.dateien.filter((d) => d.rolle === 'chibi').length,
+    werbung: meta.dateien.filter((d) => d.rolle === 'werbung').length,
     groesse: meta.groesse,
     importiert: meta.importiert,
   };
@@ -87,16 +89,21 @@ export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fort
     erstellt: m.erstellt,
     // pruefePack hat Unbekanntes und Freischaltungen ohne Datei schon verworfen; hier zusaetzlich die Schema-Pruefung der JSON-Dateien
     // (Quiz-Bank, Mias Saetze): eine ungueltige Datei nimmt ihre Freischaltungen mit, das Pack bleibt sonst brauchbar.
-    freischaltungen: filtereFreischaltungen(
-      m.freischaltungen.filter((f): f is Freischaltung => (FREISCHALTUNGEN as readonly string[]).includes(f)),
-      (rolle) =>
-        rolle === 'quiz' ? pruefeQuizBank(geprueft.json.quiz) !== null : rolle === 'texte' ? pruefeTexte(geprueft.json.texte) !== null : geprueft.rollen[rolle] > 0,
+    // Phase 5: manche Freischaltungen brauchen zusaetzlich eine Satz-Gruppe (BENOETIGT_GRUPPE); fehlt sie, faellt nur diese weg.
+    freischaltungen: filtereNachGruppen(
+      filtereFreischaltungen(
+        m.freischaltungen.filter((f): f is Freischaltung => (FREISCHALTUNGEN as readonly string[]).includes(f)),
+        (rolle) =>
+          rolle === 'quiz' ? pruefeQuizBank(geprueft.json.quiz) !== null : rolle === 'texte' ? pruefeTexte(geprueft.json.texte) !== null : geprueft.rollen[rolle] > 0,
+      ),
+      pruefeTexte(geprueft.json.texte),
     ),
     lizenzText: geprueft.lizenzText,
     dateien: m.dateien.map((d) => {
       const e: PackMeta['dateien'][number] = { name: d.name, typ: d.typ, laenge: d.laenge };
       if (d.rolle) e.rolle = d.rolle;
       if (d.stufe) e.stufe = d.stufe;
+      if (d.format) e.format = d.format;
       return e;
     }),
     groesse: geprueft.groesse,
@@ -121,6 +128,7 @@ export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fort
     const e: PackDateiGespeichert = { name: d.name, typ: d.typ, blob: new Blob([bytes], { type: d.typ }) };
     if (d.rolle) e.rolle = d.rolle;
     if (d.stufe) e.stufe = d.stufe;
+    if (d.format) e.format = d.format;
     eintraege.push(e);
     fortschritt?.(eintraege.length, m.dateien.length);
   }

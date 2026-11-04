@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nachbau Nachrichtenseite (synthetisch, Auftrag W)</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; min-height: 3200px; }
+      .zeile { margin: 0 0 12px 0; }
+      .etikett { font-size: 12px; color: #666; }
+      #a-sponsored, #a-anzeige, #a-spaet { background: #cde; }
+      #a-ins { display: block; width: 728px; height: 90px; background: #dec; }
+      #n-header { width: 728px; height: 90px; background: #eee; }
+      #a-rahmen, #a-rahmen-name { border: 0; display: block; }
+      #n-bild { display: block; width: 300px; height: 250px; }
+      #a-kopf { width: 300px; height: 250px; background: #fed; }
+    </style>
+  </head>
+  <body>
+    <h1 id="titel">Daily Bulletin</h1>
+    <p id="absatz">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+
+    <!-- 1. Rahmen unter einem Test-Werbe-Host, Adresse wird erst per Skript gesetzt (Attributaenderung) -->
+    <div class="zeile"><iframe id="a-rahmen" width="300" height="250"></iframe></div>
+    <script>
+      const fremd = new URLSearchParams(location.search).get('fremd') || '47175';
+      const wieder = new URLSearchParams(location.search).get('retry') === '0' ? '0' : '1';
+      document.getElementById('a-rahmen').src = `http://ad.veil-werbung.test:${fremd}/werbung-rahmen.html?retry=${wieder}`;
+    </script>
+
+    <!-- 2. ins.adsbygoogle 728x90 -->
+    <div class="zeile"><ins class="adsbygoogle" id="a-ins" data-ad-client="ca-pub-0"></ins></div>
+
+    <!-- 3. div 300x250 mit Kennzeichnung davor, enthaelt ein laufendes Video -->
+    <div class="zeile">
+      <div id="etikett1" class="etikett">Sponsored</div>
+      <div id="a-sponsored" style="width: 300px; height: 250px"><video id="a-video" muted autoplay loop width="300" height="250"></video></div>
+    </div>
+
+    <!-- 4. div 320x50 mit "Anzeige" davor (rohes Textstueck als Geschwister) -->
+    <div class="zeile">
+      <div class="etikett">Anzeige</div>
+      <div id="a-anzeige" style="width: 320px; height: 50px">Buy now</div>
+    </div>
+
+    <!-- 5. Behaelter mit Kennung und genau einem Werbe-Rahmen darin (nur der aeusserste wird getauscht) -->
+    <div class="zeile">
+      <div class="ad-container" id="a-aussen" style="width: 336px; height: 280px"><iframe id="a-innen" name="google_ads_iframe_0" width="336" height="280" style="border: 0; display: block"></iframe></div>
+    </div>
+
+    <!-- Normale Dinge, die bleiben -->
+    <div class="zeile"><img id="n-bild" alt="photo" src="/synthetisch/3.png" /></div>
+    <div class="zeile"><div id="n-header" class="header">Header</div></div>
+    <div class="zeile"><div id="n-shadow" class="shadow load" style="width: 300px; height: 250px; background: #fee">Shadow</div></div>
+
+    <!-- 6. Rahmen derselben Herkunft mit Werbung darin -->
+    <div class="zeile"><iframe id="n-rahmen" src="werbung-innen.html" width="400" height="300" style="border: 1px solid #999"></iframe></div>
+
+    <!-- 7. Rahmen einer anderen Herkunft (localhost), kein Werbe-Host: Werbung darin wird getauscht, ausser der Tab steht auf einer Ausnahme -->
+    <div class="zeile"><iframe id="n-rahmen2" width="400" height="300" style="border: 1px solid #999"></iframe></div>
+    <script>
+      document.getElementById('n-rahmen2').src = `http://localhost:${new URLSearchParams(location.search).get('fremd') || '47175'}/werbung-innen.html`;
+    </script>
+
+    <p id="schluss">The end.</p>
+
+    <script>
+      // Video aus einer Leinwand (kein Medienfile noetig): laeuft, bis jemand es anhaelt.
+      const leinwand = document.createElement('canvas');
+      leinwand.width = 64;
+      leinwand.height = 64;
+      const g = leinwand.getContext('2d');
+      let n = 0;
+      setInterval(() => {
+        g.fillStyle = `hsl(${(n += 17) % 360} 80% 50%)`;
+        g.fillRect(0, 0, 64, 64);
+      }, 50);
+      const video = document.getElementById('a-video');
+      video.srcObject = leinwand.captureStream(10);
+      video.play().catch(() => {});
+      // Ein Video in der Anzeige ohne eigene Adresse (about:blank, wie bei google_ads_iframe): laeuft, bis Mias Flaeche es anhaelt.
+      setTimeout(() => {
+        const d = document.getElementById('a-innen').contentDocument;
+        const v = d.createElement('video');
+        v.id = 'v-leer';
+        v.srcObject = leinwand.captureStream(10);
+        d.body.append(v);
+        v.play().catch(() => {
+          v.muted = true;
+          v.play().catch(() => {});
+        });
+      }, 300);
+
+      // Werbung, die spaet erscheint (2 s nach dem Laden).
+      window.__spaetAm = null;
+      setTimeout(() => {
+        const d = document.createElement('div');
+        d.className = 'ad-slot';
+        d.id = 'a-spaet';
+        d.style.cssText = 'width:300px;height:250px';
+        document.querySelector('#schluss').before(d);
+        window.__spaetAm = performance.now();
+      }, 2000);
+
+      // Fuer Tests: Groesse eines Elements aendern, Behaelter verschieben.
+      window.setzeGroesse = (id, b, h) => {
+        const el = document.getElementById(id);
+        el.style.width = b + 'px';
+        el.style.height = h + 'px';
+      };
+    </script>
+  </body>
+</html>

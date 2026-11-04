@@ -132,8 +132,8 @@ const ausWorker = (n: unknown): Promise<any> => worker.evaluate((m) => (globalTh
 const speicher = (seite: Page, schluessel: string) =>
   seite.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as Record<string, any>)[k], schluessel);
 
-// Dateien im Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau-Bilder, 3 Chibis, Quiz, Texte.
-const DUMMY_DATEIEN = 16;
+// Dateien im Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte.
+const DUMMY_DATEIEN = 26; // Phase 5: dazu 10 Werbebilder
 
 // Anzahl Dateien in der Pack-Datenbank, direkt aus IndexedDB (Seite am Erweiterungs-Ursprung).
 function zaehleIdb(seite: Page): Promise<{ dateien: number; meta: number }> {
@@ -250,9 +250,9 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
 
     const pack = await speicher(seite, 'pack');
     // Dummy-Pack ab Phase 4: alle acht Freischaltungen, 4 Vorschau-Bilder, 3 Chibis (scripts/pack/baue-pack.mjs).
-    expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, vorschau: 4, chibis: 3, groesse: packBytes });
+    expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, vorschau: 4, chibis: 3, werbung: 10, groesse: packBytes });
     expect(pack.freischaltungen).toContain('stil:mia-patch');
-    expect(pack.freischaltungen).toHaveLength(8);
+    expect(pack.freischaltungen).toHaveLength(11); // Phase 5: dazu kontrolle:werbung, kontrolle:blitz, kontrolle:leerlauf
     expect(typeof pack.importiert).toBe('number');
     const einstellungen = await speicher(seite, 'einstellungen');
     expect(einstellungen.stil).toBe('mia-patch');
@@ -475,8 +475,8 @@ test('Pack ersetzen: zweiter Import ersetzt das erste Pack, der Erkenner liest d
     // Zweites Pack mit anderen Farben ersetzt das erste (gleiche Titelzeile, andere Pack-ID).
     await importiere(warmPfad, 'Dummy');
     expect((await speicher(seite, 'pack')).id).toBe('warm');
-    // Warmes Dummy-Pack: Lizenz, 3 Patches, 4 Vorschau-Bilder, 3 Chibis, Quiz, Texte.
-    expect(await zaehleIdb(seite)).toEqual({ dateien: 13, meta: 2 });
+    // Warmes Dummy-Pack: Lizenz, 3 Patches, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte.
+    expect(await zaehleIdb(seite)).toEqual({ dateien: 23, meta: 2 });
     const zweite = await ausWorker(pruefeNachricht(bild.dataUrl, 'mia-patch'));
     expect(zweite.ok, zweite.fehler).toBe(true);
     const a2 = await analysiere(probe, zweite.bild, groessteBox(zweite.flaechen), warm.farben);

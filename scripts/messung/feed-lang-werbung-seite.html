@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Messseite langer Feed mit Werbeflaechen</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #fff; font-family: sans-serif; }
+      #kopf { height: 60px; line-height: 60px; padding: 0 12px; font-size: 18px; border-bottom: 1px solid #ddd; box-sizing: border-box; }
+      /* Zwei Spalten, jede Karte genau 280 px hoch: 90 Zeilen ergeben rund 25 000 px, das sind gut 30 Bildschirme bei 800 px Fensterhoehe. */
+      #feed { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; padding: 0 12px; }
+      .karte { height: 280px; box-sizing: border-box; overflow: hidden; border-bottom: 1px solid #eee; }
+      .kopfzeile { height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 0 0 2px; }
+      .avatar, .avatar-leer { width: 40px; height: 40px; border-radius: 50%; flex: none; display: block; object-fit: cover; }
+      .avatar-leer { background: #cfd8dc; }
+      .name { font-size: 14px; }
+      .grossbild { width: 100%; height: 200px; object-fit: cover; display: block; }
+      .werbekarte { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa; }
+      .werbekarte .etikett { font-size: 12px; color: #666; }
+      .unterzeile { height: 32px; line-height: 32px; font-size: 13px; color: #555; }
+    </style>
+  </head>
+  <body>
+    <div id="kopf">Messseite langer Feed (180 Beitraege, 240 Bilder)</div>
+    <div id="feed"></div>
+    <script>
+      // Messseite fuer scripts/messung/feed-lang.mjs (kein Produktcode). Der Testserver liefert /api/liste (Bildnamen),
+      // /testbild/<satz>/<name> (Originale) und /avatar/<satz>/<name> (auf 128 px verkleinert, wie ein Profilbild-CDN).
+      // Aufbau: 180 Beitraege, jeder mit einem grossen Bild (584 x 200 dargestellt); jeder dritte Beitrag hat zusaetzlich ein
+      // Profilbild (40 x 40 dargestellt). Das sind 180 + 60 = 240 Bilder; jedes dritte grosse Bild und jedes dritte Profilbild
+      // ist nsfw (60 + 20 = 80, ein Drittel). Jede Bildadresse ist einmalig (?n=...), damit nichts zwischengespeichert wird.
+      // Endlos-Nachladen: 40 Beitraege am Anfang, dann je 20 weitere, sobald weniger als zwei Bildschirme bis zum Ende bleiben
+      // (mit 150 ms Verzoegerung wie eine Abfrage beim Server).
+      // Ablauf von window.__feedLang.los(): warten, bis alles im ersten Bildschirm ein Urteil (data-veil) hat, 1,5 s Pause,
+      // dann SCHRITTE Schritte: je Schritt um genau eine Fensterhoehe nach unten springen, Abstand TAKT ms.
+      (function () {
+        var P = new URLSearchParams(location.search);
+        var SCHRITTE = Number(P.get('schritte') || 30);
+        var TAKT = Number(P.get('takt') || 1500);
+        var RUECK = P.get('rueck') === '1'; // nach dem letzten Schritt im selben Takt wieder nach oben scrollen (Wiedereintritt)
+        var rueckAktiv = false;
+        var BEITRAEGE = 180;
+        var ERSTE = 40;
+        var BATCH = 20;
+        var NACHLADE_VERZOEGERUNG = 150;
+        var URTEIL = 'data-veil';
+        var bilder = []; // { el, art: 'gross' | 'profil', satz, eintritt, urteilBeiEintritt }
+        var liste = null;
+        var geladen = 0;
+        var laedt = false;
+        var zaehlerBild = 0;
+        var zaehler = { sfw: 0, nsfw: 0 };
+        var zaehlerProfil = { sfw: 0, nsfw: 0 };
+        var lauf = { tStart: null, tEnde: null };
+
+        var F = (window.__feedLang = { bereit: false, laeuft: false, fertig: false, fehler: null, ergebnis: null, los: los });
+
+        function hatUrteil(el) { return el.hasAttribute(URTEIL); }
+        function imBild(el) {
+          var b = el.getBoundingClientRect();
+          return b.bottom > 0 && b.top < window.innerHeight && b.right > 0 && b.left < window.innerWidth;
+        }
+        function warte(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+        // Sichtzeit ohne Urteil (hide-first: das Bild ist dann leer): beim Verlassen des Sichtbereichs wird die Zeit seit dem Eintritt bis zum
+        // Urteil (oder bis zum Verlassen) gutgeschrieben. Nur Sichtzeiten, die nach dem Beginn des ersten Schritts enden, zaehlen (lauf.tStart).
+        function schliesseSicht(r, jetzt) {
+          if (r.sichtSeit === null) return;
+          var von = r.sichtSeit;
+          r.sichtSeit = null;
+          if (lauf.tStart === null || jetzt < lauf.tStart) return;
+          von = Math.max(von, lauf.tStart);
+          var bis = r.urteilT !== null && r.urteilT < jetzt ? r.urteilT : jetzt;
+          r.verlassen++;
+          if (bis > von) { r.leerMs += bis - von; }
+          if (r.urteilT === null || r.urteilT >= jetzt) r.ohneUrteilVerlassen++;
+        }
+
+        // Eintritt in den Sichtbereich: hat das Bild in diesem Augenblick schon ein Urteil?
+        var io = new IntersectionObserver(function (eintraege) {
+          for (var i = 0; i < eintraege.length; i++) {
+            var e = eintraege[i];
+            var rr = e.target.__rec;
+            if (!e.isIntersecting) { schliesseSicht(rr, performance.now()); continue; }
+            if (rr.sichtSeit === null) rr.sichtSeit = performance.now();
+            var r = e.target.__rec;
+            if (rueckAktiv && r.wieder === null) { r.wieder = performance.now(); r.urteilWieder = hatUrteil(e.target); }
+            if (r.eintritt !== null) continue;
+            r.eintritt = performance.now();
+            r.urteilBeiEintritt = hatUrteil(e.target);
+          }
+        });
+
+        function neuesBild(art, satz, pfadTeil, klasse, alt) {
+          var el = document.createElement('img');
+          var name = liste[satz][(art === 'gross' ? zaehler[satz]++ : zaehlerProfil[satz]++ + 17) % liste[satz].length];
+          zaehlerBild++;
+          el.src = '/' + pfadTeil + '/' + satz + '/' + encodeURIComponent(name) + '?n=' + zaehlerBild;
+          el.className = klasse;
+          el.alt = alt;
+          el.__rec = { el: el, art: art, satz: satz, sichtSeit: null, urteilT: null, leerMs: 0, verlassen: 0, ohneUrteilVerlassen: 0, eintritt: null, urteilBeiEintritt: null, wieder: null, urteilWieder: null };
+          bilder.push(el.__rec);
+          io.observe(el);
+          return el;
+        }
+
+        // Werbeflaechen (Auftrag W): 300 x 250 in einer Karte. Gerade Nummern haben ein zweites Merkmal (ins.adsbygoogle oder
+        // div mit "Sponsored" davor) und muessen getauscht werden; ungerade nur die Groesse (div oder normales Bild) und muessen bleiben.
+        var werbeZaehler = { mit: 0, ohne: 0 };
+        function neueWerbekarte(n) {
+          var karte = document.createElement('div');
+          karte.className = 'karte werbekarte';
+          var art = n % 4;
+          if (art === 0) {
+            var ins = document.createElement('ins');
+            ins.className = 'adsbygoogle';
+            ins.id = 'w-mit-' + n;
+            ins.setAttribute('data-ad-client', 'ca-pub-0');
+            ins.style.cssText = 'display:block;width:300px;height:250px;background:#dec';
+            karte.appendChild(ins);
+            werbeZaehler.mit++;
+          } else if (art === 2) {
+            var et = document.createElement('div');
+            et.className = 'etikett';
+            et.textContent = 'Sponsored';
+            var d = document.createElement('div');
+            d.id = 'w-mit-' + n;
+            d.style.cssText = 'width:300px;height:250px;background:#cde';
+            karte.appendChild(et);
+            karte.appendChild(d);
+            werbeZaehler.mit++;
+          } else if (art === 1) {
+            var d2 = document.createElement('div');
+            d2.id = 'w-ohne-' + n;
+            d2.style.cssText = 'width:300px;height:250px;background:#fed';
+            karte.appendChild(d2);
+            werbeZaehler.ohne++;
+          } else {
+            var img = document.createElement('img');
+            img.id = 'w-ohne-' + n;
+            img.alt = 'Foto ' + n;
+            img.width = 300;
+            img.height = 250;
+            img.style.cssText = 'display:block;object-fit:cover';
+            img.src = '/testbild/sfw/' + encodeURIComponent(liste.sfw[(n * 7) % liste.sfw.length]) + '?w=' + n;
+            karte.appendChild(img);
+            werbeZaehler.ohne++;
+          }
+          return karte;
+        }
+
+        function fuegeBeitraegeEin(anzahl) {
+          var feed = document.getElementById('feed');
+          var frag = document.createDocumentFragment();
+          for (var k = 0; k < anzahl && geladen < BEITRAEGE; k++, geladen++) {
+            var i = geladen;
+            var karte = document.createElement('div');
+            karte.className = 'karte';
+            var kopf = document.createElement('div');
+            kopf.className = 'kopfzeile';
+            if (i % 3 === 1) {
+              var profilNr = Math.floor(i / 3);
+              kopf.appendChild(neuesBild('profil', profilNr % 3 === 0 ? 'nsfw' : 'sfw', 'avatar', 'avatar', 'Profilbild ' + i));
+            } else {
+              var leer = document.createElement('div');
+              leer.className = 'avatar-leer';
+              kopf.appendChild(leer);
+            }
+            var name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = 'Konto ' + i;
+            kopf.appendChild(name);
+            karte.appendChild(kopf);
+            karte.appendChild(neuesBild('gross', i % 3 === 0 ? 'nsfw' : 'sfw', 'testbild', 'grossbild', 'Beitrag ' + i));
+            var unter = document.createElement('div');
+            unter.className = 'unterzeile';
+            unter.textContent = 'Beitrag ' + i;
+            karte.appendChild(unter);
+            frag.appendChild(karte);
+            if (i % 6 === 5) frag.appendChild(neueWerbekarte(Math.floor(i / 6)));
+          }
+          feed.appendChild(frag);
+        }
+
+        function pruefeNachladen() {
+          if (laedt || geladen >= BEITRAEGE) return;
+          var rest = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+          if (rest >= 2 * window.innerHeight) return;
+          laedt = true;
+          setTimeout(function () {
+            fuegeBeitraegeEin(BATCH);
+            laedt = false;
+            pruefeNachladen();
+          }, NACHLADE_VERZOEGERUNG);
+        }
+        window.addEventListener('scroll', pruefeNachladen, { passive: true });
+
+        // Offene Schritte: alle Bilder des Bildschirms muessen ein Urteil haben.
+        var schritte = [];
+        var rueckSchritte = [];
+        var stufenFolge = [];
+        function merkeUrteilZeit(muster) {
+          var jetzt = performance.now();
+          for (var i = 0; i < muster.length; i++) {
+            var t = muster[i].target;
+            if (t.__rec && t.__rec.urteilT === null && t.hasAttribute(URTEIL)) {
+              t.__rec.urteilT = jetzt;
+              // Stufe zum Zeitpunkt des Urteils (Naeherung der Stufen aus dem Auftrag V; die Auswahl selbst ist von aussen nicht sichtbar):
+              // 1 sichtbar und gross, 2 sichtbar und klein, 3 nah (bis zwei Bildschirmhoehen) und gross, 4 nah und klein, 5 Rest.
+              // Klein: laengste dargestellte Seite unter 150 px. Nur Urteile nach dem ersten Schritt.
+              if (lauf.tStart !== null) {
+                var b = t.getBoundingClientRect();
+                var h = window.innerHeight;
+                var klein = Math.max(b.width, b.height) < 150;
+                var st = b.bottom > 0 && b.top < h ? (klein ? 2 : 1) : b.bottom > -2 * h && b.top < 3 * h ? (klein ? 4 : 3) : 5;
+                t.__rec.stufe = st;
+                stufenFolge.push(st);
+              }
+            }
+          }
+        }
+        function pruefeSchritte() {
+          var jetzt = performance.now();
+          var alle = schritte.concat(rueckSchritte);
+          for (var i = 0; i < alle.length; i++) {
+            var s = alle[i];
+            if (s.dauerMs !== null) continue;
+            if (s.bilder.every(hatUrteil)) s.dauerMs = jetzt - s.t0;
+          }
+        }
+        new MutationObserver(function (m) { merkeUrteilZeit(m); pruefeSchritte(); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: [URTEIL] });
+
+        // Lange Aufgaben (nur wo der Browser sie meldet) und, als Ersatz fuer beide Browser, Haenger des Hauptfadens:
+        // ein 10-ms-Zeitgeber, der mehr als 50 ms zu spaet kommt.
+        var langeAufgaben = { unterstuetzt: false, eintraege: [] };
+        try {
+          if (window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask') >= 0) {
+            langeAufgaben.unterstuetzt = true;
+            new PerformanceObserver(function (liste2) {
+              liste2.getEntries().forEach(function (e) { langeAufgaben.eintraege.push({ start: e.startTime, dauerMs: e.duration }); });
+            }).observe({ type: 'longtask' });
+          }
+        } catch (e) { langeAufgaben.unterstuetzt = false; }
+        var haenger = [];
+        var letzterTakt = performance.now();
+        setInterval(function () {
+          var jetzt = performance.now();
+          var zuSpaet = jetzt - letzterTakt - 10;
+          letzterTakt = jetzt;
+          if (zuSpaet > 50) haenger.push({ start: jetzt - zuSpaet, dauerMs: zuSpaet });
+        }, 10);
+
+        function zusammenfassen(r) {
+          return { n: r.length, mitUrteil: r.filter(function (x) { return x.urteilBeiEintritt; }).length };
+        }
+
+        function zusammenfassen2(r) {
+          return { n: r.length, mitUrteil: r.filter(function (x) { return x.urteilWieder; }).length };
+        }
+
+        // Vereinigung aller Flaechen, die irgendwann als getauscht (sichtbar) im Abbild standen (alle 250 ms gelesen).
+        var gesehen = {};
+        setInterval(function () {
+          var roh = document.documentElement.getAttribute('data-veil-werbung');
+          if (!roh) return;
+          try {
+            JSON.parse(roh).flaechen.forEach(function (f) { if (f.sichtbar && f.id) gesehen[f.id] = true; });
+          } catch (e) { /* naechster Takt */ }
+        }, 250);
+        function werbungStand() {
+          var roh = document.documentElement.getAttribute('data-veil-werbung');
+          var st = null;
+          try { st = roh ? JSON.parse(roh) : null; } catch (e) { st = null; }
+          var fl = st && st.flaechen ? st.flaechen : [];
+          var ids = Object.keys(gesehen);
+          var bildMs = fl.map(function (f) { return f.bildMs; }).filter(function (x) { return typeof x === 'number'; });
+          return {
+            abbildDa: !!st, aktiv: st ? st.aktiv : null, flaechenInsgesamt: fl.length, sichtbarJetzt: fl.filter(function (f) { return f.sichtbar; }).length,
+            getauschtMit: ids.filter(function (i) { return i.indexOf('w-mit-') === 0; }).length,
+            getauschtOhne: ids.filter(function (i) { return i.indexOf('w-ohne-') === 0; }).length,
+            getauschtAndere: ids.filter(function (i) { return i.indexOf('w-') !== 0; }).length,
+            erzeugtMit: werbeZaehler.mit, erzeugtOhne: werbeZaehler.ohne,
+            bildMsMedian: bildMs.length ? bildMs.slice().sort(function (a, b) { return a - b; })[Math.floor(bildMs.length / 2)] : null,
+            bildMsMax: bildMs.length ? Math.max.apply(null, bildMs) : null,
+          };
+        }
+
+        function los() {
+          if (F.laeuft) return;
+          F.laeuft = true;
+          (async function () {
+            try {
+              var tLos = performance.now();
+              // Erster Bildschirm: bis alles Sichtbare ein Urteil hat (Modell kalt, Erweiterung frisch geladen).
+              var erste = [];
+              while (true) {
+                erste = bilder.filter(function (r) { return imBild(r.el); });
+                if (erste.length > 0 && erste.every(function (r) { return hatUrteil(r.el); })) break;
+                if (performance.now() - tLos > 60000) throw new Error('erster Bildschirm ohne Urteile nach 60 s (' + erste.filter(function (r) { return hatUrteil(r.el); }).length + ' von ' + erste.length + ')');
+                await warte(50);
+              }
+              var ersterBildschirmMs = performance.now() - tLos;
+              await warte(TAKT);
+              lauf.tStart = performance.now();
+              var gemacht = 0;
+              var ende = 'Schritte voll';
+              for (var k = 0; k < SCHRITTE; k++) {
+                var soll = lauf.tStart + k * TAKT;
+                var wartezeit = soll - performance.now();
+                if (wartezeit > 0) await warte(wartezeit);
+                var t0 = performance.now();
+                var maxY = document.documentElement.scrollHeight - window.innerHeight;
+                if (window.scrollY >= maxY - 5) { ende = 'Seitenende nach ' + k + ' Schritten'; break; }
+                window.scrollTo({ top: Math.min(window.scrollY + window.innerHeight, maxY), behavior: 'instant' });
+                var sichtbar = bilder.filter(function (r) { return imBild(r.el); }).map(function (r) { return r.el; });
+                var s = { k: k + 1, t0: t0, n: sichtbar.length, offenBeiStart: sichtbar.filter(function (e) { return !hatUrteil(e); }).length, dauerMs: null, bilder: sichtbar };
+                if (s.offenBeiStart === 0) s.dauerMs = 0;
+                schritte.push(s);
+                gemacht++;
+              }
+              // Das Ende des Scrollens: eine volle Taktzeit nach dem letzten Schritt.
+              await warte(Math.max(0, lauf.tStart + gemacht * TAKT - performance.now()));
+              lauf.tEnde = performance.now();
+              pruefeSchritte();
+              // Sichtzeit ohne Urteil: Stand am Ende des Abwaertslaufs, vor dem Rueckweg.
+              var leer = { gross: { n: 0, ohneUrteil: 0, leerMs: 0 }, profil: { n: 0, ohneUrteil: 0, leerMs: 0 } };
+              bilder.forEach(function (r) {
+                if (r.verlassen === 0) return;
+                var z = leer[r.art];
+                z.n++;
+                if (r.ohneUrteilVerlassen > 0) z.ohneUrteil++;
+                z.leerMs += r.leerMs;
+              });
+              // Rueckweg (nur mit ?rueck=1): im selben Takt wieder nach oben. Ausgeloeste Wiedereintritte zaehlen, wenn das Bild den Sichtbereich
+              // seit dem Beginn des Rueckwegs neu betritt (Bilder im Sichtbereich zu Beginn zaehlen nicht).
+              if (RUECK) {
+                rueckAktiv = true;
+                var tRueck = performance.now();
+                for (var q = 0; q < gemacht; q++) {
+                  var sollR = tRueck + (q + 1) * TAKT;
+                  var wR = sollR - performance.now();
+                  if (wR > 0) await warte(wR);
+                  if (window.scrollY <= 5) break;
+                  var tR0 = performance.now();
+                  window.scrollTo({ top: Math.max(0, window.scrollY - window.innerHeight), behavior: 'instant' });
+                  var sichtbarR = bilder.filter(function (r) { return imBild(r.el); }).map(function (r) { return r.el; });
+                  var sr = { k: q + 1, t0: tR0, n: sichtbarR.length, offenBeiStart: sichtbarR.filter(function (e) { return !hatUrteil(e); }).length, dauerMs: null, bilder: sichtbarR };
+                  if (sr.offenBeiStart === 0) sr.dauerMs = 0;
+                  rueckSchritte.push(sr);
+                }
+                await warte(TAKT);
+              }
+              // Nachlauf: bis zu 30 s auf offene Schritte warten (Untergrenze, falls nie fertig).
+              var tNach = performance.now();
+              while (schritte.concat(rueckSchritte).some(function (x) { return x.dauerMs === null; }) && performance.now() - tNach < 30000) await warte(50);
+              var tAbschluss = performance.now();
+              pruefeSchritte();
+
+              var imLauf = function (e) { return e.start >= lauf.tStart && e.start <= lauf.tEnde; };
+              var imGanzen = function (e) { return e.start >= lauf.tStart; };
+              var summe = function (l) { return l.reduce(function (a, e) { return a + e.dauerMs; }, 0); };
+              var eingetreten = bilder.filter(function (r) { return r.eintritt !== null && r.eintritt >= lauf.tStart; });
+              var urteile = {};
+              ['sfw', 'nsfw'].forEach(function (satz) {
+                urteile[satz] = { frei: 0, zensiert: 0, verdeckt: 0, keins: 0 };
+                bilder.filter(function (r) { return r.satz === satz; }).forEach(function (r) {
+                  var v = r.el.getAttribute(URTEIL);
+                  urteile[satz][v === 'frei' || v === 'zensiert' || v === 'verdeckt' ? v : 'keins']++;
+                });
+              });
+              var wiederholt = bilder.filter(function (r) { return r.wieder !== null; });
+              var status = null;
+              try { status = JSON.parse(document.documentElement.dataset.veilStatus || 'null'); } catch (e) { status = null; }
+              F.ergebnis = {
+                fenster: { breite: window.innerWidth, hoehe: window.innerHeight },
+                seitenhoehe: document.documentElement.scrollHeight,
+                bilderInsgesamt: bilder.length,
+                beitraegeGeladen: geladen,
+                ende: ende,
+                schritteGemacht: gemacht,
+                ersterBildschirm: { bilder: erste.length, bisUrteilMs: ersterBildschirmMs },
+                eintritt: {
+                  gross: zusammenfassen(eingetreten.filter(function (r) { return r.art === 'gross'; })),
+                  profil: zusammenfassen(eingetreten.filter(function (r) { return r.art === 'profil'; })),
+                },
+                schritte: schritte.map(function (x) {
+                  return { k: x.k, n: x.n, offenBeiStart: x.offenBeiStart, dauerMs: x.dauerMs, untergrenzeMs: x.dauerMs === null ? tAbschluss - x.t0 : null };
+                }),
+                leerzeit: leer,
+                stufenFolge: stufenFolge.join(''),
+                rueck: RUECK ? {
+                  gross: zusammenfassen2(wiederholt.filter(function (r) { return r.art === 'gross'; })),
+                  profil: zusammenfassen2(wiederholt.filter(function (r) { return r.art === 'profil'; })),
+                  schritte: rueckSchritte.map(function (x) {
+                    return { k: x.k, n: x.n, offenBeiStart: x.offenBeiStart, dauerMs: x.dauerMs, untergrenzeMs: x.dauerMs === null ? tAbschluss - x.t0 : null };
+                  }),
+                } : null,
+                langeAufgaben: {
+                  unterstuetzt: langeAufgaben.unterstuetzt,
+                  imLauf: { anzahl: langeAufgaben.eintraege.filter(imLauf).length, summeMs: summe(langeAufgaben.eintraege.filter(imLauf)), laengsterMs: Math.max.apply(null, [0].concat(langeAufgaben.eintraege.filter(imLauf).map(function (e) { return e.dauerMs; }))) },
+                  mitNachlauf: { anzahl: langeAufgaben.eintraege.filter(imGanzen).length, summeMs: summe(langeAufgaben.eintraege.filter(imGanzen)) },
+                },
+                haenger: {
+                  imLauf: { anzahl: haenger.filter(imLauf).length, summeMs: summe(haenger.filter(imLauf)), laengsterMs: Math.max.apply(null, [0].concat(haenger.filter(imLauf).map(function (e) { return e.dauerMs; }))) },
+                  mitNachlauf: { anzahl: haenger.filter(imGanzen).length, summeMs: summe(haenger.filter(imGanzen)) },
+                },
+                laufMs: lauf.tEnde - lauf.tStart,
+                urteile: urteile,
+                status: status,
+                werbung: werbungStand(),
+              };
+            } catch (e) {
+              F.fehler = String(e && e.message ? e.message : e);
+            } finally {
+              F.fertig = true;
+            }
+          })();
+        }
+
+        fetch('/api/liste')
+          .then(function (r) { return r.json(); })
+          .then(function (l) {
+            liste = l;
+            fuegeBeitraegeEin(ERSTE);
+            F.bereit = true;
+          })
+          .catch(function (e) { F.fehler = 'Liste: ' + e; F.fertig = true; });
+      })();
+    </script>
+  </body>
+</html>

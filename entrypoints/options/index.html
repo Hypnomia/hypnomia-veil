@@ -102,6 +102,43 @@
         </label>
       </section>
 
+      <!-- Phase 5 (Session 9): Kontrolle. Texte nach Texter und Gegenleser (TEXTE-PHASE-5-SESSION-9.md). -->
+      <section aria-labelledby="kon-titel" id="kontrolle">
+        <h2 id="kon-titel">Mia’s control</h2>
+        <p id="kon-pack-hinweis" class="hinweis"></p>
+
+        <label class="schalter" id="kon-werbung-zeile">
+          <input id="kon-werbung" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>My ads</strong><small>Ad spaces on any site show my ads instead, always labeled as Mia’s ads.</small></span>
+        </label>
+
+        <div class="regel" id="kon-blitz-zeile">
+          <label for="kon-blitz">Flash words</label>
+          <select id="kon-blitz">
+            <option value="aus">Off</option>
+            <option value="selten">Now and then</option>
+            <option value="oft">Often</option>
+          </select>
+        </div>
+        <p class="hinweis">Never while you type. Calm mode turns them off.</p>
+
+        <label class="schalter" id="kon-leerlauf-zeile">
+          <input id="kon-leerlauf" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>Idle spiral</strong><small>Sit still too long and my spiral comes. Any move or key ends it.</small></span>
+        </label>
+        <div class="regel" id="kon-minuten-zeile">
+          <label for="kon-minuten">Idle minutes before my spiral</label>
+          <input id="kon-minuten" type="number" min="1" max="60" step="1" inputmode="numeric" />
+        </div>
+
+        <div id="kon-warnung" class="warnblock" hidden>
+          <p id="kon-warnung-text">Before flash words and my spiral: not for you if you have photosensitive epilepsy or are prone to seizures.</p>
+          <button id="kon-warnung-ok" class="klein" type="button">I understand</button>
+        </div>
+      </section>
+
       <footer>
         <span>Pausing and uninstalling are always allowed.</span>
       </footer>

@@ -3,7 +3,7 @@
 // (Node) und in den Einheitstests (`node --experimental-strip-types`). Hashen ueber `crypto.subtle` (Browser und Node).
 // Das Pack ist nur Daten. Nichts daraus wird ausgefuehrt; Texte kommen als String zurueck und gehoeren per `textContent` angezeigt.
 
-import type { Freischaltung, PackDateiEintrag, PackManifest, Rolle, Stufe } from './vertrag';
+import type { Freischaltung, PackDateiEintrag, PackManifest, Rolle, Stufe, WerbeFormat } from './vertrag';
 // Laufzeit-Werte aus vertrag.ts (ROLLEN, BENOETIGT) stehen hier als Kopie: diese Datei hat keine Laufzeit-Importe. Die Typpruefung unten
 // stellt sicher, dass die Kopien zum Vertrag passen.
 
@@ -23,14 +23,19 @@ const ID_MUSTER = /^[a-z0-9-]{1,40}$/;
 const VERSION_MUSTER = /^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/;
 const SHA_MUSTER = /^[0-9a-f]{64}$/;
 const TYPEN: readonly PackDateiEintrag['typ'][] = ['image/webp', 'image/jpeg', 'image/png', 'text/plain', 'application/json'];
-const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi'] as const satisfies readonly Rolle[];
+const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung'] as const satisfies readonly Rolle[];
 type _RollenVollstaendig = Exclude<Rolle, (typeof ROLLEN)[number]> extends never ? true : never;
 const _rollenVollstaendig: _RollenVollstaendig = true;
 void _rollenVollstaendig;
 // Bild-Rollen und JSON-Rollen (JSON: hoechstens eine Datei, Typ application/json, muss als JSON lesbar sein).
-const BILD_ROLLEN: readonly Rolle[] = ['patch', 'vorschau', 'chibi'];
+const BILD_ROLLEN: readonly Rolle[] = ['patch', 'vorschau', 'chibi', 'werbung'];
 const JSON_ROLLEN: readonly Rolle[] = ['quiz', 'texte'];
 const STUFEN: readonly Stufe[] = ['tease', 'hot', 'explicit'];
+// Kopie von WERBE_FORMATE aus vertrag.ts (Typpruefung unten).
+const WERBE_FORMATE = ['300x250', '336x280', '728x90', '468x60', '160x600', '300x600', '320x50', '320x100', '970x250'] as const satisfies readonly WerbeFormat[];
+type _FormateVollstaendig = Exclude<WerbeFormat, (typeof WERBE_FORMATE)[number]> extends never ? true : never;
+const _formateVollstaendig: _FormateVollstaendig = true;
+void _formateVollstaendig;
 
 // Was diese Version der Erweiterung freischalten kann (muss zu FREISCHALTUNGEN in vertrag.ts passen; die Typpruefung unten
 // stellt sicher, dass hier nichts steht, was der Vertrag nicht kennt, und nichts fehlt). Unbekanntes im Pack wird verworfen.
@@ -43,6 +48,9 @@ const BEKANNTE_FREISCHALTUNGEN = [
   'quiz:freilegen',
   'zensur:steigerung',
   'chibi:pack',
+  'kontrolle:werbung',
+  'kontrolle:blitz',
+  'kontrolle:leerlauf',
 ] as const satisfies readonly Freischaltung[];
 // Kopie von BENOETIGT aus vertrag.ts: welche Rolle eine Freischaltung braucht (null = keine Datei).
 const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
@@ -54,6 +62,9 @@ const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'quiz:freilegen': 'quiz',
   'zensur:steigerung': null,
   'chibi:pack': 'chibi',
+  'kontrolle:werbung': 'werbung',
+  'kontrolle:blitz': 'texte',
+  'kontrolle:leerlauf': 'texte',
 };
 type _Vollstaendig = Exclude<Freischaltung, (typeof BEKANNTE_FREISCHALTUNGEN)[number]> extends never ? true : never;
 const _vollstaendig: _Vollstaendig = true;
@@ -349,6 +360,13 @@ export function pruefeManifest(roh: unknown, eigeneVersion: string, datenLaenge:
       throw new PackFehler('rolle', `Rolle ${eintrag.rolle} nur fuer application/json (${name})`);
     }
     if (eintrag.rolle === 'vorschau' && !eintrag.stufe) throw new PackFehler('stufe', `Rolle vorschau braucht eine Stufe (${name})`);
+    // Phase 5: Werbebilder nennen ihr Format; `format` gibt es nur bei der Rolle `werbung` (bei anderen Rollen wird es ignoriert). Ohne
+    // bekanntes Format (fehlt, oder ein Format einer spaeteren Version) verliert nur diese Datei ihre Rolle, das Pack bleibt gueltig
+    // (vorwaertsvertraeglich wie bei unbekannten Rollen, Entscheidung 100).
+    if (eintrag.rolle === 'werbung') {
+      if (typeof d.format === 'string' && (WERBE_FORMATE as readonly string[]).includes(d.format)) eintrag.format = d.format as WerbeFormat;
+      else delete eintrag.rolle;
+    }
     dateien.push(eintrag);
   }
 
@@ -470,6 +488,7 @@ export interface PackDateiEingabe {
   daten: Uint8Array;
   rolle?: Rolle;
   stufe?: Stufe;
+  format?: WerbeFormat;
 }
 
 export interface PackKopfEingabe {
@@ -509,6 +528,7 @@ export async function schreibePack(kopf: PackKopfEingabe, dateien: readonly Pack
     };
     if (d.rolle) eintrag.rolle = d.rolle;
     if (d.stufe) eintrag.stufe = d.stufe;
+    if (d.format) eintrag.format = d.format;
     eintraege.push(eintrag);
     offset += d.daten.byteLength;
   }

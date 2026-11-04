@@ -4,6 +4,7 @@
 // in storage.local unter `pack`, damit Popup und Content-Script ohne IndexedDB wissen, was freigeschaltet ist.
 
 import type { Stil } from '../einstellungen';
+import type { SatzGruppe } from '../quiz/vertrag';
 
 // ---------- Ablage ----------
 export const PACK_DB_NAME = 'veil-pack';
@@ -27,6 +28,10 @@ export const PACK_SPEICHER_SCHLUESSEL = 'pack';
 //   quiz:freilegen      zensierte Flaeche per Quiz kurz freilegen (Rolle `quiz`)
 //   zensur:steigerung   Steigerung der Zensur (Entscheidung 101), braucht keine Datei
 //   chibi:pack          frechere Chibis aus dem Pack (Rolle `chibi`); die suessen Demo-Chibis gibt es ohne Pack
+// Phase 5 (PHASE-5-AUFTRAEGE-SESSION-9.md, Version 0.5.0):
+//   kontrolle:werbung   Werbe-Tausch: Werbeflaechen werden Mias Werbung (Rolle `werbung` mit `format`)
+//   kontrolle:blitz     Blitzwoerter (Rolle `texte`, Gruppe `blitzwoerter`)
+//   kontrolle:leerlauf  Leerlauf-Spirale (Rolle `texte`, Gruppe `leerlauf`)
 export const FREISCHALTUNGEN = [
   'stil:mia-patch',
   'erwachsen:vorschau',
@@ -36,6 +41,9 @@ export const FREISCHALTUNGEN = [
   'quiz:freilegen',
   'zensur:steigerung',
   'chibi:pack',
+  'kontrolle:werbung',
+  'kontrolle:blitz',
+  'kontrolle:leerlauf',
 ] as const;
 export type Freischaltung = (typeof FREISCHALTUNGEN)[number];
 
@@ -43,9 +51,19 @@ export type Stufe = 'tease' | 'hot' | 'explicit';
 // Rolle einer Datei im Pack. `patch`: Bild fuer den Stil Mia-Patch. `lizenz`: Lizenztext (genau eine Datei, Pflicht).
 // `vorschau`: Bild fuer Vorschau-Tausch und Galerie (Stufe Pflicht). `quiz`: Quiz-Bank als JSON (hoechstens eine Datei,
 // Schema src/quiz/vertrag.ts). `texte`: Mias Saetze als JSON (hoechstens eine Datei, Schema src/quiz/vertrag.ts). `chibi`: Chibi-Bild
-// (WebP mit Transparenz, Name enthaelt die Pose, siehe src/chibi.ts). Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
-export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi';
-export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi'];
+// (WebP mit Transparenz, Name enthaelt die Pose, siehe src/chibi.ts). `werbung`: Mias Werbebild fuer den Werbe-Tausch (Phase 5, Feld
+// `format` Pflicht). Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
+export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung';
+export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung'];
+
+// Werbeformate (Breite x Hoehe in CSS-Pixeln) fuer die Rolle `werbung`: jedes Werbebild nennt sein Format. Der Werbe-Tausch waehlt fuer eine
+// Flaeche das Format, das ihr am naechsten kommt (Auftrag W).
+export const WERBE_FORMATE = ['300x250', '336x280', '728x90', '468x60', '160x600', '300x600', '320x50', '320x100', '970x250'] as const;
+export type WerbeFormat = (typeof WERBE_FORMATE)[number];
+export function formatMasse(f: WerbeFormat): { breite: number; hoehe: number } {
+  const [b, h] = f.split('x').map(Number);
+  return { breite: b!, hoehe: h! };
+}
 // Rollen, die hoechstens einmal vorkommen duerfen (JSON-Dateien).
 export const EINZEL_ROLLEN: readonly Rolle[] = ['quiz', 'texte'];
 
@@ -60,7 +78,28 @@ export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'quiz:freilegen': 'quiz',
   'zensur:steigerung': null,
   'chibi:pack': 'chibi',
+  'kontrolle:werbung': 'werbung',
+  'kontrolle:blitz': 'texte',
+  'kontrolle:leerlauf': 'texte',
 };
+
+// Freischaltungen, die zusaetzlich eine Satz-Gruppe in der Texte-Datei brauchen (mindestens ein gueltiger Satz nach `pruefeTexte`).
+// Fehlt die Gruppe, faellt beim Import nur diese Freischaltung weg (src/pack/speicher.ts).
+export const BENOETIGT_GRUPPE: Readonly<Partial<Record<Freischaltung, SatzGruppe>>> = {
+  'kontrolle:blitz': 'blitzwoerter',
+  'kontrolle:leerlauf': 'leerlauf',
+};
+
+// Behaelt nur Freischaltungen, deren Satz-Gruppe (falls noetig) in den geprueften Texten mindestens einen Satz hat.
+export function filtereNachGruppen(
+  freischaltungen: readonly Freischaltung[],
+  texte: { gruppen: Partial<Record<SatzGruppe, string[]>> } | null,
+): Freischaltung[] {
+  return freischaltungen.filter((f) => {
+    const gruppe = BENOETIGT_GRUPPE[f];
+    return !gruppe || !!texte?.gruppen[gruppe]?.length;
+  });
+}
 
 // Eintrag im Pack-Manifest (siehe src/pack/format.ts fuer Dateiaufbau und Grenzen).
 export interface PackDateiEintrag {
@@ -71,6 +110,7 @@ export interface PackDateiEintrag {
   sha256: string;
   rolle?: Rolle;
   stufe?: Stufe;
+  format?: WerbeFormat; // nur Rolle `werbung` (dort Pflicht)
 }
 
 export interface PackManifest {
@@ -94,7 +134,7 @@ export interface PackMeta {
   erstellt: string;
   freischaltungen: Freischaltung[];
   lizenzText: string;
-  dateien: { name: string; typ: PackDateiEintrag['typ']; rolle?: Rolle; stufe?: Stufe; laenge: number }[];
+  dateien: { name: string; typ: PackDateiEintrag['typ']; rolle?: Rolle; stufe?: Stufe; format?: WerbeFormat; laenge: number }[];
   groesse: number; // Bytes der Pack-Datei
   importiert: number; // Date.now()
 }
@@ -105,6 +145,7 @@ export interface PackDateiGespeichert {
   typ: PackDateiEintrag['typ'];
   rolle?: Rolle;
   stufe?: Stufe;
+  format?: WerbeFormat;
   blob: Blob;
 }
 
@@ -118,6 +159,7 @@ export interface PackKurz {
   // Phase 4: Anzahl Bilder je Rolle. Fehlen bei Packs, die vor 0.4.0 importiert wurden (dann 0, ladePackKurz fuellt auf).
   vorschau: number;
   chibis: number;
+  werbung: number; // Phase 5: Anzahl Werbebilder (fehlt bei aelteren Importen, dann 0)
   groesse: number;
   importiert: number;
 }
@@ -149,5 +191,6 @@ export function kurzAusRoh(roh: unknown): PackKurz | null {
     bilder: zahl(p.bilder),
     vorschau: zahl(p.vorschau),
     chibis: zahl(p.chibis),
+    werbung: zahl(p.werbung),
   };
 }

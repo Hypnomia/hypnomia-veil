@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Werbung Zeitmessung (synthetisch)</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #fff; font-family: sans-serif; }
+      body { position: relative; width: 1280px; height: 900px; overflow: hidden; }
+      .etikett { position: absolute; font-size: 12px; color: #666; line-height: 16px; }
+      .kasten { position: absolute; display: block; }
+      #s-ins { left: 20px; top: 20px; width: 728px; height: 90px; background: #dec; }
+      #e-sponsored { left: 20px; top: 140px; }
+      #s-sponsored { left: 20px; top: 160px; width: 300px; height: 250px; background: #cde; }
+      #e-anzeige { left: 360px; top: 140px; }
+      #s-anzeige { left: 360px; top: 160px; width: 320px; height: 50px; background: #cde; }
+      #s-container { left: 360px; top: 240px; width: 336px; height: 280px; background: #fed; }
+      #spaet1 { left: 800px; top: 160px; width: 300px; height: 250px; background: #cde; }
+      #spaet2 { left: 20px; top: 460px; width: 300px; height: 250px; background: #dec; }
+    </style>
+  </head>
+  <body>
+    <script>
+      // Zeitpunkte (Date.now()) zu dem jede Flaeche im Dokument steht und damit ihre Groesse hat. Der Zeitgeber der Messung liest sie nach dem Lauf.
+      window.__t = {};
+      window.__marke = function (name) { window.__t[name] = Date.now(); };
+    </script>
+    <h1 style="position:absolute;left:760px;top:20px;margin:0;font-size:20px;display:none">Test</h1>
+    <ins class="kasten adsbygoogle" id="s-ins" data-ad-client="ca-pub-0"></ins>
+    <script>window.__marke('s-ins');</script>
+    <div class="etikett" id="e-sponsored">Sponsored</div>
+    <div class="kasten" id="s-sponsored"></div>
+    <script>window.__marke('s-sponsored');</script>
+    <div class="etikett" id="e-anzeige">Anzeige</div>
+    <div class="kasten" id="s-anzeige">Buy now</div>
+    <script>window.__marke('s-anzeige');</script>
+    <div class="kasten ad-container" id="s-container"></div>
+    <script>window.__marke('s-container');</script>
+    <script>
+      // Spaet eingefuegte Werbung (warm: die Seite laeuft schon): nach 3 s ein div.ad-slot, nach 5 s ein ins.adsbygoogle.
+      setTimeout(function () {
+        var d = document.createElement('div');
+        d.className = 'kasten ad-slot';
+        d.id = 'spaet1';
+        document.body.appendChild(d);
+        window.__marke('spaet1');
+      }, 3000);
+      setTimeout(function () {
+        var d = document.createElement('ins');
+        d.className = 'kasten adsbygoogle';
+        d.id = 'spaet2';
+        document.body.appendChild(d);
+        window.__marke('spaet2');
+      }, 5000);
+    </script>
+  </body>
+</html>

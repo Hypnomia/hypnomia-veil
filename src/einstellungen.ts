@@ -30,6 +30,19 @@ export interface Einstellungen {
   // Phase 4 (PHASE-4-BAUPLAN Abschnitt 2): wirkt nur mit Pack und der passenden Freischaltung.
   erwachsen: ErwachsenEinstellung;
   quiz: QuizEinstellung;
+  // Phase 5 (PHASE-5-AUFTRAEGE-SESSION-9.md): Kontrolle, wirkt nur mit Pack und der passenden Freischaltung `kontrolle:*`.
+  kontrolle: KontrolleEinstellung;
+}
+
+// Haeufigkeit der Blitzwoerter (Entscheidung 116): aus, selten (etwa alle 10 Minuten), oft (etwa alle 3 Minuten).
+export const BLITZ_HAEUFIGKEITEN = ['aus', 'selten', 'oft'] as const;
+export type BlitzHaeufigkeit = (typeof BLITZ_HAEUFIGKEITEN)[number];
+
+export interface KontrolleEinstellung {
+  werbung: boolean; // Werbe-Tausch (Auftrag W), Standard an
+  blitz: BlitzHaeufigkeit; // Blitzwoerter (Auftrag B), Standard selten
+  leerlauf: boolean; // Leerlauf-Spirale (Auftrag L), Standard an
+  leerlaufMinuten: number; // Minuten ohne Eingabe bis zur Spirale (Inhaberin 04.11.2026: 2), ganzzahlig
 }
 
 export interface ErwachsenEinstellung {
@@ -48,6 +61,9 @@ export const VERWEIGERN_MIN = 0;
 export const VERWEIGERN_MAX = 0.3;
 export const FREILEGEN_MIN_MS = 3000;
 export const FREILEGEN_MAX_MS = 30000;
+
+export const LEERLAUF_MIN_MINUTEN = 1;
+export const LEERLAUF_MAX_MINUTEN = 60;
 
 export const SCHWELLE_MIN = 0.1;
 export const SCHWELLE_MAX = 0.25;
@@ -76,6 +92,7 @@ export const STANDARD: Einstellungen = {
   ruhig: false,
   erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
   quiz: { verweigern: 0.1, freilegenMs: 10000 },
+  kontrolle: { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2 },
 };
 
 // Liste von Hosts oder Mustern: nur Texte, getrimmt, klein, ohne Leere und Doppelte.
@@ -130,6 +147,16 @@ export function vervollstaendige(roh: unknown): Einstellungen {
       return {
         verweigern: begrenze(q.verweigern, VERWEIGERN_MIN, VERWEIGERN_MAX, STANDARD.quiz.verweigern),
         freilegenMs: Math.round(begrenze(q.freilegenMs, FREILEGEN_MIN_MS, FREILEGEN_MAX_MS, STANDARD.quiz.freilegenMs)),
+      };
+    })(),
+    kontrolle: (() => {
+      const k = objekt(r.kontrolle);
+      const s = STANDARD.kontrolle;
+      return {
+        werbung: wahr(k.werbung, s.werbung),
+        blitz: (BLITZ_HAEUFIGKEITEN as readonly unknown[]).includes(k.blitz) ? (k.blitz as BlitzHaeufigkeit) : s.blitz,
+        leerlauf: wahr(k.leerlauf, s.leerlauf),
+        leerlaufMinuten: Math.round(begrenze(k.leerlaufMinuten, LEERLAUF_MIN_MINUTEN, LEERLAUF_MAX_MINUTEN, s.leerlaufMinuten)),
       };
     })(),
   };

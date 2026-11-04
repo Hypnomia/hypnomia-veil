@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Blitz fixture</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #14101c; color: #8a8497; font: 16px system-ui, sans-serif; }
+      main { padding: 24px; }
+      input, textarea { font: inherit; padding: 8px; background: #221c30; color: #cfc9dd; border: 1px solid #3a3350; }
+      iframe { border: 1px solid #3a3350; width: 300px; height: 80px; }
+    </style>
+    <script>
+      // Mit ?regel=1: aggressive Seitenregeln, die jedes div zur grossen hellen Flaeche machen wuerden. Der Host der Blitzwoerter darf davon
+      // nichts abbekommen (kein vollflaechiger Wechsel, nur die Schrift).
+      if (/[?&]regel=1/.test(location.search)) {
+        document.write('<style>div::before, div::after { content: ""; position: fixed; inset: 0; background: #fff !important; } div { background: #fff !important; background-color: #fff !important; filter: invert(1) !important; backdrop-filter: blur(9px) !important; box-shadow: 0 0 0 200vmax #fff !important; outline: 200vmax solid #fff !important; width: 100vw !important; height: 100vh !important; opacity: 0.5 !important; }</style>');
+      }
+    </script>
+  </head>
+  <body>
+    <main>
+      <p>A calm, dark page for the flash words.</p>
+      <input id="feld" type="text" aria-label="Text field" />
+      <button id="knopf" type="button">Button</button>
+      <button id="vollbild" type="button" onclick="document.documentElement.requestFullscreen()">Fullscreen</button>
+      <div id="bearbeitbar" contenteditable="true" style="margin-top: 12px; min-height: 24px; border: 1px solid #3a3350">editable</div>
+      <iframe id="rahmen" title="frame" srcdoc="<input id='innen' style='margin:8px'>"></iframe>
+    </main>
+  </body>
+</html>

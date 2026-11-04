@@ -11,6 +11,7 @@ import {
   PACKBILD_MAX_BYTES,
   PACKBILD_MAX_SEITE,
   PACKBILD_MAX_SEITE_CHIBI,
+  PACKBILD_MAX_SEITE_WERBUNG,
   type AntwortFehler,
   type AntwortPackBild,
   type NachrichtErkennerPackBild,
@@ -18,7 +19,7 @@ import {
 import { horchePackGeaendert, leseDatei, leseMeta } from '../pack/db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from '../pack/format';
 import { hashe } from '../pack/patches';
-import type { Freischaltung, PackMeta } from '../pack/vertrag';
+import { formatMasse, WERBE_FORMATE, type Freischaltung, type PackMeta, type WerbeFormat } from '../pack/vertrag';
 
 const LESE_ABSTAND_MS = 1000;
 const MAX_IM_SPEICHER = 24;
@@ -35,6 +36,8 @@ let ungueltig = true;
 let horcht = false;
 let leseLauf: Promise<PackMeta | null> | null = null;
 const fertig = new Map<string, AntwortPackBild>();
+// Werbebilder haben einen eigenen Speicher: sie verdraengen keine Vorschau-Eintraege.
+const fertigWerbung = new Map<string, AntwortPackBild>();
 // Zaehlt jeden Wechsel des Packs (und jede Meldung darueber): ein Lauf, der mit Blob oder Namen des alten Packs begann, legt nichts mehr ab.
 let generation = 0;
 
@@ -46,6 +49,7 @@ async function ladeMeta(erzwingen = false): Promise<PackMeta | null> {
       ungueltig = true;
       generation++;
       fertig.clear();
+      fertigWerbung.clear();
     });
   }
   if (!ungueltig && performance.now() - gelesenUm < LESE_ABSTAND_MS) return meta;
@@ -53,7 +57,7 @@ async function ladeMeta(erzwingen = false): Promise<PackMeta | null> {
     ungueltig = false; // eine Meldung waehrend des Lesens macht den Stand gleich wieder ungueltig
     leseLauf = leseMeta()
       .then((neu) => {
-        if ((neu?.importiert ?? null) !== (meta?.importiert ?? null) || neu?.id !== meta?.id) { fertig.clear(); generation++; }
+        if ((neu?.importiert ?? null) !== (meta?.importiert ?? null) || neu?.id !== meta?.id) { fertig.clear(); fertigWerbung.clear(); generation++; }
         meta = neu;
         gelesenUm = performance.now();
         return neu;
@@ -129,21 +133,21 @@ async function verkleinere(blob: Blob, typ: string, maxSeite: number, mitAlpha: 
   }
 }
 
-function merke(schluessel: string, antwort: AntwortPackBild, lauf: number): void {
+function merke(schluessel: string, antwort: AntwortPackBild, lauf: number, speicher: Map<string, AntwortPackBild> = fertig): void {
   if (lauf !== generation) return;
-  if (fertig.size >= MAX_IM_SPEICHER) fertig.delete(fertig.keys().next().value as string);
-  fertig.set(schluessel, antwort);
+  if (speicher.size >= MAX_IM_SPEICHER) speicher.delete(speicher.keys().next().value as string);
+  speicher.set(schluessel, antwort);
 }
 
 // Waehlt stabil (Hash des Schluessels) und versucht bei einer nicht lesbaren Datei die naechsten.
-async function ausPack(namen: string[], schluessel: string, maxSeite: number, mitAlpha: boolean): Promise<AntwortPackBild | null> {
+async function ausPack(namen: string[], schluessel: string, maxSeite: number, mitAlpha: boolean, speicher: Map<string, AntwortPackBild> = fertig): Promise<AntwortPackBild | null> {
   if (!namen.length) return null;
   const lauf = generation;
   const start = hashe(schluessel) % namen.length;
   for (let i = 0; i < Math.min(4, namen.length); i++) {
     const name = namen[(start + i) % namen.length]!;
     const zwischen = `${mitAlpha ? 'c' : 'v'}|${maxSeite}|${name}`;
-    const gemerkt = fertig.get(zwischen);
+    const gemerkt = speicher.get(zwischen);
     if (gemerkt) return gemerkt;
     try {
       const datei = await leseDatei(name);
@@ -151,7 +155,7 @@ async function ausPack(namen: string[], schluessel: string, maxSeite: number, mi
       const k = await verkleinere(datei.blob, datei.typ, maxSeite, mitAlpha);
       if (!k) continue;
       const antwort: AntwortPackBild = { ok: true, dataUrl: k.dataUrl, breite: k.breite, hoehe: k.hoehe, name };
-      merke(zwischen, antwort, lauf);
+      merke(zwischen, antwort, lauf, speicher);
       return antwort;
     } catch {
       // naechstes Bild versuchen
@@ -191,13 +195,34 @@ export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<Ant
     let m = await ladeMeta();
     // Kein Pack oder keine Freischaltung kann auch ein veralteter Stand sein (die Meldung ueber ein neues Pack kommt nicht immer an):
     // einmal frisch lesen, bevor die Antwort negativ ausfaellt.
-    const braucht: Freischaltung = n.rolle === 'vorschau' ? 'erwachsen:vorschau' : 'chibi:pack';
+    const braucht: Freischaltung = n.rolle === 'vorschau' ? 'erwachsen:vorschau' : n.rolle === 'werbung' ? 'kontrolle:werbung' : 'chibi:pack';
     if (!m || !frei(m, braucht)) m = await ladeMeta(true);
     if (n.rolle === 'vorschau') {
       if (!m || !frei(m, 'erwachsen:vorschau')) return fehler('keine Vorschau-Bilder freigeschaltet');
       const namen = m.dateien.filter((d) => d.rolle === 'vorschau' && d.typ.startsWith('image/')).map((d) => d.name).sort();
       const a = await ausPack(namen, n.schluessel, begrenze(n.maxSeite, PACKBILD_MAX_SEITE), false);
       return a ?? fehler('kein Vorschau-Bild lesbar');
+    }
+    if (n.rolle === 'werbung') {
+      // Phase 5 (Auftrag W): Werbebild fuer das Format der Flaeche; stabil per Schluessel, ohne Bild dieses Formats das naechste Seitenverhaeltnis.
+      if (!m || !frei(m, 'kontrolle:werbung')) return fehler('keine Werbung freigeschaltet');
+      const format = (WERBE_FORMATE as readonly string[]).includes(n.format as string) ? (n.format as WerbeFormat) : null;
+      if (!format) return fehler('Format fehlt');
+      const bilder = m.dateien.filter((d) => d.rolle === 'werbung' && d.typ.startsWith('image/') && !!d.format);
+      const verh = (f: WerbeFormat) => {
+        const x = formatMasse(f);
+        return x.breite / x.hoehe;
+      };
+      const soll = verh(format);
+      // Reihenfolge: erst Bilder dieses Formats, dann die Formate nach naechstem Seitenverhaeltnis (auch wenn die ersten nicht lesbar sind).
+      const formate = [...new Set(bilder.map((d) => d.format!))].sort((x, y) => (x === format ? -1 : y === format ? 1 : Math.abs(Math.log(verh(x) / soll)) - Math.abs(Math.log(verh(y) / soll))));
+      let a: AntwortPackBild | null = null;
+      for (const f of formate) {
+        const namen = bilder.filter((d) => d.format === f).map((d) => d.name).sort();
+        a = await ausPack(namen, n.schluessel, begrenze(n.maxSeite, PACKBILD_MAX_SEITE_WERBUNG), false, fertigWerbung);
+        if (a) break;
+      }
+      return a ?? fehler('kein Werbebild lesbar');
     }
     if (n.rolle === 'chibi') {
       const pose = (CHIBI_POSEN as readonly string[]).includes(n.schluessel) ? (n.schluessel as ChibiPose) : null;

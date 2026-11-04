@@ -109,6 +109,9 @@ export default defineConfig({
       // Referer-Sitzungsregeln (Umleitung entfaellt seit Session 8, Entscheidung 107; keine web_accessible_resources). WithHostAccess zeigt in Chrome und Firefox keine eigene
       // Installationswarnung (Firefox: nur `declarativeNetRequest` hat den Text "Block content on any page").
       'declarativeNetRequestWithHostAccess',
+      // idle (Phase 5, Auftrag L): Leerlauf der Person fuer die Leerlauf-Spirale, ohne Ereignis-Horcher auf jeder Seite; ohne
+      // Installationswarnung in Chrome und Firefox.
+      'idle',
     ],
     // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
     host_permissions: ['<all_urls>'],

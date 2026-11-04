@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Spirale-Testseite</title>
+    <script>
+      // Zaehler in der Erfassungsphase am Fenster, ganz frueh angemeldet (vor dem Rest der Seite): was die Seite von Eingaben sieht,
+      // bevor irgendein Horcher weiter unten drankommt.
+      window.zaehlerCapture = { pointerdown: 0, pointerup: 0, mousedown: 0, mouseup: 0, click: 0, keydown: 0, keyup: 0, keypress: 0, wheel: 0, contextmenu: 0 };
+      for (const t of Object.keys(window.zaehlerCapture)) window.addEventListener(t, () => { window.zaehlerCapture[t]++; }, true);
+      if (new URLSearchParams(location.search).get('lang') === '1') document.addEventListener('DOMContentLoaded', () => { document.body.style.minHeight = '6000px'; });
+    </script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #link { position: fixed; left: 100px; top: 100px; width: 240px; height: 80px; background: #cde; display: block; }
+      #feld { position: fixed; left: 400px; top: 100px; width: 200px; height: 30px; }
+      #knopf { position: fixed; left: 400px; top: 200px; width: 120px; height: 40px; }
+    </style>
+  </head>
+  <body>
+    <h1>Spirale-Test</h1>
+    <!-- Der Link zeigt auf eine andere Datei: wurde er angeklickt, wechselt die Adresse. -->
+    <a id="link" href="/hello.html">Link</a>
+    <input id="feld" type="text" />
+    <button id="knopf" type="button">Vollbild</button>
+    <script>
+      // Zaehler fuer das, was die Seite von Eingaben sieht (document und Fenster in der Blasenphase, Element selbst).
+      window.zaehler = { keydown: 0, keyup: 0, mousedown: 0, mouseup: 0, click: 0, linkClick: 0, wheel: 0, mousemove: 0 };
+      for (const t of Object.keys(window.zaehler)) {
+        if (t === 'linkClick') continue;
+        document.addEventListener(t, () => { window.zaehler[t]++; });
+        window.addEventListener(t, () => { window.zaehler[t]++; });
+      }
+      document.getElementById('link').addEventListener('click', () => { window.zaehler.linkClick++; });
+      document.getElementById('knopf').addEventListener('click', () => { document.documentElement.requestFullscreen().catch(() => {}); });
+      var q = new URLSearchParams(location.search);
+      if (q.get('feld') === '1') document.getElementById('feld').focus();
+      if (q.get('rahmen') === '1') {
+        var f = document.createElement('iframe');
+        f.id = 'rahmen';
+        f.srcdoc = '<input id="innen">';
+        f.style.cssText = 'position:fixed;left:400px;top:300px;width:200px;height:60px';
+        document.body.appendChild(f);
+      }
+    </script>
+  </body>
+</html>

@@ -10,6 +10,8 @@ import { bearbeitePackDaten } from '../src/hintergrund/quiz';
 import { bearbeiteSteigerung, starteSteigerung } from '../src/hintergrund/steigerung';
 import { bearbeiteErsatzStumm, starteErsatzStumm } from '../src/hintergrund/ersatz-stumm';
 import { raeumeUmleitungAuf } from '../src/hintergrund/umleitung';
+// Phase 5 (Auftrag L): Leerlauf-Erkennung fuer die Spirale.
+import { bearbeiteLeerlaufTest, starteLeerlauf } from '../src/hintergrund/leerlauf';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -214,6 +216,7 @@ export default defineBackground(() => {
   // Session 8 (Entscheidung 107): keine Umleitung mehr; eine Regel aus Version 0.4.0 wird beim Start entfernt.
   raeumeUmleitungAuf();
   starteErsatzStumm();
+  starteLeerlauf();
 
   // Chrome: Offscreen-Dokument bei Installation und Browserstart anlegen.
   if (import.meta.env.CHROME) {
@@ -247,6 +250,8 @@ export default defineBackground(() => {
         return bearbeiteSteigerung(n, absender);
       case 'ersatz-stumm':
         return bearbeiteErsatzStumm(n, absender);
+      case 'leerlauf-test':
+        return bearbeiteLeerlaufTest(n, absender);
       default:
         return undefined;
     }

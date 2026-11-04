@@ -2,8 +2,9 @@
 //   npm run pack:bau -- --quelle <ordner> --aus <datei>   Ordner mit pack.json und den Dateien
 //   npm run pack:dummy [-- --aus <datei>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
 // pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch", ...], "lizenz": "<Name der Lizenzdatei>",
-//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi",
-//                            "stufe"?: "tease"|"hot"|"explicit" }] }   (vorschau braucht eine Stufe, quiz und texte hoechstens einmal)
+//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung",
+//                            "stufe"?: "tease"|"hot"|"explicit", "format"?: "300x250"|... }] }
+//              (vorschau braucht eine Stufe, werbung ein Format aus WERBE_FORMATE, quiz und texte hoechstens einmal)
 // `datei` ist der Pfad unter dem Quellordner (Standard: gleich `name`), `typ` wird sonst aus der Endung geschlossen.
 // Die Ausgabe landet nie im Repo: erlaubt sind Orte ausserhalb des Repos und Ordner `.output*` darin (ignoriert).
 // Mia-Bilder liest nur der echte Bau (spaeter aus dem Assets-Ordner neben dem Repo); das Dummy-Pack erzeugt seine Bilder zur Laufzeit.
@@ -94,6 +95,21 @@ async function dummyChibi(farbe, seite = 256) {
 }
 export const DUMMY_CHIBI_POSEN = ['jubeln', 'schmollen', 'sprechblase'];
 
+// Phase 5 (Auftrag W): synthetische Werbebilder je Format, Rot mit Dunkelgrau bzw. Rot mit Weiss (weit weg von Patch-, Vorschau- und
+// Rahmenfarben). Zwei Bilder fuer 300x250, damit die Rotation je Seitenaufruf pruefbar ist.
+export const DUMMY_WERBUNG = [
+  { format: '300x250', farben: [[220, 20, 40], [40, 40, 40]] },
+  { format: '300x250', farben: [[220, 20, 40], [250, 250, 250]] },
+  { format: '336x280', farben: [[200, 10, 30], [40, 40, 40]] },
+  { format: '728x90', farben: [[220, 20, 40], [40, 40, 40]] },
+  { format: '468x60', farben: [[200, 10, 30], [250, 250, 250]] },
+  { format: '160x600', farben: [[220, 20, 40], [40, 40, 40]] },
+  { format: '300x600', farben: [[200, 10, 30], [40, 40, 40]] },
+  { format: '320x50', farben: [[220, 20, 40], [250, 250, 250]] },
+  { format: '320x100', farben: [[200, 10, 30], [250, 250, 250]] },
+  { format: '970x250', farben: [[220, 20, 40], [40, 40, 40]] },
+];
+
 function lizenzTextDummy() {
   try {
     return readFileSync(path.join(wurzel, 'LIZENZ-MIA-INHALTE.md'), 'utf8');
@@ -135,6 +151,11 @@ export async function baueDummyPack(opts = {}) {
     for (let i = 0; i < DUMMY_CHIBI_POSEN.length; i++) {
       dateien.push({ name: `chibi/${DUMMY_CHIBI_POSEN[i]}.webp`, typ: 'image/webp', daten: await dummyChibi(DUMMY_VORSCHAU_FARBEN[i][1]), rolle: 'chibi' });
     }
+    for (let i = 0; i < DUMMY_WERBUNG.length; i++) {
+      const { format, farben } = DUMMY_WERBUNG[i];
+      const [b, h] = format.split('x').map(Number);
+      dateien.push({ name: `werbung/dummy-${i + 1}-${format}.webp`, typ: 'image/webp', daten: await dummyBild(farben[0], farben[1], b, h), rolle: 'werbung', format });
+    }
     const json = (x) => new TextEncoder().encode(JSON.stringify(x, null, 1));
     dateien.push({ name: 'quiz.json', typ: 'application/json', daten: json(opts.quiz ?? DUMMY_QUIZ), rolle: 'quiz' });
     dateien.push({ name: 'texte.json', typ: 'application/json', daten: json(opts.texte ?? DUMMY_TEXTE), rolle: 'texte' });
@@ -147,7 +168,19 @@ export async function baueDummyPack(opts = {}) {
       erstellt: new Date().toISOString(),
       mindestVeil: paketJson.version,
       freischaltungen: phase4
-        ? ['stil:mia-patch', 'erwachsen:vorschau', 'erwachsen:quiz', 'erwachsen:titel', 'erwachsen:ersatz', 'quiz:freilegen', 'zensur:steigerung', 'chibi:pack']
+        ? [
+            'stil:mia-patch',
+            'erwachsen:vorschau',
+            'erwachsen:quiz',
+            'erwachsen:titel',
+            'erwachsen:ersatz',
+            'quiz:freilegen',
+            'zensur:steigerung',
+            'chibi:pack',
+            'kontrolle:werbung',
+            'kontrolle:blitz',
+            'kontrolle:leerlauf',
+          ]
         : ['stil:mia-patch'],
     },
     dateien,
@@ -159,6 +192,7 @@ export async function baueDummyPack(opts = {}) {
     vorschauFarben: phase4 ? DUMMY_VORSCHAU_FARBEN.flat() : [],
     vorschau: phase4 ? DUMMY_VORSCHAU_FARBEN.length : 0,
     chibis: phase4 ? DUMMY_CHIBI_POSEN.length : 0,
+    werbung: phase4 ? DUMMY_WERBUNG.length : 0,
   };
 }
 
@@ -179,6 +213,7 @@ export async function bauePackAusOrdner(quelle) {
     const rolle = d.name === beschreibung.lizenz ? 'lizenz' : d.rolle;
     if (rolle) eintrag.rolle = rolle;
     if (d.stufe) eintrag.stufe = d.stufe;
+    if (d.format) eintrag.format = d.format;
     dateien.push(eintrag);
   }
   return pruefeErgebnis(await schreibePack(

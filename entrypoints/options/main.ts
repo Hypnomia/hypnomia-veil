@@ -8,6 +8,8 @@ import { hostAus } from '../../src/adapter/liste';
 import { hatErwachsenFunktionen, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import type { Texte } from '../../src/quiz/vertrag';
+// Phase 5: Abschnitt "Mia’s control" (eigenes Modul).
+import './kontrolle';
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);

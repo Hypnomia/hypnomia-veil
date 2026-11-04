@@ -32,5 +32,9 @@ export const DUMMY_TEXTE = {
     stufe2: ['Test level two line.'],
     stufe3: ['Test level three line.'],
     stufe4: ['Test level four line.'],
+    // Phase 5 (Session 9): Blitzwoerter, Satz der Leerlauf-Spirale, Kennzeichnung der getauschten Werbung (muss "Mia" enthalten).
+    blitzwoerter: ['TESTWORD', 'TESTFLASH', 'TESTDOWN'],
+    leerlauf: ['Test idle line.'],
+    werbung: ['Test ad by Mia'],
   },
 };

@@ -65,7 +65,9 @@ export interface QuizBank {
 // ---------- Mias Saetze ----------
 // Gruppen (QUIZ-ENTWURF Teil 5, PHASE-4-BAUPLAN Abschnitte 2, 9, 10). Platzhalter: `{{title}}` (nur `titel`), `{{seconds}}` (nur
 // `freigelegt`). Die Gruppen `stufe1` bis `stufe4` sind Mias Kommentar zur Steigerung der Zensur im Popup (fehlen sie, nimmt das Popup
-// seinen eingebauten Text).
+// seinen eingebauten Text). Phase 5 (PHASE-5-AUFTRAEGE-SESSION-9.md): `blitzwoerter` (einzelne Woerter oder kurze Wortgruppen fuer die
+// Blitzwoerter, hoechstens MAX_BLITZWORT_ZEICHEN), `leerlauf` (Mias Satz auf der Leerlauf-Spirale), `werbung` (Kennzeichnung der
+// getauschten Werbung, muss "Mia" enthalten und hoechstens MAX_WERBE_ZEICHEN haben, Mozilla-Regel O1 b).
 export const SATZ_GRUPPEN = [
   'start',
   'richtig',
@@ -79,6 +81,9 @@ export const SATZ_GRUPPEN = [
   'stufe2',
   'stufe3',
   'stufe4',
+  'blitzwoerter',
+  'leerlauf',
+  'werbung',
 ] as const;
 export type SatzGruppe = (typeof SATZ_GRUPPEN)[number];
 // Ohne diese Gruppen (mindestens ein Satz) gilt die Texte-Datei als ungueltig.
@@ -101,6 +106,8 @@ export const MAX_PARAM = 12;
 export const MAX_PARAM_ZEICHEN = 80;
 export const MAX_SAETZE_JE_GRUPPE = 200;
 export const MAX_TEXT_ZEICHEN = 200;
+export const MAX_BLITZWORT_ZEICHEN = 24;
+export const MAX_WERBE_ZEICHEN = 40;
 const ID_MUSTER = /^[a-z0-9][a-z0-9-]{0,39}$/i;
 const PARAM_NAME = /^[a-zA-Z]{1,20}$/;
 
@@ -203,7 +210,10 @@ export function pruefeTexte(roh: unknown): Texte | null {
       .filter((s): s is string => s !== null)
       // Platzhalter nur dort, wo sie ersetzt werden.
       .filter((s) => (g === 'titel' ? s.includes('{{title}}') : !s.includes('{{title}}')))
-      .filter((s) => g === 'freigelegt' || !s.includes('{{seconds}}'));
+      .filter((s) => g === 'freigelegt' || !s.includes('{{seconds}}'))
+      .filter((s) => g !== 'blitzwoerter' || [...s].length <= MAX_BLITZWORT_ZEICHEN)
+      // Werbe-Kennzeichnung immer erkennbar von Mia (Entscheidung 99, Mozilla O1 b).
+      .filter((s) => g !== 'werbung' || ([...s].length <= MAX_WERBE_ZEICHEN && /\bmia\b/i.test(s)));
     if (saetze.length > 0) gruppen[g] = saetze;
   }
   if (PFLICHT_GRUPPEN.some((g) => !gruppen[g])) return null;

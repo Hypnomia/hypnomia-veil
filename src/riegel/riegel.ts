@@ -176,6 +176,11 @@ let aktuell: { grund: RiegelOptionen['grund']; anker: Element | null; ergebnis: 
 const sitzungsZustand = neuerSitzungsZustand();
 const LADE_FRIST_MS = 5000;
 
+// Phase 5 (Vertrag Session 9): steht gerade ein Riegel (auch waehrend er laedt)? Blitzwoerter und Leerlauf-Spirale ruhen dann.
+export function riegelOffen(): boolean {
+  return aktuell !== null;
+}
+
 export function zeigeRiegel(opt: RiegelOptionen): Promise<RiegelErgebnis> {
   const anker = opt.anker ?? null;
   if (aktuell) return aktuell.grund === opt.grund && aktuell.anker === anker ? aktuell.ergebnis : Promise.resolve('abgebrochen');

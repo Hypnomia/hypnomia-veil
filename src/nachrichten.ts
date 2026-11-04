@@ -4,6 +4,7 @@
 
 import type { Einstellungen, Zone } from './einstellungen';
 import type { QuizBank, Texte } from './quiz/vertrag';
+import type { WerbeFormat } from './pack/vertrag';
 
 export type Ziel = 'hintergrund' | 'erkenner' | 'inhalt';
 
@@ -30,6 +31,10 @@ export interface NachrichtHintergrundSteigerungUhr { ziel: 'hintergrund'; typ: '
 // auf den vorherigen Stand. `abgang`: die Seite wird verlassen (pagehide); der Ton kommt erst zurueck, wenn die neue Seite geladen ist
 // (Firefox setzt den Ton sonst waehrend der Navigation wieder stumm). Der Tab kommt aus sender.tab.id. Handler: src/hintergrund/ersatz-stumm.ts.
 export interface NachrichtHintergrundErsatzStumm { ziel: 'hintergrund'; typ: 'ersatz-stumm'; an: boolean; abgang?: boolean }
+// Leerlauf-Spirale (Auftrag L, Phase 5): der Hintergrund erkennt Leerlauf mit `browser.idle` und schickt der obersten Seite des aktiven Tabs im
+// zuletzt fokussierten Fenster `NachrichtInhaltLeerlauf`. Testhaken (nur WXT_TESTHAKEN): `typ: 'leerlauf-test'` spielt einen Zustandswechsel
+// vor (der Testbau wertet `browser.idle` sonst nicht aus, damit die Spirale nicht in fremde Tests faellt). Handler: src/hintergrund/leerlauf.ts.
+export interface NachrichtHintergrundLeerlaufTest { ziel: 'hintergrund'; typ: 'leerlauf-test'; zustand: 'active' | 'idle' | 'locked' }
 
 export type NachrichtHintergrund =
   | NachrichtHintergrundWecke
@@ -40,7 +45,8 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundPackDaten
   | NachrichtHintergrundSteigerungMinute
   | NachrichtHintergrundSteigerungUhr
-  | NachrichtHintergrundErsatzStumm;
+  | NachrichtHintergrundErsatzStumm
+  | NachrichtHintergrundLeerlaufTest;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -53,6 +59,7 @@ export const HINTERGRUND_TYPEN = [
   'steigerung-minute',
   'steigerung-uhr',
   'ersatz-stumm',
+  'leerlauf-test',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }
@@ -101,10 +108,21 @@ export interface NachrichtErkennerPruefe {
 // `ok: false`. Chibi: `schluessel` ist die Pose (src/chibi.ts); mit `chibi:pack` ein passendes Pack-Chibi, sonst das Demo-Chibi aus
 // `/chibi/<pose>.webp`, fehlt beides `ok: false`. Chibis behalten Transparenz (WebP oder PNG), Vorschau als JPEG.
 // Handler: src/erkenner/packbild.ts (Auftrag E; Chibi-Zweig nutzt Auftrag Q fuer den Riegel).
-export interface NachrichtErkennerPackBild { ziel: 'erkenner'; typ: 'packbild'; rolle: 'vorschau' | 'chibi'; schluessel: string; maxSeite?: number }
+// Phase 5 (Auftrag W): Rolle `werbung` nur mit `kontrolle:werbung` im Meta; `format` ist das Format der Flaeche, gewaehlt wird stabil per
+// Schluessel unter den Werbebildern dieses Formats (fehlt es, unter dem naechstliegenden Seitenverhaeltnis); JPEG oder WebP ohne Transparenz,
+// laengste Seite hoechstens PACKBILD_MAX_SEITE_WERBUNG.
+export interface NachrichtErkennerPackBild {
+  ziel: 'erkenner';
+  typ: 'packbild';
+  rolle: 'vorschau' | 'chibi' | 'werbung';
+  schluessel: string;
+  maxSeite?: number;
+  format?: WerbeFormat;
+}
 export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerPruefe | NachrichtErkennerPackBild;
 export const PACKBILD_MAX_SEITE = 480;
 export const PACKBILD_MAX_SEITE_CHIBI = 512;
+export const PACKBILD_MAX_SEITE_WERBUNG = 970;
 export const PACKBILD_MAX_BYTES = 600_000;
 export interface AntwortPackBild { ok: true; dataUrl: string; breite: number; hoehe: number; name: string }
 
@@ -157,7 +175,9 @@ export type AntwortPruefe = AntwortPruefeOk | AntwortPruefeFehler;
 // ---------- Ziel inhalt (Content-Script, per tabs.sendMessage vom Hintergrund) ----------
 // Neue Adresse des Tabs nach einem Adresswechsel der obersten Seite. Antwort: keine (undefined).
 export interface NachrichtInhaltTab { ziel: 'inhalt'; typ: 'tab'; url: string }
-export type NachrichtInhalt = NachrichtInhaltTab;
+// Phase 5 (Auftrag L): Leerlauf beginnt (`an: true`, Zustand idle) oder endet (`an: false`, active oder locked). Antwort: keine.
+export interface NachrichtInhaltLeerlauf { ziel: 'inhalt'; typ: 'leerlauf'; an: boolean }
+export type NachrichtInhalt = NachrichtInhaltTab | NachrichtInhaltLeerlauf;
 
 export type Nachricht = NachrichtHintergrund | NachrichtErkenner | NachrichtInhalt;
 

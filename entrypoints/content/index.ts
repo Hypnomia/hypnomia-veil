@@ -8,6 +8,9 @@ import { bindeKontext } from '../../src/riegel/riegel';
 import { starteErsatz } from '../../src/ersatz/ersatz';
 import { startePlayer } from '../../src/player/player';
 import { starteTitel } from '../../src/titel/titel';
+import { starteWerbung } from '../../src/werbung/werbung';
+import { starteBlitz } from '../../src/blitz/blitz';
+import { starteSpirale } from '../../src/spirale/spirale';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -24,5 +27,10 @@ export default defineContentScript({
     starteSchleier(ctx);
     startePlayer(ctx);
     starteTitel(ctx);
+    // Phase 5 (Session 9, Kontrolle): Werbe-Tausch in jedem Frame, Blitzwoerter und Leerlauf-Spirale nur in der obersten Seite (die Module
+    // pruefen das selbst).
+    starteWerbung(ctx);
+    starteBlitz(ctx);
+    starteSpirale(ctx);
   },
 });

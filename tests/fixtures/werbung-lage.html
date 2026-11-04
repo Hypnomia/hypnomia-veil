@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lage der Werbung: Karussell, Kopfleiste, Dialog (synthetisch, Auftrag W)</title>
+    <script>
+      // Fruehe Zaehler der Seite in der Erfassungsphase am Fenster (so arbeiten Popunder-Skripte). __ev zaehlt Klick-Ereignisse, __bew
+      // Bewegung, Rad und Loslassen: die muessen auch ueber Mias Flaeche bei der Seite ankommen (Ziehen, Wischen).
+      window.__ev = { gesamt: 0, typen: {} };
+      window.__bew = { gesamt: 0, typen: {} };
+      for (const typ of ['click', 'mousedown', 'pointerdown', 'auxclick', 'contextmenu', 'dblclick']) {
+        window.addEventListener(typ, () => {
+          window.__ev.gesamt++;
+          window.__ev.typen[typ] = (window.__ev.typen[typ] || 0) + 1;
+        }, true);
+      }
+      for (const typ of ['pointermove', 'mousemove', 'wheel', 'mouseup', 'pointerup', 'touchmove']) {
+        window.addEventListener(typ, () => {
+          window.__bew.gesamt++;
+          window.__bew.typen[typ] = (window.__bew.typen[typ] || 0) + 1;
+        }, true);
+      }
+    </script>
+    <style>
+      body { margin: 0; padding: 0 8px; font-family: sans-serif; min-height: 2400px; }
+      #kopf { position: sticky; top: 0; z-index: 50; height: 60px; background: #123; color: #fff; }
+      .zeile { margin: 0 0 16px 0; }
+      #kar { width: 400px; height: 250px; overflow: hidden; position: relative; }
+      #kar-reihe { display: flex; width: 1400px; }
+      #kar-reihe > * { flex: none; }
+      #a-kar, #a-kar-weit { width: 300px; height: 250px; background: #cde; }
+      #modal { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 100; background: rgba(0, 0, 0, 0.5); }
+      .imp { visibility: visible !important; opacity: 1 !important; }
+      #a-wichtig, #a-aus, #a-wachs, #a-fest { background: #dec; }
+      #a-wachs { display: block; width: 300px; }
+      #a-fest { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 250px; z-index: 10; }
+    </style>
+  </head>
+  <body>
+    <div id="kopf">Sticky header</div>
+    <h1>Layout cases</h1>
+    <div class="zeile">
+      <div id="kar"><div id="kar-reihe"><div style="width: 250px; height: 250px"></div><div class="ad-slot" id="a-kar"></div><div style="width: 50px"></div><div class="ad-slot" id="a-kar-weit"></div></div></div>
+    </div>
+    <!-- Werbeflaeche in einem Link der Seite (Klick auf Mias Kennzeichnung darf den Link nicht ausloesen) -->
+    <div class="zeile"><a id="a-link" class="ad-slot" href="/werbung-ziel-seitenlink.html" style="display: block; width: 300px; height: 250px; background: #fed"></a></div>
+    <!-- skalierter Vorfahr: 286x238 mal 1,05 ergibt 300x250 im Fenster -->
+    <div class="zeile" style="height: 262px"><div style="transform: scale(1.05); transform-origin: 0 0; width: 286px; height: 238px"><div class="ad-slot" id="a-skal" style="width: 286px; height: 238px; background: #def"></div></div></div>
+    <div class="zeile"><div class="ad-slot imp" id="a-wichtig" style="width: 300px; height: 250px"></div></div>
+    <div class="zeile"><div id="ausblend"><div class="ad-slot" id="a-aus" style="width: 300px; height: 250px"></div></div></div>
+    <!-- waechst ohne Attributaenderung am Element: ein Kind mit fester Groesse kommt spaeter hinein -->
+    <div class="zeile"><div class="ad-slot" id="a-wachs"></div></div>
+    <div id="a-fest" class="ad-slot"></div>
+    <!-- offener Shadow Root mit Werbung darin -->
+    <div class="zeile"><div id="schatten"></div></div>
+    <script>
+      const sr = document.getElementById('schatten').attachShadow({ mode: 'open' });
+      sr.innerHTML = '<ins class="adsbygoogle" id="sh-ins" style="display:block;width:300px;height:250px;background:#ddd"></ins>';
+    </script>
+    <div id="modal"><p style="color: #fff">Page dialog</p></div>
+    <script>
+      window.zeigeModal = (an) => (document.getElementById('modal').style.display = an ? 'block' : 'none');
+      window.blendeAus = (an) => (document.getElementById('ausblend').style.visibility = an ? 'hidden' : 'visible');
+      window.__wachsAm = null;
+      setTimeout(() => {
+        const k = document.createElement('span');
+        k.style.cssText = 'display:block;width:300px;height:250px';
+        document.getElementById('a-wachs').append(k);
+        window.__wachsAm = performance.now();
+      }, 1500);
+    </script>
+  </body>
+</html>
