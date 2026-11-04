@@ -41,6 +41,7 @@ input { font: inherit; flex: 1; min-width: 0; min-height: 44px; padding: 8px 10p
 .zeit { font-weight: 700; color: #b03a86; min-height: 1.4em; }
 .fang { min-height: 44px; width: 100%; display: flex; align-items: center; justify-content: center; border-radius: 12px; border: 2px dashed #d9a6ff; padding: 6px; text-align: center; }
 .warnung { margin: 4px 0 10px; }
+.ansage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 520px) { .huelle { padding: 0; } .karte { max-width: none; min-height: 100%; border-radius: 0; border-width: 0; } }
 @media (prefers-reduced-motion: reduce) { .spirale.dreht { animation: none; } }
 `;

@@ -99,3 +99,36 @@ export class VorschauSpeicher {
     this.bytes = 0;
   }
 }
+
+// Merkt Elemente, die waehrend der Transport-Sperre den normalen Schleier bekamen und nach Ende der Sperre erneut getauscht werden sollen.
+// Reine Logik: ein Eintrag gilt nur, solange die Generation des Zustands gleich blieb (sonst wurde das Element inzwischen neu bewertet).
+export class NachtauschMerker<E extends object, Z extends { generation: number }> {
+  private readonly eintraege = new Map<E, { z: Z; generation: number }>();
+
+  private readonly max: number;
+
+  constructor(max = 2000) {
+    this.max = max;
+  }
+
+  get anzahl(): number {
+    return this.eintraege.size;
+  }
+
+  merke(el: E, z: Z): void {
+    if (!this.eintraege.has(el) && this.eintraege.size >= this.max) return;
+    this.eintraege.set(el, { z, generation: z.generation });
+  }
+
+  // Alle noch gueltigen Eintraege; die Liste ist danach leer.
+  nimm(): Array<[E, Z]> {
+    const aus: Array<[E, Z]> = [];
+    for (const [el, e] of this.eintraege) if (e.z.generation === e.generation) aus.push([el, e.z]);
+    this.eintraege.clear();
+    return aus;
+  }
+
+  leere(): void {
+    this.eintraege.clear();
+  }
+}

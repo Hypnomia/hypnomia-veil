@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Original tab title</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .karte { display: block; width: 320px; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <!-- Aufbau nach den Titel-Selektoren der Adapter: Pornhub (span.title a, h1.title) und XVideos (h2.page-title, div.thumb-under p a). -->
+    <h1 class="title" id="seitentitel"><i class="icon" id="symbol">*</i><span id="seitentitel-text">Original page title</span></h1>
+    <h2 class="page-title" id="seitentitel-xv">Original xvideos page title</h2>
+    <div id="liste">
+      <div class="karte" id="k1"><span class="title"><a id="t1" href="/view_video.php?viewkey=1" title="Original card one">Original card one</a></span></div>
+      <div class="karte" id="k2"><span class="title"><a id="t2" href="/view_video.php?viewkey=2" title="Original card two">Original card two</a></span></div>
+      <div class="karte" id="k3"><span class="title"><a id="t3" href="/view_video.php?viewkey=3">This is a very long original card title that goes on and on far beyond sixty characters in total</a></span></div>
+      <div class="karte" id="k4"><span class="title"><a id="t4" href="/view_video.php?viewkey=4">&lt;b&gt;bold&lt;/b&gt; &lt;img src=x onerror=window.__xss=1&gt; title</a></span></div>
+      <div class="thumb-under" id="k5"><p><a id="t5" href="/video5/x">Original xvideos card</a></p></div>
+      <div class="karte" id="k7"><span class="title"><a id="t7" href="/view_video.php?viewkey=7">Foo <b>bar</b> baz</a></span></div>
+      <div class="karte" id="k8"><span class="title"><a id="t8" href="/view_video.php?viewkey=8">Wow <span class="duration" id="dauer8">10 min</span></a></span></div>
+      <div class="karte" id="k9"><span class="title"><a id="t9" href="/view_video.php?viewkey=9" title="Tooltip full title nine">Shortened text nine</a></span></div>
+      <div class="karte" id="k6"><span class="other"><a id="t6" href="/view_video.php?viewkey=6">Not a title element</a></span></div>
+    </div>
+    <script>
+      // Hilfen der Tests: die Seite schreibt Titel neu wie React oder ein Router es tut.
+      let zaehler = 100;
+      window.schreibeKarteNeu = (id, text) => {
+        const a = document.getElementById(id);
+        a.textContent = text; // ersetzt den Textknoten
+      };
+      window.setzeTabTitel = (text) => {
+        document.title = text;
+      };
+      window.neueKarte = (text) => {
+        const n = ++zaehler;
+        const d = document.createElement('div');
+        d.className = 'karte';
+        d.id = `k${n}`;
+        d.innerHTML = '<span class="title"><a id="t' + n + '" href="/view_video.php?viewkey=' + n + '"></a></span>';
+        d.querySelector('a').textContent = text;
+        document.getElementById('liste').appendChild(d);
+        return `t${n}`;
+      };
+      // Seitenwechsel ohne Neuladen: Liste und Seitentitel werden ersetzt, der Tab-Titel neu gesetzt.
+      window.geheZu = (pfad) => history.pushState({}, '', pfad);
+      window.seitenwechsel = (pfad) => {
+        if (pfad) history.pushState({}, '', pfad);
+        const liste = document.getElementById('liste');
+        liste.textContent = '';
+        for (const t of ['Routed card A', 'Routed card B']) window.neueKarte(t);
+        document.getElementById('seitentitel-text').textContent = 'Routed page title';
+        document.title = 'Routed tab title';
+      };
+      // Endlos-Neuaufbau: die Seite schreibt eine Karte alle 20 ms neu (prueft, dass wir keine Schleife bilden).
+      window.__sturmSchreibungen = 0;
+      window.starteSturm = () => {
+        window.__sturm = setInterval(() => {
+          window.__sturmSchreibungen++;
+          window.schreibeKarteNeu('t1', 'Original card one');
+        }, 20);
+      };
+      // Eine Seite, die lange Titel selbst kuerzt, liest dabei unseren Text und schreibt ihn zurueck.
+      window.kuerzeSelbst = (id) => {
+        const a = document.getElementById(id);
+        a.textContent = a.textContent.slice(0, 24) + '...';
+      };
+      window.stoppeSturm = () => clearInterval(window.__sturm);
+    </script>
+  </body>
+</html>

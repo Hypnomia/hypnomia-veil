@@ -23,11 +23,12 @@ async function bis(beschreibung, fn, frist = 30_000, schritt = 100) {
   throw new Error(`${beschreibung}: Frist abgelaufen (letzter Wert: ${JSON.stringify(letzter)?.slice(0, 300)})`);
 }
 
-export async function starteChromiumMitPack({ hostRegeln = [] } = {}) {
+export async function starteChromiumMitPack({ hostRegeln = [], extraArgs = [] } = {}) {
   if (!existsSync(chromeErweiterung)) throw new Error(`Build fehlt: ${chromeErweiterung}`);
   const profil = await tempProfil('veil-messung-p4-');
   const args = [`--disable-extensions-except=${chromeErweiterung}`, `--load-extension=${chromeErweiterung}`];
   if (hostRegeln.length) args.push(`--host-resolver-rules=${hostRegeln.join(',')}`);
+  args.push(...extraArgs);
   const context = await chromium.launchPersistentContext(profil.ordner, { channel: 'chromium', headless: true, args });
   let worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   const erweiterungsId = new URL(worker.url()).host;
@@ -104,12 +105,13 @@ export async function starteChromiumMitPack({ hostRegeln = [] } = {}) {
   return api;
 }
 
-export async function starteFirefoxMitPack({ hosts = [] } = {}) {
+export async function starteFirefoxMitPack({ hosts = [], praefs = {} } = {}) {
   if (!existsSync(firefoxZip)) throw new Error(`Paket fehlt: ${firefoxZip.split('/').slice(-2).join('/')}`);
   const uuid = randomUUID();
   const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   if (hosts.length) optionen.setPreference('network.dns.localDomains', hosts.join(','));
+  for (const [k, v] of Object.entries(praefs)) optionen.setPreference(k, v);
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
@@ -169,6 +171,8 @@ export async function starteFirefoxMitPack({ hosts = [] } = {}) {
       await zurueck();
     }
   }
+  // Dauerhafter Erweiterungs-Tab (Session 8): schnelle Einstellungswechsel ohne Tab auf- und zuzumachen. Der Inhalts-Tab bleibt der sichtbare.
+  let extTab = null;
   const text = (css) => driver.findElement(By.css(css)).getText();
   const sichtbar = (css) => driver.findElement(By.css(css)).isDisplayed();
 
@@ -186,6 +190,23 @@ export async function starteFirefoxMitPack({ hosts = [] } = {}) {
           neu,
         ),
       ),
+    async oeffneDauerhaft() {
+      await oeffneErweiterung('options.html');
+      extTab = await driver.getWindowHandle();
+      await driver.switchTo().window(hauptFenster);
+    },
+    async setzeSchnell(neu) {
+      await driver.switchTo().window(extTab);
+      try {
+        return await imSeitenkontext(
+          `const alt = (await api.storage.local.get('einstellungen')).einstellungen ?? {};
+           await api.storage.local.set({ einstellungen: { ...alt, ...args[0] } }); return true;`,
+          neu,
+        );
+      } finally {
+        await driver.switchTo().window(hauptFenster);
+      }
+    },
     loescheEinstellungen: () => mitOptionen(() => imSeitenkontext(`await api.storage.local.remove('einstellungen'); return true;`)),
     sendeAnErkenner: (n) => mitOptionen(() => imSeitenkontext(`const a = await api.runtime.sendMessage(args[0]); return JSON.parse(JSON.stringify(a));`, n)),
     importierePack: (pfad) =>

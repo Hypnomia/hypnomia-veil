@@ -2,7 +2,7 @@
 // Die Shadow Root bleibt auch im Testbau geschlossen. Tests sehen den Riegel ueber ein Abbild in `data-veil-riegel` (JSON am html-Element:
 // Zustand, Frage, Antworten, Rechtecke der Bedienelemente) und das Ergebnis in `data-veil-riegel-ergebnis`; sie oeffnen ihn ueber das
 // Ereignis `veil-test` mit `{ riegel: { oeffne: {...} } }` (siehe `testRiegel`).
-import { zeigeRiegel } from './riegel';
+import { gebundenerKontext, zeigeRiegel } from './riegel';
 import { loescheErgebnis, schreibeErgebnis, testRiegelAktiv } from './testspur';
 
 interface OeffneBefehl {
@@ -19,10 +19,20 @@ interface OeffneBefehl {
   anker?: string;
 }
 
+// Stellt das Ende des Erweiterungskontexts nach (WXT: notifyInvalidated ruft alle onInvalidated-Rueckrufe, auch den des Riegels).
+interface MitInvalidierung {
+  notifyInvalidated?: () => void;
+}
+
 // Wird vom Handler des Ereignisses `veil-test` aufgerufen (Edit in src/schleier/schleier.ts).
 export function testRiegel(roh: unknown): void {
   if (!testRiegelAktiv() || !roh || typeof roh !== 'object') return;
-  const o = (roh as { oeffne?: OeffneBefehl }).oeffne;
+  const befehl = roh as { oeffne?: OeffneBefehl; invalidiere?: boolean };
+  if (befehl.invalidiere) {
+    (gebundenerKontext() as MitInvalidierung | null)?.notifyInvalidated?.();
+    return;
+  }
+  const o = befehl.oeffne;
   if (!o) return;
   loescheErgebnis();
   let i = 0;

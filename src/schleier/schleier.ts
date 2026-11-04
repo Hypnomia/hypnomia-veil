@@ -36,7 +36,7 @@ import {
 import { entscheideNachladen } from '../erkenner/nachladen';
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
 import { SteigerungMelder } from './steigerung-melder';
-import { setzeZensiertMelder } from './anwenden';
+import { setzeUrteilMelder, setzeZensiertMelder } from './anwenden';
 import { setzeZonenAnpassung } from './pruefung';
 import { AdressBeobachter } from './adresse';
 import { Beobachter } from './beobachter';
@@ -85,10 +85,12 @@ import {
 import { entferneWurzelStile, raeumeWurzelStileAuf, schalteWurzelStile } from './shadow';
 import { leinwandLeer, Spiegel } from './spiegel';
 import { testRiegel } from '../riegel/testhaken';
-import { freigabeGesperrt, Status, testhakenAktiv, type Zaehlung } from './status';
+import { freigabeGesperrt, Status, testhakenAktiv } from './status';
+import { zaehleZustaende, type Zaehlung } from './zaehlung';
 import { istSchleifenUmlauf, VideoTakt, type VideoErgebnis, type VideoUrteil } from './video';
 import { inhaltAusTreffern, zaehltFuerInhalt } from '../adapter/inhalt';
 import { Vorschau } from './vorschau';
+import { Freilegen } from './freilegen';
 import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
 
@@ -174,16 +176,13 @@ export function starteSchleier(ctx: KontextLeicht): void {
   // ---------- Status ----------
 
   const zaehle = (): Zaehlung => {
-    const z: Zaehlung = { gesamt: 0, offen: 0, frei: 0, zensiert: 0, verdeckt: 0 };
+    const aktuell: Zustand[] = [];
     for (const el of verfolgt) {
       if (!el.isConnected) continue;
       const s = zustaende.get(el);
-      if (!s) continue;
-      z.gesamt++;
-      if (s.urteil) z[s.urteil]++;
-      else z.offen++;
+      if (s) aktuell.push(s);
     }
-    return z;
+    return zaehleZustaende(aktuell);
   };
   const status = new Status(zaehle);
 
@@ -296,6 +295,34 @@ export function starteSchleier(ctx: KontextLeicht): void {
       setzeUrteil(el, z, 'zensiert', status.seitStart());
       nachUrteil();
     },
+    neuBewerten: (el, z) => {
+      if (!aktiv) return;
+      wartend.delete(el);
+      vergiss(el, z, true); // Original zurueck und data-veil weg: Hide-first verdeckt das Element im selben Zug
+      bewerte(el, z);
+      nachUrteil();
+    },
+  });
+
+  // Freilegen (Auftrag F, freilegen.ts): zensierte Flaechen mit Knopf und Quiz kurz aufdecken. Die Steuerung bleibt hier.
+  const freilegen = new Freilegen({
+    lebt,
+    aktiv: () => aktiv && lebt(),
+    zustand: (el) => zustaende.get(el),
+    elemente: () => verfolgt,
+    legeFrei: (el, z, bisMs) => {
+      // Original zurueck und als frei zeigen; das Urteil `zensiert` bleibt im Zustand, Beobachter und Pruefung lassen das Element in Ruhe.
+      stelleWiederHer(el, z);
+      z.freigelegt = { bisMs };
+      el.setAttribute(ATTR_URTEIL, 'frei');
+    },
+    zensiereWieder: (el, z) => {
+      // Hide-first: das Zuruecksetzen nimmt data-veil sofort weg (Element unsichtbar), danach wird neu geprueft.
+      wartend.delete(el);
+      vergiss(el, z, false);
+      if (aktiv) bewerte(el, z);
+    },
+    zeitgeber: (fn, ms) => setzeTimer(fn, ms),
   });
 
   // Eine echte Pruefung eines Bildes ist ausgegangen: fuer das Erkennen am Inhalt zaehlen. Die Zaehlung braucht den Adressbeobachter (Seitenwechsel).
@@ -1120,6 +1147,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       return;
     }
     if (!aktiv) return;
+    if (z.freigelegt) return; // freigelegt: das Original laedt gerade wieder, kein Quellenwechsel
     if (z.art === 'bild' && el instanceof HTMLImageElement) {
       if (e.type === 'error') z.fehlerGesehen = true;
       if (z.erwarteLoad) {
@@ -1211,7 +1239,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (aktiv && knoten.localName === 'source' && knoten.parentElement?.tagName === 'PICTURE') {
         const img = knoten.parentElement.querySelector(':scope > img');
         const zi = img ? zustaende.get(img) : undefined;
-        if (img instanceof HTMLImageElement && zi && bildSignatur(img) !== zi.signatur) neuePruefung(img, zi, true);
+        if (img instanceof HTMLImageElement && zi && !zi.freigelegt && bildSignatur(img) !== zi.signatur) neuePruefung(img, zi, true);
       }
       if (aktiv && geladen) klassen.planeKnoten(knoten);
     },
@@ -1227,6 +1255,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
           if (el.matches(HG_SELEKTOR)) entdecke(el, 'hintergrund');
           return;
         }
+        if (z.freigelegt) return; // nach Ablauf wird ohnehin neu geprueft
         if (z.art !== 'hintergrund' && z.art !== 'klasse') return;
         // Inline-Hintergrund: derselbe Wert wie bei der Beurteilung (bei var() der berechnete). Klassen-Hintergrund: nur der eigene Inline-Wert.
         const aktuell = z.art === 'hintergrund' ? hintergrundWert(el) : hintergrundInline(el);
@@ -1247,6 +1276,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
         entdecke(ziel, 'bild');
         return;
       }
+      if (z.freigelegt) return; // nach Ablauf wird ohnehin neu geprueft
       if (bildSignatur(ziel) === z.signatur) return; // eigene Aenderung (Tausch) oder gleicher Wert
       if (z.ersetzt && vorschau.ersetzeSofort(ziel, z)) return; // Vorschau-Rotation: gleiches Pack-Bild sofort wieder einsetzen
       neuePruefung(ziel, z, true);
@@ -1507,6 +1537,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     einstellungen = neu;
     vorschau.aktualisiere(neu, packKurz); // vor dem Pruefstand: Liste, Schalter und Pack gehoeren dazu
     steigerung.aktualisiere(neu, packKurz, istAusFuer(neu)); // ebenso: die wirksame Stufe haengt an Pack und Pause; auf Ausnahmen keine Meldung
+    freilegen.aktualisiere(neu, packKurz, istAusFuer(neu)); // Pack und Pause wirken sofort
     beobachteAdressen(neu);
     const stand = aktualisierePruefstand(neu);
     const sollAus = istAusFuer(neu);
@@ -1597,6 +1628,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   beobachter.start(); // sofort sammeln, auswerten erst nach dem Laden der Einstellungen
   setzeZonenAnpassung((e) => steigerung.zonenFuer(e));
   setzeZensiertMelder((el) => steigerung.zensiert(el));
+  setzeUrteilMelder((el, z) => freilegen.beiUrteil(el, z));
   const steigerungGeladen = steigerung.start();
   if (document.readyState === 'complete') beiLoad();
   status.plane();
@@ -1634,6 +1666,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
     browser.storage.onChanged.removeListener(packHoerer);
     setzeZonenAnpassung(null);
     setzeZensiertMelder(null);
+    setzeUrteilMelder(null);
+    freilegen.raeumeAuf();
     try {
       steigerung.stopp();
     } catch {

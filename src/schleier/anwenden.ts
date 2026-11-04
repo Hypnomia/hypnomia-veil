@@ -46,11 +46,18 @@ export function setzeZensiertMelder(fn: ((el: Element) => void) | null): void {
   beiNeuemZensiert = fn;
 }
 
+// Freilegen (Auftrag F): wird bei jedem neuen Urteil und jedem Zuruecksetzen eines Elements gerufen (Kandidaten fuer den Knopf).
+let beiUrteilAenderung: ((el: Element, z: Zustand) => void) | null = null;
+export function setzeUrteilMelder(fn: ((el: Element, z: Zustand) => void) | null): void {
+  beiUrteilAenderung = fn;
+}
+
 export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number | null): void {
   // Eingesetzte Vorschauen sind keine Treffer: nicht fuer die Steigerung melden, aber kennzeichnen (Freilegen unterscheidet sie).
   if (urteil === 'zensiert' && z.urteil !== 'zensiert' && !z.ersetzt) beiNeuemZensiert?.(el);
   z.urteil = urteil;
   z.urteilMs = ms;
+  beiUrteilAenderung?.(el, z);
   // Elemente, die per Klasse gestaltet sind, werden vorab nie versteckt: "frei" braucht kein Attribut. "zensiert" setzt einen
   // Inline-Hintergrund (den die CSS-Regel fuer Inline-Hintergruende sonst unsichtbar machte) und "verdeckt" soll unscharf zeigen,
   // beides ueber das Attribut.
@@ -242,4 +249,6 @@ export function vergiss(el: Element, z: Zustand, restore: boolean): void {
   z.urteilMs = null;
   z.fehlerGesehen = false;
   z.vorlaeufig = false;
+  z.freigelegt = null; // ein Zuruecksetzen beendet das Freilegen (Pause, neue Einstellungen, Quellwechsel)
+  beiUrteilAenderung?.(el, z);
 }

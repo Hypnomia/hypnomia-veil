@@ -8,7 +8,8 @@ import { HINTERGRUND_TYPEN, istFuer, type AntwortTab, type NachrichtHintergrund,
 // Phase 4: je Auftrag ein Handler-Modul (Orchestrator verdrahtet, Bauer fuellen nur ihr Modul).
 import { bearbeitePackDaten } from '../src/hintergrund/quiz';
 import { bearbeiteSteigerung, starteSteigerung } from '../src/hintergrund/steigerung';
-import { bearbeiteUmleitung, starteUmleitung } from '../src/hintergrund/umleitung';
+import { bearbeiteErsatzStumm, starteErsatzStumm } from '../src/hintergrund/ersatz-stumm';
+import { raeumeUmleitungAuf } from '../src/hintergrund/umleitung';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -210,7 +211,9 @@ export default defineBackground(() => {
 
   // Phase 4: Listener der Handler-Module oben im Skript registrieren (Ereignisseite und Service Worker wachen dafuer auf).
   starteSteigerung();
-  starteUmleitung();
+  // Session 8 (Entscheidung 107): keine Umleitung mehr; eine Regel aus Version 0.4.0 wird beim Start entfernt.
+  raeumeUmleitungAuf();
+  starteErsatzStumm();
 
   // Chrome: Offscreen-Dokument bei Installation und Browserstart anlegen.
   if (import.meta.env.CHROME) {
@@ -242,8 +245,8 @@ export default defineBackground(() => {
       case 'steigerung-minute':
       case 'steigerung-uhr':
         return bearbeiteSteigerung(n, absender);
-      case 'umleitung-abgleich':
-        return bearbeiteUmleitung(n);
+      case 'ersatz-stumm':
+        return bearbeiteErsatzStumm(n, absender);
       default:
         return undefined;
     }

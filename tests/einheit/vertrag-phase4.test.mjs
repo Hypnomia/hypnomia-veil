@@ -7,7 +7,7 @@ import { BENOETIGT, FREISCHALTUNGEN, ROLLEN } from '../../src/pack/vertrag.ts';
 import { fuelleSatz, pruefeQuizBank, pruefeTexte, sichererText } from '../../src/quiz/vertrag.ts';
 import { STANDARD, vervollstaendige } from '../../src/einstellungen.ts';
 import { ABBAU_MS, anzeigeStufe, vervollstaendigeStand, wirksameStufe, wirksameZonen, STAND_START } from '../../src/steigerung.ts';
-import { alleDomains, hostAus, istErwachsenenseite, seiteFuer } from '../../src/adapter/liste.ts';
+import { hostAus, istErwachsenenseite, seiteFuer } from '../../src/adapter/liste.ts';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { DUMMY_QUIZ, DUMMY_TEXTE } from '../../scripts/pack/dummy-inhalte.mjs';
 
@@ -160,5 +160,4 @@ test('Seitenliste: Liste, Spiegel, eigene Seiten, Testdomain nur im Testbau', ()
   assert.equal(hostAus('127.0.0.1'), '127.0.0.1');
   // In Node gibt es keinen Testhaken: die Testdomain ist keine Erwachsenenseite und steht nicht in den Domains.
   assert.equal(seiteFuer('https://pornhub.veil-erwachsen.test/'), null);
-  assert.equal(alleDomains().includes('veil-erwachsen.test'), false);
 });

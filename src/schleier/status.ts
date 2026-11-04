@@ -3,14 +3,9 @@
 // ausser data-veil, data-veil-seite und data-veil-strict.
 
 import { ATTR_STATUS, TESTHAKEN } from './konstanten';
+import type { Zaehlung } from './zaehlung';
 
-export interface Zaehlung {
-  gesamt: number;
-  offen: number;
-  frei: number;
-  zensiert: number;
-  verdeckt: number;
-}
+export type { Zaehlung } from './zaehlung';
 
 export interface StatusAnzeige extends Zaehlung {
   start: number;

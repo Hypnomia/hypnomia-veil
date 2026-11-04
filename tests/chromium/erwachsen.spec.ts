@@ -428,7 +428,8 @@ test('eigene Seite des Nutzers (allgemeiner Rueckfall) wird getauscht, andere Ho
   const s = await context.newPage();
   await s.goto(`${basis}/erwachsen-xvideos.html`);
   await warteAufTausch(s, vorschauIds(6));
-  expect((await erwachsenStand(s))?.liste).toBe('allgemein');
+  // Das Test-Attribut schreibt der Schleier gebuendelt ueber einen Zeitgeber: darauf warten statt einmal zu lesen (Wackler im Gesamtlauf).
+  await expect.poll(async () => (await erwachsenStand(s))?.liste, { timeout: 5000 }).toBe('allgemein');
   await s.close();
   // dieselbe Seite ohne die Eintragung: kein Tausch
   await loescheEinstellungen();

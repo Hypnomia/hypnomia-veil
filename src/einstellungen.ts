@@ -34,8 +34,8 @@ export interface Einstellungen {
 
 export interface ErwachsenEinstellung {
   an: boolean; // Pornoseiten-Modus (Standard an, wirkt nur mit Pack)
-  komplettErsatz: boolean; // Umleitung auf die Mia-Galerie (Standard aus, Entscheidung 100)
-  erkennenAmInhalt: boolean; // Zusatz zur Liste: Seite am Inhalt erkennen (nur Quiz und Freilegen, nie Vorschau oder Umleitung)
+  komplettErsatz: boolean; // Komplett-Ersatz: Mia-Galerie in der Seite statt der Seite (Standard aus, Entscheidung 100)
+  erkennenAmInhalt: boolean; // Zusatz zur Liste: Seite am Inhalt erkennen (nur Quiz und Freilegen, nie Vorschau oder Ersatz)
   eigeneSeiten: string[]; // vom Nutzer ergaenzte Hosts (gleiche Schreibweise wie `ausnahmen`, nur Hosts)
 }
 

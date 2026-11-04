@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Ersatz-Testseite</title>
+    <script>
+      // Inline und allererstes Skript: sieht jede Aenderung des Attributs ab dem Parsen des Kopfes (ein Skript mit src wartet auf das Netz).
+      window.__t0 = performance.now();
+      window.__hat0 = document.documentElement.hasAttribute('data-veil-ersatz');
+      window.__m = [];
+      new MutationObserver(function () {
+        window.__m.push([document.documentElement.hasAttribute('data-veil-ersatz') ? 'an' : 'aus', performance.now()]);
+      }).observe(document, { attributes: true, subtree: true, attributeFilter: ['data-veil-ersatz'] });
+    </script>
+    <script src="/ersatz-waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; height: 3000px; background: #fff; }
+      #inhalt { color: #000; visibility: visible !important; }
+      .kind { visibility: visible; }
+    </style>
+  </head>
+  <body>
+    <!-- Testseite des Komplett-Ersatzes: #inhalt ist der Seiteninhalt (muss unter der Galerie unsichtbar bleiben, auch mit eigener
+         visibility: visible). Das Audio spielt in Schleife und wird jede Viertelsekunde neu angestossen (die Galerie muss es stumm halten). -->
+    <h1 id="inhalt">Seiteninhalt <span class="kind">sichtbar?</span></h1>
+    <audio id="ton" loop></audio>
+    <dialog id="dlg"><p>Dialog der Seite</p><button id="dlg-zu">zu</button></dialog>
+    <div id="pp" popover="manual" style="position: fixed; inset: 0; background: #0a0; color: #fff; visibility: visible;">Popover der Seite</div>
+    <script>
+      // Zaehler fuer Ereignisse, die die Seite sieht (Klicks in der Galerie duerfen nie ankommen).
+      window.__k = {};
+      ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'keydown', 'keyup', 'keypress'].forEach(function (t) {
+        document.addEventListener(t, function () { window.__k[t] = (window.__k[t] || 0) + 1; }, true);
+        window.addEventListener(t, function () { window.__k[t + 'W'] = (window.__k[t + 'W'] || 0) + 1; });
+      });
+    </script>
+    <script>
+      (function () {
+        var n = 8000, daten = new Uint8Array(44 + n);
+        var v = new DataView(daten.buffer);
+        var s = function (o, t) { for (var i = 0; i < t.length; i++) daten[o + i] = t.charCodeAt(i); };
+        s(0, 'RIFF'); v.setUint32(4, 36 + n, true); s(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+        v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true);
+        v.setUint16(34, 8, true); s(36, 'data'); v.setUint32(40, n, true);
+        for (var i = 0; i < n; i++) daten[44 + i] = 128 + Math.round(20 * Math.sin(i / 8));
+        var a = document.getElementById('ton');
+        a.src = URL.createObjectURL(new Blob([daten], { type: 'audio/wav' }));
+        window.__spielt = function () { return !a.paused; };
+        setInterval(function () { a.play().catch(function () {}); }, 250);
+        // Audio ohne Element im Dokument (das Anhalten im Dokument sieht es nicht; der stumme Tab deckt es ab).
+        window.__lose = new Audio(a.src);
+        window.__lose.loop = true;
+        setInterval(function () { window.__lose.play().catch(function () {}); }, 250);
+      })();
+    </script>
+  </body>
+</html>

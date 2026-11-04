@@ -354,7 +354,9 @@ try {
     console.log(`firefox: ${freigaben.length} Freigaben bei schnellen Quellenwechseln, kleinster Abstand je Video ${kleinsterJeVideo.toFixed(0)} ms, im Dokument ${kleinsterImDokument.toFixed(0)} ms`);
     pruefe(freigaben.length >= 6, `nur ${freigaben.length} Freigaben`);
     pruefe(kleinsterJeVideo >= 1000, `je Video ${kleinsterJeVideo} ms`);
-    pruefe(kleinsterImDokument >= 334, `im Dokument ${kleinsterImDokument} ms`);
+    // Firefox rundet die Zeitstempel der Seite auf ganze Millisekunden, darum 1 ms Spielraum: die Sperre im Code ist 334 ms, die Grenze
+    // (hoechstens 3 Wechsel je Sekunde) verlangt 333,3 ms. Im Gesamtlauf Session 8 einmal 333 ms gemessen, einzeln zweimal 334 ms.
+    pruefe(kleinsterImDokument >= 333, `im Dokument ${kleinsterImDokument} ms`);
     await waechterOk();
   });
   const setzeTest = (detail) => driver.executeScript("document.dispatchEvent(new CustomEvent('veil-test', { detail: arguments[0] }))", JSON.stringify(detail));

@@ -26,10 +26,10 @@ export interface NachrichtHintergrundPackDaten { ziel: 'hintergrund'; typ: 'pack
 // (Auftrag S). Testhaken (nur WXT_TESTHAKEN): `typ: 'steigerung-uhr'` stellt die Uhr der Steigerung vor.
 export interface NachrichtHintergrundSteigerungMinute { ziel: 'hintergrund'; typ: 'steigerung-minute'; erwachsen: boolean; zensiert: number }
 export interface NachrichtHintergrundSteigerungUhr { ziel: 'hintergrund'; typ: 'steigerung-uhr'; vorMs: number }
-// Komplett-Ersatz: die Galerie bittet bei Pause, die Umleitung sofort abzubauen (Pruefer-Fund 4; die Galerie leitet danach selbst
-// zurueck). Der Hintergrund gleicht die Regel sonst selbst ab (onStartup, onInstalled, storage.onChanged). Handler:
-// src/hintergrund/umleitung.ts (Auftrag U).
-export interface NachrichtHintergrundUmleitungAbgleich { ziel: 'hintergrund'; typ: 'umleitung-abgleich' }
+// Komplett-Ersatz (Auftrag G): die Galerie schaltet den ganzen Tab stumm (auch Audio ohne Element, iframes, WebAudio) und danach wieder
+// auf den vorherigen Stand. `abgang`: die Seite wird verlassen (pagehide); der Ton kommt erst zurueck, wenn die neue Seite geladen ist
+// (Firefox setzt den Ton sonst waehrend der Navigation wieder stumm). Der Tab kommt aus sender.tab.id. Handler: src/hintergrund/ersatz-stumm.ts.
+export interface NachrichtHintergrundErsatzStumm { ziel: 'hintergrund'; typ: 'ersatz-stumm'; an: boolean; abgang?: boolean }
 
 export type NachrichtHintergrund =
   | NachrichtHintergrundWecke
@@ -40,7 +40,7 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundPackDaten
   | NachrichtHintergrundSteigerungMinute
   | NachrichtHintergrundSteigerungUhr
-  | NachrichtHintergrundUmleitungAbgleich;
+  | NachrichtHintergrundErsatzStumm;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -52,7 +52,7 @@ export const HINTERGRUND_TYPEN = [
   'packdaten',
   'steigerung-minute',
   'steigerung-uhr',
-  'umleitung-abgleich',
+  'ersatz-stumm',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }

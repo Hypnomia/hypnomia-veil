@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Freilegen</title>
+<style>body { margin: 0; } .reihe { display: flex; flex-wrap: wrap; gap: 20px; padding: 10px; } a { display: block; }</style></head>
+<body>
+<!-- Auftrag F: zensierte Flaechen (echtes Testbild vom Testserver), ein Link um das erste Bild, ein Inline-Hintergrund,
+     ein kleines Bild (unter 80 px), ein Video ohne Daten (bleibt verdeckt). -->
+<div class="reihe">
+  <a id="link" href="#geklickt"><img id="a" width="320" height="480" src="/testbild/nsfw/IMG_0260.jpg"></a>
+  <div id="hg" style="width:240px;height:180px;background-image:url('/testbild/nsfw/IMG_0260.jpg');background-size:cover"></div>
+  <img id="klein" width="60" height="60" src="/testbild/nsfw/IMG_0260.jpg">
+  <video id="video" width="200" height="150" preload="none" muted controls></video>
+</div>
+</body>
+</html>

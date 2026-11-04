@@ -23,7 +23,7 @@ export const PACK_SPEICHER_SCHLUESSEL = 'pack';
 //   erwachsen:vorschau  Vorschaubilder auf Erwachsenenseiten werden Mia (Rolle `vorschau`)
 //   erwachsen:quiz      Quiz vor jedem Video auf Erwachsenenseiten (Rolle `quiz`)
 //   erwachsen:titel     Videotitel mit Mias Kommentar (Rolle `texte`, Gruppe `titel`)
-//   erwachsen:ersatz    Komplett-Ersatz: Umleitung auf die Mia-Galerie (Rolle `vorschau`)
+//   erwachsen:ersatz    Komplett-Ersatz: Mia-Galerie in der Seite (Rolle `vorschau`)
 //   quiz:freilegen      zensierte Flaeche per Quiz kurz freilegen (Rolle `quiz`)
 //   zensur:steigerung   Steigerung der Zensur (Entscheidung 101), braucht keine Datei
 //   chibi:pack          frechere Chibis aus dem Pack (Rolle `chibi`); die suessen Demo-Chibis gibt es ohne Pack

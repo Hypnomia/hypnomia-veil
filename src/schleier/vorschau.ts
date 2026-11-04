@@ -18,7 +18,7 @@ import { bildSignatur, hintergrundWert, setzeBildSofortNeu, setzeHintergrund, st
 import { ANTWORT_MAX_MS, TAUSCH_MAX_MS } from './konstanten';
 import { urlAusEbene, vergissWecken, wecke, zerlegeEbenen } from './pruefung';
 import { testhakenAktiv } from './status';
-import { VorschauSpeicher } from './vorschau-speicher';
+import { NachtauschMerker, VorschauSpeicher } from './vorschau-speicher';
 import type { ErsetztInfo, Zustand } from './zustand';
 
 // Quellen, die eine Seite fuer verzoegertes Laden in Attribute legt (die echte Adresse steht dort, nicht in src).
@@ -38,6 +38,8 @@ export interface VorschauRueckrufe {
   zeitgeber(fn: () => void, ms: number): ReturnType<typeof setTimeout>;
   // Hintergrund ist getauscht: Urteil `zensiert` setzen und weiterplanen (Bilder schliessen ueber das load-Ereignis).
   hintergrundFertig(el: Element, z: Zustand): void;
+  // Urteil verwerfen (Original zurueck, sofort wieder verdeckt) und das Element neu bewerten: der Tausch darf es nach der Transport-Sperre noch einmal versuchen.
+  neuBewerten(el: Element, z: Zustand): void;
 }
 
 // Eine Anfrage an den Erkenner. 'transport': keine verwertbare Antwort (nicht geweckt, Zeitgrenze, Empfaenger weg).
@@ -88,6 +90,9 @@ export class Vorschau {
   private readonly speicher: VorschauSpeicher;
   private fehlgeschlagen = 0;
   private sperreBis = 0;
+  // Elemente, die in der Transport-Sperre den normalen Schleier bekamen: nach der Sperre werden sie erneut getauscht.
+  private readonly nachtausch = new NachtauschMerker<Element, Zustand>();
+  private nachtauschPlan: ReturnType<typeof setTimeout> | null = null;
   private gruende: string[] = [];
   private testTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -215,18 +220,21 @@ export class Vorschau {
   // Versucht den Tausch fuer ein img oder einen Inline-Hintergrund. true = der Tausch uebernimmt das Element (laeuft oder ist fertig),
   // false = der normale Schleier ist dran.
   versuche(el: Element, z: Zustand): boolean {
-    if (!this.tausch || z.ohneVorschau || !this.r.aktiv() || !this.r.lebt() || performance.now() < this.sperreBis) return false;
+    if (!this.tausch || z.ohneVorschau || !this.r.aktiv() || !this.r.lebt()) return false;
+    const gesperrt = performance.now() < this.sperreBis;
     let schluessel: string;
     let mass: DOMRect | null;
     if (z.art === 'bild' && el instanceof HTMLImageElement) {
       mass = this.qualifiziert(el); // die einzige Messung je Element
       if (!mass) return false;
+      if (gesperrt) return this.merkeFuerNachtausch(el, z);
       schluessel = this.schluesselBild(el);
     } else if (z.art === 'hintergrund' && el instanceof HTMLElement) {
       const wert = hintergrundWert(el);
       if (!zerlegeEbenen(wert).some((e) => urlAusEbene(e))) return false;
       mass = this.qualifiziert(el);
       if (!mass) return false;
+      if (gesperrt) return this.merkeFuerNachtausch(el, z);
       schluessel = this.schluesselHg(el, wert);
     } else return false;
 
@@ -251,10 +259,38 @@ export class Vorschau {
         if (this.gruende.length < 8) this.gruende.push('Transport');
         z.eingereiht = false;
         this.planeTestStatus();
+        this.merkeFuerNachtausch(el, z);
         this.r.bewerte(el, z);
       },
     );
     return true;
+  }
+
+  // Ein Vorschaubild geht waehrend der Sperre den normalen Weg (false), wird aber fuer den Nachtausch gemerkt und nach Ende der Sperre erneut versucht.
+  private merkeFuerNachtausch(el: Element, z: Zustand): false {
+    this.nachtausch.merke(el, z);
+    if (!this.nachtauschPlan) {
+      const warte = Math.max(0, this.sperreBis - performance.now()) + 50;
+      this.nachtauschPlan = this.r.zeitgeber(() => {
+        this.nachtauschPlan = null;
+        this.tauscheNach();
+      }, warte);
+    }
+    return false;
+  }
+
+  private tauscheNach(): void {
+    const liste = this.nachtausch.nimm();
+    if (!this.tausch || !this.r.lebt() || !this.r.aktiv()) return;
+    // Weiter gesperrt (ein neuer Transportfehler kam dazu): alles wieder vormerken, der neue Plan wartet auf das neue Ende.
+    if (performance.now() < this.sperreBis) {
+      for (const [el, z] of liste) this.merkeFuerNachtausch(el, z);
+      return;
+    }
+    for (const [el, z] of liste) {
+      if (!el.isConnected || z.ersetzt || z.ohneVorschau) continue;
+      this.r.neuBewerten(el, z);
+    }
   }
 
   private merkeStile(el: HTMLElement, z: Zustand, setze: Array<[string, string]>): ErsetztInfo {
@@ -450,6 +486,9 @@ export class Vorschau {
     if (this.stapelPlan) clearTimeout(this.stapelPlan);
     this.stapelPlan = null;
     this.stapel = [];
+    if (this.nachtauschPlan) clearTimeout(this.nachtauschPlan);
+    this.nachtauschPlan = null;
+    this.nachtausch.leere();
     this.speicher.leere();
     if (TESTHAKEN_E) document.documentElement?.removeAttribute(ATTR_ERWACHSEN);
     setzeErwachsenStatus({ liste: null, amInhalt: false });

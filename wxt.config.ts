@@ -46,14 +46,6 @@ function demoChibis(): { absoluteSrc: string; relativeDest: string }[] {
     .map((d) => ({ absoluteSrc: `${ordner}${d}`, relativeDest: `chibi/${d}` }));
 }
 
-function galerieMatchesChrome(): string[] {
-  const liste = JSON.parse(readFileSync(new URL('./data/erwachsenenseiten.json', import.meta.url), 'utf8'));
-  const domains: string[] = (liste.seiten ?? []).flatMap((e: { domains?: string[] }) => e.domains ?? []);
-  const muster = domains.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]);
-  if (process.env.WXT_TESTHAKEN === '1') muster.push('*://*.veil-erwachsen.test/*');
-  return [...new Set(muster)];
-}
-
 export default defineConfig({
   // VEIL_AUSGABE erlaubt einen zweiten Ausgabeordner (z. B. waehrend eine Messung auf .output laeuft).
   outDir: process.env.VEIL_AUSGABE ?? '.output',
@@ -114,15 +106,10 @@ export default defineConfig({
       'unlimitedStorage',
       // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
       ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen']),
-      // Phase 4, Umleitung (Auftrag U): dynamische Regel in beiden Browsern. WithHostAccess zeigt in Chrome und Firefox keine eigene
+      // Referer-Sitzungsregeln (Umleitung entfaellt seit Session 8, Entscheidung 107; keine web_accessible_resources). WithHostAccess zeigt in Chrome und Firefox keine eigene
       // Installationswarnung (Firefox: nur `declarativeNetRequest` hat den Text "Block content on any page").
       'declarativeNetRequestWithHostAccess',
     ],
-    // Komplett-Ersatz (Phase 4, Auftrag U), Zwischenstand bis Session 8 (Entscheidung 107: die Galerie kommt dann in die Seite, keine
-    // Webseite soll VEIL erkennen koennen). Chrome: nur die Listen-Domains (im Testbau zusaetzlich die Testdomain); Adresszeile und Links in
-    // Listen-Seiten gehen, Links von fremden Seiten und eigene Seiten per Link enden in der Fehlerseite. `use_dynamic_url` scheitert mit der
-    // DNR-Umleitung (gemessen). Firefox: die Adresse ist je Installation zufaellig, dort darf es `*://*/*` bleiben.
-    web_accessible_resources: [{ resources: ['galerie.html'], matches: browser === 'firefox' ? ['*://*/*'] : galerieMatchesChrome() }],
     // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
     host_permissions: ['<all_urls>'],
     // onnxruntime-web braucht WebAssembly in Erweiterungsseiten (Entscheidung 58).

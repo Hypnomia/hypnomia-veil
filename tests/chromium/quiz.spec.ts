@@ -30,6 +30,10 @@ const EXTRA = [
   { id: 'ext-b', art: 'aufgabe', schwere: 'leicht', geraet: 'beide', frage: 'One word flashes once. Type it.', aufgabe: { typ: 'wort-blitz', param: { wort: 'OBEY' } } },
   { id: 'ext-c', art: 'aufgabe', schwere: 'leicht', geraet: 'beide', frage: 'Count down for me.', aufgabe: { typ: 'countdown', param: { von: 5, wort: 'DOWN' } } },
   { id: 'ext-k', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Keep the cursor inside the circle.', aufgabe: { typ: 'im-kreis', param: { sekunden: 3 } } },
+  { id: 'ext-t', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Type the word in my rhythm.', aufgabe: { typ: 'buchstaben-takt', param: { wort: 'OBEY' } } },
+  { id: 'ext-p', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Click only when the word turns pink.', aufgabe: { typ: 'pink-klicken', param: { woerter: 'POP,DOWN,OBEY,SLEEP', anzahlWoerter: 5, wortMs: 1000 } } },
+  { id: 'ext-l', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Hold the space bar until I say now.', aufgabe: { typ: 'leertaste-halten', param: { sekunden: 2 } } },
+  { id: 'ext-w', art: 'aufgabe', schwere: 'fies', geraet: 'beide', frage: 'Do not click the button.', aufgabe: { typ: 'widerstehen', param: { sekunden: 3 } } },
   { id: 'ext-r', art: 'aufgabe', schwere: 'leicht', geraet: 'beide', frage: 'Unscramble my favorite word.', aufgabe: { typ: 'buchstaben-raetsel', param: { wort: 'OBEY', gemischt: 'B E O Y' } } },
 ];
 const mitteVon = (r: any) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
@@ -198,7 +202,7 @@ test('Pack importieren (Quiz-Bank und Saetze kommen aus IndexedDB)', async () =>
     await s.evaluate(() => (globalThis as any).chrome.storage.local.set({ quizWarnungGesehen: true }));
     const antwort = await s.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'quiz' }));
     expect(antwort.ok).toBe(true);
-    expect(antwort.daten.fragen.length).toBe(16);
+    expect(antwort.daten.fragen.length).toBe(quiz.fragen.length);
     const t = await s.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'texte' }));
     expect(t.daten.gruppen.start).toEqual(texte.gruppen.start);
     const unbekannt = await s.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'unsinn' }));
@@ -262,6 +266,9 @@ test('falsche Antwort: sofort neue Frage ohne Wartezeit, Riegel bleibt offen', a
     const ms = Date.now() - t0;
     expect(ms).toBeLessThan(1500);
     expect(b.chibiPose).toBe('sprechblase');
+    // Bildschirmleser: die neue Frage steht in einem hoeflichen Live-Bereich
+    expect(b.ansageLive).toBe('polite');
+    expect(b.ansage).toBe(b.frage.text);
     expect(await ergebnis(s)).toBeNull();
     console.log(`chromium quiz: falsch, neue Frage ${b.frage.id} nach ${ms} ms (Klick bis Abbild)`);
   } finally {
@@ -621,6 +628,8 @@ test('Strenge Seiten-CSP: Riegel ist trotzdem gestaltet und bedienbar', async ()
 test('Anker und schmaler Bildschirm: Riegel folgt dem Player, fuellt auf 375 px den Sichtbereich', async () => {
   const s = await frischeSeite();
   try {
+    // Ab 420 px Hoehe bleibt der Riegel auf der Flaeche des Ankers (darunter fuellt er den Sichtbereich, siehe Test "Kleiner Anker").
+    await s.evaluate(() => ((document.querySelector('#player') as HTMLElement).style.height = '480px'));
     await oeffne(s, { frage: 'test-w1', anker: '#player' });
     const a = await bis(s, (x) => x.zustand === 'frage');
     const p = await s.evaluate(() => {
@@ -1080,6 +1089,7 @@ test('Eingabeereignisse (input, beforeinput, composition) erreichen die Seite ni
   }
   const a = await frischeSeite();
   try {
+    await a.evaluate(() => ((document.querySelector('#player') as HTMLElement).style.height = '480px')); // ab 420 px bleibt der Riegel auf dem Anker
     await oeffne(a, { frage: 'test-w1', anker: '#player' });
     await bis(a, (x) => x.zustand === 'frage');
     await a.locator('#draussen').focus();
@@ -1087,6 +1097,141 @@ test('Eingabeereignisse (input, beforeinput, composition) erreichen die Seite ni
     expect(await a.evaluate(() => document.activeElement?.id)).toBe('draussen');
   } finally {
     await a.close();
+  }
+});
+
+test('Kleiner Anker (320 x 300): Riegel fuellt den Sichtbereich, alle Antworten liegen in der Karte und sind klickbar', async () => {
+  const s = await frischeSeite();
+  try {
+    await s.evaluate(() => {
+      const d = document.createElement('div');
+      d.id = 'klein';
+      d.style.cssText = 'position:absolute;left:300px;top:80px;width:320px;height:300px;background:#223';
+      document.body.append(d);
+    });
+    await oeffne(s, { frage: 'test-w1', verweigern: 0, richtigMs: 100, anker: '#klein' });
+    const a = await bis(s, (x) => x.zustand === 'frage' && x.antworten.length === 3, 10_000);
+    const vh = await s.evaluate(() => document.documentElement.clientHeight);
+    expect(a.host.h).toBeGreaterThanOrEqual(vh - 2); // Sichtbereich statt 320 x 300
+    for (const b of a.antworten) {
+      expect(b.y).toBeGreaterThanOrEqual(a.karte.y);
+      expect(b.y + b.h).toBeLessThanOrEqual(a.karte.y + a.karte.h + 1);
+    }
+    expect(a.pause.y).toBeGreaterThanOrEqual(a.karte.y);
+    await klickeAuf(s, a.antworten.find((b: any) => b.text === 'alpha'));
+    await expect.poll(() => ergebnis(s), { timeout: 5000 }).toBe('geloest');
+  } finally {
+    await s.close();
+  }
+});
+
+test('Ein offener Riegel baut sich bei Invalidierung des Kontexts selbst ab (abgebrochen, Host weg)', async () => {
+  const s = await frischeSeite();
+  try {
+    await oeffne(s, { frage: 'test-w1', verweigern: 0 });
+    await bis(s, (x) => x.zustand === 'frage');
+    expect(await s.evaluate(() => document.querySelector('[data-veil-riegel-host]') !== null)).toBe(true);
+    await s.evaluate((d) => document.dispatchEvent(new CustomEvent('veil-test', { detail: JSON.stringify(d) })), { riegel: { invalidiere: true } });
+    await expect.poll(() => ergebnis(s), { timeout: 5000 }).toBe('abgebrochen');
+    expect(await s.evaluate(() => document.querySelector('[data-veil-riegel-host]') !== null)).toBe(false);
+  } finally {
+    await s.close();
+  }
+});
+
+test('Aufgabe buchstaben-takt: im Takt geloest, zu schnell getippt gibt neue Frage', async () => {
+  const s = await frischeSeite();
+  try {
+    await oeffne(s, { frage: 'ext-t', verweigern: 0, richtigMs: 100 });
+    await bis(s, (x) => x.frage?.typ === 'buchstaben-takt');
+    for (const c of 'obey') {
+      await s.keyboard.press(c);
+      await s.waitForTimeout(1100); // zwischen 800 und 2000 ms
+    }
+    await expect.poll(() => ergebnis(s), { timeout: 5000 }).toBe('geloest');
+  } finally {
+    await s.close();
+  }
+  const f = await frischeSeite();
+  try {
+    await oeffne(f, { frage: 'ext-t', verweigern: 0 });
+    await bis(f, (x) => x.frage?.typ === 'buchstaben-takt');
+    await f.keyboard.press('o');
+    await f.waitForTimeout(1100);
+    await f.keyboard.press('b');
+    await f.keyboard.press('e'); // unter 800 ms nach dem vorigen Buchstaben
+    await bis(f, (x) => x.zustand === 'frage' && x.frage.id !== 'ext-t', 3000);
+    expect(await ergebnis(f)).toBeNull();
+  } finally {
+    await f.close();
+  }
+});
+
+test('Aufgabe pink-klicken: Klick auf das pinke Wort loest, Klick auf ein anderes Wort gibt neue Frage', async () => {
+  const lauf = async (aufPink: boolean) => {
+    const s = await frischeSeite();
+    try {
+      await oeffne(s, { frage: 'ext-p', verweigern: 0, richtigMs: 100 });
+      await bis(s, (x) => x.frage?.typ === 'pink-klicken');
+      const feld = await bis(s, (x) => x.aufgabe === (aufPink ? 'pink:ja' : 'pink:nein') && x.wort !== null, 10_000);
+      await s.keyboard.press('Enter'); // das Feld hat den Fokus: Enter klickt
+      if (aufPink) await expect.poll(() => ergebnis(s), { timeout: 5000 }).toBe('geloest');
+      else {
+        await bis(s, (x) => x.zustand === 'frage' && x.frage.id !== 'ext-p', 3000);
+        expect(await ergebnis(s)).toBeNull();
+      }
+      return feld.wortPink;
+    } finally {
+      await s.close();
+    }
+  };
+  expect(await lauf(true)).toBe(true);
+  expect(await lauf(false)).toBe(false);
+});
+
+test('Aufgabe leertaste-halten: 2 s halten, bei "Now." loslassen loest; zu frueh loslassen gibt neue Frage', async () => {
+  const s = await frischeSeite();
+  try {
+    await oeffne(s, { frage: 'ext-l', verweigern: 0, richtigMs: 100 });
+    await bis(s, (x) => x.frage?.typ === 'leertaste-halten');
+    await s.keyboard.down('Space');
+    await bis(s, (x) => x.aufgabe === 'jetzt', 5000);
+    await s.keyboard.up('Space');
+    await expect.poll(() => ergebnis(s), { timeout: 5000 }).toBe('geloest');
+  } finally {
+    await s.close();
+  }
+  const f = await frischeSeite();
+  try {
+    await oeffne(f, { frage: 'ext-l', verweigern: 0 });
+    await bis(f, (x) => x.frage?.typ === 'leertaste-halten');
+    await f.keyboard.down('Space');
+    await f.waitForTimeout(600);
+    await f.keyboard.up('Space'); // vor "Now."
+    await bis(f, (x) => x.zustand === 'frage' && x.frage.id !== 'ext-l', 3000);
+  } finally {
+    await f.close();
+  }
+});
+
+test('Aufgabe widerstehen: nicht klicken loest nach der Zeit, Klick auf den Knopf gibt neue Frage', async () => {
+  const s = await frischeSeite();
+  try {
+    await oeffne(s, { frage: 'ext-w', verweigern: 0, richtigMs: 100 });
+    await bis(s, (x) => x.frage?.typ === 'widerstehen');
+    await expect.poll(() => ergebnis(s), { timeout: 8000 }).toBe('geloest');
+  } finally {
+    await s.close();
+  }
+  const f = await frischeSeite();
+  try {
+    await oeffne(f, { frage: 'ext-w', verweigern: 0 });
+    const a = await bis(f, (x) => x.frage?.typ === 'widerstehen' && x.knoepfe.some((k: any) => k.text === 'Click me'));
+    await klickeAuf(f, a.knoepfe.find((k: any) => k.text === 'Click me'));
+    await bis(f, (x) => x.zustand === 'frage' && x.frage.id !== 'ext-w', 3000);
+    expect(await ergebnis(f)).toBeNull();
+  } finally {
+    await f.close();
   }
 });
 

@@ -1,7 +1,7 @@
 // Erwachsenenseiten nach Liste (PHASE-4-BAUPLAN Abschnitte 2 und 8 Punkt 11). Vom Orchestrator geschrieben; gemeinsam fuer Auftrag E
-// (Content-Script, Adapter), U (Umleitung, Regel nur fuer Listen-Domains) und O (Oberflaeche). Reine Funktionen, keine Browser-Aufrufe.
+// (Content-Script, Adapter), G (Komplett-Ersatz in der Seite, src/ersatz/) und O (Oberflaeche). Reine Funktionen, keine Browser-Aufrufe.
 // Erkennen am Inhalt ist NICHT hier (Zustand je Seite, Auftrag E in src/adapter/); am Inhalt erkannte Seiten bekommen nur Quiz und
-// Freilegen, nie Vorschau-Tausch oder Umleitung.
+// Freilegen, nie Vorschau-Tausch oder Ersatz.
 
 import liste from '../../data/erwachsenenseiten.json' with { type: 'json' };
 
@@ -76,16 +76,4 @@ export function seiteFuer(url: string, eigeneSeiten: readonly string[] = []): Se
 // Steht die Adresse auf der Liste oder bei den eigenen Seiten? (Nicht: am Inhalt erkannt.)
 export function istErwachsenenseite(url: string, eigeneSeiten: readonly string[] = []): boolean {
   return seiteFuer(url, eigeneSeiten) !== null;
-}
-
-// Alle Domains fuer Regeln (Umleitung): Liste plus eigene Seiten plus im Testbau die Testdomain. Nur Hosts, ohne Doppelte.
-export function alleDomains(eigeneSeiten: readonly string[] = []): string[] {
-  const aus = new Set<string>();
-  for (const e of ERWACHSENEN_LISTE) for (const d of e.domains) aus.add(d);
-  for (const roh of eigeneSeiten) {
-    const d = hostAus(roh);
-    if (d) aus.add(d);
-  }
-  if (testhakenAn()) aus.add(TEST_DOMAIN);
-  return [...aus];
 }

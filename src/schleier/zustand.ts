@@ -86,6 +86,9 @@ export interface Zustand {
   inhalt: 'frei' | 'treffer' | null;
   // Der Tausch ist fuer dieses Element gescheitert (kein Bild, Seiten-CSP): es geht den normalen Weg, bis die Seite die Quelle aendert.
   ohneVorschau: boolean;
+  // Freilegen (Auftrag F, Session 8): das Original ist nach geloestem Quiz bis `bisMs` (performance.now()) sichtbar; der Beobachter prueft
+  // waehrenddessen nicht, danach wird wieder zensiert. null = nicht freigelegt.
+  freigelegt: { bisMs: number } | null;
 }
 
 export function neuerZustand(art: Art): Zustand {
@@ -119,5 +122,6 @@ export function neuerZustand(art: Art): Zustand {
     ersetzt: null,
     inhalt: null,
     ohneVorschau: false,
+    freigelegt: null,
   };
 }

@@ -18,3 +18,16 @@ html[data-veil-strict]:not([data-veil-seite]) { opacity: 0 !important; }
 /* Lebenszeichen der Erweiterung: diese Manifest-CSS verschwindet, wenn die Erweiterung entfernt oder abgeschaltet wird. Der Haken fuer Shadow Roots in der
    Seitenwelt (entrypoints/wurzel-haken.content.ts) liest die Eigenschaft und wird ohne sie wirkungslos. */
 html { --veil-lebt: 1; }
+/* Komplett-Ersatz (src/ersatz/): solange html[data-veil-ersatz] steht, ist von der Seite nichts zu sehen. Das Attribut hat zwei Stufen:
+   leer (Fruehphase, bevor Einstellungen und Pack geladen sind: keine eigene Farbe, nur die Verdeckung) und "galerie" (die Galerie steht,
+   erst jetzt gilt das Rosa). visibility mit !important (ein Kind mit visibility: visible kommt dagegen nicht an), Seitenhintergruende weg,
+   Scrollen gesperrt. Der Host der Galerie bleibt per Inline-Wert `visibility: visible !important` sichtbar (Inline schlaegt diese Regel).
+   Die drei :not(#...) heben die Spezifitaet ueber Seitenregeln mit ID-Auswahl und !important (jede zaehlt als eine ID).
+   Ehrliche Luecken: Inline-Stile der Seite mit !important auf html oder body, Regeln der Seite in @layer mit !important (Layer mit !important
+   gewinnt gegen unlayered !important), Inhalte in Shadow Roots der Seite, die selbst visibility: visible !important setzen. Dort gilt nur
+   die Galerie darueber (oberste Ebene) als Schutz. */
+html[data-veil-ersatz]:not(#veil-e1):not(#veil-e2):not(#veil-e3) { background-image: none !important; overflow: hidden !important; }
+html[data-veil-ersatz="galerie"]:not(#veil-e1):not(#veil-e2):not(#veil-e3) { background-color: #fff5fa !important; }
+html[data-veil-ersatz]:not(#veil-e1):not(#veil-e2):not(#veil-e3)::before,
+html[data-veil-ersatz]:not(#veil-e1):not(#veil-e2):not(#veil-e3)::after { content: none !important; display: none !important; }
+html[data-veil-ersatz] :not(#veil-e1):not(#veil-e2):not(#veil-e3) { visibility: hidden !important; background-image: none !important; }

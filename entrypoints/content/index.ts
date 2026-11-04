@@ -5,6 +5,9 @@
 import './style.css';
 import { starteSchleier } from '../../src/schleier/schleier';
 import { bindeKontext } from '../../src/riegel/riegel';
+import { starteErsatz } from '../../src/ersatz/ersatz';
+import { startePlayer } from '../../src/player/player';
+import { starteTitel } from '../../src/titel/titel';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -16,6 +19,10 @@ export default defineContentScript({
   main(ctx) {
     // Phase 4: Tastenschutz fuer den Riegel sofort (vor allen Seitenskripten), dann der Schleier.
     bindeKontext(ctx);
+    // Session 8: Galerie des Komplett-Ersatzes zuerst (verdeckt die ganze Seite so frueh wie moeglich), dann Schleier, Player-Riegel, Titel.
+    starteErsatz(ctx);
     starteSchleier(ctx);
+    startePlayer(ctx);
+    starteTitel(ctx);
   },
 });

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Player-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #player { width: 640px; height: 360px; background: #223; }
+      #player video, #karte video { width: 100%; height: 100%; display: block; }
+      #karte { width: 400px; height: 225px; margin-top: 8px; }
+      #karte a { display: block; width: 400px; height: 225px; }
+      #fremd { width: 800px; height: 450px; margin-top: 8px; }
+      #fremd video { width: 100%; height: 100%; display: block; }
+      #schatten { width: 640px; height: 360px; margin-top: 8px; }
+      button { margin: 8px 8px 0 0; }
+    </style>
+  </head>
+  <body>
+    <!-- Player-Riegel (Auftrag P). Die Seite nimmt zur Laufzeit ein kurzes Video auf (MediaRecorder von einer Leinwand, keine Mediendatei im
+         Repo) und legt es im localStorage ab. Die Videos legt der Test an: window.neuesVideo({ id, autoplay, abspielen, ziel }), ziel ist
+         'player' (Standard) oder 'karte' (Vorschau-Link). window.neueQuelle() liefert eine frische Adresse desselben Films. -->
+    <div id="player"></div>
+    <div id="karte"><a href="/view_video.php?viewkey=abc123"></a></div>
+    <div id="fremd"></div>
+    <div id="schatten"></div>
+    <button id="vollbild" type="button">Fullscreen</button>
+    <button id="spielen" type="button">Play</button>
+    <script>
+      (function () {
+        var SCHLUESSEL = 'player-film-1';
+        var adresse = null;
+        var filmBlob = null;
+        var gespeichert = '';
+
+        function nimmAuf() {
+          var leinwand = document.createElement('canvas');
+          leinwand.width = 320;
+          leinwand.height = 180;
+          var g = leinwand.getContext('2d');
+          var t0 = performance.now();
+          var zeichne = function () {
+            var t = performance.now() - t0;
+            var v = g.createLinearGradient(0, 0, 320, 180);
+            v.addColorStop(0, 'hsl(' + ((t / 20) % 360) + ', 70%, 60%)');
+            v.addColorStop(1, 'hsl(' + (((t / 20) + 90) % 360) + ', 70%, 40%)');
+            g.fillStyle = v;
+            g.fillRect(0, 0, 320, 180);
+            g.fillStyle = '#000';
+            g.fillRect((t / 8) % 300, 160, 12, 12);
+          };
+          zeichne();
+          var uhr = setInterval(zeichne, 40);
+          var aufnahme = new MediaRecorder(leinwand.captureStream(25), { videoBitsPerSecond: 600000 });
+          var stuecke = [];
+          aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+          return new Promise(function (fertig) {
+            aufnahme.onstop = function () {
+              clearInterval(uhr);
+              fertig(new Blob(stuecke, { type: aufnahme.mimeType }));
+            };
+            aufnahme.start();
+            setTimeout(function () { aufnahme.stop(); }, 2500);
+          });
+        }
+        function alsText(blob) {
+          return new Promise(function (fertig) {
+            var l = new FileReader();
+            l.onload = function () { fertig(String(l.result)); };
+            l.readAsDataURL(blob);
+          });
+        }
+        function ausText(text) {
+          var teile = text.split(',');
+          var typ = /^data:([^;,]+)/.exec(teile[0]);
+          var bin = atob(teile[1]);
+          var feld = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) feld[i] = bin.charCodeAt(i);
+          return new Blob([feld], { type: typ ? typ[1] : 'video/webm' });
+        }
+        function beschaffe() {
+          try {
+            var g = localStorage.getItem(SCHLUESSEL);
+            if (g) { gespeichert = g; return Promise.resolve(ausText(g)); }
+          } catch (e) { /* ohne Speicher immer neu */ }
+          return nimmAuf().then(function (blob) {
+            return alsText(blob).then(function (t) {
+              gespeichert = t;
+              try { localStorage.setItem(SCHLUESSEL, t); } catch (e) { /* zu gross */ }
+              return blob;
+            });
+          });
+        }
+
+        // Legt ein Video in den gewuenschten Behaelter.
+        window.neuesVideo = function (opt) {
+          var v = document.createElement('video');
+          v.id = opt.id;
+          v.loop = opt.loop !== false;
+          if (opt.muted !== false) v.muted = true;
+          v.setAttribute('playsinline', '');
+          if (opt.autoplay) v.autoplay = true;
+          if (opt.klasse) v.className = opt.klasse;
+          var ort = opt.ziel === 'schatten' ? schattenWurzel() : opt.ziel === 'karte' ? document.querySelector('#karte a') : opt.ziel === 'fremd' ? document.getElementById('fremd') : document.getElementById('player');
+          ort.appendChild(v);
+          v.src = adresse;
+          if (opt.abspielen) v.play().catch(function () {});
+          return v;
+        };
+        window.neueQuelle = function () { return URL.createObjectURL(filmBlob); };
+        // Adresse, die keine blob:-Adresse ist (data:, jedes n eine andere), fuer den Wechsel auf ein anderes Video.
+        window.datenQuelle = function (n) { return gespeichert.replace(';base64,', ';x=' + n + ';base64,'); };
+        // Video in einer offenen Shadow Root suchen oder im Dokument.
+        window.findeVideo = function (id) {
+          var h = document.getElementById('schatten');
+          return document.getElementById(id) || (h.shadowRoot && h.shadowRoot.getElementById(id));
+        };
+        function schattenWurzel() {
+          var h = document.getElementById('schatten');
+          var w = h.shadowRoot || h.attachShadow({ mode: 'open' });
+          if (!w.querySelector('style')) {
+            var st = document.createElement('style');
+            st.textContent = 'video { width: 100%; height: 100%; display: block; }';
+            w.appendChild(st);
+          }
+          return w;
+        }
+
+        document.getElementById('vollbild').addEventListener('click', function () {
+          var v = document.querySelector('#player video');
+          if (v) v.requestFullscreen().catch(function () {});
+        });
+        document.getElementById('spielen').addEventListener('click', function () {
+          var v = document.querySelector('#player video');
+          if (v) v.play().catch(function () {});
+        });
+
+        beschaffe().then(function (blob) {
+          filmBlob = blob;
+          adresse = URL.createObjectURL(blob);
+          document.documentElement.dataset.filmBereit = '1';
+        });
+      })();
+    </script>
+  </body>
+</html>

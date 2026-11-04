@@ -13,6 +13,7 @@ import { SatzWahl } from '../quiz/saetze';
 import { pruefeQuizBank, pruefeTexte, type Frage, type QuizBank, type SatzGruppe, type Texte } from '../quiz/vertrag';
 import { AUFGABEN, eingabeZeile, el, type Szene } from './aufgaben';
 import { RIEGEL_CSS } from './stil';
+import { meldeLokalePause } from '../pause-lokal';
 import { installiereTastaturschutz, registriereHost } from './tastatur';
 import { HOST_MARKE, schreibeAbbild, testRiegelAktiv } from './testspur';
 
@@ -44,12 +45,19 @@ export function bindeKontext(ctx: Kontext): void {
   installiereTastaturschutz(ctx);
 }
 
+// Nur fuer den Testhaken: der gebundene Kontext (um eine Invalidierung nachzustellen).
+export function gebundenerKontext(): Kontext | null {
+  return kontext;
+}
+
 export const WARNUNG_SCHLUESSEL = 'quizWarnungGesehen';
 const RICHTIG_MS = 900;
 const VERWEIGERT_MS = 1600;
 const MIN_BREITE = 320;
 const MIN_HOEHE = 300;
 const SCHMAL = 520;
+// Ein Anker unter dieser Hoehe ist zu klein fuer Karte, Chibi und Antworten: der Riegel fuellt dann wie auf schmalen Bildschirmen den Sichtbereich.
+const KLEINER_ANKER_HOEHE = 420;
 
 // ---------- Daten ----------
 async function holeDaten(rolle: 'quiz' | 'texte'): Promise<QuizBank | Texte | null> {
@@ -312,7 +320,11 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     const buehne = el('div', 'buehne');
     const scroll = el('div', 'scroll');
     scroll.append(miaZeile, buehne);
-    karte.append(kopf, scroll);
+    // Unsichtbare Ansage fuer Bildschirmleser: jede neue Frage (auch die sofort folgende nach einer falschen Antwort) wird hoeflich angesagt.
+    const ansage = el('div', 'ansage');
+    ansage.setAttribute('aria-live', 'polite');
+    ansage.setAttribute('role', 'status');
+    karte.append(kopf, scroll, ansage);
     huelle.append(karte);
     wurzel.append(stil, huelle);
 
@@ -340,6 +352,8 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         zustand,
         frage: aktuelleFrage ? { id: aktuelleFrage.id, art: aktuelleFrage.art, typ: aktuelleFrage.art === 'aufgabe' ? aktuelleFrage.aufgabe.typ : null, text: aktuelleFrage.frage } : null,
         satz: satzFeld.textContent,
+        ansage: ansage.textContent,
+        ansageLive: ansage.getAttribute('aria-live'),
         antworten: [...buehne.querySelectorAll('.antworten button')].map((b) => ({ text: b.textContent, ...(r(b) as object) })),
         eingabe: eingabeFeld ? { wert: eingabeFeld.value, ...(r(eingabeFeld) as object) } : null,
         knoepfe: [...buehne.querySelectorAll('button')].map((b) => ({ text: b.textContent, ...(r(b) as object) })),
@@ -492,6 +506,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     // ----- Pause: sofort lokal, dann erst die Nachricht -----
     pauseKnopf.addEventListener('click', () => {
       beende('pause');
+      meldeLokalePause(); // alle anderen Teile der Seite (Titel, Freilegen, Galerie, andere Videos) sofort frei
       try {
         const n: NachrichtHintergrundPause = { ziel: 'hintergrund', typ: 'pause', an: true };
         (opt.sendePause ? opt.sendePause() : (browser.runtime.sendMessage(n) as Promise<unknown>)).catch(() => {});
@@ -525,7 +540,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
       const a = opt.anker;
       if (a && a.isConnected && vb >= SCHMAL) {
         const r = a.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
+        if (r.width > 0 && r.height >= KLEINER_ANKER_HOEHE) {
           w = Math.min(vb, Math.max(MIN_BREITE, r.width));
           h = Math.min(vh, Math.max(MIN_HOEHE, r.height));
           x = Math.min(Math.max(0, r.left + r.width / 2 - w / 2), vb - w);
@@ -752,6 +767,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         leereFrage();
       }
       zustand = 'frage';
+      ansage.textContent = frage.frage;
       setzePose('sprechblase');
       schreibe();
       if (frage.art === 'aufgabe') {

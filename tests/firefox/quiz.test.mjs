@@ -36,6 +36,10 @@ const EXTRA = [
   { id: 'ext-b', art: 'aufgabe', schwere: 'leicht', geraet: 'beide', frage: 'One word flashes once. Type it.', aufgabe: { typ: 'wort-blitz', param: { wort: 'OBEY' } } },
   { id: 'ext-c', art: 'aufgabe', schwere: 'leicht', geraet: 'beide', frage: 'Count down for me.', aufgabe: { typ: 'countdown', param: { von: 5, wort: 'DOWN' } } },
   { id: 'ext-k', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Keep the cursor inside the circle.', aufgabe: { typ: 'im-kreis', param: { sekunden: 3 } } },
+  { id: 'ext-t', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Type the word in my rhythm.', aufgabe: { typ: 'buchstaben-takt', param: { wort: 'OBEY' } } },
+  { id: 'ext-p', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Click only when the word turns pink.', aufgabe: { typ: 'pink-klicken', param: { woerter: 'POP,DOWN,OBEY,SLEEP', anzahlWoerter: 5, wortMs: 1000 } } },
+  { id: 'ext-l', art: 'aufgabe', schwere: 'mittel', geraet: 'desktop', frage: 'Hold the space bar until I say now.', aufgabe: { typ: 'leertaste-halten', param: { sekunden: 2 } } },
+  { id: 'ext-w', art: 'aufgabe', schwere: 'fies', geraet: 'beide', frage: 'Do not click the button.', aufgabe: { typ: 'widerstehen', param: { sekunden: 3 } } },
   { id: 'ext-r', art: 'aufgabe', schwere: 'leicht', geraet: 'beide', frage: 'Unscramble my favorite word.', aufgabe: { typ: 'buchstaben-raetsel', param: { wort: 'OBEY', gemischt: 'B E O Y' } } },
 ];
 const ALLE_FRAGEN = [...DUMMY_QUIZ.fragen, ...EXTRA];
@@ -266,7 +270,7 @@ try {
     await bis('Pack-Titel', async () => (await driver.findElement(By.css('#pack-titel')).getText()).includes('Dummy pack'));
     await imSeitenkontext(`await api.storage.local.set({ quizWarnungGesehen: true }); return true;`);
     const q = await imSeitenkontext(`const a = await api.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'quiz' }); return { ok: a.ok, n: a.daten && a.daten.fragen.length };`);
-    pruefe(q.ok === true && q.n === 16, `packdaten quiz ${JSON.stringify(q)}`);
+    pruefe(q.ok === true && q.n === ALLE_FRAGEN.length, `packdaten quiz ${JSON.stringify(q)}`);
     const t = await imSeitenkontext(`const a = await api.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'texte' }); return a.daten && a.daten.gruppen.start;`);
     pruefe(JSON.stringify(t) === JSON.stringify(texte.start), 'packdaten texte start');
     const u = await imSeitenkontext(`const a = await api.runtime.sendMessage({ ziel: 'hintergrund', typ: 'packdaten', rolle: 'unsinn' }); return a.daten;`);
@@ -310,6 +314,7 @@ try {
     await klickeAuf(a.antworten.find((b) => b.text === 'beta'));
     const b = await abbildBis('neue Frage', (x) => x.zustand === 'frage' && x.frage.id !== 'test-w1' && x.satz === texte.falsch[0], 3000);
     pruefe((await ergebnis()) === null && b.chibiPose === 'sprechblase', 'Riegel bleibt offen');
+    pruefe(b.ansageLive === 'polite' && b.ansage === b.frage.text, `neue Frage im Live-Bereich ${JSON.stringify([b.ansageLive, b.ansage])}`);
     console.log(`firefox quiz: falsch, neue Frage ${b.frage.id} nach ${Date.now() - t0} ms (Klick bis Abbild, mit WebDriver-Aufruf)`);
   });
 
@@ -535,6 +540,8 @@ try {
 
   await fall('Anker: Riegel liegt ueber dem Player und folgt ihm', async () => {
     await frischeSeite();
+    // Ab 420 px Hoehe bleibt der Riegel auf der Flaeche des Ankers (darunter fuellt er den Sichtbereich, siehe Fall "Kleiner Anker").
+    await driver.executeScript("document.querySelector('#player').style.height = '480px'");
     await oeffneRiegel({ frage: 'test-w1', anker: '#player' });
     const a = await abbildBis('Frage', (x) => x.zustand === 'frage');
     const p = await driver.executeScript("const r = document.querySelector('#player').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };");
@@ -856,12 +863,103 @@ try {
     await tippe('ab');
     pruefe((await driver.executeScript('return window.eingaben.length')) > 0, 'Gegenprobe: ohne Riegel sieht die Seite Eingaben');
     await frischeSeite();
+    await driver.executeScript("document.querySelector('#player').style.height = '480px'"); // ab 420 px bleibt der Riegel auf dem Anker
     await oeffneRiegel({ frage: 'test-w1', anker: '#player' });
     await abbildBis('Frage', (x) => x.zustand === 'frage');
     await driver.findElement(By.css('#draussen')).click();
     await warte(1600);
     pruefe((await driver.executeScript('return document.activeElement && document.activeElement.id')) === 'draussen', 'Fokus der Seite bleibt (Anker)');
     console.log('firefox quiz: 0 Eingabeereignisse bei der Seite, Fokus der Seite bleibt mit Anker');
+  });
+
+  await fall('Kleiner Anker (320 x 300): Riegel fuellt den Sichtbereich, alle Antworten in der Karte und klickbar', async () => {
+    await frischeSeite();
+    await driver.executeScript(
+      "const d = document.createElement('div'); d.id = 'klein'; d.style.cssText = 'position:absolute;left:300px;top:80px;width:320px;height:300px;background:#223'; document.body.append(d);",
+    );
+    await oeffneRiegel({ frage: 'test-w1', verweigern: 0, richtigMs: 100, anker: '#klein' });
+    const a = await abbildBis('Frage', (x) => x.zustand === 'frage' && x.antworten.length === 3, 10_000);
+    const vh = await driver.executeScript('return document.documentElement.clientHeight');
+    pruefe(a.host.h >= vh - 2, `Host ${JSON.stringify(a.host)} fuellt den Sichtbereich (${vh})`);
+    pruefe(a.antworten.every((b) => b.y >= a.karte.y && b.y + b.h <= a.karte.y + a.karte.h + 1), 'alle Antworten in der Karte');
+    await klickeAuf(a.antworten.find((b) => b.text === 'alpha'));
+    await ergebnisBis('geloest');
+  });
+
+  await fall('Invalidierung des Kontexts: offener Riegel baut sich ab (abgebrochen, Host weg)', async () => {
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'test-w1', verweigern: 0 });
+    await abbildBis('Frage', (x) => x.zustand === 'frage');
+    pruefe(await hostDa(), 'Host da');
+    await testBefehl({ riegel: { invalidiere: true } });
+    await ergebnisBis('abgebrochen');
+    pruefe(await hostWeg(), 'Host nach der Invalidierung weg');
+  });
+
+  await fall('buchstaben-takt: im Takt geloest, zu schnell getippt gibt neue Frage', async () => {
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'ext-t', verweigern: 0, richtigMs: 100 });
+    await abbildBis('Takt', (x) => x.frage && x.frage.typ === 'buchstaben-takt');
+    for (const c of 'obey') {
+      await taste(c);
+      await warte(1100);
+    }
+    await ergebnisBis('geloest');
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'ext-t', verweigern: 0 });
+    await abbildBis('Takt', (x) => x.frage && x.frage.typ === 'buchstaben-takt');
+    await taste('o');
+    await warte(1100);
+    await taste('b');
+    await taste('e');
+    await abbildBis('neue Frage', (x) => x.zustand === 'frage' && x.frage.id !== 'ext-t', 3000);
+    pruefe((await ergebnis()) === null, 'zu schnell: kein Ergebnis, Riegel bleibt offen');
+  });
+
+  await fall('pink-klicken: Enter auf dem pinken Wort loest, auf einem anderen gibt neue Frage', async () => {
+    for (const aufPink of [true, false]) {
+      await frischeSeite();
+      await oeffneRiegel({ frage: 'ext-p', verweigern: 0, richtigMs: 100 });
+      await abbildBis('pink-klicken', (x) => x.frage && x.frage.typ === 'pink-klicken');
+      const f = await abbildBis('Wort', (x) => x.aufgabe === (aufPink ? 'pink:ja' : 'pink:nein') && x.wort !== null, 10_000);
+      pruefe(f.wortPink === aufPink, `Wort pink ${f.wortPink}, erwartet ${aufPink}`);
+      await taste(Key.ENTER);
+      if (aufPink) await ergebnisBis('geloest');
+      else {
+        await abbildBis('neue Frage', (x) => x.zustand === 'frage' && x.frage.id !== 'ext-p', 3000);
+        pruefe((await ergebnis()) === null, 'falsches Wort: kein Ergebnis');
+      }
+    }
+  });
+
+  await fall('leertaste-halten: bei "Now." loslassen loest, zu frueh loslassen gibt neue Frage', async () => {
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'ext-l', verweigern: 0, richtigMs: 100 });
+    await abbildBis('Leertaste', (x) => x.frage && x.frage.typ === 'leertaste-halten');
+    await driver.actions({ async: true }).keyDown(' ').perform();
+    await abbildBis('Now', (x) => x.aufgabe === 'jetzt', 5000);
+    await driver.actions({ async: true }).keyUp(' ').perform();
+    await ergebnisBis('geloest');
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'ext-l', verweigern: 0 });
+    await abbildBis('Leertaste', (x) => x.frage && x.frage.typ === 'leertaste-halten');
+    await driver.actions({ async: true }).keyDown(' ').perform();
+    await warte(600);
+    await driver.actions({ async: true }).keyUp(' ').perform();
+    await abbildBis('neue Frage', (x) => x.zustand === 'frage' && x.frage.id !== 'ext-l', 3000);
+  });
+
+  await fall('widerstehen: nicht klicken loest nach der Zeit, Klick auf den Knopf gibt neue Frage', async () => {
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'ext-w', verweigern: 0, richtigMs: 100 });
+    await abbildBis('widerstehen', (x) => x.frage && x.frage.typ === 'widerstehen');
+    await ergebnisBis('geloest', 8000);
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'ext-w', verweigern: 0 });
+    const a = await abbildBis('Knopf', (x) => x.frage && x.frage.typ === 'widerstehen' && x.knoepfe.some((k) => k.text === 'Click me'));
+    await klickeAuf(a.knoepfe.find((k) => k.text === 'Click me'));
+    await abbildBis('neue Frage', (x) => x.zustand === 'frage' && x.frage.id !== 'ext-w', 3000);
+    pruefe((await ergebnis()) === null, 'Klick: kein Ergebnis');
   });
 
   await fall('Pack mit kaputter Quiz-Bank: Freischaltung faellt weg, abgebrochen', async () => {

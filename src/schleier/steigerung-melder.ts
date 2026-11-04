@@ -11,6 +11,7 @@ import type { NachrichtHintergrundSteigerungMinute } from '../nachrichten';
 import { istFreigeschaltet, type PackKurz } from '../pack/vertrag';
 import { STEIGERUNG_SCHLUESSEL, vervollstaendigeStand, wirksameStufe, wirksameZonen, type SteigerungStand, type SteigerungStufe, type WirksameZonen } from '../steigerung';
 import { TESTHAKEN } from './konstanten';
+import { baueMinute, NeueUrteileZaehler } from './steigerung-zaehler';
 import { testhakenAktiv } from './status';
 
 const TAKT_MS = 60_000;
@@ -33,9 +34,8 @@ export class SteigerungMelder {
   private eigeneSeiten: readonly string[] = [];
   // Schleier fuer diese Seite aus (Pause, eigene Ausnahme): keine Meldung, keine Stufe.
   private aus = false;
-  // Schon gemeldete Inhalte je Element: eine Neubewertung (Stufe, Pack, Schwelle, Ende der Pause) zaehlt nicht als neues Urteil.
-  private gemeldet = new WeakMap<Element, string>();
-  private zensiertSeitMeldung = 0;
+  // Zaehlung neuer Urteile (steigerung-zaehler.ts): eine Neubewertung (Stufe, Pack, Schwelle, Ende der Pause) zaehlt nicht als neues Urteil.
+  private readonly zaehler = new NeueUrteileZaehler();
   private uhr: ReturnType<typeof setInterval> | null = null;
   private letzteStufe: SteigerungStufe = 0;
   private gestoppt = false;
@@ -103,10 +103,7 @@ export class SteigerungMelder {
   // Ein Element hat gerade das Urteil `zensiert` bekommen (vorher ein anderes). Zaehlt nur neue Inhalte (Quelle oder Stil anders als bei der
   // letzten Meldung dieses Elements).
   zensiert(el: Element): void {
-    const inhalt = (el as HTMLImageElement).currentSrc || el.getAttribute('src') || el.getAttribute('poster') || el.getAttribute('style') || el.tagName;
-    if (this.gemeldet.get(el) === inhalt) return;
-    this.gemeldet.set(el, inhalt);
-    this.zensiertSeitMeldung++;
+    this.zaehler.zensiert(el as HTMLImageElement);
   }
 
   private pruefeWechsel(): void {
@@ -119,17 +116,13 @@ export class SteigerungMelder {
   private tick(): void {
     if (this.gestoppt) return;
     this.pruefeWechsel();
-    if (!this.oberste || !this.frei || this.pause || this.aus || document.visibilityState !== 'visible') {
-      this.zensiertSeitMeldung = 0;
-      return;
-    }
-    const nachricht: NachrichtHintergrundSteigerungMinute = {
-      ziel: 'hintergrund',
-      typ: 'steigerung-minute',
-      erwachsen: istErwachsenenseite(location.href, this.eigeneSeiten),
-      zensiert: this.zensiertSeitMeldung,
-    };
-    this.zensiertSeitMeldung = 0;
+    const minute = baueMinute(
+      { oberste: this.oberste, frei: this.frei, pause: this.pause, aus: this.aus, sichtbar: document.visibilityState === 'visible' },
+      this.zaehler,
+      () => istErwachsenenseite(location.href, this.eigeneSeiten),
+    );
+    if (!minute) return;
+    const nachricht: NachrichtHintergrundSteigerungMinute = { ziel: 'hintergrund', typ: 'steigerung-minute', ...minute };
     browser.runtime.sendMessage(nachricht).catch(() => {});
   }
 }

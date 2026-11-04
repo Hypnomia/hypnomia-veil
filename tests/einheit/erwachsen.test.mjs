@@ -2,11 +2,11 @@
 // Vorschau-Bilder. Reine Logik, ohne Browser; Elemente werden durch Attrappen ersetzt.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adapterFuer, istHoverVideo, istVideoLink, istVorschau, VORSCHAU_MIN_KANTE } from '../../src/adapter/index.ts';
+import { adapterFuer, istHoverVideo, istVideoLink, istVorschau, registrierbareDomain, VORSCHAU_MIN_KANTE } from '../../src/adapter/index.ts';
 import { SEITEN_NAMEN } from '../../src/adapter/liste.ts';
 import { INHALT_MAX_SCHLUESSEL, INHALT_MIN_BILDER, InhaltsZaehler, inhaltAusTreffern, zaehltFuerInhalt } from '../../src/adapter/inhalt.ts';
 import { beiErwachsenStatus, erwachsenStatus, istErwachsenFuerQuiz, setzeErwachsenStatus } from '../../src/adapter/status.ts';
-import { VorschauSpeicher } from '../../src/schleier/vorschau-speicher.ts';
+import { NachtauschMerker, VorschauSpeicher } from '../../src/schleier/vorschau-speicher.ts';
 
 // Attrappe: Element mit Tag, Attributen und Vorfahren-Kette. Ein Selektor trifft, wenn er in `trifft` steht (genaue Zeichenkette).
 function el({ trifft = [], vorfahren = [] } = {}) {
@@ -266,4 +266,80 @@ test('Links: absolute Startseite und im Rueckfall fremde Hosts sind keine Videol
   assert.equal(istVideoLink('https://werbung.example/aktion/1', basis, true), false);
   assert.equal(istVideoLink('https://werbung.example/aktion/1', basis, false), true);
   assert.equal(istVideoLink('https://beispiel.test/video/1', basis, true), true);
+});
+
+test('Links: Profile, Kategorien, Suchseiten und Kanaele sind keine Videolinks, echte Videolinks bleiben', () => {
+  const basis = 'https://www.beispiel.test/liste';
+  for (const h of ['/model/figur', '/models', '/pornstar/figur/videos', '/pornstars/', '/channels/x', '/channel/x', '/categories', '/category/hd', '/search?q=a', '/search/hd', '/tags/a', '/users' + '/b', '/de/pornstars/figur', '/video/search?search=a', 'https://www.beispiel.test/model/figur']) {
+    assert.equal(istVideoLink(h, basis), false, h);
+    assert.equal(istVideoLink(h), false, `${h} ohne Basis`);
+  }
+  for (const h of ['/video12345/titel', '/videos/titel-1', '/view_video.php?viewkey=ph1', '/video/12', '/de/videos/abc', '/searchlight/1', '/models-und-mehr/1', '/gif/5']) {
+    assert.equal(istVideoLink(h, basis), true, h);
+  }
+  // Im Aufbau des Adapters: ein Link auf ein Profil macht sein Bild nicht zur Vorschau, ein Bild ueber vorschauBilder bleibt eine.
+  const a = adapterFuer('xhamster');
+  const profil = el({ vorfahren: [{ selektor: 'a[href*="/videos/"]', knoten: link('/videos/x/model/figur') }] });
+  assert.equal(istVorschau(profil, a, 'https://xhamster.test/'), true); // Pfad beginnt nicht mit /model
+  const nurProfil = el({ vorfahren: [{ selektor: 'a.video-thumb__image-container', knoten: link('/pornstars/figur') }] });
+  assert.equal(istVorschau(nurProfil, a, 'https://xhamster.test/'), false);
+  const bild = el({ trifft: ['img.video-thumb__image'], vorfahren: [{ selektor: 'a.video-thumb__image-container', knoten: link('/pornstars/figur') }] });
+  assert.equal(istVorschau(bild, a, 'https://xhamster.test/'), true);
+});
+
+test('Links: gleiche registrierbare Domain zaehlt im Rueckfall als eigener Host', () => {
+  assert.equal(registrierbareDomain('de.seite.com'), 'seite.com');
+  assert.equal(registrierbareDomain('www.seite.com'), 'seite.com');
+  assert.equal(registrierbareDomain('seite.com'), 'seite.com');
+  assert.equal(registrierbareDomain('a.b.seite.co.uk'), 'seite.co.uk');
+  assert.equal(registrierbareDomain('seite.co.uk'), 'seite.co.uk');
+  assert.equal(registrierbareDomain('127.0.0.1'), '127.0.0.1');
+  assert.equal(registrierbareDomain('localhost'), 'localhost');
+  const basis = 'https://de.seite.com/liste';
+  assert.equal(istVideoLink('https://seite.com/video/1', basis, true), true);
+  assert.equal(istVideoLink('https://www.seite.com/video/1', basis, true), true);
+  assert.equal(istVideoLink('https://cdn.seite.com/video/1', basis, true), true);
+  assert.equal(istVideoLink('https://anderseite.com/video/1', basis, true), false);
+  assert.equal(istVideoLink('https://seite.com.werbung.example/video/1', basis, true), false);
+  assert.equal(istVideoLink('https://x.seite.co.uk/video/1', 'https://www.seite.co.uk/', true), true);
+  assert.equal(istVideoLink('https://y.co.uk/video/1', 'https://www.seite.co.uk/', true), false);
+});
+
+test('Nachtausch: der Merker liefert nur Eintraege mit gleicher Generation, einmal, und leert sich', () => {
+  const m = new NachtauschMerker(3);
+  const e1 = {};
+  const e2 = {};
+  const e3 = {};
+  const e4 = {};
+  const z1 = { generation: 1 };
+  const z2 = { generation: 1 };
+  m.merke(e1, z1);
+  m.merke(e2, z2);
+  m.merke(e1, z1); // doppelt: ein Eintrag
+  assert.equal(m.anzahl, 2);
+  z2.generation++; // inzwischen neu bewertet
+  m.merke(e3, { generation: 5 });
+  m.merke(e4, { generation: 1 }); // Grenze 3 erreicht: nicht aufgenommen
+  assert.equal(m.anzahl, 3);
+  const liste = m.nimm();
+  assert.deepEqual(liste.map(([e]) => e), [e1, e3]);
+  assert.equal(m.anzahl, 0);
+  assert.deepEqual(m.nimm(), []);
+  m.merke(e1, z1);
+  m.leere();
+  assert.equal(m.anzahl, 0);
+});
+
+test('Status: eingesetzte Vorschauen zaehlen nicht als zensiert, sondern getrennt', async () => {
+  const { zaehleZustaende } = await import('../../src/schleier/zaehlung.ts');
+  const z = zaehleZustaende([
+    { urteil: 'zensiert', ersetzt: { stile: [] } },
+    { urteil: 'zensiert', ersetzt: { stile: [] } },
+    { urteil: 'zensiert' },
+    { urteil: 'frei' },
+    { urteil: 'verdeckt' },
+    { urteil: null },
+  ]);
+  assert.deepEqual(z, { gesamt: 6, offen: 1, frei: 1, zensiert: 1, verdeckt: 1, ersetzt: 2 });
+  assert.deepEqual(zaehleZustaende([]), { gesamt: 0, offen: 0, frei: 0, zensiert: 0, verdeckt: 0, ersetzt: 0 });
 });
