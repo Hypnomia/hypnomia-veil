@@ -83,7 +83,13 @@ export default defineConfig({
   // ein zweites Mal als Asset ins Paket; so liegt sie nur einmal unter ort/ (scripts/kopiere-laufzeit.mjs), die Adresse setzt der Erkenner.
   vite: () => ({
     // Testhaken-Schalter als Konstante, damit der Testhaken-Code im Release-Bundle sicher wegfaellt (nicht nur zur Laufzeit falsch ist).
-    define: { 'import.meta.env.WXT_TESTHAKEN': JSON.stringify(process.env.WXT_TESTHAKEN ?? '') },
+    // VEIL_BAUDATUM (Session 11, Auftrag V): Baudatum JJJJ-MM-TT fuer die Versionsanzeige.
+    define: {
+      'import.meta.env.WXT_TESTHAKEN': JSON.stringify(process.env.WXT_TESTHAKEN ?? ''),
+      'import.meta.env.VEIL_BAUDATUM': JSON.stringify(
+        ((d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)(new Date()),
+      ),
+    },
     resolve: {
       alias: [
         {

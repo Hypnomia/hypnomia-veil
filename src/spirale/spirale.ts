@@ -29,6 +29,7 @@ import {
 } from './logik';
 import { schreibeAbbild, schreibeAntwort, testSpirale } from './testspur';
 import { bilderGesamt, stelleUhrVor, type Bildstand } from './zeichne';
+import { melde } from '../ereignisse';
 
 const LADE_FRIST_MS = 5000;
 // Frueh angemeldet (ab document_start, nicht scroll-blockierend): Zeiger- und Tastenereignisse.
@@ -339,6 +340,7 @@ export function starteSpirale(ctx: KontextLeicht): void {
     const a = new LeerlaufAnsicht();
     ansicht = a;
     meldeBelegt('spirale', true);
+    melde({ art: 'spirale' }); // Session 11: Ledger
     meldeWachen(true);
     // Tasten, die den Fokus im Host treffen, schluckt der Tastenschutz (src/riegel/tastatur.ts) noch vor allen anderen Horchern.
     aufraeumen.push(

@@ -8,8 +8,18 @@ import { hostAus } from '../../src/adapter/liste';
 import { hatErwachsenFunktionen, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import type { Texte } from '../../src/quiz/vertrag';
+import { einstiegFertig, ladeEinstieg } from '../../src/einstieg/vertrag';
 // Phase 5: Abschnitt "Mia’s control" (eigenes Modul).
 import './kontrolle';
+// Session 11 (Auftrag S): Grundeinstellungen, Ausnahmen, Einstieg und Pack-Sperre als eigene Module.
+import './grund';
+import './grund-ausnahmen';
+import './grund-pack';
+import './grund-erwachsen';
+// Session 11: eigene Module je Auftrag (Ton T, Ledger L, Ueber/Version V), jedes fuellt nur seinen Abschnitt.
+import './ton';
+import './ledger';
+import './ueber';
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -73,8 +83,10 @@ function fehlerText(e: unknown): string {
       return `Something inside the pack doesn't add up. The file may be damaged or cut short.${nichtsGespeichert} Try downloading the pack again.`;
     case 'lizenz':
       return `The pack has no usable license text, and I don't add packs without one.${nichtsGespeichert}`;
+    case 'ton-zu-gross':
+      return `One of the sounds in this pack is too big for me (1 MB at most), so the pack stays out.${nichtsGespeichert}`;
     default:
-      return `The pack contains something that isn't allowed (only pictures, text and data files are), so it stays out.${nichtsGespeichert}`;
+      return `The pack contains something that isn't allowed (only pictures, sounds, text and data files are), so it stays out.${nichtsGespeichert}`;
   }
 }
 
@@ -126,7 +138,8 @@ async function gleicheAbUndZeige(): Promise<AbgleichErgebnis | null> {
 
 function setzeBeschaeftigt(an: boolean): void {
   beschaeftigt = an;
-  dateiFeld.disabled = an;
+  // Vor dem Einstieg bleibt das Dateifeld gesperrt (grund-pack.ts setzt die Sperre).
+  dateiFeld.disabled = an || document.body.dataset.packGesperrt === '1';
   annehmen.disabled = an;
   abbrechen.disabled = an;
   entfernenKnopf.disabled = an;
@@ -148,6 +161,11 @@ dateiFeld.addEventListener('change', async () => {
   if (!datei || beschaeftigt) return;
   vergissAuswahl();
   zeigeMeldung('');
+  // Das Mia Pack wartet auf den Einstieg (Entscheidung 133): der Speicher entscheidet, nicht nur die Anzeige.
+  if (!(await ladeEinstieg().then(einstiegFertig, () => false))) {
+    zeigeMeldung('Meet me first, then bring the pack. Use the button above.', true);
+    return;
+  }
   setzeBeschaeftigt(true);
   fortschrittZeile.hidden = false;
   fortschritt.removeAttribute('value');
@@ -177,6 +195,12 @@ dateiFeld.addEventListener('change', async () => {
 annehmen.addEventListener('click', async () => {
   if (!gewaehlt || beschaeftigt) return;
   const { datei, geprueft } = gewaehlt;
+  // Wurde der Einstieg zurueckgesetzt, waehrend die Lizenz offen war, gilt die Sperre auch hier.
+  if (!(await ladeEinstieg().then(einstiegFertig, () => false))) {
+    vergissAuswahl();
+    zeigeMeldung('Meet me first, then bring the pack. Use the button above.', true);
+    return;
+  }
   setzeBeschaeftigt(true);
   zeigeMeldung('');
   fortschrittZeile.hidden = false;
@@ -193,7 +217,7 @@ annehmen.addEventListener('click', async () => {
     zeichneStand(kurz);
     zeigeMeldung(
       `There it is. The pack is in, and it never left your browser. ${kurz.bilder} pictures added. ` +
-        (stilGesetzt ? 'Mia patch is your cover style now.' : "I couldn't switch the cover style for you, so pick Mia patch in the popup."),
+        (stilGesetzt ? 'Mia patch is your cover style now.' : "I couldn't switch the cover style for you, so pick Mia patch under Cover style."),
     );
   } catch (e) {
     fortschrittZeile.hidden = true;
@@ -207,7 +231,7 @@ annehmen.addEventListener('click', async () => {
       vergissAuswahl();
       const abgleich = await gleicheAbUndZeige();
       if (abgleich?.kurz) {
-        zeigeMeldung("The pictures are stored, and I've finished setting up the pack. Pick Mia patch in the popup to use it.");
+        zeigeMeldung("The pictures are stored, and I've finished setting up the pack. Pick Mia patch under Cover style to use it.");
       } else {
         zeigeMeldung("The pictures are stored, but I couldn't finish setting up the pack. Open this page again and I'll sort it out.", true);
       }

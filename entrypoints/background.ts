@@ -14,6 +14,11 @@ import { raeumeUmleitungAuf } from '../src/hintergrund/umleitung';
 import { bearbeiteLeerlaufTest, starteLeerlauf } from '../src/hintergrund/leerlauf';
 import { bearbeiteMeldungTest, notiereMinute, starteMeldungen } from '../src/hintergrund/meldungen';
 import { bearbeiteBesuch, bearbeiteBesuchTest, starteBesuche } from '../src/hintergrund/besuche';
+// Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): Einstieg, Ledger, Version, Ton.
+import { bearbeiteEinstiegTest, starteEinstieg } from '../src/hintergrund/einstieg';
+import { bearbeiteLedger, bearbeiteLedgerLoeschen, notiereLedgerMinute, starteLedger } from '../src/hintergrund/ledger';
+import { bearbeiteVersion, bearbeiteVersionTest, starteVersion } from '../src/hintergrund/version';
+import { bearbeitePackTon } from '../src/hintergrund/ton';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -221,6 +226,9 @@ export default defineBackground(() => {
   starteLeerlauf();
   starteMeldungen();
   starteBesuche();
+  starteEinstieg();
+  starteLedger();
+  starteVersion();
 
   // Chrome: Offscreen-Dokument bei Installation und Browserstart anlegen.
   if (import.meta.env.CHROME) {
@@ -256,6 +264,10 @@ export default defineBackground(() => {
         await Promise.resolve()
           .then(() => notiereMinute(n, absender))
           .catch(() => {});
+        // Session 11 (Auftrag L): Minuten auf Erwachsenenseiten und hoechste Stufe fuer den Ledger.
+        await Promise.resolve()
+          .then(() => notiereLedgerMinute(n, absender))
+          .catch(() => {});
         return antwort;
       }
       case 'steigerung-uhr':
@@ -273,6 +285,21 @@ export default defineBackground(() => {
       case 'besuch-test':
         if (import.meta.env.WXT_TESTHAKEN !== '1') return { ok: false, fehler: 'nur im Testbau' };
         return bearbeiteBesuchTest(n, absender);
+      // Session 11
+      case 'ledger':
+        return bearbeiteLedger(n, absender);
+      case 'ledger-loeschen':
+        return bearbeiteLedgerLoeschen(n, absender);
+      case 'version':
+        return bearbeiteVersion(n, absender);
+      case 'version-test':
+        if (import.meta.env.WXT_TESTHAKEN !== '1') return { ok: false, fehler: 'nur im Testbau' };
+        return bearbeiteVersionTest(n);
+      case 'einstieg-test':
+        if (import.meta.env.WXT_TESTHAKEN !== '1') return { ok: false, fehler: 'nur im Testbau' };
+        return bearbeiteEinstiegTest(n);
+      case 'packton':
+        return bearbeitePackTon(n);
       default:
         return undefined;
     }

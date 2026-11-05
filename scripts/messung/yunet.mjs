@@ -423,7 +423,7 @@ async function messeChromium(port, zuerst, max) {
 }
 
 async function messeFirefox(port, zuerst, max) {
-  const optionen = new firefox.Options().setBinary(firefoxBin).addArguments('-headless');
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').setBinary(firefoxBin).addArguments('-headless');
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).build();
   try {
     await driver.manage().setTimeouts({ pageLoad: 60_000, script: 600_000 });

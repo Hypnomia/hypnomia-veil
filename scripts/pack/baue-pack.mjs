@@ -2,9 +2,10 @@
 //   npm run pack:bau -- --quelle <ordner> --aus <datei>   Ordner mit pack.json und den Dateien
 //   npm run pack:dummy [-- --aus <datei>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
 // pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch", ...], "lizenz": "<Name der Lizenzdatei>",
-//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung",
+//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung"|"ton",
 //                            "stufe"?: "tease"|"hot"|"explicit", "format"?: "300x250"|... }] }
-//              (vorschau braucht eine Stufe, werbung ein Format aus WERBE_FORMATE, quiz und texte hoechstens einmal)
+//              (vorschau braucht eine Stufe, werbung ein Format aus WERBE_FORMATE, quiz und texte hoechstens einmal; ton ist ein Audio
+//               .ogg, .mp3 oder .wav bis 1 MB, Name ohne Ordner und Endung aus quiz, richtig, falsch, verweigert, trigger)
 // `datei` ist der Pfad unter dem Quellordner (Standard: gleich `name`), `typ` wird sonst aus der Endung geschlossen.
 // Die Ausgabe landet nie im Repo: erlaubt sind Orte ausserhalb des Repos und Ordner `.output*` darin (ignoriert).
 // Mia-Bilder liest nur der echte Bau (spaeter aus dem Assets-Ordner neben dem Repo); das Dummy-Pack erzeugt seine Bilder zur Laufzeit.
@@ -14,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PackFehler, pruefePack, quelleAusBytes, schreibePack } from '../../src/pack/format.ts';
 import { DUMMY_QUIZ, DUMMY_TEXTE } from './dummy-inhalte.mjs';
+import { dummyToene } from './dummy-toene.mjs';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -27,6 +29,9 @@ const TYPEN = {
   '.txt': 'text/plain',
   '.md': 'text/plain',
   '.json': 'application/json',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
 };
 
 // Liest das fertige Pack mit demselben Code wie die Erweiterung (alle Pruefungen aus 9.1) und bricht bei jedem Fehler ab:
@@ -126,7 +131,7 @@ export const DUMMY_FARBEN_WARM = [
 ];
 
 // Baut das Dummy-Pack im Speicher. Liefert die Bytes und die verwendeten Farben (Tests pruefen Pixel dagegen).
-// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung.
+// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`.
 export async function baueDummyPack(opts = {}) {
   const paare = opts.farben ?? DUMMY_FARBEN;
   const dateien = [{ name: 'lizenz.txt', typ: 'text/plain', daten: new TextEncoder().encode(lizenzTextDummy()), rolle: 'lizenz' }];
@@ -155,6 +160,10 @@ export async function baueDummyPack(opts = {}) {
       const { format, farben } = DUMMY_WERBUNG[i];
       const [b, h] = format.split('x').map(Number);
       dateien.push({ name: `werbung/dummy-${i + 1}-${format}.webp`, typ: 'image/webp', daten: await dummyBild(farben[0], farben[1], b, h), rolle: 'werbung', format });
+    }
+    // Phase 6 (Auftrag T): kurze synthetische Toene fuer alle Namen. `opts.ohneTon` laesst sie samt Freischaltung weg.
+    if (!opts.ohneTon) {
+      for (const t of dummyToene()) dateien.push({ name: t.datei, typ: 'audio/wav', daten: t.daten, rolle: 'ton' });
     }
     const json = (x) => new TextEncoder().encode(JSON.stringify(x, null, 1));
     dateien.push({ name: 'quiz.json', typ: 'application/json', daten: json(opts.quiz ?? DUMMY_QUIZ), rolle: 'quiz' });
@@ -185,6 +194,7 @@ export async function baueDummyPack(opts = {}) {
             'kontrolle:meldungen',
             'kontrolle:zeitplan',
             'kontrolle:besuche',
+            ...(opts.ohneTon ? [] : ['ton']),
           ]
         : ['stil:mia-patch'],
     },

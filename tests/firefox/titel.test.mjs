@@ -175,7 +175,7 @@ try {
   await writeFile(mehrPfad, (await baueDummyPack({ texte: mehrTexte, id: 'mehr' })).bytes);
 
   server = await starteFixtureServer(port);
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   optionen.setPreference('network.dns.localDomains', HOSTS.join(','));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');

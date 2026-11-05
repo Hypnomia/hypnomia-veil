@@ -115,7 +115,7 @@ try {
     process.exit(0);
   }
 
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).build();
   await driver.manage().setTimeouts({ pageLoad: 20_000, script: 20_000 });
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);

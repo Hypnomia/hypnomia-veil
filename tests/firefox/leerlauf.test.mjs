@@ -129,7 +129,7 @@ async function warteBeurteilt(n) {
 try {
   server.push(await starteFixtureServer(port));
   server.push(await starteFixtureServer(portFremd));
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.background.idle.timeout', LEERLAUF_MS);
   driver = await new Builder()
     .forBrowser('firefox')

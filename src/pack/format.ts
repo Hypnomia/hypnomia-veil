@@ -4,6 +4,7 @@
 // Das Pack ist nur Daten. Nichts daraus wird ausgefuehrt; Texte kommen als String zurueck und gehoeren per `textContent` angezeigt.
 
 import type { Freischaltung, PackDateiEintrag, PackManifest, Rolle, Stufe, WerbeFormat } from './vertrag';
+import type { TonName } from '../ton/vertrag';
 // Laufzeit-Werte aus vertrag.ts (ROLLEN, BENOETIGT) stehen hier als Kopie: diese Datei hat keine Laufzeit-Importe. Die Typpruefung unten
 // stellt sicher, dass die Kopien zum Vertrag passen.
 
@@ -17,19 +18,28 @@ export const MAX_GESAMT_BYTES = 300_000_000; // 300 MB (Pack-Datei, Dezimal-MB w
 export const BILDKOPF_BYTES = 1024 * 1024;
 export const MAX_BILD_SEITE = 4096; // Pixel je Seite eines Bildes (Schutz vor riesigen Massen im Dateikopf)
 export const MAX_TITEL = 80;
+// Phase 6 (Auftrag T): ein Klang der Rolle `ton` ist hoechstens 1 MB gross (Dezimal-MB wie die anderen Grenzen).
+export const MAX_TON_BYTES = 1_000_000;
 
 const NAME_MUSTER = /^[a-z0-9][a-z0-9._/-]{0,100}$/;
 const ID_MUSTER = /^[a-z0-9-]{1,40}$/;
 const VERSION_MUSTER = /^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/;
 const SHA_MUSTER = /^[0-9a-f]{64}$/;
-const TYPEN: readonly PackDateiEintrag['typ'][] = ['image/webp', 'image/jpeg', 'image/png', 'text/plain', 'application/json'];
-const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung'] as const satisfies readonly Rolle[];
+const TYPEN: readonly PackDateiEintrag['typ'][] = ['image/webp', 'image/jpeg', 'image/png', 'text/plain', 'application/json', 'audio/ogg', 'audio/mpeg', 'audio/wav'];
+// Audio-Typen: nur in der Rolle `ton`, Signaturpruefung statt Massen, kein UTF-8.
+const AUDIO_TYPEN: readonly PackDateiEintrag['typ'][] = ['audio/ogg', 'audio/mpeg', 'audio/wav'];
+const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton'] as const satisfies readonly Rolle[];
 type _RollenVollstaendig = Exclude<Rolle, (typeof ROLLEN)[number]> extends never ? true : never;
 const _rollenVollstaendig: _RollenVollstaendig = true;
 void _rollenVollstaendig;
 // Bild-Rollen und JSON-Rollen (JSON: hoechstens eine Datei, Typ application/json, muss als JSON lesbar sein).
 const BILD_ROLLEN: readonly Rolle[] = ['patch', 'vorschau', 'chibi', 'werbung'];
 const JSON_ROLLEN: readonly Rolle[] = ['quiz', 'texte'];
+// Kopie von TON_NAMEN aus src/ton/vertrag.ts (Typpruefung unten): nur diese Namen sind Klaenge, der Rest der Rolle `ton` wird verworfen.
+const TON_NAMEN = ['quiz', 'richtig', 'falsch', 'verweigert', 'trigger'] as const satisfies readonly TonName[];
+type _TonVollstaendig = Exclude<TonName, (typeof TON_NAMEN)[number]> extends never ? true : never;
+const _tonVollstaendig: _TonVollstaendig = true;
+void _tonVollstaendig;
 const STUFEN: readonly Stufe[] = ['tease', 'hot', 'explicit'];
 // Kopie von WERBE_FORMATE aus vertrag.ts (Typpruefung unten).
 const WERBE_FORMATE = ['300x250', '336x280', '728x90', '468x60', '160x600', '300x600', '320x50', '320x100', '970x250'] as const satisfies readonly WerbeFormat[];
@@ -56,6 +66,7 @@ const BEKANNTE_FREISCHALTUNGEN = [
   'kontrolle:meldungen',
   'kontrolle:zeitplan',
   'kontrolle:besuche',
+  'ton',
 ] as const satisfies readonly Freischaltung[];
 // Kopie von BENOETIGT aus vertrag.ts: welche Rolle eine Freischaltung braucht (null = keine Datei).
 const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
@@ -75,6 +86,7 @@ const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:meldungen': 'texte',
   'kontrolle:zeitplan': null,
   'kontrolle:besuche': 'texte',
+  ton: 'ton',
 };
 type _Vollstaendig = Exclude<Freischaltung, (typeof BEKANNTE_FREISCHALTUNGEN)[number]> extends never ? true : never;
 const _vollstaendig: _Vollstaendig = true;
@@ -108,6 +120,7 @@ export type PackFehlerCode =
   | 'signatur'
   | 'bildmasse'
   | 'bild-zu-gross'
+  | 'ton-zu-gross'
   | 'utf8'
   | 'lizenz'
   | 'rolle'
@@ -197,9 +210,47 @@ function signaturPasst(typ: PackDateiEintrag['typ'], b: Uint8Array): boolean {
     case 'image/webp':
       // "RIFF", vier Byte Laenge, "WEBP"
       return b.length >= 12 && gleich(0, [0x52, 0x49, 0x46, 0x46]) && gleich(8, [0x57, 0x45, 0x42, 0x50]);
+    case 'audio/ogg':
+      // "OggS"
+      return b.length >= 4 && gleich(0, [0x4f, 0x67, 0x67, 0x53]);
+    case 'audio/mpeg':
+      // ID3-Kopf oder Rahmen-Synchronisation (11 gesetzte Bits)
+      if (b.length >= 3 && gleich(0, [0x49, 0x44, 0x33])) return true;
+      // Rahmenkopf: 11 Sync-Bits, Version nicht reserviert, Schicht gesetzt, Bitrate- und Abtastraten-Index gueltig
+      return (
+        b.length >= 3 &&
+        b[0] === 0xff &&
+        ((b[1] ?? 0) & 0xe0) === 0xe0 &&
+        (((b[1] ?? 0) >> 3) & 3) !== 1 &&
+        (((b[1] ?? 0) >> 1) & 3) !== 0 &&
+        (((b[2] ?? 0) >> 4) & 15) !== 15 &&
+        (((b[2] ?? 0) >> 2) & 3) !== 3
+      );
+    case 'audio/wav':
+      // "RIFF", vier Byte Laenge, "WAVE"
+      return b.length >= 12 && gleich(0, [0x52, 0x49, 0x46, 0x46]) && gleich(8, [0x57, 0x41, 0x56, 0x45]);
     default:
       return true;
   }
+}
+
+// Endung, die zu einem Audio-Typ gehoert (Kleinbuchstaben): ein Klang mit anderer Endung wird verworfen.
+const AUDIO_ENDUNG: Readonly<Record<string, PackDateiEintrag['typ']>> = { '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
+function endungPasst(dateiname: string, typ: PackDateiEintrag['typ']): boolean {
+  const ohneOrdner = dateiname.slice(dateiname.lastIndexOf('/') + 1);
+  const punkt = ohneOrdner.lastIndexOf('.');
+  return punkt > 0 && AUDIO_ENDUNG[ohneOrdner.slice(punkt).toLowerCase()] === typ;
+}
+
+const istAudio = (typ: PackDateiEintrag['typ']): boolean => (AUDIO_TYPEN as readonly string[]).includes(typ);
+
+// Name eines Klangs aus dem Dateinamen im Pack: ohne Ordner und ohne die letzte Endung (`ton/richtig.ogg` ist `richtig`). null, wenn der
+// Name kein Klang dieser Version ist.
+export function tonNameAusDatei(dateiname: string): TonName | null {
+  const ohneOrdner = dateiname.slice(dateiname.lastIndexOf('/') + 1);
+  const punkt = ohneOrdner.lastIndexOf('.');
+  const kern = punkt > 0 ? ohneOrdner.slice(0, punkt) : ohneOrdner;
+  return (TON_NAMEN as readonly string[]).includes(kern) ? (kern as TonName) : null;
 }
 
 const istBild = (typ: PackDateiEintrag['typ']): boolean => typ.startsWith('image/');
@@ -337,6 +388,8 @@ export function pruefeManifest(roh: unknown, eigeneVersion: string, datenLaenge:
 
   const namen = new Set<string>();
   const dateien: PackDateiEintrag[] = [];
+  const tonBelegt = new Set<TonName>();
+  const verworfen: PackDateiEintrag[] = [];
   for (const d of roh.dateien as unknown[]) {
     if (!istObjekt(d)) throw new PackFehler('dateiangabe', 'Dateieintrag ist kein Objekt');
     const name = d.name;
@@ -369,6 +422,25 @@ export function pruefeManifest(roh: unknown, eigeneVersion: string, datenLaenge:
     if (eintrag.rolle && JSON_ROLLEN.includes(eintrag.rolle) && eintrag.typ !== 'application/json') {
       throw new PackFehler('rolle', `Rolle ${eintrag.rolle} nur fuer application/json (${name})`);
     }
+    // Phase 6: Audio nur in der Rolle `ton`, die Rolle nur als Audio, hoechstens 1 MB. Verworfen (die Datei steht nicht im bereinigten Manifest,
+    // das Pack bleibt gueltig): Audio ohne Rolle oder in einer unbekannten Rolle (vorwaertsvertraeglich, Entscheidung 100), ein Klang ohne Namen
+    // aus TON_NAMEN, mit nicht passender Endung oder ein zweiter mit demselben Namen. Abgelehnt wird Audio in einer bekannten anderen Rolle.
+    // Verworfene Eintraege zaehlen weiter bei der Pruefung auf Ueberlappung (`verworfen`).
+    if (istAudio(eintrag.typ) && eintrag.rolle !== 'ton') {
+      if (eintrag.rolle !== undefined) throw new PackFehler('rolle', `Audio nur in der Rolle ton (${name})`);
+      verworfen.push(eintrag);
+      continue;
+    }
+    if (eintrag.rolle === 'ton') {
+      if (!istAudio(eintrag.typ)) throw new PackFehler('rolle', `Rolle ton nur fuer Audio (${name})`);
+      if (eintrag.laenge > MAX_TON_BYTES) throw new PackFehler('ton-zu-gross', `Klang ${name} ist groesser als ${MAX_TON_BYTES} Bytes`);
+      const tonName = tonNameAusDatei(name);
+      if (!tonName || !endungPasst(name, eintrag.typ) || tonBelegt.has(tonName)) {
+        verworfen.push(eintrag);
+        continue;
+      }
+      tonBelegt.add(tonName);
+    }
     if (eintrag.rolle === 'vorschau' && !eintrag.stufe) throw new PackFehler('stufe', `Rolle vorschau braucht eine Stufe (${name})`);
     // Phase 5: Werbebilder nennen ihr Format; `format` gibt es nur bei der Rolle `werbung` (bei anderen Rollen wird es ignoriert). Ohne
     // bekanntes Format (fehlt, oder ein Format einer spaeteren Version) verliert nur diese Datei ihre Rolle, das Pack bleibt gueltig
@@ -381,7 +453,7 @@ export function pruefeManifest(roh: unknown, eigeneVersion: string, datenLaenge:
   }
 
   // Ueberlappung: nach Beginn sortieren, jeder Bereich muss hinter dem vorigen beginnen.
-  const sortiert = [...dateien].sort((a, b) => a.offset - b.offset);
+  const sortiert = [...dateien, ...verworfen].sort((a, b) => a.offset - b.offset);
   for (let i = 1; i < sortiert.length; i++) {
     const vorher = sortiert[i - 1]!;
     if (sortiert[i]!.offset < vorher.offset + vorher.laenge) {
@@ -469,6 +541,8 @@ export async function pruefePack(quelle: PackQuelle, eigeneVersion: string, fort
       if (masse.breite > MAX_BILD_SEITE || masse.hoehe > MAX_BILD_SEITE) {
         throw new PackFehler('bild-zu-gross', `Bild ${d.name} ist ${masse.breite} x ${masse.hoehe}, erlaubt sind ${MAX_BILD_SEITE} je Seite`);
       }
+    } else if (istAudio(d.typ)) {
+      if (!signaturPasst(d.typ, bytes)) throw new PackFehler('signatur', `Audio passt nicht zum Typ ${d.typ}: ${d.name}`);
     } else {
       const text = dekodiereUtf8(bytes, d.name);
       if (d.rolle === 'lizenz') lizenzText = text;

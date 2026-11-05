@@ -1,0 +1,41 @@
+/* Abschnitt "About" der Einstellungsseite (Auftrag V). Farben aus style.css. */
+#ueber .ue-stand {
+  font-weight: 600;
+}
+#ueber .ue-stand.fehler {
+  color: var(--fehler);
+}
+#ueber .ue-anleitung {
+  margin: 8px 0 12px;
+  padding: 10px 12px 10px 32px;
+  background: var(--pastell);
+  border-radius: 10px;
+  font-size: 14px;
+}
+#ueber .ue-anleitung li {
+  margin: 0 0 6px;
+}
+#ueber .ue-anleitung li:last-child {
+  margin-bottom: 0;
+}
+#ueber .ue-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+#ueber a {
+  color: var(--akzent);
+}
+#ueber a:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+#ueber .ue-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}

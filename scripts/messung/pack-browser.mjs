@@ -108,7 +108,7 @@ export async function starteChromiumMitPack({ hostRegeln = [], extraArgs = [] } 
 export async function starteFirefoxMitPack({ hosts = [], praefs = {} } = {}) {
   if (!existsSync(firefoxZip)) throw new Error(`Paket fehlt: ${firefoxZip.split('/').slice(-2).join('/')}`);
   const uuid = randomUUID();
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   if (hosts.length) optionen.setPreference('network.dns.localDomains', hosts.join(','));
   for (const [k, v] of Object.entries(praefs)) optionen.setPreference(k, v);

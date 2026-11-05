@@ -16,6 +16,7 @@ import { RIEGEL_CSS } from './stil';
 import { meldeLokalePause } from '../pause-lokal';
 import { installiereTastaturschutz, registriereHost } from './tastatur';
 import { HOST_MARKE, schreibeAbbild, testRiegelAktiv } from './testspur';
+import { melde } from '../ereignisse';
 
 export type RiegelErgebnis = 'geloest' | 'pause' | 'abgebrochen';
 
@@ -763,6 +764,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
       return pruefeTippen(frage.satz, await eingabeZeile(szene));
     }
 
+    let quizStartGemeldet = false;
     async function frageAnzeigen(frage: Frage): Promise<boolean> {
       leereFrage();
       aktuelleFrage = frage;
@@ -770,6 +772,11 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         await zeigeWarnung();
         if (beendet) return false;
         leereFrage();
+      }
+      // Session 11: einmal je Riegel, wenn die erste Frage wirklich steht (nach einer Warnung).
+      if (!quizStartGemeldet) {
+        quizStartGemeldet = true;
+        melde({ art: 'quiz-start' });
       }
       zustand = 'frage';
       ansage.textContent = frage.frage;
@@ -795,6 +802,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         if (urteil === 'richtig') {
           leereFrage();
           zustand = 'richtig';
+          melde({ art: 'quiz-richtig' });
           setzeSatz('richtig');
           setzePose('jubeln');
           tint('richtig');
@@ -805,6 +813,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         if (urteil === 'verweigert') {
           leereFrage();
           zustand = 'verweigert';
+          melde({ art: 'quiz-verweigert' });
           setzeSatz('verweigert');
           setzePose('schmollen');
           tint('falsch');
@@ -812,6 +821,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
           await warte(opt.verweigertMs ?? VERWEIGERT_MS);
         } else {
           // Falsch: sofort die naechste Frage, keine Wartezeit.
+          melde({ art: 'quiz-falsch' });
           setzeSatz('falsch');
           tint('falsch');
         }

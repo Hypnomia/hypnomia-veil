@@ -15,6 +15,8 @@ import { starteTabtitel } from '../../src/tabtitel/tabtitel';
 import { starteCursor } from '../../src/cursor/cursor';
 import { starteMeldungen } from '../../src/meldungen/meldungen';
 import { starteBesuche } from '../../src/besuche/besuche';
+import { starteLedger } from '../../src/ledger/ledger';
+import { starteTon } from '../../src/ton/ton';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -24,6 +26,9 @@ export default defineContentScript({
   matchOriginAsFallback: true,
   cssInjectionMode: 'manifest',
   main(ctx) {
+    // Session 11: Ledger und Ton hoeren auf den Ereignis-Kanal (src/ereignisse.ts); zuerst anmelden, damit kein fruehes Ereignis fehlt.
+    starteLedger(ctx);
+    starteTon(ctx);
     // Phase 4: Tastenschutz fuer den Riegel sofort (vor allen Seitenskripten), dann der Schleier.
     bindeKontext(ctx);
     // Session 8: Galerie des Komplett-Ersatzes zuerst (verdeckt die ganze Seite so frueh wie moeglich), dann Schleier, Player-Riegel, Titel.

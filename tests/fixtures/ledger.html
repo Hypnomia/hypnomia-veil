@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Ledger-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      img { display: block; width: 320px; height: 240px; }
+    </style>
+  </head>
+  <body>
+    <h1>Ledger-Test</h1>
+    <!-- Testbild aus ../05 Testbilder (nie im Repo), der Schleier verdeckt es: ein Ereignis "zensiert" fuer Mia’s Ledger. -->
+    <!-- Mit ?ohne gibt es kein Bild (die Zaehl-Faelle sollen kein echtes Ereignis bekommen). -->
+    <script>
+      if (!location.search.includes('ohne')) {
+        const bild = document.createElement('img');
+        bild.id = 'bild';
+        bild.alt = '';
+        bild.src = '/testbild/nsfw/IMG_0260.jpg';
+        document.body.append(bild);
+      }
+    </script>
+  </body>
+</html>

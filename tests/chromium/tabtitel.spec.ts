@@ -88,6 +88,8 @@ async function entfernePack() {
   const s = await context.newPage();
   try {
     await s.goto(optionsUrl());
+    // Session 11: die Einstellungsseite zeichnet den Pack-Stand erst nach dem Laden (sonst Wettlauf).
+    await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();

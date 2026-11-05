@@ -32,7 +32,16 @@ export interface Einstellungen {
   quiz: QuizEinstellung;
   // Phase 5 (PHASE-5-AUFTRAEGE-SESSION-9.md): Kontrolle, wirkt nur mit Pack und der passenden Freischaltung `kontrolle:*`.
   kontrolle: KontrolleEinstellung;
+  // Phase 6 (PHASE-6-AUFTRAEGE-SESSION-11.md, Auftrag T): Ton nur fuer Quiz und Blitzwoerter, wirkt nur mit Pack und Freischaltung `ton`.
+  ton: TonEinstellung;
 }
+
+// Ton (Entscheidung 19): Standard AUS, Lautstaerke 0 bis 1 (Regler 0 bis 100 in der Oberflaeche).
+export interface TonEinstellung {
+  an: boolean;
+  lautstaerke: number;
+}
+export const TON_LAUTSTAERKE_STANDARD = 0.6;
 
 // Haeufigkeit der Blitzwoerter (Entscheidung 116): aus, selten (etwa alle 10 Minuten), oft (etwa alle 3 Minuten).
 export const BLITZ_HAEUFIGKEITEN = ['aus', 'selten', 'oft'] as const;
@@ -132,6 +141,7 @@ export const STANDARD: Einstellungen = {
   erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
   quiz: { verweigern: 0.1, freilegenMs: 10000 },
   kontrolle: { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] },
+  ton: { an: false, lautstaerke: TON_LAUTSTAERKE_STANDARD },
 };
 
 // Liste von Hosts oder Mustern: nur Texte, getrimmt, klein, ohne Leere und Doppelte.
@@ -202,6 +212,10 @@ export function vervollstaendige(roh: unknown): Einstellungen {
         besuche: wahr(k.besuche, s.besuche),
         zeiten: bereinigeZeiten(k.zeiten),
       };
+    })(),
+    ton: (() => {
+      const t = objekt(r.ton);
+      return { an: wahr(t.an, STANDARD.ton.an), lautstaerke: begrenze(t.lautstaerke, 0, 1, STANDARD.ton.lautstaerke) };
     })(),
   };
 }

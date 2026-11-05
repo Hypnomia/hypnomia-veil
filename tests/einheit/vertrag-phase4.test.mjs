@@ -12,7 +12,7 @@ import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { DUMMY_QUIZ, DUMMY_TEXTE } from '../../scripts/pack/dummy-inhalte.mjs';
 
 const kodiere = (t) => new TextEncoder().encode(t);
-const VERSION = '0.5.1'; // installierte Version (Phase 5)
+const VERSION = '0.6.0'; // installierte Version (Phase 6)
 
 test('Dummy-Pack: alle Phase-4-Freischaltungen, Rollen gezaehlt', async () => {
   const { bytes, vorschau, chibis } = await baueDummyPack();
@@ -52,7 +52,7 @@ test('Kaputtes Quiz-JSON: Pack bleibt, Quiz-Freischaltungen fallen weg', async (
 });
 
 test('Unbekannte Rolle wird verworfen, nicht abgelehnt', async () => {
-  const bytes = await schreibePack(kopf([]), [LIZENZ, { name: 'x.json', typ: 'application/json', daten: kodiere('{}'), rolle: 'ton' }]);
+  const bytes = await schreibePack(kopf([]), [LIZENZ, { name: 'x.json', typ: 'application/json', daten: kodiere('{}'), rolle: 'zukunft' }]);
   const p = await pruefePack(quelleAusBytes(bytes), VERSION);
   assert.equal(p.manifest.dateien.find((d) => d.name === 'x.json').rolle, undefined);
 });

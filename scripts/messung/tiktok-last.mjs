@@ -108,7 +108,7 @@ async function chromiumOhne() {
 }
 
 async function firefoxOhne() {
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   const dienst = new firefox.ServiceBuilder();
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 30_000 });

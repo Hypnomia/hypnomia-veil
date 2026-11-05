@@ -20,6 +20,10 @@ import { STUFEN_TEXT, formatiereRest, hatErwachsenFunktionen, posePopup, waehleS
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
+// Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): eigene Module je Auftrag, jedes zeichnet nur seinen Platz.
+import './einstieg-hinweis';
+import './version-hinweis';
+import './ledger-kurz';
 
 const ZONEN_NAMEN: Record<Zone, string> = {
   eyes: 'Eyes',
@@ -412,3 +416,8 @@ void (async () => {
   // Pack-Texte danach nachladen, nur die Stufen-Anzeige neu zeichnen.
   void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
 })();
+
+// Session 11 (Vertrag): Weg zur Einstellungsseite (alle Einstellungen auf einem Bildschirm, Auftrag S).
+document.getElementById('alle-einstellungen')?.addEventListener('click', () => {
+  void browser.runtime.openOptionsPage().then(() => window.close(), () => {});
+});

@@ -55,7 +55,7 @@ export async function starteChromium() {
 export async function starteFirefox() {
   if (!existsSync(firefoxZip)) throw new Error(`Paket fehlt: ${firefoxZip.split('/').slice(-2).join('/')}`);
   const uuid = randomUUID();
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   // geckodriver --allow-system-access: erlaubt dem Messwerkzeug den Chrome-Kontext, um die Erweiterungsseite zu oeffnen
   // (geckodriver verbietet Navigation zu moz-extension://).
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');

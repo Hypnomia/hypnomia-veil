@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Ton-Rahmenseite</title>
+  </head>
+  <body>
+    <h1>Ton-Rahmenseite</h1>
+    <!-- Der Rahmen kommt von einem anderen Host (localhost), die Seite selbst von 127.0.0.1: Ausnahmen pruefen so Rahmen- und Tab-Adresse getrennt. -->
+    <iframe id="rahmen" title="frame" width="400" height="200"></iframe>
+    <script>document.getElementById('rahmen').src = 'http://localhost:' + location.port + '/ton.html';</script>
+  </body>
+</html>

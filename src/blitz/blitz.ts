@@ -15,6 +15,7 @@ import type { KontextLeicht } from '../schleier/schleier';
 import { testhakenAktiv } from '../schleier/status';
 import { planeEreignis, waehleArt, type Art, type GeplantesWort } from './ereignis';
 import { PRUEF_TAKT_MS, ZEITPLAN_SCHLUESSEL, pruefeZeitplan, wirksameHaeufigkeit } from './zeitplan';
+import { melde } from '../ereignisse';
 
 const MIAS_PINK = '#ff4fa3';
 const KONTUR = '#2a0a1f';
@@ -186,6 +187,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
     if (plan.length === 0 || laeuft) return;
     laeuft = true;
     meldeBelegt('blitz', true);
+    melde({ art: 'blitz', woerter: plan.length }); // Session 11: Ledger und Ton (Trigger)
     baueHost();
     const gezeigt: Array<{ text: string; an: number; aus: number | null }> = [];
     let naechster = 0;

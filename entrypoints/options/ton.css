@@ -1,0 +1,23 @@
+/* Einstellungsseite, Abschnitt "Sound" (Auftrag T): Probe-Knopf und Meldung. Farben aus style.css. */
+#ton .ton-probe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 8px;
+}
+
+#ton button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#ton-probe-meldung {
+  margin: 0;
+  font-size: 13px;
+  color: var(--leise);
+}
+
+#ton input[type='range']:disabled {
+  opacity: 0.6;
+}

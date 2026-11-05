@@ -17,6 +17,7 @@ import { TESTHAKEN } from '../schleier/konstanten';
 import type { KontextLeicht } from '../schleier/schleier';
 import { testhakenAktiv } from '../schleier/status';
 import { BESUCH_PLAN_SCHLUESSEL, BESUCH_PRUEF_TAKT_MS, neuerBesuchPlan, pruefeBesuchPlan } from './plan';
+import { melde } from '../ereignisse';
 
 export const NICHT_JETZT = 'Not now';
 const WIEDERHOLUNG_MS = 10 * 60_000;
@@ -292,6 +293,7 @@ export function starteBesuche(ctx: KontextLeicht): void {
       const n: NachrichtHintergrundBesuch = { ziel: 'hintergrund', typ: 'besuch' };
       const a = (await browser.runtime.sendMessage(n)) as AntwortBesuch | undefined;
       if (a?.ok === true) {
+        melde({ art: 'besuch' }); // Session 11: Ledger
         await schreibePlan(h.zufall);
         abbild({ phase: 'ende', ergebnis: 'ok', url: a.url, tabId: a.tabId, dauerMs });
       } else {

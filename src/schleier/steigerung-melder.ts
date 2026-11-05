@@ -110,8 +110,8 @@ export class SteigerungMelder {
 
   // Ein Element hat gerade das Urteil `zensiert` bekommen (vorher ein anderes). Zaehlt nur neue Inhalte (Quelle oder Stil anders als bei der
   // letzten Meldung dieses Elements).
-  zensiert(el: Element): void {
-    this.zaehler.zensiert(el as HTMLImageElement);
+  zensiert(el: Element): boolean {
+    return this.zaehler.zensiert(el as HTMLImageElement);
   }
 
   private pruefeWechsel(): void {

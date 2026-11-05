@@ -1,0 +1,376 @@
+// Firefox-Test Auftrag E (Einstieg, Session 11): Testbau-Stand nach der Installation, einstieg-test, ganzer Durchgang mit Klicks, Ueberspringen,
+// "I’m not", Popup-Hinweis, #interview. Hilfsfunktionen wie tests/firefox/kontrolle-optionen.test.mjs.
+import { Builder, By } from 'selenium-webdriver';
+import firefox from 'selenium-webdriver/firefox.js';
+import { Command } from 'selenium-webdriver/lib/command.js';
+import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { TEXT } from '../../src/einstieg/texte.ts';
+
+setTimeout(() => {
+  console.error('firefox: Zeitlimit von 150 s ueberschritten');
+  process.exit(1);
+}, 150_000).unref();
+
+process.env.SE_AVOID_STATS = 'true';
+
+const hier = path.dirname(fileURLToPath(import.meta.url));
+const wurzel = path.resolve(hier, '../..');
+const ausgabe = path.join(wurzel, process.env.VEIL_AUSGABE ?? '.output');
+const firefoxBin = process.env.VEIL_FIREFOX_BIN ?? '/Applications/Firefox.app/Contents/MacOS/firefox';
+const GECKO_ID = 'veil@hypnomia';
+
+const paketJson = JSON.parse(readFileSync(path.join(wurzel, 'package.json'), 'utf8'));
+const paket = path.join(ausgabe, `${paketJson.name}-${paketJson.version}-firefox.zip`);
+if (!existsSync(paket)) {
+  console.error(`firefox: Paket fehlt: ${path.relative(wurzel, paket)} (npm run zip:firefox)`);
+  process.exit(1);
+}
+
+// Erweiterung als temporaeres Add-on installieren, ueber den Pfad (nicht Base64 wie driver.installAddon): geckodriver 0.37 mit Firefox 128
+// lehnt die Base64-Form ab (InvalidArgumentError), der Pfad geht in 128 und in neueren Versionen.
+async function installiere(treiber, paketPfad) {
+  await treiber.execute(new Command('install addon').setParameter('path', paketPfad).setParameter('temporary', true));
+}
+
+const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+let ok = 0;
+let rot = 0;
+function pruefe(bedingung, text) {
+  if (bedingung) ok++;
+  else {
+    rot++;
+    console.error(`firefox: ROT  ${text}`);
+  }
+}
+
+let driver;
+const uuid = randomUUID();
+
+async function oeffne(seite) {
+  const vorher = await driver.getAllWindowHandles();
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    await driver.executeScript(
+      `const w = Services.wm.getMostRecentWindow('navigator:browser');
+       w.gBrowser.selectedTab = w.gBrowser.addTab(arguments[0], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`,
+      `moz-extension://${uuid}/${seite}`,
+    );
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+  let neu;
+  for (let i = 0; i < 100 && !neu; i++) {
+    neu = (await driver.getAllWindowHandles()).find((h) => !vorher.includes(h));
+    if (!neu) await warte(50);
+  }
+  if (!neu) throw new Error(`Erweiterungsseite ${seite} nicht geoeffnet`);
+  await driver.switchTo().window(neu);
+  return neu;
+}
+
+async function imSeitenkontext(code, ...args) {
+  const text = await driver.executeAsyncScript(
+    `const fertig = arguments[arguments.length - 1];
+     const api = (window.wrappedJSObject && window.wrappedJSObject.browser) || window.browser || window.chrome;
+     const args = JSON.parse(arguments[0]);
+     const abschluss = (w) => fertig(JSON.stringify(w === undefined ? null : w));
+     Promise.resolve((async () => { ${code} })()).then(abschluss, (e) => abschluss({ fehlerText: String(e) }));`,
+    JSON.stringify(args),
+  );
+  return JSON.parse(text);
+}
+
+const speicher = (schluessel) => imSeitenkontext(`const a = await api.storage.local.get(args[0]); return a[args[0]] ?? null;`, schluessel);
+
+async function bis(beschreibung, fn, frist = 15_000) {
+  const t0 = Date.now();
+  let letzter;
+  while (Date.now() - t0 < frist) {
+    letzter = await fn();
+    if (letzter) return letzter;
+    await warte(50);
+  }
+  throw new Error(`${beschreibung}: Frist abgelaufen (letzter Wert: ${JSON.stringify(letzter)})`);
+}
+
+const eigenschaft = (css, name) => driver.executeScript(`return document.querySelector(arguments[0])[arguments[1]]`, css, name);
+const text = async (css) => (await driver.executeScript(`return document.querySelector(arguments[0]).textContent.trim()`, css));
+const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
+const setzeRange = (css, wert) =>
+  driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));`, css, String(wert));
+const waehle = (css, wert) =>
+  driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('change', { bubbles: true }));`, css, wert);
+const schritt = () => driver.executeScript(`return document.querySelector('#schritt').dataset.schritt`);
+const einst = async () => (await speicher('einstellungen')) ?? {};
+const einstieg = () => speicher('einstieg');
+const sende = (n) => imSeitenkontext(`return await api.runtime.sendMessage(args[0]);`, { ziel: 'hintergrund', typ: 'einstieg-test', ...n });
+const imStand = async (h, fn) => {
+  await driver.switchTo().window(h);
+  return fn();
+};
+const bisSchritt = (soll) => bis(`Schritt ${soll}`, async () => (await schritt()) === soll);
+let messzahl = 0;
+
+let code = 0;
+try {
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
+  optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
+  const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
+  driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  await driver.manage().setTimeouts({ pageLoad: 30_000, script: 30_000 });
+  const version = (await driver.getCapabilities()).get('browserVersion');
+  await installiere(driver, paket);
+  console.log(`firefox: Version ${version}`);
+
+  // Verwaltungsseite: Speicher und Nachrichten
+  const v = await oeffne('options.html');
+
+  // 1. Testbau: Installation schreibt den Einstieg als erledigt, nichts oeffnet sich
+  await bis('Einstieg erledigt', async () => (await einstieg())?.interview === 'uebersprungen');
+  let s = await einstieg();
+  pruefe(s.warnung && s.alter && s.einwilligung, 'Testbau: Warnung, 18+ und Einwilligung nach der Installation wahr');
+  pruefe((await driver.getAllWindowHandles()).length === 2, 'Testbau: keine Willkommensseite von selbst geoeffnet'); // Startfenster + Verwaltungsseite
+  // 2. einstieg-test: zuruecksetzen und oeffnen
+  const vorher = await driver.getAllWindowHandles();
+  const antwort = await sende({ zuruecksetzen: true, oeffne: true });
+  pruefe(antwort?.ok === true && typeof antwort.tabId === 'number', 'einstieg-test oeffne antwortet mit tabId');
+  s = await einstieg();
+  pruefe(!s.warnung && !s.alter && !s.einwilligung && s.interview === 'offen' && s.zeit === null, 'einstieg-test zuruecksetzen leert den Einstieg');
+  let w;
+  for (let i = 0; i < 100 && !w; i++) {
+    w = (await driver.getAllWindowHandles()).find((h) => !vorher.includes(h));
+    if (!w) await warte(50);
+  }
+  pruefe(!!w, 'einstieg-test oeffne oeffnet einen neuen Tab');
+  await driver.switchTo().window(w);
+  await bis('Warnung da', async () => (await schritt()) === 'warnung');
+  pruefe((await driver.getCurrentUrl()).includes('willkommen.html'), 'der neue Tab ist die Willkommensseite');
+  messzahl += 5;
+
+  // 3. Ganzer Durchgang
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.remove(['einstellungen', 'pack', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);`));
+  await driver.switchTo().window(w);
+  pruefe((await text('#warnung-kern')) === TEXT.warnungKern, 'Warnung zeigt den sachlichen Kern');
+  pruefe((await text('#fortschritt-text')) === TEXT.schrittVon(1, 8), 'Fortschritt Schritt 1 von 8');
+  await klick('#warnung-ok');
+  await bis('warnung gespeichert', async () => (await einstieg()).warnung === true);
+  pruefe((await speicher('quizWarnungGesehen')) === true && (await speicher('spiraleWarnungGesehen')) === true, 'Warnung zaehlt als gesehen fuer Quiz und Spirale');
+  await bisSchritt('alter');
+  await klick('#alter-ja');
+  await bis('alter gespeichert', async () => (await einstieg()).alter === true);
+  await bisSchritt('einwilligung');
+  pruefe((await einstieg()).einwilligung === false, 'Einwilligung noch nicht gespeichert');
+  await klick('#einwilligung-ok');
+  await bis('einwilligung gespeichert', async () => (await einstieg()).einwilligung === true);
+  pruefe(typeof (await einstieg()).zeit === 'number', 'I agree speichert die Zeit');
+  await bisSchritt('interview-1');
+  messzahl += 6;
+  // Seite 1
+  await setzeRange('#iv-stimmung', 0.2);
+  await bis('schwelle', async () => (await einst()).schwelle === 0.2);
+  await klick('#iv-strict');
+  await bis('strict', async () => (await einst()).strict === true);
+  pruefe(!(await sichtbar('#iv-zurueck')), 'Seite 1 hat kein Back');
+  await klick('#iv-weiter');
+  // Seite 2
+  await bisSchritt('interview-2');
+  pruefe((await eigenschaft('#iv-zonen-koerper', 'checked')) === true, 'Zonen ab Werk: Body vorgewaehlt');
+  await klick('#iv-zonen-alles');
+  await bis('alle Zonen', async () => Object.values((await einst()).zonen).every((z) => z.an));
+  await klick('#iv-bedeckt');
+  await bis('alle bedeckt', async () => (await einst()).zonen.feet.bedeckt === true && (await einst()).zonen.breast.bedeckt === true);
+  await klick('#iv-zonen-koerper-gesicht');
+  await bis('Body and face', async () => (await einst()).zonen.face.an === true && (await einst()).zonen.feet.an === false);
+  messzahl += 6;
+  await klick('#iv-zurueck');
+  await bisSchritt('interview-1');
+  pruefe((await eigenschaft('#iv-stimmung', 'value')) === '0.2' && (await eigenschaft('#iv-strict', 'checked')) === true, 'Back zeigt die gespeicherten Werte');
+  await klick('#iv-weiter');
+  await bisSchritt('interview-2');
+  pruefe((await eigenschaft('#iv-zonen-koerper-gesicht', 'checked')) === true && (await eigenschaft('#iv-bedeckt', 'checked')) === true, 'Seite 2 vorbelegt');
+  await klick('#iv-weiter');
+  // Seite 3
+  await bisSchritt('interview-3');
+  pruefe((await eigenschaft('#iv-stil-mia-patch', 'disabled')) === true && (await sichtbar('#iv-stil-sperre')), 'ohne Pack: Mia patch gesperrt mit Hinweis');
+  await klick('#iv-stil-blur');
+  await bis('stil blur', async () => (await einst()).stil === 'blur');
+  await klick('#iv-ruhig');
+  await bis('ruhig', async () => (await einst()).ruhig === true);
+  await klick('#iv-weiter');
+  // Seite 4
+  await bisSchritt('interview-4');
+  pruefe(await sichtbar('#iv-ohne-pack'), 'Seite 4 ohne Pack: Hinweis');
+  await klick('#iv-erw-an');
+  await bis('erwachsen aus', async () => (await einst()).erwachsen.an === false);
+  await klick('#iv-erw-ersatz');
+  await bis('ersatz an', async () => (await einst()).erwachsen.komplettErsatz === true);
+  await setzeRange('#iv-verweigern', 20);
+  await bis('verweigern', async () => (await einst()).quiz.verweigern === 0.2);
+  await klick('#iv-weiter');
+  // Seite 5
+  await bisSchritt('interview-5');
+  pruefe((await text('#iv-weiter')) === TEXT.fertig, 'letzte Seite: Knopf Finish');
+  await waehle('#iv-blitz', 'oft');
+  await bis('blitz', async () => (await einst()).kontrolle.blitz === 'oft');
+  await klick('#iv-leerlauf');
+  await bis('leerlauf', async () => (await einst()).kontrolle.leerlauf === false);
+  await waehle('#iv-cursor', 'herz');
+  await bis('cursor', async () => (await einst()).kontrolle.cursor === 'herz');
+  await klick('#iv-ton');
+  await bis('ton', async () => (await einst()).ton.an === true);
+  messzahl += 14;
+  await klick('#iv-weiter');
+  await bis('interview fertig', async () => (await einstieg()).interview === 'fertig');
+  await bisSchritt('ende');
+  pruefe(!(await sichtbar('#fortschritt-zeile')), 'Abschluss ohne Fortschritt');
+  pruefe((await eigenschaft('#ende-pack', 'hidden')) === false, 'Abschluss bietet das Pack an');
+  messzahl += 2;
+  // Pack da: der Knopf verschwindet
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.set({ pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 } });`));
+  await driver.switchTo().window(w);
+  await bis('Pack-Knopf weg', async () => (await eigenschaft('#ende-pack', 'hidden')) === true);
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.remove('pack');`));
+  await driver.switchTo().window(w);
+  await bis('Pack-Knopf da', async () => (await eigenschaft('#ende-pack', 'hidden')) === false);
+  await klick('#ende-pack');
+  await bis('Pack-Abschnitt', async () => (await driver.getCurrentUrl()).endsWith('options.html#neu'));
+  const e = await imStand(w, () => einst());
+  pruefe(e.schwelle === 0.2 && e.strict && e.ruhig && e.erwachsen.an === false && e.erwachsen.komplettErsatz && e.quiz.verweigern === 0.2 && e.ton.an, 'Einstellungen wie gewaehlt');
+  messzahl += 3;
+  await driver.close();
+
+  // 4. Ueberspringen
+  await driver.switchTo().window(v);
+  await imSeitenkontext(`await api.storage.local.remove(['einstellungen', 'pack']);`);
+  await sende({ zuruecksetzen: true });
+  await driver.switchTo().window(v);
+  await oeffne('willkommen.html');
+  await bisSchritt('warnung');
+  pruefe(!(await sichtbar('#iv-ueberspringen')), 'am Gate kein Ueberspringen');
+  await klick('#warnung-ok');
+  await bisSchritt('alter');
+  await klick('#alter-ja');
+  await bisSchritt('einwilligung');
+  pruefe(!(await sichtbar('#iv-ueberspringen')), 'bei der Einwilligung kein Ueberspringen');
+  await klick('#einwilligung-ok');
+  await bisSchritt('interview-1');
+  // Erst Antworten geben, dann auf Seite 3 ueberspringen: gesetzte Einstellungen bleiben, nichts wird zurueckgesetzt
+  await setzeRange('#iv-stimmung', 0.15);
+  await bis('schwelle 0.15', async () => (await einst()).schwelle === 0.15);
+  await klick('#iv-strict');
+  await bis('strict an', async () => (await einst()).strict === true);
+  await klick('#iv-weiter');
+  await bisSchritt('interview-2');
+  await klick('#iv-weiter');
+  await bisSchritt('interview-3');
+  const vorEinst = JSON.stringify(await speicher('einstellungen'));
+  pruefe((await einst()).schwelle === 0.15, 'vor dem Ueberspringen steht die Antwort im Speicher');
+  await klick('#iv-ueberspringen');
+  await bis('uebersprungen', async () => (await einstieg()).interview === 'uebersprungen');
+  await bisSchritt('ende');
+  pruefe(JSON.stringify(await speicher('einstellungen')) === vorEinst, 'Ueberspringen laesst die gesetzten Einstellungen unveraendert');
+  messzahl += 6;
+  await driver.close();
+
+  // 5. "I’m not"
+  await driver.switchTo().window(v);
+  await sende({ zuruecksetzen: true });
+  await oeffne('willkommen.html');
+  await bisSchritt('warnung');
+  await klick('#warnung-ok');
+  await bisSchritt('alter');
+  const davor = JSON.stringify(await einstieg());
+  await klick('#alter-nein');
+  pruefe(await sichtbar('#alter-absage'), 'I’m not zeigt die Absage');
+  pruefe((await text('#alter-entfernen')) === TEXT.entfernenFirefox, 'Absage nennt den Weg zum Entfernen in Firefox');
+  pruefe(!(await sichtbar('#alter-ja')), 'nach I’m not kein Weiter');
+  await warte(300);
+  pruefe(JSON.stringify(await einstieg()) === davor, 'I’m not speichert nichts');
+  messzahl += 4;
+  await driver.close();
+
+  // 6. Popup-Hinweis
+  await driver.switchTo().window(v);
+  await sende({ zuruecksetzen: true });
+  const p = await oeffne('popup.html');
+  await bis('Hinweis sichtbar', async () => sichtbar('#einstieg-hinweis'));
+  pruefe((await text('#einstieg-knopf')) === 'Meet Mia', 'Popup zeigt Meet Mia bei offenem Einstieg');
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.set({ einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });`));
+  await driver.switchTo().window(p);
+  await bis('Hinweis weg', async () => !(await sichtbar('#einstieg-hinweis')));
+  pruefe(true, 'Popup-Hinweis verschwindet bei fertigem Einstieg');
+  await driver.switchTo().window(v);
+  await sende({ zuruecksetzen: true });
+  await driver.switchTo().window(p);
+  await bis('Hinweis wieder da', async () => sichtbar('#einstieg-hinweis'));
+  const vorKnopf = await driver.getAllWindowHandles();
+  await klick('#einstieg-knopf');
+  let w2;
+  for (let i = 0; i < 100 && !w2; i++) {
+    w2 = (await driver.getAllWindowHandles()).find((h) => !vorKnopf.includes(h));
+    if (!w2) await warte(50);
+  }
+  pruefe(!!w2, 'Meet Mia oeffnet die Willkommensseite');
+  await driver.switchTo().window(w2);
+  await bisSchritt('warnung');
+  pruefe((await driver.getCurrentUrl()).includes('willkommen.html'), 'Meet Mia: Willkommensseite beginnt bei der Warnung');
+  messzahl += 5;
+  // Zweites Popup bei offener Willkommensseite: kein neuer Tab
+  await driver.switchTo().window(v);
+  const p3 = await oeffne('popup.html');
+  await bis('Hinweis im zweiten Popup', async () => sichtbar('#einstieg-hinweis'));
+  const vorZwei = await driver.getAllWindowHandles();
+  await klick('#einstieg-knopf');
+  await warte(1000);
+  pruefe((await driver.getAllWindowHandles()).filter((x) => !vorZwei.includes(x)).length === 0, 'Meet Mia bei offener Willkommensseite oeffnet keinen zweiten Tab');
+  messzahl++;
+  if ((await driver.getAllWindowHandles()).includes(p3)) {
+    await driver.switchTo().window(p3);
+    await driver.close();
+  }
+  await driver.switchTo().window(w2);
+  await driver.close();
+  // Das Popup schliesst sich nach dem Knopf selbst (window.close); steht es noch da, wird es hier geschlossen.
+  if ((await driver.getAllWindowHandles()).includes(p)) {
+    await driver.switchTo().window(p);
+    await driver.close();
+  }
+
+  // 7. #interview
+  await driver.switchTo().window(v);
+  await imSeitenkontext(`await api.storage.local.set({ einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });`);
+  const h = await oeffne('willkommen.html#interview');
+  await bisSchritt('interview-1');
+  pruefe(true, '#interview bei fertigem Einstieg: Interview-Seite 1');
+  await driver.get(`moz-extension://${uuid}/willkommen.html`);
+  await bisSchritt('ende');
+  pruefe(true, 'ohne Anker und mit beendetem Interview: Abschluss');
+  await driver.switchTo().window(v);
+  await sende({ zuruecksetzen: true });
+  await driver.switchTo().window(h);
+  await driver.get(`moz-extension://${uuid}/willkommen.html#interview`);
+  await driver.navigate().refresh();
+  await bisSchritt('warnung');
+  pruefe(true, '#interview bei offenem Einstieg: bleibt am Gate');
+  messzahl += 3;
+} catch (fehler) {
+  console.error('firefox: FEHLER', fehler);
+  code = 1;
+} finally {
+  if (driver) {
+    try {
+      const hs = await driver.getAllWindowHandles();
+      await driver.switchTo().window(hs[hs.length - 1]);
+      await imSeitenkontext(`await api.storage.local.remove(['pack', 'einstellungen', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);`);
+    } catch {}
+    await Promise.race([driver.quit().catch(() => {}), warte(10_000)]);
+  }
+}
+console.log(`firefox: einstieg.test ${ok} gruen, ${rot} rot, ${messzahl} Wirkungen im Speicher gemessen`);
+process.exit(code || (rot > 0 ? 1 : 0));

@@ -36,6 +36,7 @@ import { ANTWORT_MAX_MS, TAB_FRIST_MS } from '../schleier/konstanten';
 import { vergissWecken, wecke } from '../schleier/pruefung';
 import type { KontextLeicht } from '../schleier/schleier';
 import { KENNUNG_ATTRIBUTE, formatFuer, hatKennung, istKennzeichnung, istWerbeAdresse, istWerbeHost, kennzeichnungFuer, linkFuer, passtWerbeName } from './logik';
+import { melde } from '../ereignisse';
 
 // Testhaken nur im Testbau: ohne Schalter faellt der Name des Attributs samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN: boolean = import.meta.env.WXT_TESTHAKEN === '1';
@@ -75,6 +76,9 @@ interface Rk {
   r: number;
   b: number;
 }
+
+// Session 11: schon gezaehlte Werbe-Elemente (Ledger).
+const werbungGezaehlt = new WeakSet<Element>();
 
 interface Flaeche {
   nr: number;
@@ -963,6 +967,11 @@ export function starteWerbung(ctx: KontextLeicht): void {
       return;
     }
     if (!sichereHost() || !wurzel) return;
+    // Session 11: Ledger, je Seitenelement einmal (Rotation, Pause-Ende und kurzes Groessenflackern zaehlen nicht erneut).
+    if (!werbungGezaehlt.has(f.el)) {
+      werbungGezaehlt.add(f.el);
+      melde({ art: 'werbung' });
+    }
     const knoten = document.createElement('div');
     knoten.className = 'f';
     knoten.setAttribute('role', 'group');

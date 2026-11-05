@@ -95,6 +95,7 @@ import { Vorschau } from './vorschau';
 import { Freilegen } from './freilegen';
 import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
+import { melde } from '../ereignisse';
 
 export interface KontextLeicht {
   readonly isValid: boolean;
@@ -1670,7 +1671,10 @@ export function starteSchleier(ctx: KontextLeicht): void {
   planeStartphasenEnde(STARTPHASE_MAX_MS);
   beobachter.start(); // sofort sammeln, auswerten erst nach dem Laden der Einstellungen
   setzeZonenAnpassung((e) => steigerung.zonenFuer(e));
-  setzeZensiertMelder((el) => steigerung.zensiert(el));
+  setzeZensiertMelder((el) => {
+    // Session 11: Ledger zaehlt nur neue Inhalte (Neubewertung desselben Inhalts zaehlt nicht, wie bei der Steigerung).
+    if (steigerung.zensiert(el)) melde({ art: 'zensiert' });
+  });
   setzeUrteilMelder((el, z) => freilegen.beiUrteil(el, z));
   const steigerungGeladen = steigerung.start();
   if (document.readyState === 'complete') beiLoad();

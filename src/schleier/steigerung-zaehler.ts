@@ -19,11 +19,13 @@ export class NeueUrteileZaehler {
   private readonly gemeldet = new WeakMap<object, string>();
   private anzahl = 0;
 
-  zensiert(el: UrteilsElement): void {
+  // true, wenn der Inhalt neu war und gezaehlt wurde (Session 11: der Ledger zaehlt nur dann).
+  zensiert(el: UrteilsElement): boolean {
     const inhalt = inhaltVon(el);
-    if (this.gemeldet.get(el) === inhalt) return;
+    if (this.gemeldet.get(el) === inhalt) return false;
     this.gemeldet.set(el, inhalt);
     this.anzahl++;
+    return true;
   }
 
   get stand(): number {

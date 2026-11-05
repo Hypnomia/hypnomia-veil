@@ -1,0 +1,53 @@
+/* Einstellungsseite, Abschnitt Mia’s Ledger (Auftrag L). Farben aus style.css. */
+#ledger .ledger-seit {
+  font-weight: 600;
+}
+
+#ledger .ledger-liste {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+#ledger .ledger-zeile {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--linie);
+}
+
+#ledger .ledger-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+#ledger .ledger-zahlen {
+  color: var(--leise);
+}
+
+#ledger .ledger-zahl {
+  color: var(--text);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+#ledger .ledger-satz {
+  margin: 2px 0 0;
+}
+
+#ledger .ledger-stufe {
+  margin-bottom: 12px;
+}
+
+#ledger .ledger-frage {
+  padding: 10px 12px;
+  border: 1px solid var(--akzent);
+  border-radius: 10px;
+  background: var(--akzent-hell);
+}
+
+#ledger .ledger-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

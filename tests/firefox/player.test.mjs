@@ -206,7 +206,7 @@ try {
   await writeFile(kleinPfad, (await baueDummyPack({ id: 'klein', quiz: { version: 1, fragen: kleinBank } })).bytes);
 
   server = await starteFixtureServer(port);
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   optionen.setPreference('network.dns.localDomains', 'pornhub.veil-erwachsen.test');
   optionen.setPreference('media.autoplay.default', 0);

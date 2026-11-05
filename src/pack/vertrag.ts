@@ -38,6 +38,8 @@ export const PACK_SPEICHER_SCHLUESSEL = 'pack';
 //   kontrolle:meldungen kleine Meldungen mit Mini-Chibi (Rolle `texte`; je Anlass eine Gruppe `meldung*`, fehlt eine, schweigt nur der Anlass)
 //   kontrolle:zeitplan  strenge Zeiten (braucht keine Datei)
 //   kontrolle:besuche   Pflicht-Besuche: Mia oeffnet selbst einen Tab (Rolle `texte`, Gruppe `besuch`)
+// Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md, Version 0.6.0):
+//   ton                 kurze Klaenge zu Quiz und Blitzwoertern (Rolle `ton`, mindestens eine Audio-Datei mit Namen aus TON_NAMEN)
 export const FREISCHALTUNGEN = [
   'stil:mia-patch',
   'erwachsen:vorschau',
@@ -55,6 +57,7 @@ export const FREISCHALTUNGEN = [
   'kontrolle:meldungen',
   'kontrolle:zeitplan',
   'kontrolle:besuche',
+  'ton',
 ] as const;
 export type Freischaltung = (typeof FREISCHALTUNGEN)[number];
 
@@ -63,9 +66,11 @@ export type Stufe = 'tease' | 'hot' | 'explicit';
 // `vorschau`: Bild fuer Vorschau-Tausch und Galerie (Stufe Pflicht). `quiz`: Quiz-Bank als JSON (hoechstens eine Datei,
 // Schema src/quiz/vertrag.ts). `texte`: Mias Saetze als JSON (hoechstens eine Datei, Schema src/quiz/vertrag.ts). `chibi`: Chibi-Bild
 // (WebP mit Transparenz, Name enthaelt die Pose, siehe src/chibi.ts). `werbung`: Mias Werbebild fuer den Werbe-Tausch (Phase 5, Feld
-// `format` Pflicht). Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
-export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung';
-export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung'];
+// `format` Pflicht). `ton` (Phase 6): kurzer Klang als Audio (ogg, mp3 oder wav, hoechstens 1 MB), der Dateiname ohne Ordner und Endung muss
+// in TON_NAMEN (src/ton/vertrag.ts) stehen, sonst verwirft der Import die Datei; Audio gibt es nur in dieser Rolle und diese Rolle nur als Audio.
+// Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
+export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung' | 'ton';
+export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton'];
 
 // Werbeformate (Breite x Hoehe in CSS-Pixeln) fuer die Rolle `werbung`: jedes Werbebild nennt sein Format. Der Werbe-Tausch waehlt fuer eine
 // Flaeche das Format, das ihr am naechsten kommt (Auftrag W).
@@ -97,6 +102,7 @@ export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:meldungen': 'texte',
   'kontrolle:zeitplan': null,
   'kontrolle:besuche': 'texte',
+  ton: 'ton',
 };
 
 // Freischaltungen, die zusaetzlich eine Satz-Gruppe in der Texte-Datei brauchen (mindestens ein gueltiger Satz nach `pruefeTexte`).
@@ -122,7 +128,7 @@ export function filtereNachGruppen(
 // Eintrag im Pack-Manifest (siehe src/pack/format.ts fuer Dateiaufbau und Grenzen).
 export interface PackDateiEintrag {
   name: string;
-  typ: 'image/webp' | 'image/jpeg' | 'image/png' | 'text/plain' | 'application/json';
+  typ: 'image/webp' | 'image/jpeg' | 'image/png' | 'text/plain' | 'application/json' | 'audio/ogg' | 'audio/mpeg' | 'audio/wav';
   offset: number;
   laenge: number;
   sha256: string;

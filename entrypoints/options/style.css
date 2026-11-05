@@ -398,3 +398,153 @@ input[type='range'] {
 .zeit-zeile input[type='time'] {
   font: inherit;
 }
+
+/* Session 11, Auftrag S: Status, Sprungleiste, Grundeinstellungen */
+header #status {
+  margin: 10px 0 2px;
+  font-weight: 600;
+}
+
+header .gross {
+  margin-top: 6px;
+}
+
+#sprung {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+#sprung a {
+  padding: 4px 10px;
+  border: 1px solid var(--linie);
+  border-radius: 999px;
+  background: var(--karte);
+  color: var(--akzent);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+#sprung a:hover {
+  background: var(--akzent-hell);
+}
+
+section {
+  scroll-margin-top: 12px;
+  min-width: 0;
+}
+
+/* Abschnitte, die ihr Modul (Ton, Ledger, Ueber) nicht fuellt, bleiben unsichtbar. */
+section:empty {
+  display: none;
+}
+
+.enden {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--leise);
+}
+
+.wahl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wahl label {
+  flex: 1 1 90px;
+}
+
+.wahl input {
+  position: absolute;
+  opacity: 0;
+}
+
+.wahl span {
+  display: block;
+  padding: 8px 4px;
+  text-align: center;
+  border: 1px solid var(--linie);
+  border-radius: 10px;
+  background: var(--grund);
+  cursor: pointer;
+}
+
+.wahl input:disabled + span {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.wahl input:checked + span {
+  background: var(--pastell);
+  border-color: #b9a2e4;
+  font-weight: 650;
+}
+
+.wahl input:focus-visible + span {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+.zonen {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.zonen li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-height: 32px;
+}
+
+.zonen .schalter {
+  margin-top: 0;
+}
+
+.auch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--leise);
+  cursor: pointer;
+}
+
+.auch input {
+  accent-color: var(--akzent);
+}
+
+.liste .leer {
+  color: var(--leise);
+  border-bottom: 0;
+}
+
+#ausnahme-meldung.fehler {
+  color: var(--fehler);
+  font-weight: 600;
+}
+
+.liste li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Schmale Fenster (Android, 360 px): nichts darf waagrecht ueberlaufen. */
+@media (max-width: 480px) {
+  main {
+    padding: 20px 12px 20px;
+  }
+  .zeit-zeile,
+  .regel {
+    flex-wrap: wrap;
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

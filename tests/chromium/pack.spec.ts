@@ -133,7 +133,7 @@ const speicher = (seite: Page, schluessel: string) =>
   seite.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as Record<string, any>)[k], schluessel);
 
 // Dateien im Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte.
-const DUMMY_DATEIEN = 26; // Phase 5: dazu 10 Werbebilder
+const DUMMY_DATEIEN = 31; // Phase 5: dazu 10 Werbebilder, Session 11: dazu 5 Klaenge (Auftrag T)
 
 // Anzahl Dateien in der Pack-Datenbank, direkt aus IndexedDB (Seite am Erweiterungs-Ursprung).
 function zaehleIdb(seite: Page): Promise<{ dateien: number; meta: number }> {
@@ -252,7 +252,7 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
     // Dummy-Pack ab Phase 4: alle acht Freischaltungen, 4 Vorschau-Bilder, 3 Chibis (scripts/pack/baue-pack.mjs).
     expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, vorschau: 4, chibis: 3, werbung: 10, groesse: packBytes });
     expect(pack.freischaltungen).toContain('stil:mia-patch');
-    expect(pack.freischaltungen).toHaveLength(16); // Phase 5: dazu kontrolle:werbung, blitz, leerlauf (Session 9), tabtitel, cursor, meldungen, zeitplan, besuche (Session 10)
+    expect(pack.freischaltungen).toHaveLength(17); // Session 11: dazu ton. Phase 5: dazu kontrolle:werbung, blitz, leerlauf (Session 9), tabtitel, cursor, meldungen, zeitplan, besuche (Session 10)
     expect(typeof pack.importiert).toBe('number');
     const einstellungen = await speicher(seite, 'einstellungen');
     expect(einstellungen.stil).toBe('mia-patch');
@@ -476,7 +476,7 @@ test('Pack ersetzen: zweiter Import ersetzt das erste Pack, der Erkenner liest d
     await importiere(warmPfad, 'Dummy');
     expect((await speicher(seite, 'pack')).id).toBe('warm');
     // Warmes Dummy-Pack: Lizenz, 3 Patches, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte.
-    expect(await zaehleIdb(seite)).toEqual({ dateien: 23, meta: 2 });
+    expect(await zaehleIdb(seite)).toEqual({ dateien: 28, meta: 2 }); // 23 vor Session 11, dazu 5 Klaenge
     const zweite = await ausWorker(pruefeNachricht(bild.dataUrl, 'mia-patch'));
     expect(zweite.ok, zweite.fehler).toBe(true);
     const a2 = await analysiere(probe, zweite.bild, groessteBox(zweite.flaechen), warm.farben);

@@ -5,6 +5,8 @@
 import type { Einstellungen, Zone } from './einstellungen';
 import type { QuizBank, Texte } from './quiz/vertrag';
 import type { WerbeFormat } from './pack/vertrag';
+import type { LedgerPlus } from './ledger/vertrag';
+import type { TonName } from './ton/vertrag';
 
 export type Ziel = 'hintergrund' | 'erkenner' | 'inhalt';
 
@@ -51,6 +53,35 @@ export interface NachrichtHintergrundBesuch { ziel: 'hintergrund'; typ: 'besuch'
 export interface NachrichtHintergrundBesuchTest { ziel: 'hintergrund'; typ: 'besuch-test'; vergiss: boolean }
 export type AntwortBesuch = { ok: true; url: string; tabId: number | null } | { ok: false; grund: string };
 
+// Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): Ledger (Auftrag L), Version (Auftrag V), Einstieg (Auftrag E), Ton (Auftrag T).
+// `ledger`: Summe aus einem Content-Script (AntwortOk). `ledger-loeschen`: nur von Erweiterungsseiten (Einstellungsseite), setzt alles auf 0.
+export interface NachrichtHintergrundLedger { ziel: 'hintergrund'; typ: 'ledger'; plus: LedgerPlus }
+export interface NachrichtHintergrundLedgerLoeschen { ziel: 'hintergrund'; typ: 'ledger-loeschen' }
+// `version`: Stand fuer Popup und Einstellungsseite; `pruefen: true` fragt (Chrome) neu an, wenn die letzte Pruefung aelter als 24 h ist,
+// `erzwingen: true` auch frueher (Knopf "Check now"). Firefox: `requestUpdateCheck` statt Abruf. Antwort AntwortVersion.
+export interface NachrichtHintergrundVersion { ziel: 'hintergrund'; typ: 'version'; pruefen?: boolean; erzwingen?: boolean }
+// Testhaken (nur WXT_TESTHAKEN): andere Adresse fuer version.json (Testserver) bzw. gespeicherten Stand vergessen.
+export interface NachrichtHintergrundVersionTest { ziel: 'hintergrund'; typ: 'version-test'; url?: string; vergiss?: boolean }
+// Testhaken (nur WXT_TESTHAKEN): Einstieg zuruecksetzen (`zuruecksetzen`) und/oder die Willkommensseite wie nach einer Installation
+// oeffnen (`oeffne`). Im Testbau gilt der Einstieg nach der Installation als erledigt und nichts oeffnet sich von selbst.
+export interface NachrichtHintergrundEinstiegTest { ziel: 'hintergrund'; typ: 'einstieg-test'; zuruecksetzen?: boolean; oeffne?: boolean }
+// `packton`: Klang der Rolle `ton` als Data-URL (nur mit Freischaltung `ton`, sonst `dataUrl: null`).
+export interface NachrichtHintergrundPackTon { ziel: 'hintergrund'; typ: 'packton'; name: TonName }
+export type AntwortVersion = {
+  ok: true;
+  browser: 'chrome' | 'firefox';
+  aktuell: string;
+  datum: string; // Baudatum
+  neueste: string | null;
+  neuer: boolean;
+  geprueft: number | null;
+  fehler: boolean;
+  firefoxStatus?: 'update_available' | 'no_update' | 'throttled' | 'unbekannt';
+};
+export interface AntwortPackTon { ok: true; dataUrl: string | null }
+export type AntwortEinstiegTest = { ok: true; tabId?: number | null } | { ok: false; fehler: string };
+export type AntwortVersionTest = { ok: true } | { ok: false; fehler: string };
+
 export type NachrichtHintergrund =
   | NachrichtHintergrundWecke
   | NachrichtHintergrundReferer
@@ -64,7 +95,13 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundLeerlaufTest
   | NachrichtHintergrundMeldungTest
   | NachrichtHintergrundBesuch
-  | NachrichtHintergrundBesuchTest;
+  | NachrichtHintergrundBesuchTest
+  | NachrichtHintergrundLedger
+  | NachrichtHintergrundLedgerLoeschen
+  | NachrichtHintergrundVersion
+  | NachrichtHintergrundVersionTest
+  | NachrichtHintergrundEinstiegTest
+  | NachrichtHintergrundPackTon;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -81,6 +118,12 @@ export const HINTERGRUND_TYPEN = [
   'meldung-test',
   'besuch',
   'besuch-test',
+  'ledger',
+  'ledger-loeschen',
+  'version',
+  'version-test',
+  'einstieg-test',
+  'packton',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }

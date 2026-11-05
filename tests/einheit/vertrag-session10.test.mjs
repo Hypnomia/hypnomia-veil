@@ -90,7 +90,7 @@ test('Zeittext: HH:MM hin und zurueck', () => {
 
 test('Freischaltungen Session 10: Dateien und Gruppen', () => {
   for (const f of ['kontrolle:tabtitel', 'kontrolle:cursor', 'kontrolle:meldungen', 'kontrolle:zeitplan', 'kontrolle:besuche']) assert.ok(FREISCHALTUNGEN.includes(f), f);
-  assert.equal(FREISCHALTUNGEN.length, 16);
+  assert.equal(FREISCHALTUNGEN.length, 17); // 16 bis Session 10, dazu `ton` (Session 11)
   assert.equal(BENOETIGT['kontrolle:cursor'], null);
   assert.equal(BENOETIGT['kontrolle:zeitplan'], null);
   assert.equal(BENOETIGT['kontrolle:tabtitel'], 'texte');

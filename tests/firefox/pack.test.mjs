@@ -202,7 +202,7 @@ try {
   await writeFile(kaputtPfad, kaputt);
 
   server = await starteFixtureServer(port);
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
@@ -243,7 +243,7 @@ try {
   pruefe(pack && pack.id === 'dummy' && pack.bilder === 6 && pack.groesse === bau.bytes.byteLength, `storage.local.pack stimmt (${JSON.stringify(pack)})`);
   pruefe((await speicher('einstellungen'))?.stil === 'mia-patch', 'Stil steht auf mia-patch');
   const voll = await zaehleIdb();
-  pruefe(voll.dateien === 26 && voll.meta === 2, `IndexedDB: 26 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, Quiz, Texte), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
+  pruefe(voll.dateien === 31 && voll.meta === 2, `IndexedDB: 31 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
 
   // 4. Seite neu oeffnen: Stand bleibt
   await schliesse();
@@ -277,7 +277,7 @@ try {
   } else {
     console.log(`firefox: nach runtime.reload() nach ${Date.now() - tReload} ms: Pack ${nachReload.pack?.id}, ${nachReload.idb.dateien} Dateien, Stil ${nachReload.stil}`);
     pruefe(JSON.stringify(nachReload.pack) === JSON.stringify(packVor), 'nach runtime.reload() ist storage.local.pack unveraendert');
-    pruefe(nachReload.idb.dateien === 26 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
+    pruefe(nachReload.idb.dateien === 31 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
     pruefe(nachReload.stil === stilVor && stilVor === 'mia-patch', `nach runtime.reload() steht der Stil auf ${stilVor}`);
   }
 

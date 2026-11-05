@@ -41,7 +41,7 @@ let driver;
 let code = 0;
 try {
   server = await starteFixtureServer(port);
-  const optionen = new firefox.Options().addArguments('-headless').setBinary(firefoxBin);
+  const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).build();
   await driver.manage().setTimeouts({ pageLoad: 15_000 });
   // true = temporaere Installation, keine Signatur noetig
