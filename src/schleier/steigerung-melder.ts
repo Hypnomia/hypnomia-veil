@@ -8,6 +8,7 @@
 import { istErwachsenenseite } from '../adapter/liste';
 import type { Einstellungen } from '../einstellungen';
 import type { NachrichtHintergrundSteigerungMinute } from '../nachrichten';
+import { hebeStufe, istStrengeZeit } from '../kontrolle/streng';
 import { istFreigeschaltet, type PackKurz } from '../pack/vertrag';
 import { STEIGERUNG_SCHLUESSEL, vervollstaendigeStand, wirksameStufe, wirksameZonen, type SteigerungStand, type SteigerungStufe, type WirksameZonen } from '../steigerung';
 import { TESTHAKEN } from './konstanten';
@@ -31,6 +32,8 @@ export class SteigerungMelder {
   private stand: SteigerungStand | null = null;
   private frei = false;
   private pause = false;
+  // Strenge Zeiten (Auftrag Z1): nur mit Freischaltung `kontrolle:zeitplan`; null, solange keine Fenster gelten koennen.
+  private zeiten: Einstellungen['kontrolle']['zeiten'] | null = null;
   private eigeneSeiten: readonly string[] = [];
   // Schleier fuer diese Seite aus (Pause, eigene Ausnahme): keine Meldung, keine Stufe.
   private aus = false;
@@ -83,15 +86,20 @@ export class SteigerungMelder {
   aktualisiere(e: Einstellungen, pack: PackKurz | null, aus: boolean): void {
     this.frei = istFreigeschaltet(pack, 'zensur:steigerung');
     this.pause = e.pause;
+    this.zeiten = istFreigeschaltet(pack, 'kontrolle:zeitplan') && e.kontrolle.zeiten.length > 0 ? e.kontrolle.zeiten : null;
     this.aus = aus;
     this.eigeneSeiten = e.erwachsen.eigeneSeiten;
     this.letzteStufe = this.stufe();
   }
 
-  // Wirksame Stufe jetzt (0 ohne Freischaltung, in der Pause oder ohne Stand).
+  // Wirksame Stufe jetzt (0 ohne Freischaltung, in der Pause oder ohne Stand). In einer strengen Zeit eine Stufe hoeher (hoechstens 4); der
+  // gespeicherte Stand aendert sich dadurch nie. Den Wechsel am Rand eines Fensters erkennt der Minuten-Takt (`tick` ruft `pruefeWechsel`).
   stufe(): SteigerungStufe {
     if (!this.frei || this.pause || !this.stand) return 0;
-    return wirksameStufe(this.stand, Date.now());
+    const jetzt = Date.now();
+    const basis = wirksameStufe(this.stand, jetzt);
+    const streng = this.zeiten !== null && istStrengeZeit(this.zeiten, new Date(jetzt));
+    return hebeStufe(basis, streng) as SteigerungStufe;
   }
 
   // Zonen fuer den Erkenner bei der aktuellen Stufe; null bei Stufe 0 (dann gelten die Einstellungen unveraendert).

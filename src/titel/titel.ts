@@ -6,6 +6,7 @@
 // Hintergrund und beobachten die Seite; jede Aenderung wird gebuendelt nachgezogen. Gelten sie nicht mehr (Pause, Ausnahme, Pack weg,
 // Seite nicht mehr auf der Liste, Ende des Kontexts), stellen wir alle Originale sofort zurueck und beobachten nicht mehr.
 // Texte gehen nur ueber Textknoten und Attribute (`data`, `setAttribute`), nie ueber innerHTML.
+import { ersetzeTabtitelOriginal } from '../kontrolle/dokumenttitel';
 import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import { beiLokalerPause, istLokalePause } from '../pause-lokal';
 import { adapterFuer } from '../adapter';
@@ -449,6 +450,8 @@ export function starteTitel(ctx: KontextLeicht): void {
   }
 
   function verarbeiteTabTitel(saetze: readonly string[]): void {
+    // Im verborgenen Tab gehoert der Titel dem Tab-Titel-Modul (K1); sonst streiten beide. Beim Sichtbarwerden stellt K1 zuerst her.
+    if (document.visibilityState === 'hidden') return;
     const jetzt = document.title;
     if (tab && jetzt === tab.ersetzt) return;
     if (istEigenerText(jetzt, erzeugt)) {
@@ -490,6 +493,8 @@ export function starteTitel(ctx: KontextLeicht): void {
     if (tab) {
       try {
         if (document.title === tab.ersetzt) document.title = tab.original;
+        // Steht gerade Mias Tab-Satz (K1, verborgener Tab) und haelt K1 unsere Fassung als Original, stellt K1 spaeter unser Original her.
+        else ersetzeTabtitelOriginal(tab.ersetzt, tab.original);
       } catch {
         // Dokument weg
       }

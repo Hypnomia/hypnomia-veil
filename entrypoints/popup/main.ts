@@ -14,7 +14,8 @@ import {
   type Stil,
   type Zone,
 } from '../../src/einstellungen';
-import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type SteigerungStand } from '../../src/steigerung';
+import { hebeStufe, istStrengeZeit, naechsterWechselMs } from '../../src/kontrolle/streng';
+import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type SteigerungStand, type SteigerungStufe } from '../../src/steigerung';
 import { STUFEN_TEXT, formatiereRest, hatErwachsenFunktionen, posePopup, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import type { Texte } from '../../src/quiz/vertrag';
@@ -65,6 +66,10 @@ const steigerungBlock = el<HTMLDivElement>('steigerung');
 const stufeZeile = el<HTMLParagraphElement>('stufe-zeile');
 const stufeZeit = el<HTMLParagraphElement>('stufe-zeit');
 const stufeText = el<HTMLParagraphElement>('stufe-text');
+const strengZeile = el<HTMLParagraphElement>('streng-zeile');
+const strengText = el<HTMLParagraphElement>('streng-text');
+// Mias Kommentar in der strengen Zeit (Entwuerfe, TEXTE-PHASE-5-SESSION-10.md E3), einer je Oeffnen des Popups.
+const STRENG_SAETZE = ['I’m stricter right now. You set these hours, I keep them.', 'Strict time right now. Be good for me, pet.', 'I’m stricter right now, pet.'];
 
 let stand: SteigerungStand = vervollstaendigeStand(undefined);
 let texte: Texte | null = null;
@@ -96,11 +101,11 @@ function musterFuerSeite(url: URL): string | null {
 // ---------- Anzeige ----------
 
 function statusText(e: Einstellungen): string {
-  if (e.pause) return "Paused on every page. I'll be here when you want me back.";
+  if (e.pause) return "Paused on every page. I’ll be here when you want me back.";
   if (!seite) return 'Nothing to veil on this page. Everywhere else, I have it covered.';
   if (passtAusnahme(seite, standardMuster)) return 'This site is on my never-touch list: banks, mail, that sort of thing. Nothing is covered here.';
-  if (passtAusnahme(seite, e.ausnahmen)) return "You asked me to skip this site, so I'm leaving it alone.";
-  return "On watch. I'll keep the pages quiet for you.";
+  if (passtAusnahme(seite, e.ausnahmen)) return "You asked me to skip this site, so I’m leaving it alone.";
+  return "On watch. I’ll keep the pages quiet for you.";
 }
 
 function zeichne(e: Einstellungen): void {
@@ -167,7 +172,7 @@ function zeichneAusnahme(e: Einstellungen): void {
     ausnahmeHinweis.textContent = `${muster} is on your list of sites I leave alone.`;
   } else {
     ausnahmeKnopf.textContent = 'Leave this site alone';
-    ausnahmeHinweis.textContent = `I'll skip ${muster} from now on. You can undo it here anytime.`;
+    ausnahmeHinweis.textContent = `I’ll skip ${muster} from now on. You can undo it here anytime.`;
   }
 }
 
@@ -193,7 +198,7 @@ function zeichneErwachsen(e: Einstellungen): void {
   if (ohnePack) {
     erwHinweis.textContent = 'These sites need the Mia Pack. Add it and I’ll look after them properly.';
   } else if (e.pause) {
-    erwHinweis.textContent = "Paused, so I'm keeping my hands off these sites too.";
+    erwHinweis.textContent = "Paused, so I’m keeping my hands off these sites too.";
   } else {
     erwHinweis.textContent = e.erwachsen.an ? "I know the usual places. Nothing there gets by me." : 'Adult-site mode is off. I’m leaving these sites alone.';
   }
@@ -203,26 +208,44 @@ function zeichneErwachsen(e: Einstellungen): void {
 function zeichneStufe(e: Einstellungen): void {
   const hat = istFreigeschaltet(pack, 'zensur:steigerung');
   const a = anzeigeStufe(stand, Date.now());
-  const pose = posePopup(e.pause, hat ? a.stufe : 0);
+  // Strenge Zeit (Auftrag Z1): Freischaltung `kontrolle:zeitplan`, ein Fenster passt jetzt, keine Pause. Die Stufe steigt dann um eins,
+  // der gespeicherte Stand bleibt unveraendert.
+  const jetzt = new Date();
+  const zeiten = e.kontrolle.zeiten;
+  const streng = !e.pause && istFreigeschaltet(pack, 'kontrolle:zeitplan') && istStrengeZeit(zeiten, jetzt);
+  const stufe = hebeStufe(a.stufe, streng && hat) as SteigerungStufe;
+  const pose = posePopup(e.pause, hat ? stufe : 0);
   if (pose !== chibiPose) {
     chibiPose = pose;
     erwChibi.dataset.pose = pose;
     void zeigeChibi(erwChibi, pose, pack);
   }
-  // Sekundentakt nur, solange die Steigerung sichtbar ist.
-  if (hat && tickerId === null) tickerId = window.setInterval(() => aktuell && zeichneStufe(aktuell), 1000);
-  if (!hat && tickerId !== null) {
+  // Sekundentakt nur, solange die Steigerung oder eine strenge Zeit sichtbar ist.
+  const sichtbar = hat || streng;
+  if (sichtbar && tickerId === null) tickerId = window.setInterval(() => aktuell && zeichneStufe(aktuell), 1000);
+  if (!sichtbar && tickerId !== null) {
     clearInterval(tickerId);
     tickerId = null;
   }
+  strengZeile.hidden = !streng;
+  strengText.hidden = !streng;
+  if (streng) {
+    const ms = naechsterWechselMs(zeiten, jetzt);
+    const ende = ms === null ? null : new Date(jetzt.getTime() + ms);
+    strengZeile.textContent = ende ? `Strict time until ${ende.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Strict time, around the clock';
+    strengText.textContent = STRENG_SAETZE[Math.min(STRENG_SAETZE.length - 1, Math.floor(zufall * STRENG_SAETZE.length))]!;
+  } else {
+    strengZeile.textContent = '';
+    strengText.textContent = '';
+  }
   if (!hat) return;
-  stufeZeile.textContent = `Level ${a.stufe} of 4`;
+  stufeZeile.textContent = `Level ${stufe} of 4`;
   // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.
-  if (a.stufe === 0) stufeZeit.textContent = 'Nothing to count down yet.';
+  if (a.stufe === 0) stufeZeit.textContent = streng ? 'One level up for these hours.' : 'Nothing to count down yet.';
   else if (e.pause || a.pausiert) stufeZeit.textContent = "Paused, so the clock stands still. It picks up where it stopped.";
   else stufeZeit.textContent = `Next level down in ${formatiereRest(a.bisAbsenkungMs ?? 0)}`;
-  const gruppe = texte?.gruppen[`stufe${a.stufe}` as 'stufe1'];
-  stufeText.textContent = waehleSatz(a.stufe === 0 ? undefined : gruppe, STUFEN_TEXT[a.stufe], zufall);
+  const gruppe = texte?.gruppen[`stufe${stufe}` as 'stufe1'];
+  stufeText.textContent = waehleSatz(stufe === 0 ? undefined : gruppe, STUFEN_TEXT[stufe], zufall);
 }
 let tickerId: number | null = null;
 window.addEventListener('pagehide', () => {

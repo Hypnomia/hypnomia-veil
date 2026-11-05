@@ -171,7 +171,8 @@ test('hintergrund/tab: ohne Ausnahmen keine Anfrage, mit Ausnahmen nur beim Star
   await seite.waitForTimeout(3500);
   const mit = (await zaehler()) - t0;
   console.log(`chromium hintergrund/tab mit Ausnahmen: ${t0} Anfrage(n) beim Start, danach ${mit} in 3,5 s`);
-  expect(t0).toBeLessThanOrEqual(2);
+  // Schleier, Werbe-Tausch und (Session 10) Mauszeiger fragen je Rahmen einmal beim Start, nur mit eigenen Ausnahmen.
+  expect(t0).toBeLessThanOrEqual(3);
   expect(mit).toBe(0);
 
   // Adresswechsel der obersten Seite: eine Adressmeldung je Wechsel, der Rahmen folgt ohne eigene Anfrage.

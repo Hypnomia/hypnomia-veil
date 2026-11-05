@@ -68,6 +68,9 @@ export interface QuizBank {
 // seinen eingebauten Text). Phase 5 (PHASE-5-AUFTRAEGE-SESSION-9.md): `blitzwoerter` (einzelne Woerter oder kurze Wortgruppen fuer die
 // Blitzwoerter, hoechstens MAX_BLITZWORT_ZEICHEN), `leerlauf` (Mias Satz auf der Leerlauf-Spirale), `werbung` (Kennzeichnung der
 // getauschten Werbung, muss "Mia" enthalten und hoechstens MAX_WERBE_ZEICHEN haben, Mozilla-Regel O1 b).
+// Session 10 (PHASE-5-AUFTRAEGE-SESSION-10.md): `tabtitel` (Titel eines Tabs im Hintergrund, hoechstens MAX_TABTITEL_ZEICHEN), Meldungen je
+// Anlass `meldungZensiert` (Platzhalter `{{count}}`, Pflicht in dieser Gruppe), `meldungStufe`, `meldungErwachsen`, `meldungStreng`
+// (je hoechstens MAX_MELDUNG_ZEICHEN), `besuch` (Hinweis vor einem Pflicht-Besuch, hoechstens MAX_MELDUNG_ZEICHEN).
 export const SATZ_GRUPPEN = [
   'start',
   'richtig',
@@ -84,6 +87,12 @@ export const SATZ_GRUPPEN = [
   'blitzwoerter',
   'leerlauf',
   'werbung',
+  'tabtitel',
+  'meldungZensiert',
+  'meldungStufe',
+  'meldungErwachsen',
+  'meldungStreng',
+  'besuch',
 ] as const;
 export type SatzGruppe = (typeof SATZ_GRUPPEN)[number];
 // Ohne diese Gruppen (mindestens ein Satz) gilt die Texte-Datei als ungueltig.
@@ -108,6 +117,9 @@ export const MAX_SAETZE_JE_GRUPPE = 200;
 export const MAX_TEXT_ZEICHEN = 200;
 export const MAX_BLITZWORT_ZEICHEN = 24;
 export const MAX_WERBE_ZEICHEN = 40;
+export const MAX_TABTITEL_ZEICHEN = 60;
+export const MAX_MELDUNG_ZEICHEN = 120;
+const MELDUNG_GRUPPEN: ReadonlySet<string> = new Set(['meldungZensiert', 'meldungStufe', 'meldungErwachsen', 'meldungStreng', 'besuch']);
 const ID_MUSTER = /^[a-z0-9][a-z0-9-]{0,39}$/i;
 const PARAM_NAME = /^[a-zA-Z]{1,20}$/;
 
@@ -211,6 +223,9 @@ export function pruefeTexte(roh: unknown): Texte | null {
       // Platzhalter nur dort, wo sie ersetzt werden.
       .filter((s) => (g === 'titel' ? s.includes('{{title}}') : !s.includes('{{title}}')))
       .filter((s) => g === 'freigelegt' || !s.includes('{{seconds}}'))
+      .filter((s) => (g === 'meldungZensiert' ? s.includes('{{count}}') : !s.includes('{{count}}')))
+      .filter((s) => g !== 'tabtitel' || [...s].length <= MAX_TABTITEL_ZEICHEN)
+      .filter((s) => !MELDUNG_GRUPPEN.has(g) || [...s].length <= MAX_MELDUNG_ZEICHEN)
       .filter((s) => g !== 'blitzwoerter' || [...s].length <= MAX_BLITZWORT_ZEICHEN)
       // Werbe-Kennzeichnung immer erkennbar von Mia (Entscheidung 99, Mozilla O1 b).
       .filter((s) => g !== 'werbung' || ([...s].length <= MAX_WERBE_ZEICHEN && /\bmia\b/i.test(s)));
@@ -221,8 +236,10 @@ export function pruefeTexte(roh: unknown): Texte | null {
 }
 
 // Setzt Platzhalter ein. Ergebnis ist Text fuer `textContent`, nie fuer innerHTML.
-export function fuelleSatz(satz: string, werte: { title?: string; seconds?: number }): string {
-  return satz
-    .replaceAll('{{title}}', werte.title ?? '')
-    .replaceAll('{{seconds}}', werte.seconds === undefined ? '' : String(Math.round(werte.seconds)));
+export function fuelleSatz(satz: string, werte: { title?: string; seconds?: number; count?: number }): string {
+  // Ein Durchgang: ein eingesetzter Seitentitel mit `{{seconds}}` wird nicht noch einmal ersetzt (Pruefer-Fund 8); nicht endliche Zahlen ergeben ''.
+  const zahl = (x: number | undefined) => (x !== undefined && Number.isFinite(x) ? String(Math.round(x)) : '');
+  return satz.replace(/\{\{(title|seconds|count)\}\}/g, (_, name: string) =>
+    name === 'title' ? (werte.title ?? '') : name === 'seconds' ? zahl(werte.seconds) : zahl(werte.count),
+  );
 }

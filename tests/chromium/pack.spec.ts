@@ -252,7 +252,7 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
     // Dummy-Pack ab Phase 4: alle acht Freischaltungen, 4 Vorschau-Bilder, 3 Chibis (scripts/pack/baue-pack.mjs).
     expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, vorschau: 4, chibis: 3, werbung: 10, groesse: packBytes });
     expect(pack.freischaltungen).toContain('stil:mia-patch');
-    expect(pack.freischaltungen).toHaveLength(11); // Phase 5: dazu kontrolle:werbung, kontrolle:blitz, kontrolle:leerlauf
+    expect(pack.freischaltungen).toHaveLength(16); // Phase 5: dazu kontrolle:werbung, blitz, leerlauf (Session 9), tabtitel, cursor, meldungen, zeitplan, besuche (Session 10)
     expect(typeof pack.importiert).toBe('number');
     const einstellungen = await speicher(seite, 'einstellungen');
     expect(einstellungen.stil).toBe('mia-patch');

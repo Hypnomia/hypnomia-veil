@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Meldungen-Testseite</title>
+    <script>
+      // Zaehler in der Erfassungsphase am Fenster, ganz frueh angemeldet: was die Seite von Eingaben sieht.
+      window.zaehlerCapture = { pointerdown: 0, pointerup: 0, mousedown: 0, mouseup: 0, click: 0, keydown: 0, keyup: 0, wheel: 0, pointermove: 0 };
+      for (const t of Object.keys(window.zaehlerCapture)) window.addEventListener(t, () => { window.zaehlerCapture[t]++; }, true);
+    </script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; min-height: 3000px; }
+      #link { position: fixed; left: 100px; top: 100px; width: 240px; height: 80px; background: #cde; display: block; }
+      #unten { position: fixed; right: 0; bottom: 0; width: 500px; height: 200px; background: #fdc; }
+    </style>
+  </head>
+  <body>
+    <h1>Meldungen-Test</h1>
+    <a id="link" href="/hello.html">Link</a>
+    <div id="unten">Fester Bereich unten rechts</div>
+    <input id="feld" type="text" />
+    <script>
+      window.zaehler = { click: 0, mousedown: 0, mouseup: 0, keydown: 0, linkClick: 0, untenClick: 0 };
+      for (const t of ['click', 'mousedown', 'mouseup', 'keydown']) {
+        document.addEventListener(t, () => { window.zaehler[t]++; });
+        window.addEventListener(t, () => { window.zaehler[t]++; });
+      }
+      document.getElementById('link').addEventListener('click', () => { window.zaehler.linkClick++; });
+      document.getElementById('unten').addEventListener('click', () => { window.zaehler.untenClick++; });
+      var q = new URLSearchParams(location.search);
+      if (q.get('rahmen') === '1') {
+        var f = document.createElement('iframe');
+        f.id = 'rahmen';
+        f.srcdoc = '<p>Rahmen</p>';
+        f.style.cssText = 'position:absolute;left:400px;top:300px;width:200px;height:60px';
+        document.body.appendChild(f);
+      }
+    </script>
+  </body>
+</html>

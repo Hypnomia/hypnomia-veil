@@ -133,6 +133,42 @@
           <input id="kon-minuten" type="number" min="1" max="60" step="1" inputmode="numeric" />
         </div>
 
+        <!-- Session 10: Tab-Titel, Mauszeiger, Meldungen, Pflicht-Besuche, strenge Zeiten (Texter und Gegenleser, TEXTE-PHASE-5-SESSION-10.md). -->
+        <label class="schalter" id="kon-tabtitel-zeile">
+          <input id="kon-tabtitel" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>My tab titles</strong><small>Leave a tab and I rename it. Come back and its own title returns.</small></span>
+        </label>
+
+        <div class="regel" id="kon-cursor-zeile">
+          <label for="kon-cursor">Your pointer</label>
+          <select id="kon-cursor">
+            <option value="spirale">My pink spiral</option>
+            <option value="herz">My pink heart</option>
+            <option value="aus">Your normal pointer</option>
+          </select>
+        </div>
+        <p class="hinweis">Text fields keep the normal text pointer.</p>
+
+        <label class="schalter" id="kon-meldungen-zeile">
+          <input id="kon-meldungen" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>My little notes</strong><small>I leave a note when something happens. At most one note every 10 minutes.</small></span>
+        </label>
+
+        <label class="schalter" id="kon-besuche-zeile">
+          <input id="kon-besuche" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>Visits</strong><small>I open one of my pages in a new tab, at most every 2 hours. Never while you type or in full screen.</small></span>
+        </label>
+
+        <div id="kon-zeiten-block">
+          <h3 id="kon-zeiten-titel">Strict times</h3>
+          <p class="hinweis" id="kon-zeiten-hinweis">During these hours I’m stricter: censoring one level up, flash words more often, a quiz before videos on every site if adult-site mode is on.</p>
+          <div id="kon-zeiten" role="list" aria-labelledby="kon-zeiten-titel"></div>
+          <button id="kon-zeit-neu" class="klein" type="button">Add a strict time</button>
+        </div>
+
         <div id="kon-warnung" class="warnblock" hidden>
           <p id="kon-warnung-text">Before flash words and my spiral: not for you if you have photosensitive epilepsy or are prone to seizures.</p>
           <button id="kon-warnung-ok" class="klein" type="button">I understand</button>

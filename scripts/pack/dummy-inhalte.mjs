@@ -36,5 +36,12 @@ export const DUMMY_TEXTE = {
     blitzwoerter: ['TESTWORD', 'TESTFLASH', 'TESTDOWN'],
     leerlauf: ['Test idle line.'],
     werbung: ['Test ad by Mia'],
+    // Session 10: Tab-Titel, Meldungen je Anlass (`{{count}}` nur und Pflicht in meldungZensiert), Hinweis vor einem Pflicht-Besuch.
+    tabtitel: ['Test tab title one', 'Test tab title two'],
+    meldungZensiert: ['Test censored {{count}} line.'],
+    meldungStufe: ['Test level up line.'],
+    meldungErwachsen: ['Test adult time line.'],
+    meldungStreng: ['Test strict time line.'],
+    besuch: ['Test visit line.'],
   },
 };

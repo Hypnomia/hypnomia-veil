@@ -180,6 +180,11 @@ export async function baueDummyPack(opts = {}) {
             'kontrolle:werbung',
             'kontrolle:blitz',
             'kontrolle:leerlauf',
+            'kontrolle:tabtitel',
+            'kontrolle:cursor',
+            'kontrolle:meldungen',
+            'kontrolle:zeitplan',
+            'kontrolle:besuche',
           ]
         : ['stil:mia-patch'],
     },

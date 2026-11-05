@@ -162,6 +162,41 @@ try {
   await klick('#kon-warnung-ok');
   await bis('Warnung weg', async () => !(await sichtbar('#kon-warnung')));
   pruefe((await speicher('spiraleWarnungGesehen')) === true, 'I understand merkt die Warnung');
+
+  // Session 10: Tab-Titel, Zeiger, Meldungen, Besuche (Standard aus), strenge Zeiten.
+  const k = async () => (await einst()).kontrolle ?? {};
+  pruefe((await eigenschaft('#kon-tabtitel', 'checked')) === true, 'Tab-Titel ab Werk an');
+  pruefe((await eigenschaft('#kon-cursor', 'value')) === 'spirale', 'Zeiger ab Werk Spirale');
+  pruefe((await eigenschaft('#kon-besuche', 'checked')) === false, 'Besuche ab Werk aus');
+  await klick('#kon-tabtitel');
+  await bis('tabtitel aus', async () => (await k()).tabtitel === false);
+  await waehle('#kon-cursor', 'herz');
+  await bis('cursor herz', async () => (await k()).cursor === 'herz');
+  await klick('#kon-meldungen');
+  await bis('meldungen aus', async () => (await k()).meldungen === false);
+  await klick('#kon-besuche');
+  await bis('besuche an', async () => (await k()).besuche === true);
+  pruefe(true, '4 Schalter Session 10 gespeichert');
+  await klick('#kon-zeit-neu');
+  await bis('eine strenge Zeit', async () => (await k()).zeiten?.length === 1);
+  await driver.executeScript(
+    `const z = document.querySelector('#kon-zeiten .zeit-zeile'); const von = z.querySelector('.zeit-von'); von.value = '22:30';
+     von.dispatchEvent(new Event('change', { bubbles: true })); von.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));`,
+  );
+  await bis('von 22:30', async () => (await k()).zeiten?.[0]?.von === 1350);
+  await driver.executeScript(
+    `const z = document.querySelector('#kon-zeiten .zeit-zeile'); for (const b of z.querySelectorAll('input[data-tag]')) { if (b.dataset.tag !== '3') { b.checked = false; b.dispatchEvent(new Event('change', { bubbles: true })); } }`,
+  );
+  await bis('nur Mittwoch', async () => JSON.stringify((await k()).zeiten?.[0]?.tage) === '[3]');
+  pruefe(true, 'strenge Zeit: Uhrzeit und Tage gespeichert');
+  await klick('#kon-zeit-neu');
+  await klick('#kon-zeit-neu');
+  await bis('drei strenge Zeiten', async () => (await k()).zeiten?.length === 3);
+  await bis('Knopf weg bei 3', async () => !(await sichtbar('#kon-zeit-neu')));
+  pruefe(true, 'hoechstens 3 strenge Zeiten');
+  await klick('#kon-zeiten .zeit-zeile .zeit-weg');
+  await bis('zwei strenge Zeiten', async () => (await k()).zeiten?.length === 2);
+  pruefe((await k()).zeiten.every((z) => z.von === 1260), 'Entfernen nimmt die richtige Zeile');
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);
   code = 1;

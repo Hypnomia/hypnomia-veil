@@ -76,3 +76,23 @@ export function naechsterBlitzAbstand(haeufigkeit: 'selten' | 'oft', zufall: num
   const z = Number.isFinite(zufall) ? Math.min(Math.max(zufall, 0), 0.999999) : 0.5;
   return Math.round(min + (max - min) * z);
 }
+
+// ---------- Session 10 (PHASE-5-AUFTRAEGE-SESSION-10.md) ----------
+// Meldungen (Auftrag M): hoechstens eine je 10 Minuten ueber alle Tabs (Entscheidung 116), sichtbar 8 s. Anlaesse: 50 zensierte Bilder am
+// Tag (dann je weitere 50), Stufe der Steigerung gestiegen, 20 Minuten sichtbar auf einer Erwachsenenseite, Beginn einer strengen Zeit.
+export const MELDUNG_MIN_ABSTAND_MS = 10 * 60_000;
+export const MELDUNG_SICHT_MS = 8000;
+export const MELDUNG_ZENSIERT_SCHRITT = 50;
+export const MELDUNG_ERWACHSEN_MS = 20 * 60_000;
+
+// Pflicht-Besuche (Auftrag Z2, Entscheidungen 116 und 125): nie oefter als alle 2 Stunden, geplant zufaellig 2 bis 4 Stunden nach dem letzten
+// Besuch bzw. nach dem Einschalten; vor dem Oeffnen 5 s ein Hinweis mit "Not now".
+export const BESUCH_MIN_ABSTAND_MS = 2 * 60 * 60_000;
+export const BESUCH_ABSTAND_MS: readonly [number, number] = [2 * 60 * 60_000, 4 * 60 * 60_000];
+export const BESUCH_HINWEIS_MS = 5000;
+
+export function naechsterBesuchAbstand(zufall: number): number {
+  const [min, max] = BESUCH_ABSTAND_MS;
+  const z = Number.isFinite(zufall) ? Math.min(Math.max(zufall, 0), 0.999999) : 0.5;
+  return Math.max(BESUCH_MIN_ABSTAND_MS, Math.round(min + (max - min) * z));
+}

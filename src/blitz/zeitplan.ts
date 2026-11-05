@@ -1,7 +1,9 @@
 // Zeitplan der Blitzwoerter (Auftrag B, Phase 5): reine Logik ohne Browser-Aufrufe, laeuft auch in Einheitstests (`node --experimental-strip-types`).
 // Der Plan liegt in storage.local (`blitzZeitplan`) und gilt ueber alle Tabs: `zuletzt` (Zeit des letzten Ereignisses oder der Installation, ms seit
 // 1970) und `abstandMs` (so lange ruht Mia danach). Die Abstaende kommen aus `naechsterBlitzAbstand` (src/kontrolle/grenzen.ts).
+import type { StrengeZeit } from '../einstellungen.ts';
 import { BLITZ_ABSTAND_MS, naechsterBlitzAbstand } from '../kontrolle/grenzen.ts';
+import { hebeHaeufigkeit, istStrengeZeit } from '../kontrolle/streng.ts';
 
 export const ZEITPLAN_SCHLUESSEL = 'blitzZeitplan';
 // So oft schaut ein sichtbarer Tab nach (ms). Kein Zeitgeber im Hintergrund.
@@ -14,11 +16,19 @@ export interface Zeitplan {
 
 export type Haeufigkeit = 'selten' | 'oft';
 
-// Die wirksame Haeufigkeit. Eigene Funktion, weil die strengen Zeiten (Session 10) sie spaeter um eine Stufe anheben: Haeufigkeit nie direkt
-// aus den Einstellungen lesen. Gibt null zurueck, wenn die Blitzwoerter aus sind.
-export function wirksameHaeufigkeit(e: { kontrolle: { blitz: 'aus' | 'selten' | 'oft' } } | null): Haeufigkeit | null {
+// Die wirksame Haeufigkeit. Haeufigkeit nie direkt aus den Einstellungen lesen: in einer strengen Zeit (Session 10, Auftrag Z1; Freischaltung
+// `kontrolle:zeitplan` und Fenster) hebt `hebeHaeufigkeit` sie um eine Stufe (selten wird oft, aus bleibt aus). Ohne Pack oder ohne Fenster
+// gilt der Schalter unveraendert. Gibt null zurueck, wenn die Blitzwoerter aus sind.
+export function wirksameHaeufigkeit(
+  e: { kontrolle: { blitz: 'aus' | 'selten' | 'oft'; zeiten?: readonly StrengeZeit[] } } | null,
+  pack: { freischaltungen: readonly string[] } | null = null,
+  jetzt: Date = new Date(),
+): Haeufigkeit | null {
   const h = e?.kontrolle.blitz;
-  return h === 'selten' || h === 'oft' ? h : null;
+  if (h !== 'selten' && h !== 'oft') return null;
+  const streng = !!pack && Array.isArray(pack.freischaltungen) && pack.freischaltungen.includes('kontrolle:zeitplan') && istStrengeZeit(e?.kontrolle.zeiten ?? [], jetzt);
+  const w = hebeHaeufigkeit(h, streng);
+  return w === 'aus' ? null : w;
 }
 
 export function liesZeitplan(roh: unknown): Zeitplan | null {

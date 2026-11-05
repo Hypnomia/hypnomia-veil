@@ -43,6 +43,45 @@ export interface KontrolleEinstellung {
   blitz: BlitzHaeufigkeit; // Blitzwoerter (Auftrag B), Standard selten
   leerlauf: boolean; // Leerlauf-Spirale (Auftrag L), Standard an
   leerlaufMinuten: number; // Minuten ohne Eingabe bis zur Spirale (Inhaberin 04.11.2026: 2), ganzzahlig
+  // Session 10 (PHASE-5-AUFTRAEGE-SESSION-10.md):
+  tabtitel: boolean; // Tab-Titel im Hintergrund wird Mias Satz (Auftrag K1), Standard an
+  cursor: CursorArt; // Mauszeiger (Auftrag K2), Standard kleine pinke Spirale
+  meldungen: boolean; // kleine Meldungen mit Mini-Chibi (Auftrag M), Standard an
+  besuche: boolean; // Pflicht-Besuche: Mia oeffnet selbst einen Tab (Auftrag Z2), Standard AUS (Entscheidung 125)
+  zeiten: StrengeZeit[]; // strenge Zeiten (Auftrag Z1), ab Werk keine (Entscheidung 118)
+}
+
+// Mauszeiger mit Pack (Entscheidung 116): kleine pinke Spirale (Standard), pinkes Herz, aus.
+export const CURSOR_ARTEN = ['spirale', 'herz', 'aus'] as const;
+export type CursorArt = (typeof CURSOR_ARTEN)[number];
+
+// Ein Zeitfenster, in dem Mia strenger ist. `tage`: Wochentage wie Date.getDay() (0 Sonntag bis 6 Samstag), mindestens einer. `von`, `bis`:
+// Minuten seit Mitternacht (0 bis 1439), Ortszeit. `bis` kleiner als `von` heisst ueber Mitternacht (der Tag zaehlt fuer den Beginn).
+// `von` gleich `bis` gilt als ganzer Tag. Logik in src/kontrolle/streng.ts.
+export interface StrengeZeit {
+  tage: number[];
+  von: number;
+  bis: number;
+}
+export const MAX_STRENGE_ZEITEN = 3;
+
+// Bereinigt rohe Zeitfenster: ganzzahlige Minuten 0 bis 1439, Tage 0 bis 6 ohne Doppelte (sortiert), Fenster ohne Tage fallen weg, hoechstens 3.
+export function bereinigeZeiten(roh: unknown): StrengeZeit[] {
+  if (!Array.isArray(roh)) return [];
+  const aus: StrengeZeit[] = [];
+  for (const z of roh) {
+    if (aus.length >= MAX_STRENGE_ZEITEN) break;
+    if (!z || typeof z !== 'object') continue;
+    const r = z as Record<string, unknown>;
+    const minute = (x: unknown): number | null => (typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= 1439 ? x : null);
+    const von = minute(r.von);
+    const bis = minute(r.bis);
+    if (von === null || bis === null || !Array.isArray(r.tage)) continue;
+    const tage = [...new Set(r.tage.filter((t): t is number => typeof t === 'number' && Number.isInteger(t) && t >= 0 && t <= 6))].sort((a, b) => a - b);
+    if (tage.length === 0) continue;
+    aus.push({ tage, von, bis });
+  }
+  return aus;
 }
 
 export interface ErwachsenEinstellung {
@@ -92,7 +131,7 @@ export const STANDARD: Einstellungen = {
   ruhig: false,
   erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
   quiz: { verweigern: 0.1, freilegenMs: 10000 },
-  kontrolle: { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2 },
+  kontrolle: { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] },
 };
 
 // Liste von Hosts oder Mustern: nur Texte, getrimmt, klein, ohne Leere und Doppelte.
@@ -157,6 +196,11 @@ export function vervollstaendige(roh: unknown): Einstellungen {
         blitz: (BLITZ_HAEUFIGKEITEN as readonly unknown[]).includes(k.blitz) ? (k.blitz as BlitzHaeufigkeit) : s.blitz,
         leerlauf: wahr(k.leerlauf, s.leerlauf),
         leerlaufMinuten: Math.round(begrenze(k.leerlaufMinuten, LEERLAUF_MIN_MINUTEN, LEERLAUF_MAX_MINUTEN, s.leerlaufMinuten)),
+        tabtitel: wahr(k.tabtitel, s.tabtitel),
+        cursor: (CURSOR_ARTEN as readonly unknown[]).includes(k.cursor) ? (k.cursor as CursorArt) : s.cursor,
+        meldungen: wahr(k.meldungen, s.meldungen),
+        besuche: wahr(k.besuche, s.besuche),
+        zeiten: bereinigeZeiten(k.zeiten),
       };
     })(),
   };

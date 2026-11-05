@@ -12,6 +12,8 @@ import { bearbeiteErsatzStumm, starteErsatzStumm } from '../src/hintergrund/ersa
 import { raeumeUmleitungAuf } from '../src/hintergrund/umleitung';
 // Phase 5 (Auftrag L): Leerlauf-Erkennung fuer die Spirale.
 import { bearbeiteLeerlaufTest, starteLeerlauf } from '../src/hintergrund/leerlauf';
+import { bearbeiteMeldungTest, notiereMinute, starteMeldungen } from '../src/hintergrund/meldungen';
+import { bearbeiteBesuch, bearbeiteBesuchTest, starteBesuche } from '../src/hintergrund/besuche';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -217,6 +219,8 @@ export default defineBackground(() => {
   raeumeUmleitungAuf();
   starteErsatzStumm();
   starteLeerlauf();
+  starteMeldungen();
+  starteBesuche();
 
   // Chrome: Offscreen-Dokument bei Installation und Browserstart anlegen.
   if (import.meta.env.CHROME) {
@@ -245,13 +249,30 @@ export default defineBackground(() => {
       }
       case 'packdaten':
         return bearbeitePackDaten(n);
-      case 'steigerung-minute':
+      case 'steigerung-minute': {
+        const antwort = await bearbeiteSteigerung(n, absender);
+        // Session 10 (Auftrag M): dieselbe Minute zaehlt fuer die Anlaesse der Meldungen (zensierte Bilder heute, Zeit auf Erwachsenenseiten).
+        // Vor der Antwort abwarten (Lebensdauer des Service Workers); Fehler der Meldungen beruehren die Steigerung nicht.
+        await Promise.resolve()
+          .then(() => notiereMinute(n, absender))
+          .catch(() => {});
+        return antwort;
+      }
       case 'steigerung-uhr':
         return bearbeiteSteigerung(n, absender);
       case 'ersatz-stumm':
         return bearbeiteErsatzStumm(n, absender);
       case 'leerlauf-test':
         return bearbeiteLeerlaufTest(n, absender);
+      // Testhaken: im Release-Bau faellt der Zweig samt Aufruf weg (die Handler pruefen zusaetzlich selbst).
+      case 'meldung-test':
+        if (import.meta.env.WXT_TESTHAKEN !== '1') return { ok: false, fehler: 'nur im Testbau' };
+        return bearbeiteMeldungTest(n, absender);
+      case 'besuch':
+        return bearbeiteBesuch(n, absender);
+      case 'besuch-test':
+        if (import.meta.env.WXT_TESTHAKEN !== '1') return { ok: false, fehler: 'nur im Testbau' };
+        return bearbeiteBesuchTest(n, absender);
       default:
         return undefined;
     }

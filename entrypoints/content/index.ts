@@ -11,6 +11,10 @@ import { starteTitel } from '../../src/titel/titel';
 import { starteWerbung } from '../../src/werbung/werbung';
 import { starteBlitz } from '../../src/blitz/blitz';
 import { starteSpirale } from '../../src/spirale/spirale';
+import { starteTabtitel } from '../../src/tabtitel/tabtitel';
+import { starteCursor } from '../../src/cursor/cursor';
+import { starteMeldungen } from '../../src/meldungen/meldungen';
+import { starteBesuche } from '../../src/besuche/besuche';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -32,5 +36,11 @@ export default defineContentScript({
     starteWerbung(ctx);
     starteBlitz(ctx);
     starteSpirale(ctx);
+    // Phase 5 (Session 10): Tab-Titel, Meldungen und Pflicht-Besuche nur in der obersten Seite, Mauszeiger in jedem Frame (die Module pruefen
+    // das selbst).
+    starteTabtitel(ctx);
+    starteCursor(ctx);
+    starteMeldungen(ctx);
+    starteBesuche(ctx);
   },
 });

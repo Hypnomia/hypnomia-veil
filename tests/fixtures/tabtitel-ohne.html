@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #14101c; color: #8a8497; font: 16px system-ui, sans-serif; }
+    </style>
+    <script>
+      // Diese Seite hat kein title-Element. Mit titelSpaeter(titel, ms) legt die Seite selbst eines an.
+      window.titelSpaeter = function (titel, ms) {
+        setTimeout(function () {
+          var t = document.createElement('title');
+          t.textContent = titel;
+          document.head.appendChild(t);
+        }, ms);
+      };
+    </script>
+  </head>
+  <body>
+    <main><p>A page without a title element.</p></main>
+  </body>
+</html>

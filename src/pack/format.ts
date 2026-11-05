@@ -51,6 +51,11 @@ const BEKANNTE_FREISCHALTUNGEN = [
   'kontrolle:werbung',
   'kontrolle:blitz',
   'kontrolle:leerlauf',
+  'kontrolle:tabtitel',
+  'kontrolle:cursor',
+  'kontrolle:meldungen',
+  'kontrolle:zeitplan',
+  'kontrolle:besuche',
 ] as const satisfies readonly Freischaltung[];
 // Kopie von BENOETIGT aus vertrag.ts: welche Rolle eine Freischaltung braucht (null = keine Datei).
 const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
@@ -65,6 +70,11 @@ const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:werbung': 'werbung',
   'kontrolle:blitz': 'texte',
   'kontrolle:leerlauf': 'texte',
+  'kontrolle:tabtitel': 'texte',
+  'kontrolle:cursor': null,
+  'kontrolle:meldungen': 'texte',
+  'kontrolle:zeitplan': null,
+  'kontrolle:besuche': 'texte',
 };
 type _Vollstaendig = Exclude<Freischaltung, (typeof BEKANNTE_FREISCHALTUNGEN)[number]> extends never ? true : never;
 const _vollstaendig: _Vollstaendig = true;

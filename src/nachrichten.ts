@@ -35,6 +35,21 @@ export interface NachrichtHintergrundErsatzStumm { ziel: 'hintergrund'; typ: 'er
 // zuletzt fokussierten Fenster `NachrichtInhaltLeerlauf`. Testhaken (nur WXT_TESTHAKEN): `typ: 'leerlauf-test'` spielt einen Zustandswechsel
 // vor (der Testbau wertet `browser.idle` sonst nicht aus, damit die Spirale nicht in fremde Tests faellt). Handler: src/hintergrund/leerlauf.ts.
 export interface NachrichtHintergrundLeerlaufTest { ziel: 'hintergrund'; typ: 'leerlauf-test'; zustand: 'active' | 'idle' | 'locked' }
+// Session 10, Auftrag M (Meldungen): der Hintergrund entscheidet ueber alle Tabs, ob ein Anlass faellig ist (hoechstens eine Meldung je
+// 10 Minuten, src/kontrolle/grenzen.ts), und schickt der obersten Seite des Tabs `NachrichtInhaltMeldung`. Quelle der Zahlen: die
+// Minutenmeldungen `steigerung-minute` (background.ts reicht sie an src/hintergrund/meldungen.ts weiter) und der Stand der Steigerung.
+// Testhaken (nur WXT_TESTHAKEN): `meldung-test` loest einen Anlass fuer den Tab des Absenders sofort aus (`vergiss`: Abstand vergessen).
+export type MeldungAnlass = 'zensiert' | 'stufe' | 'erwachsen' | 'streng';
+export const MELDUNG_ANLAESSE: readonly MeldungAnlass[] = ['zensiert', 'stufe', 'erwachsen', 'streng'];
+export interface NachrichtHintergrundMeldungTest { ziel: 'hintergrund'; typ: 'meldung-test'; anlass?: MeldungAnlass; zahl?: number; vergiss?: boolean }
+// Session 10, Auftrag Z2 (Pflicht-Besuche): die oberste Seite des sichtbaren, fokussierten Tabs bittet nach dem Hinweis um einen Besuch; der
+// Hintergrund prueft Pack, Schalter, Pause, Fenster (fokussiert, nicht Vollbild) und den harten Abstand von 2 Stunden und oeffnet dann einen
+// Tab mit einem Link aus data/links.json neben dem Absender. Antwort `AntwortBesuch`. Im Testbau oeffnet er statt der echten Adresse
+// `about:blank#veil-besuch` (kein Netz in Tests) und nennt die gewaehlte Adresse in der Antwort. Testhaken `besuch-test { vergiss }`: den
+// zuletzt gespeicherten Besuch vergessen. Handler: src/hintergrund/besuche.ts.
+export interface NachrichtHintergrundBesuch { ziel: 'hintergrund'; typ: 'besuch' }
+export interface NachrichtHintergrundBesuchTest { ziel: 'hintergrund'; typ: 'besuch-test'; vergiss: boolean }
+export type AntwortBesuch = { ok: true; url: string; tabId: number | null } | { ok: false; grund: string };
 
 export type NachrichtHintergrund =
   | NachrichtHintergrundWecke
@@ -46,7 +61,10 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundSteigerungMinute
   | NachrichtHintergrundSteigerungUhr
   | NachrichtHintergrundErsatzStumm
-  | NachrichtHintergrundLeerlaufTest;
+  | NachrichtHintergrundLeerlaufTest
+  | NachrichtHintergrundMeldungTest
+  | NachrichtHintergrundBesuch
+  | NachrichtHintergrundBesuchTest;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -60,6 +78,9 @@ export const HINTERGRUND_TYPEN = [
   'steigerung-uhr',
   'ersatz-stumm',
   'leerlauf-test',
+  'meldung-test',
+  'besuch',
+  'besuch-test',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }
@@ -177,7 +198,10 @@ export type AntwortPruefe = AntwortPruefeOk | AntwortPruefeFehler;
 export interface NachrichtInhaltTab { ziel: 'inhalt'; typ: 'tab'; url: string }
 // Phase 5 (Auftrag L): Leerlauf beginnt (`an: true`, Zustand idle) oder endet (`an: false`, active oder locked). Antwort: keine.
 export interface NachrichtInhaltLeerlauf { ziel: 'inhalt'; typ: 'leerlauf'; an: boolean }
-export type NachrichtInhalt = NachrichtInhaltTab | NachrichtInhaltLeerlauf;
+// Session 10 (Auftrag M): eine Meldung zeigen. `zahl`: zensierte Bilder heute (nur Anlass `zensiert`). Antwort `{ gezeigt: boolean }`
+// (nicht gezeigt: Pause, Schalter aus, Ausnahme, Tab nicht sichtbar oder ohne Fokus, kein Satz; der Hintergrund zaehlt den Anlass dann nicht).
+export interface NachrichtInhaltMeldung { ziel: 'inhalt'; typ: 'meldung'; anlass: MeldungAnlass; zahl?: number }
+export type NachrichtInhalt = NachrichtInhaltTab | NachrichtInhaltLeerlauf | NachrichtInhaltMeldung;
 
 export type Nachricht = NachrichtHintergrund | NachrichtErkenner | NachrichtInhalt;
 

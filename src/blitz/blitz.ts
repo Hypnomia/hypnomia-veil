@@ -47,6 +47,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
   // Speicher und den Hintergrund; was in dieser Zeit passiert, darf nicht verloren gehen, auch wenn noch nichts lief, das man abbrechen koennte.
   let epoche = 0;
   let letzteE: Einstellungen | null = null;
+  let letztePack: PackKurz | null = null;
   const lebt = (): boolean => !abgebaut && ctx.isValid;
 
   // ---------- Bedingungen ----------
@@ -79,9 +80,13 @@ export function starteBlitz(ctx: KontextLeicht): void {
       return 'speicher';
     }
     if (!pack) return 'kein-pack';
-    if (wirksameHaeufigkeit(e) === null) return 'aus';
+    if (wirksameHaeufigkeit(e, pack) === null) return 'aus';
     if (!kontrolleErlaubt(e, pack, 'kontrolle:blitz')) return 'nicht-erlaubt';
-    if (epoche === ep) letzteE = e; // nur wenn sich seit dem Start der Lesung nichts geaendert hat (sonst waere der Stand schon veraltet)
+    // nur wenn sich seit dem Start der Lesung nichts geaendert hat (sonst waere der Stand schon veraltet)
+    if (epoche === ep) {
+      letzteE = e;
+      letztePack = pack;
+    }
     return { e, pack, woerter: [], ep };
   }
 
@@ -224,7 +229,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
       // Abbruch: alles, was nicht mehr stimmt (die Ereignisse selbst brechen schon vorher synchron ab).
       if (document.visibilityState !== 'visible') return beende('verborgen');
       if (istLokalePause() || letzteE?.pause) return beende('pause');
-      if (letzteE && (wirksameHaeufigkeit(letzteE) === null || ruhigGewuenscht(letzteE))) return beende('einstellung');
+      if (letzteE && (wirksameHaeufigkeit(letzteE, letztePack) === null || ruhigGewuenscht(letzteE))) return beende('einstellung');
       if (eingabeAktiv()) return beende('eingabe');
       if (andereVorDerSeite('blitz')) return beende('belegt');
       if (document.fullscreenElement) return beende('vollbild');
@@ -295,7 +300,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
     if (!lebt() || document.visibilityState !== 'visible') return 'unsichtbar';
     const g = await grundLage();
     if (typeof g === 'string') return g;
-    const h = wirksameHaeufigkeit(g.e)!;
+    const h = wirksameHaeufigkeit(g.e, g.pack)!;
     let roh: unknown;
     try {
       roh = (await browser.storage.local.get(ZEITPLAN_SCHLUESSEL))[ZEITPLAN_SCHLUESSEL];

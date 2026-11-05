@@ -32,6 +32,12 @@ export const PACK_SPEICHER_SCHLUESSEL = 'pack';
 //   kontrolle:werbung   Werbe-Tausch: Werbeflaechen werden Mias Werbung (Rolle `werbung` mit `format`)
 //   kontrolle:blitz     Blitzwoerter (Rolle `texte`, Gruppe `blitzwoerter`)
 //   kontrolle:leerlauf  Leerlauf-Spirale (Rolle `texte`, Gruppe `leerlauf`)
+// Session 10 (PHASE-5-AUFTRAEGE-SESSION-10.md, Version 0.5.1):
+//   kontrolle:tabtitel  Tab-Titel im Hintergrund wird Mias Satz (Rolle `texte`, Gruppe `tabtitel`)
+//   kontrolle:cursor    Mauszeiger Spirale oder Herz (braucht keine Datei, Zeiger werden gezeichnet)
+//   kontrolle:meldungen kleine Meldungen mit Mini-Chibi (Rolle `texte`; je Anlass eine Gruppe `meldung*`, fehlt eine, schweigt nur der Anlass)
+//   kontrolle:zeitplan  strenge Zeiten (braucht keine Datei)
+//   kontrolle:besuche   Pflicht-Besuche: Mia oeffnet selbst einen Tab (Rolle `texte`, Gruppe `besuch`)
 export const FREISCHALTUNGEN = [
   'stil:mia-patch',
   'erwachsen:vorschau',
@@ -44,6 +50,11 @@ export const FREISCHALTUNGEN = [
   'kontrolle:werbung',
   'kontrolle:blitz',
   'kontrolle:leerlauf',
+  'kontrolle:tabtitel',
+  'kontrolle:cursor',
+  'kontrolle:meldungen',
+  'kontrolle:zeitplan',
+  'kontrolle:besuche',
 ] as const;
 export type Freischaltung = (typeof FREISCHALTUNGEN)[number];
 
@@ -81,6 +92,11 @@ export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:werbung': 'werbung',
   'kontrolle:blitz': 'texte',
   'kontrolle:leerlauf': 'texte',
+  'kontrolle:tabtitel': 'texte',
+  'kontrolle:cursor': null,
+  'kontrolle:meldungen': 'texte',
+  'kontrolle:zeitplan': null,
+  'kontrolle:besuche': 'texte',
 };
 
 // Freischaltungen, die zusaetzlich eine Satz-Gruppe in der Texte-Datei brauchen (mindestens ein gueltiger Satz nach `pruefeTexte`).
@@ -88,6 +104,8 @@ export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
 export const BENOETIGT_GRUPPE: Readonly<Partial<Record<Freischaltung, SatzGruppe>>> = {
   'kontrolle:blitz': 'blitzwoerter',
   'kontrolle:leerlauf': 'leerlauf',
+  'kontrolle:tabtitel': 'tabtitel',
+  'kontrolle:besuche': 'besuch',
 };
 
 // Behaelt nur Freischaltungen, deren Satz-Gruppe (falls noetig) in den geprueften Texten mindestens einen Satz hat.

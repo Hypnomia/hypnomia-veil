@@ -124,3 +124,69 @@ test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async ()
     await seite.close();
   }
 });
+
+test('Mia’s control Session 10: Tab-Titel, Zeiger, Meldungen, Besuche, strenge Zeiten', async () => {
+  const seite = await context.newPage();
+  const kontrolle = async () => (await lies(seite, 'einstellungen'))?.kontrolle;
+  try {
+    await seite.goto(optionsUrl());
+    await zuruecksetzen(seite);
+    await seite.reload();
+    // Standard: Tab-Titel an, Spirale, Meldungen an, Besuche AUS (Entscheidung 125), keine strengen Zeiten.
+    await expect(seite.locator('#kon-tabtitel')).toBeChecked();
+    await expect(seite.locator('#kon-cursor')).toHaveValue('spirale');
+    await expect(seite.locator('#kon-meldungen')).toBeChecked();
+    await expect(seite.locator('#kon-besuche')).not.toBeChecked();
+    await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(0);
+
+    await seite.locator('#kon-tabtitel-zeile').click();
+    await expect.poll(async () => (await kontrolle())?.tabtitel).toBe(false);
+    await seite.locator('#kon-cursor').selectOption('herz');
+    await expect.poll(async () => (await kontrolle())?.cursor).toBe('herz');
+    await seite.locator('#kon-cursor').selectOption('aus');
+    await expect.poll(async () => (await kontrolle())?.cursor).toBe('aus');
+    await seite.locator('#kon-meldungen-zeile').click();
+    await expect.poll(async () => (await kontrolle())?.meldungen).toBe(false);
+    await seite.locator('#kon-besuche-zeile').click();
+    await expect.poll(async () => (await kontrolle())?.besuche).toBe(true);
+
+    // Strenge Zeiten: neu (jeden Tag 21:00 bis 23:00), aendern, letzter Tag bleibt, hoechstens 3, entfernen.
+    await seite.locator('#kon-zeit-neu').click();
+    await expect.poll(async () => (await kontrolle())?.zeiten).toEqual([{ tage: [0, 1, 2, 3, 4, 5, 6], von: 1260, bis: 1380 }]);
+    const zeile = seite.locator('#kon-zeiten .zeit-zeile').first();
+    await zeile.locator('.zeit-von').fill('22:30');
+    await zeile.locator('.zeit-von').blur();
+    await zeile.locator('.zeit-bis').fill('01:15');
+    await zeile.locator('.zeit-bis').blur();
+    await expect.poll(async () => (await kontrolle())?.zeiten?.[0]).toEqual({ tage: [0, 1, 2, 3, 4, 5, 6], von: 1350, bis: 75 });
+    for (const tag of [0, 1, 2, 3, 4, 5]) await zeile.locator(`input[data-tag="${tag}"]`).uncheck();
+    await expect.poll(async () => (await kontrolle())?.zeiten?.[0]?.tage).toEqual([6]);
+    // Den letzten Tag abwaehlen geht nicht: der Haken kommt zurueck, gespeichert bleibt Samstag.
+    await zeile.locator('input[data-tag="6"]').click();
+    await expect(zeile.locator('input[data-tag="6"]')).toBeChecked();
+    expect((await kontrolle())?.zeiten?.[0]?.tage).toEqual([6]);
+    await seite.locator('#kon-zeit-neu').click();
+    await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(2);
+    await seite.locator('#kon-zeit-neu').click();
+    await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(3);
+    await expect(seite.locator('#kon-zeit-neu')).toBeHidden();
+    await seite.locator('#kon-zeiten .zeit-zeile').first().locator('.zeit-weg').click();
+    await expect.poll(async () => (await kontrolle())?.zeiten?.length).toBe(2);
+    await expect(seite.locator('#kon-zeit-neu')).toBeVisible();
+    // Die geaenderte Zeile war die erste: weg; die beiden neuen bleiben.
+    expect((await kontrolle())?.zeiten?.every((z: { von: number }) => z.von === 1260)).toBe(true);
+    // Nach Remove steht der Fokus auf dem naechsten Remove (Pruefer-Fund 4); erst ausserhalb der Liste zeichnet die Seite fremde Aenderungen.
+    expect(await seite.evaluate(() => (document.activeElement as HTMLElement | null)?.className)).toContain('zeit-weg');
+    await seite.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    // Aenderung aus einem anderen Fenster erscheint hier.
+    await schreibe(seite, { einstellungen: { ...(await lies(seite, 'einstellungen')), kontrolle: { ...(await kontrolle()), zeiten: [] } } });
+    await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(0);
+    const e = await lies(seite, 'einstellungen');
+    expect(e.kontrolle.werbung).toBe(true);
+    expect(e.kontrolle.leerlaufMinuten).toBe(2);
+    console.log('Mia’s control Session 10: 5 Schalter und 9 Schritte der strengen Zeiten gespeichert');
+  } finally {
+    await zuruecksetzen(seite);
+    await seite.close();
+  }
+});

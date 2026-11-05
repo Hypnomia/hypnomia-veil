@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title></title>
+    <script>
+      // Titel noch leer: die Seite setzt ihn erst spaeter (Tab im Hintergrund geladen).
+      window.setzeTitelSpaeter = function (titel, ms) {
+        setTimeout(function () { document.title = titel; }, ms);
+      };
+    </script>
+  </head>
+  <body>
+    <main><p>A page whose title is still empty.</p></main>
+  </body>
+</html>

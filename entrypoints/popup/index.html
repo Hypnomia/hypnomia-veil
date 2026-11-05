@@ -17,12 +17,12 @@
 
       <section aria-labelledby="stimmung-titel">
         <div class="kopf">
-          <h2 id="stimmung-titel">Mia's mood</h2>
+          <h2 id="stimmung-titel">Mia’s mood</h2>
           <output id="stimmung-wert" for="stimmung"></output>
         </div>
         <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
         <div class="enden"><span>Suspicious</span><span>Relaxed</span></div>
-        <p class="hinweis">When I'm suspicious, I cover more. When I'm relaxed, borderline pictures get through.</p>
+        <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
       </section>
 
       <section aria-labelledby="stil-titel">
@@ -80,12 +80,15 @@
         </div>
         <button id="erwachsen-pack-link" class="klein" type="button">Add the Mia Pack</button>
         <div id="steigerung" hidden>
-          <h3>Mia's grip</h3>
+          <h3>Mia’s grip</h3>
           <p id="stufe-zeile" class="stufe"></p>
           <p id="stufe-zeit" class="hinweis"></p>
           <p id="stufe-text" class="hinweis"></p>
         </div>
       </section>
+
+      <p id="streng-zeile" class="hinweis" hidden></p>
+      <p id="streng-text" class="hinweis" hidden></p>
 
       <footer>
         <span id="version"></span>

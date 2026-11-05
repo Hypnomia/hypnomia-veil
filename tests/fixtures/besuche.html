@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Besuche fixture</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #14101c; color: #8a8497; font: 16px system-ui, sans-serif; }
+      main { padding: 24px; }
+      input { font: inherit; padding: 8px; background: #221c30; color: #cfc9dd; border: 1px solid #3a3350; }
+      iframe { border: 1px solid #3a3350; width: 300px; height: 80px; }
+      #flaeche { position: fixed; left: 0; top: 0; width: 100px; height: 100px; background: #2a2340; }
+    </style>
+    <script>
+      // Zaehlt, was die Seite an Zeiger- und Tastenereignissen sieht (Fenster, Erfassungsphase, ab dem ersten Moment).
+      window.gesehen = {};
+      for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu', 'touchstart', 'touchend', 'keydown', 'keyup', 'focusin'])
+        window.addEventListener(t, () => { window.gesehen[t] = (window.gesehen[t] || 0) + 1; }, true);
+    </script>
+  </head>
+  <body>
+    <main>
+      <p>A calm, dark page for the visits.</p>
+      <input id="feld" type="text" aria-label="Text field" />
+      <button id="knopf" type="button">Button</button>
+      <button id="vollbild" type="button" onclick="document.documentElement.requestFullscreen()">Fullscreen</button>
+      <iframe id="rahmen" title="frame" srcdoc="<input id='innen' style='margin:8px'>"></iframe>
+    </main>
+    <div id="flaeche"></div>
+  </body>
+</html>

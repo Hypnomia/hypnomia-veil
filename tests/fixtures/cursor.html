@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cursor</title>
+<style>body{margin:0;padding:10px;font:14px sans-serif} a.p{cursor:pointer} button{cursor:pointer !important}</style>
+<body>
+<p id="text">Plain text</p>
+<a id="link" class="p" href="#x">A link</a>
+<button id="knopf">A button</button>
+<input id="in-text" type="text"><input id="in-ohne"><input id="in-box" type="checkbox"><input id="in-suche" type="search">
+<textarea id="area"></textarea>
+<div id="edit" contenteditable="true"><span id="edit-kind">editable child</span></div>
+<div id="nicht-edit" contenteditable="false">not editable</div>
+<button id="voll" onclick="document.documentElement.requestFullscreen()">Fullscreen</button>
+<div id="wirt"></div>
+<iframe id="innen" src="cursor-innen.html" width="200" height="80"></iframe>
+<iframe id="fremd" width="200" height="80"></iframe>
+<script>
+  const w = document.getElementById('wirt').attachShadow({ mode: 'open' });
+  w.innerHTML = '<a id="s-link" href="#y">Shadow link</a> <input id="s-text" type="text"><button id="s-knopf">b</button>';
+  const fremd = new URLSearchParams(location.search).get('fremd');
+  if (fremd) document.getElementById('fremd').src = 'http://localhost:' + fremd + '/cursor-innen.html';
+</script>

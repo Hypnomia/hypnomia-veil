@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture title original</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #14101c; color: #8a8497; font: 16px system-ui, sans-serif; }
+      main { padding: 24px; }
+    </style>
+    <script>
+      // Hilfen fuer die Tests: was die Seite beim Wechsel der Sichtbarkeit als Titel sieht (nach dem Hoerer des Content-Scripts, der frueher
+      // angemeldet wurde), eine spaete Aenderung des Titels, schnelles Flackern, ein Ereignis nach Verzoegerung.
+      window.titelBeiWechsel = [];
+      document.addEventListener('visibilitychange', function () {
+        window.titelBeiWechsel.push(document.visibilityState + '|' + document.title);
+        document.documentElement.setAttribute('data-wechsel', JSON.stringify(window.titelBeiWechsel));
+      });
+      window.aendereTitelSpaeter = function (titel, ms) {
+        setTimeout(function () { document.title = titel; }, ms);
+      };
+      window.flackere = function (n, ms) {
+        var i = 0;
+        var id = setInterval(function () {
+          document.title = 'Flicker ' + (++i);
+          if (i >= n) clearInterval(id);
+        }, ms);
+      };
+      window.ersetzeTitelElementSpaeter = function (titel, ms) {
+        setTimeout(function () {
+          var alt = document.querySelector('title');
+          var neu = document.createElement('title');
+          neu.textContent = titel;
+          alt.replaceWith(neu);
+        }, ms);
+      };
+      window.ereignisSpaeter = function (detail, ms) {
+        setTimeout(function () { document.dispatchEvent(new CustomEvent('veil-test', { detail: JSON.stringify(detail) })); }, ms);
+      };
+      window.gehe = function (pfad) { history.pushState({}, '', pfad); };
+    </script>
+  </head>
+  <body>
+    <main>
+      <p>A calm, dark page for the tab title.</p>
+      <input id="feld" type="text" aria-label="Text field" />
+      <iframe id="rahmen" title="frame" width="300" height="80" srcdoc="<title>Frame title original</title><p>inner</p>"></iframe>
+    </main>
+  </body>
+</html>

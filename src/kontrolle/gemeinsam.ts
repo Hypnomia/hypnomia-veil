@@ -6,6 +6,7 @@ import { istFreigeschaltet, type Freischaltung, type PackKurz } from '../pack/ve
 import { istLokalePause } from '../pause-lokal';
 import { riegelOffen, WARNUNG_SCHLUESSEL } from '../riegel/riegel';
 import { TIPP_NACHLAUF_MS, WARNUNG_SPIRALE_SCHLUESSEL } from './grenzen';
+import { istStrengeZeit } from './streng';
 
 export { WARNUNG_SPIRALE_SCHLUESSEL };
 
@@ -35,6 +36,13 @@ export function kontrolleErlaubt(e: Einstellungen | null, pack: PackKurz | null,
   if (!e || !istFreigeschaltet(pack, f)) return false;
   if (e.pause || istLokalePause(e)) return false;
   return !passtAusnahme(adresseFuerAusnahmen(), e.ausnahmen);
+}
+
+// Strenge Zeit (Session 10, Auftrag Z1): Freischaltung `kontrolle:zeitplan` und `jetzt` in einem eingestellten Fenster. Pause und Ausnahmen
+// prueft der Teil, der die strenge Zeit nutzt, selbst (in der Pause ist ohnehin alles frei).
+export function strengJetzt(e: Einstellungen | null, pack: PackKurz | null, jetzt: Date = new Date()): boolean {
+  if (!e || !istFreigeschaltet(pack, 'kontrolle:zeitplan')) return false;
+  return istStrengeZeit(e.kontrolle.zeiten, jetzt);
 }
 
 // Ruhig-Modus oder Wunsch des Systems nach weniger Bewegung.
@@ -90,19 +98,38 @@ export function eingabeAktiv(jetzt: number = performance.now()): boolean {
 }
 
 // ---------- Belegt ----------
-// Blitzwoerter und Spirale stehen nie gleichzeitig vor der Seite, und beide ruhen, solange der Quiz-Riegel steht.
-export type KontrollTeil = 'blitz' | 'spirale';
+// Blitzwoerter, Spirale, der Hinweis vor einem Pflicht-Besuch und eine Meldung stehen nie gleichzeitig vor der Seite, und alle ruhen, solange der
+// Quiz-Riegel steht.
+export type KontrollTeil = 'blitz' | 'spirale' | 'besuch' | 'meldung';
 const belegt = new Set<KontrollTeil>();
+const belegtHoerer = new Set<(teil: KontrollTeil, an: boolean) => void>();
 
 export function meldeBelegt(teil: KontrollTeil, an: boolean): void {
+  const vorher = belegt.has(teil);
   if (an) belegt.add(teil);
   else belegt.delete(teil);
+  if (vorher === an) return;
+  for (const h of belegtHoerer) {
+    try {
+      h(teil, an);
+    } catch {
+      // ein Hoerer darf die anderen nicht aufhalten
+    }
+  }
 }
 
-// Steht schon etwas vor der Seite (anderer Kontroll-Teil, Quiz-Riegel)?
+// Wird gerufen, wenn sich ein Teil an- oder abmeldet (Session 10: die Meldung raeumt sofort, sobald Blitz, Spirale oder Besuch erscheinen).
+// Gibt eine Funktion zum Abmelden zurueck.
+export function beiBelegtWechsel(hoerer: (teil: KontrollTeil, an: boolean) => void): () => void {
+  belegtHoerer.add(hoerer);
+  return () => belegtHoerer.delete(hoerer);
+}
+
+// Steht schon etwas vor der Seite (anderer Kontroll-Teil, Quiz-Riegel)? Eine Meldung haelt niemanden auf (Vorrang fuer Spirale, Riegel,
+// Blitz und Besuch; die Meldung raeumt dann selbst, Pruefer-Fund M3), sie selbst wartet aber auf alle anderen.
 export function andereVorDerSeite(teil: KontrollTeil): boolean {
   if (riegelOffen()) return true;
-  for (const t of belegt) if (t !== teil) return true;
+  for (const t of belegt) if (t !== teil && t !== 'meldung') return true;
   return false;
 }
 

@@ -10,6 +10,8 @@
 import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import { adapterFuer, istHoverVideo, istVorschau } from '../adapter';
 import { beiErwachsenStatus, erwachsenStatus, istErwachsenFuerQuiz } from '../adapter/status';
+import { naechsterWechselMs } from '../kontrolle/streng';
+import { strengJetzt } from '../kontrolle/gemeinsam';
 import { beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../einstellungen';
 import type { AntwortPackDaten, NachrichtHintergrundPackDaten } from '../nachrichten';
 import { istFreigeschaltet, kurzAusRoh, ladePackKurz, PACK_SPEICHER_SCHLUESSEL, type PackKurz } from '../pack/vertrag';
@@ -83,7 +85,8 @@ export function startePlayer(ctx: KontextLeicht): void {
   function grundAktiv(): boolean {
     if (!einst || einst.pause || istLokalePause(einst) || !einst.erwachsen.an) return false;
     if (!istFreigeschaltet(pack, 'erwachsen:quiz')) return false;
-    return istErwachsenFuerQuiz();
+    // In einer strengen Zeit (Session 10, Auftrag Z1; Freischaltung `kontrolle:zeitplan`) gilt jede Seite als Quiz-Seite.
+    return istErwachsenFuerQuiz() || strengJetzt(einst, pack);
   }
   const ersatzDa = (): boolean => !!document.documentElement?.hasAttribute(ATTR_ERSATZ);
   function aktiv(): boolean {
@@ -595,12 +598,58 @@ export function startePlayer(ctx: KontextLeicht): void {
   }
   beobachteErsatz();
 
+  // Zeitgeber auf den naechsten Wechsel einer strengen Zeit (Auftrag Z1): hoechstens einer je Seite, nur solange die Seite sichtbar ist und
+  // Fenster mit Freischaltung gelten (sonst nie angelegt). Der Zeitpunkt wird nur neu gerechnet, wenn sich die Fenster aendern oder er vorbei ist.
+  let wechselTimer: ReturnType<typeof setTimeout> | null = null;
+  let wechselCache: { schluessel: string; am: number } | null = null;
+  function planeWechsel(): void {
+    const zeiten = einst?.kontrolle.zeiten ?? [];
+    const noetig = lebt() && document.visibilityState === 'visible' && zeiten.length > 0 && istFreigeschaltet(pack, 'kontrolle:zeitplan');
+    if (!noetig) {
+      if (wechselTimer) clearTimeout(wechselTimer);
+      wechselTimer = null;
+      wechselCache = null;
+      return;
+    }
+    const schluessel = JSON.stringify(zeiten);
+    const jetzt = Date.now();
+    if (wechselTimer && wechselCache && wechselCache.schluessel === schluessel && wechselCache.am > jetzt) return;
+    if (wechselTimer) clearTimeout(wechselTimer);
+    wechselTimer = null;
+    const ms = naechsterWechselMs(zeiten, new Date(jetzt));
+    wechselCache = ms === null ? null : { schluessel, am: jetzt + ms };
+    if (ms === null) return;
+    wechselTimer = setTimeout(() => {
+      wechselTimer = null;
+      wechselCache = null;
+      bewerte();
+    }, Math.min(ms + 100, 2_000_000_000));
+  }
+  const beiSichtbarkeit = (): void => {
+    planeWechsel();
+    if (document.visibilityState === 'visible') bewerte();
+  };
+  document.addEventListener('visibilitychange', beiSichtbarkeit);
+
+  // Ein Quiz ist offen und nur das Kriterium "Erwachsenenseite oder strenge Zeit" fehlt jetzt (Fenster zu Ende): das laufende Quiz bleibt stehen.
+  function nurStrengVorbei(): boolean {
+    if (keinQuiz || !einst || einst.pause || istLokalePause(einst) || !einst.erwachsen.an || ersatzDa()) return false;
+    if (!istFreigeschaltet(pack, 'erwachsen:quiz') || passtAusnahme(adresseFuerAusnahmen(), einst.ausnahmen)) return false;
+    return [...gesperrt.values()].some((i) => i.laeuft);
+  }
+
   function bewerte(): void {
     if (!lebt()) return;
+    planeWechsel();
     // Der Adressbeobachter laeuft nur in der obersten Seite und solange der Player grundsaetzlich gilt (auch auf einem Ausnahmepfad).
     if (istOben && grundAktiv() && !ersatzDa()) adresse.start();
     else adresse.stopp();
     if (!aktiv()) {
+      if (nurStrengVorbei()) {
+        // Neue Videos sind frei (die Horcher pruefen `aktiv()`), das offene Quiz endet von selbst.
+        for (const [v, i] of [...gesperrt]) if (!i.laeuft) entsperre(v, true);
+        return;
+      }
       gebeAlleFrei(true);
       trenne();
       return;
@@ -642,6 +691,9 @@ export function startePlayer(ctx: KontextLeicht): void {
     document.removeEventListener('veil-wurzel', beiWurzelHinweis, true);
     ersatzBeobachter.disconnect();
     adresse.stopp();
+    if (wechselTimer) clearTimeout(wechselTimer);
+    wechselTimer = null;
+    document.removeEventListener('visibilitychange', beiSichtbarkeit);
     abEinst();
     abStatus();
     abLokal();
