@@ -9,9 +9,15 @@
   <body>
     <main>
       <header>
-        <h1>HYPNOMIA VEIL</h1>
+        <div class="kopfzeile">
+          <h1>HYPNOMIA VEIL</h1>
+          <!-- UX-Fund 8: der Weg zur Einstellungsseite steht oben (auf Android der wichtigste), nicht erst nach allen Abschnitten. -->
+          <button id="alle-einstellungen" class="klein kopfknopf" type="button">All settings</button>
+        </div>
         <p id="status" role="status" aria-live="polite"></p>
       </header>
+      <!-- UX-Fund 26: derselbe Fehlersatz wie auf den anderen Oberflaechen, wenn das Speichern scheitert. -->
+      <p id="fehler" class="fehler" role="alert" hidden></p>
 
       <!-- Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): Einstieg (Auftrag E) und Update-Hinweis (Auftrag V) zeichnen sich selbst. -->
       <div id="einstieg-hinweis" hidden></div>
@@ -25,7 +31,7 @@
           <output id="stimmung-wert" for="stimmung"></output>
         </div>
         <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
-        <div class="enden"><span>Suspicious</span><span>Relaxed</span></div>
+        <div class="enden"><span id="ende-links">Very suspicious</span><span id="ende-rechts">Relaxed</span></div>
         <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
       </section>
 
@@ -51,7 +57,7 @@
       <section aria-labelledby="zonen-titel">
         <h2 id="zonen-titel">What I cover</h2>
         <ul id="zonen" class="zonen"></ul>
-        <p class="hinweis">Tick "even when clothed" and I cover it under clothing too.</p>
+        <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
       </section>
 
       <section>
@@ -74,7 +80,7 @@
           <label class="schalter" id="erw-ersatz-zeile">
             <input id="erw-ersatz" type="checkbox" role="switch" />
             <span class="regler" aria-hidden="true"></span>
-            <span class="text"><strong>Full replacement</strong><small>Careful: listed and your own sites show my gallery instead. Pause Mia or an exception shows the real site.</small></span>
+            <span class="text"><strong>Full replacement</strong><small>Careful: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.</small></span>
           </label>
           <label class="schalter">
             <input id="erw-inhalt" type="checkbox" role="switch" />
@@ -84,7 +90,7 @@
         </div>
         <button id="erwachsen-pack-link" class="klein" type="button">Add the Mia Pack</button>
         <div id="steigerung" hidden>
-          <h3>Mia’s grip</h3>
+          <h3>My grip</h3>
           <p id="stufe-zeile" class="stufe"></p>
           <p id="stufe-zeit" class="hinweis"></p>
           <p id="stufe-text" class="hinweis"></p>
@@ -96,7 +102,6 @@
 
       <!-- Session 11: eine Zeile aus Mia’s Ledger (Auftrag L), Weg zur Einstellungsseite (Vertrag). -->
       <p id="ledger-kurz" class="hinweis" hidden></p>
-      <button id="alle-einstellungen" class="klein" type="button">All settings</button>
 
       <footer>
         <span id="version"></span>

@@ -15,6 +15,13 @@ import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 
+// Session 12: die Einstellungsseite hat eine klebende Leiste; Knoepfe vor dem Klick in die Mitte holen, sonst verdeckt die Leiste sie.
+async function mitteKlick(sel) {
+  const e = await driver.findElement(By.css(sel));
+  await driver.executeScript('arguments[0].scrollIntoView({ block: "center" })', e);
+  await e.click();
+}
+
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 240 s ueberschritten');
   process.exit(1);
@@ -470,9 +477,9 @@ try {
   await geheZu(LISTE);
   await warteGalerie('vor Pack entfernen');
   await driver.switchTo().window(extTab);
-  await driver.findElement(By.css('#entfernen')).click();
+  await mitteKlick('#entfernen');
   await bis('Rueckfrage', () => driver.findElement(By.css('#entfernen-frage')).isDisplayed());
-  await driver.findElement(By.css('#entfernen-ja')).click();
+  await mitteKlick('#entfernen-ja');
   await bis('Pack entfernt', async () => (await driver.findElement(By.css('#pack-status')).getText()).includes('No pack yet'));
   await driver.switchTo().window(inhaltTab);
   await warteOhne('Pack entfernt');

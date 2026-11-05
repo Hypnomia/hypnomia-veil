@@ -7,6 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -78,10 +79,11 @@ test('Aufbau: Titel, Status, Sprungleiste und alle Abschnitte in der Reihenfolge
     const reihenfolge = await seite.evaluate(() =>
       [...document.querySelectorAll('main > section')].map((s) => s.id),
     );
-    const soll = ['abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-strict', 'abschnitt-ausnahmen', 'erwachsen', 'abschnitt-ruhig', 'kontrolle', 'ton', 'ledger', 'stand', 'neu', 'ueber', 'abschnitt-interview'];
+    // Session 12: Interview direkt unter der Leiste (Fund 17), Strict im Abschnitt "What I cover" (Fund 16).
+    const soll = ['abschnitt-interview', 'abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-ausnahmen', 'erwachsen', 'abschnitt-ruhig', 'kontrolle', 'ton', 'ledger', 'stand', 'neu', 'ueber'];
     expect(reihenfolge).toEqual(soll);
     // Jeder Link der Sprungleiste zeigt auf einen vorhandenen Abschnitt.
-    const links = await seite.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('#sprung a')].map((a) => ({ ziel: a.getAttribute('href')!.slice(1), da: !!document.getElementById(a.getAttribute('href')!.slice(1)) && document.getElementById(a.getAttribute('href')!.slice(1))!.getClientRects().length > 0 })));
+    const links = await seite.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('#sprung a:not([hidden])')].map((a) => ({ ziel: a.getAttribute('href')!.slice(1), da: !!document.getElementById(a.getAttribute('href')!.slice(1)) && document.getElementById(a.getAttribute('href')!.slice(1))!.getClientRects().length > 0 })));
     expect(links.length).toBeGreaterThanOrEqual(10);
     // Ziel vorhanden UND sichtbar (ein Abschnitt, den sein Modul nicht fuellt, waere ein toter Link).
     expect(links.filter((l) => !l.da).map((l) => l.ziel)).toEqual([]);
@@ -110,11 +112,11 @@ test('Pause, Stimmung, Zonen, bedeckt, Stil und Strict: jeder Klick landet im Sp
     // Stimmung per Tastatur: 8 Pfeil-rechts-Schritte von 0.10 auf 0.18, Ende setzt den Hoechstwert 0.25, Pos1 den Tiefstwert 0.10
     await taste(seite, '#stimmung', 'ArrowRight', 8);
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.18, 5);
-    await expect(seite.locator('#stimmung-wert')).toHaveText('0.18');
+    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.18));
     await taste(seite, '#stimmung', 'End');
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.25, 5);
     await taste(seite, '#stimmung', 'ArrowRight');
-    await expect(seite.locator('#stimmung-wert')).toHaveText('0.25');
+    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.25));
     await taste(seite, '#stimmung', 'Home');
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.1, 5);
     await taste(seite, '#stimmung', 'ArrowRight', 8);
@@ -150,7 +152,7 @@ test('Pause, Stimmung, Zonen, bedeckt, Stil und Strict: jeder Klick landet im Sp
     await expect.poll(async () => (await einst(seite)).stil).toBe('mosaik');
 
     // Strict (Klick aufs Label)
-    const strictLabel = seite.locator('#abschnitt-strict label.schalter');
+    const strictLabel = seite.locator('label.schalter:has(#strict)');
     await strictLabel.click();
     await expect.poll(async () => (await einst(seite)).strict).toBe(true);
     await strictLabel.click();
@@ -187,10 +189,10 @@ test('Ausnahmen: hinzufuegen (Adresse bereinigt), doppelt, ungueltig, Standardli
     // Schon abgedeckt: Unterseite und Pfad von example.com; Umlaut-Domain als xn--Form; oeffentliche Endung abgelehnt
     await seite.fill('#ausnahme-feld', 'sub.example.com');
     await seite.click('#ausnahme-add');
-    await expect(seite.locator('#ausnahme-meldung')).toContainText('already covered by example.com');
+    await expect(seite.locator('#ausnahme-meldung')).toContainText('already on your list through example.com');
     await seite.fill('#ausnahme-feld', 'example.com/x');
     await seite.click('#ausnahme-add');
-    await expect(seite.locator('#ausnahme-meldung')).toContainText('already covered by example.com');
+    await expect(seite.locator('#ausnahme-meldung')).toContainText('already on your list through example.com');
     await seite.fill('#ausnahme-feld', 'co.uk');
     await seite.click('#ausnahme-add');
     await expect(seite.locator('#ausnahme-meldung')).toContainText('whole crowd');
@@ -227,14 +229,14 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
     await expect.poll(async () => (await einst(seite)).pause).toBe(true);
     await taste(seite, '#stimmung', 'ArrowRight', 12);
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.22, 5);
-    await seite.locator('#abschnitt-strict label.schalter').click();
+    await seite.locator('label.schalter:has(#strict)').click();
     await expect.poll(async () => (await einst(seite)).strict).toBe(true);
     await zonenLabel(seite, 'Mouth').click();
     await expect.poll(async () => (await einst(seite)).zonen?.mouth?.an).toBe(true);
     await stilLabel(seite, 'Blur').click();
     await expect.poll(async () => (await einst(seite)).stil).toBe('blur');
     await expect(popup.locator('#pause')).toHaveText('Let Mia back in');
-    await expect(popup.locator('#stimmung-wert')).toHaveText('0.22');
+    await expect(popup.locator('#stimmung')).toHaveValue('0.22');
     await expect(popup.locator('#strict')).toBeChecked();
     await expect(popup.locator('#zonen input[data-zone="mouth"]')).toBeChecked();
     await expect(popup.locator('input[name="stil"][value="blur"]')).toBeChecked();
@@ -248,7 +250,7 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
     await popup.locator('label.schalter:has(#strict)').click();
     await expect.poll(async () => (await einst(seite)).strict).toBe(false);
     await expect(seite.locator('#pause')).toHaveText('Pause Mia');
-    await expect(seite.locator('#stimmung-wert')).toHaveText('0.12');
+    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.12));
     await expect(seite.locator('#strict')).not.toBeChecked();
     await expect(seite.locator('#zonen input[data-zone="mouth"]')).not.toBeChecked();
     const e = await einst(seite);
@@ -359,11 +361,13 @@ test('Pack-Sperre vor dem Einstieg: Dateiwurf wird abgewiesen (nichts gespeicher
     await expect(seite.locator('#datei')).toBeEnabled();
     await expect(seite.locator('#pack-sperre')).toBeHidden();
     await expect(seite.locator('#abschnitt-interview')).toBeVisible();
-    const neu2 = context.waitForEvent('page');
+    // Runde 3, N12: das Wiederholen laeuft im selben Tab (kein neuer Tab), danach zurueck zur Einstellungsseite.
+    const tabs = context.pages().length;
     await seite.locator('#interview-neu').click();
-    const interview = await neu2;
-    expect(interview.url()).toBe(`chrome-extension://${id}/willkommen.html#interview`);
-    await interview.close();
+    await expect(seite).toHaveURL(`chrome-extension://${id}/willkommen.html#interview`);
+    expect(context.pages().length).toBe(tabs);
+    await seite.goto(optionsUrl());
+    await expect(seite.locator('#pack-status')).not.toHaveText('');
     // Mit fertigem Einstieg wird die Datei angenommen und geprueft (hier als kein Pack erkannt, aber nicht abgewiesen)
     await seite.locator('#datei').setInputFiles(packDatei);
     await expect(seite.locator('#meldung')).toContainText('doesn');

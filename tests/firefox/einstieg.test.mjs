@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TEXT } from '../../src/einstieg/texte.ts';
+import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 150 s ueberschritten');
@@ -200,8 +201,7 @@ try {
   pruefe((await eigenschaft('#iv-stil-mia-patch', 'disabled')) === true && (await sichtbar('#iv-stil-sperre')), 'ohne Pack: Mia patch gesperrt mit Hinweis');
   await klick('#iv-stil-blur');
   await bis('stil blur', async () => (await einst()).stil === 'blur');
-  await klick('#iv-ruhig');
-  await bis('ruhig', async () => (await einst()).ruhig === true);
+  pruefe(!(await driver.executeScript(`return !!document.querySelector('#iv-ruhig')`)), 'Calm mode steht nicht auf Seite 3');
   await klick('#iv-weiter');
   // Seite 4
   await bisSchritt('interview-4');
@@ -224,7 +224,9 @@ try {
   await bis('cursor', async () => (await einst()).kontrolle.cursor === 'herz');
   await klick('#iv-ton');
   await bis('ton', async () => (await einst()).ton.an === true);
-  messzahl += 14;
+  await klick('#iv-ruhig');
+  await bis('ruhig', async () => (await einst()).ruhig === true);
+  messzahl += 15;
   await klick('#iv-weiter');
   await bis('interview fertig', async () => (await einstieg()).interview === 'fertig');
   await bisSchritt('ende');
@@ -238,7 +240,15 @@ try {
   await imStand(v, () => imSeitenkontext(`await api.storage.local.remove('pack');`));
   await driver.switchTo().window(w);
   await bis('Pack-Knopf da', async () => (await eigenschaft('#ende-pack', 'hidden')) === false);
+  // Beide Abschluss-Knoepfe gehen im selben Tab zur Einstellungsseite (Fund 22)
+  const tabsDavor = (await driver.getAllWindowHandles()).length;
+  await klick('#ende-einstellungen');
+  await bis('Einstellungsseite', async () => (await driver.getCurrentUrl()).endsWith('options.html'));
+  pruefe((await driver.getAllWindowHandles()).length === tabsDavor, 'All settings oeffnet keinen neuen Tab');
+  await driver.navigate().back();
+  await bisSchritt('ende');
   await klick('#ende-pack');
+  pruefe((await driver.getAllWindowHandles()).length === tabsDavor, 'Add the Mia Pack oeffnet keinen neuen Tab');
   await bis('Pack-Abschnitt', async () => (await driver.getCurrentUrl()).endsWith('options.html#neu'));
   const e = await imStand(w, () => einst());
   pruefe(e.schwelle === 0.2 && e.strict && e.ruhig && e.erwachsen.an === false && e.erwachsen.komplettErsatz && e.quiz.verweigern === 0.2 && e.ton.an, 'Einstellungen wie gewaehlt');
@@ -359,6 +369,101 @@ try {
   await bisSchritt('warnung');
   pruefe(true, '#interview bei offenem Einstieg: bleibt am Gate');
   messzahl += 3;
+
+  // 8. Session 12 (Auftrag W): Funde 2, 3, 4, 6, 9, 10, 18, 19, 20, 21, 22, 23, 26
+  await driver.switchTo().window(h);
+  await driver.get(`moz-extension://${uuid}/willkommen.html`);
+  await bisSchritt('warnung');
+  await klick('#warnung-ok');
+  await bisSchritt('alter');
+  const stand18 = JSON.stringify(await einstieg());
+  await klick('#alter-nein');
+  pruefe((await text('#alter-zurueck')) === TEXT.alterZurueck, 'Fund 18: Absage hat den Knopf I tapped the wrong one');
+  await klick('#alter-zurueck');
+  pruefe((await sichtbar('#alter-frage')) && !(await sichtbar('#alter-absage')), 'Fund 18: Knopf fuehrt zur Frage zurueck');
+  pruefe(JSON.stringify(await einstieg()) === stand18, 'Fund 18: nichts gespeichert');
+  await klick('#alter-ja');
+  await bisSchritt('einwilligung');
+  pruefe((await text('#einwilligung-laeuft')) === TEXT.einwilligungLaeuft, 'Fund 2: Satz zum laufenden Schleier');
+  pruefe((await text('#einwilligung-nein-hinweis')) === TEXT.einwilligungNeinHinweis, 'Fund 2: Satz unter Not now');
+  messzahl += 6;
+  // Wiederholen: fertiger Einstieg, #interview
+  await driver.switchTo().window(v);
+  await imSeitenkontext(`await api.storage.local.set({ einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } }); await api.storage.local.remove(['pack']); await api.storage.local.set({ einstellungen: { version: 1, schwelle: 0.2 } });`);
+  await driver.switchTo().window(h);
+  await driver.get(`moz-extension://${uuid}/willkommen.html#interview`);
+  await driver.navigate().refresh();
+  await bisSchritt('interview-1');
+  pruefe((await text('#fortschritt-text')) === TEXT.frageVon(1, 5), 'Fund 19: Wiederholen zaehlt Question 1 of 5');
+  pruefe((await text('#iv-stimmung-wert')) === stimmungsWort(0.2), 'Fund 6: Stimmungswort statt Zahl');
+  pruefe((await eigenschaft('#iv-stimmung', 'ariaValueText')) === stimmungsWort(0.2) || (await driver.executeScript(`return document.querySelector('#iv-stimmung').getAttribute('aria-valuetext')`)) === stimmungsWort(0.2), 'Fund 6: aria-valuetext');
+  const kontrastCode = `const rgb = (t) => (t.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+    const lum = (c) => { const l = c.map((x) => ((x /= 255) <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4))); return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]; };
+    const e = document.querySelector(arguments[0]); const st = getComputedStyle(e);
+    const a = lum(rgb(st[arguments[1]])); const b = lum(arguments[2] ? rgb(arguments[2]) : rgb(st.backgroundColor));
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);`;
+  const knopfKontrast = await driver.executeScript(kontrastCode, '#iv-ueberspringen', 'color', '');
+  pruefe(knopfKontrast >= 4.5, `Fund 9: kleiner Knopf ${knopfKontrast.toFixed(2)}:1`);
+  await klick('#iv-weiter');
+  await bisSchritt('interview-2');
+  const bahn = await driver.executeScript(kontrastCode, '.schalter .regler', 'backgroundColor', 'rgb(255, 255, 255)');
+  const rand = await driver.executeScript(kontrastCode, '.wahl label', 'borderTopColor', 'rgb(255, 255, 255)');
+  pruefe(bahn >= 3 && rand >= 3, `Fund 10: Bahn ${bahn.toFixed(2)}:1, Rand ${rand.toFixed(2)}:1`);
+  // Fund N9: Unterzeile der gewaehlten Karte
+  const gewaehlt = await driver.executeScript(
+    `const rgb = (t) => (t.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+     const lum = (c) => { const l = c.map((x) => ((x /= 255) <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4))); return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]; };
+     return [...document.querySelectorAll('.wahl label')].filter((l) => l.querySelector('input:checked') && l.querySelector('small')).map((l) => { const a = lum(rgb(getComputedStyle(l.querySelector('small')).color)); const b = lum(rgb(getComputedStyle(l).backgroundColor)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); });`,
+  );
+  pruefe(gewaehlt.length > 0 && gewaehlt.every((k) => k >= 4.5), `Fund N9: gewaehlte Unterzeile ${gewaehlt.map((k) => k.toFixed(2)).join(',')}:1`);
+  // Fund N10: Trefferhoehe der Bedienelemente
+  const kleinste = await driver.executeScript(
+    `return Math.min(...[...document.querySelectorAll('#schritt button, #schritt select, #schritt input[type=range], #schritt label.schalter, #schritt .wahl label')].filter((e) => e.offsetParent !== null).map((e) => e.getBoundingClientRect().height));`,
+  );
+  pruefe(kleinste >= 43.99, `Fund N10: kleinste Trefferhoehe Seite 2 ${kleinste}`);
+  messzahl += 2;
+  for (let i = 0; i < 2; i++) await klick('#iv-weiter');
+  await bisSchritt('interview-4');
+  pruefe((await sichtbar('#iv-ohne-pack')) && (await text('#iv-ohne-pack')).includes(TEXT.ohnePack4), 'Fund 4: Satz auf Seite 4');
+  pruefe((await eigenschaft('#iv-pack-link', 'href')) === `moz-extension://${uuid}/options.html#neu`, 'Fund 4: Link Add the Mia Pack fuehrt zu options.html#neu');
+  // Fund N11: der Link oeffnet einen neuen Tab, der Interview-Tab bleibt auf Schritt 4
+  const vorN11 = await driver.getAllWindowHandles();
+  await klick('#iv-pack-link');
+  await bis('Fund N11: neuer Tab', async () => (await driver.getAllWindowHandles()).length === vorN11.length + 1);
+  const nachN11 = await driver.getAllWindowHandles();
+  const neuerTab = nachN11.find((x) => !vorN11.includes(x));
+  await driver.switchTo().window(neuerTab);
+  await bis('Fund N11: Ziel options.html#neu', async () => (await driver.getCurrentUrl()).endsWith('options.html#neu'));
+  pruefe(nachN11.length === vorN11.length + 1, `Fund N11: Tabs ${vorN11.length} auf ${nachN11.length}`);
+  await driver.close();
+  await driver.switchTo().window(h);
+  pruefe((await schritt()) === 'interview-4' && (await driver.getCurrentUrl()).includes('willkommen.html'), 'Fund N11: Interview-Tab bleibt auf Schritt 4');
+  messzahl += 2;
+  await bisSchritt('interview-4');
+  await klick('#iv-weiter');
+  await bisSchritt('interview-5');
+  pruefe((await text('#fortschritt-text')) === TEXT.frageVon(5, 5), 'Fund 19: Question 5 of 5');
+  pruefe((await text('#iv-auch-an')) === TEXT.auchAn([TEXT.auchAnNamen.werbung, TEXT.auchAnNamen.tabtitel, TEXT.auchAnNamen.meldungen]), 'Fund 3: Zeile zu Werbung, Tab-Titeln, Notizen');
+  pruefe(!(await sichtbar('#iv-ueberspringen')), 'Fund 20: Seite 5 ohne Ueberspringen');
+  await klick('#iv-ruhig');
+  await bis('ruhig auf Seite 5', async () => (await einst()).ruhig === true);
+  // Fund 26: Speichern scheitert
+  await driver.executeScript(`const a = (window.wrappedJSObject && window.wrappedJSObject.browser) || window.browser; a.storage.local.set = () => Promise.reject(new Error('voll'));`);
+  await klick('#iv-leerlauf');
+  await bis('Fehlersatz', async () => (await text('#fehler')) === FEHLER_SPEICHERN);
+  pruefe((await eigenschaft('#iv-leerlauf', 'checked')) === true, 'Fund 26: Schalter springt auf den gespeicherten Stand');
+  pruefe((await imStand(v, () => einst())).kontrolle.leerlauf === true, 'Fund 26: Speicher unveraendert');
+  await driver.switchTo().window(h);
+  messzahl += 13;
+  // Fund 21: Abschluss mit Pack
+  await driver.get(`moz-extension://${uuid}/willkommen.html`);
+  await bisSchritt('ende');
+  pruefe((await text('#ende-text')) === TEXT.endeText, 'Fund 21: ohne Pack der Satz zum Pack');
+  await driver.switchTo().window(v);
+  await imSeitenkontext(`await api.storage.local.set({ pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 } });`);
+  await driver.switchTo().window(h);
+  await bis('Satz mit Pack', async () => (await text('#ende-text')) === TEXT.endeTextMitPack);
+  messzahl += 2;
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);
   code = 1;

@@ -2,6 +2,7 @@
 // Bisher ging das nur im Popup fuer die aktuelle Seite. Die Standardliste (Banken, Mail) ist nicht aenderbar, hier steht nur ihre Zahl.
 import liste from '../../data/ausnahmen-standard.json';
 import { musterAusListe, passtAusnahme, zerlegeMuster } from '../../scripts/ausnahmen-muster.mjs';
+import { FEHLER_SPEICHERN } from '../../src/oberflaeche/gemeinsam';
 import { aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
 
 function el<T extends HTMLElement>(id: string): T {
@@ -18,7 +19,6 @@ const standardZahl = el<HTMLSpanElement>('ausnahmen-standard');
 const statusAusnahmen = el<HTMLParagraphElement>('status-ausnahmen');
 
 const standardMuster: string[] = musterAusListe(liste);
-const FEHLER_SPEICHERN = 'I couldn’t save that just now. Try again in a moment.';
 
 // Oeffentliche Endungen und Hoster, unter denen viele fremde Seiten liegen: als Ausnahme wuerden sie sehr viele Seiten ausnehmen.
 const OEFFENTLICHE_ENDUNGEN = new Set([
@@ -112,7 +112,7 @@ form.addEventListener('submit', (ereignis) => {
   if (!('muster' in ergebnis)) {
     meldung.textContent =
       ergebnis.grund === 'endung'
-        ? 'That one would cover a whole crowd of unrelated sites. Add the exact address instead.'
+        ? 'That ending is shared by a whole crowd of unrelated sites, and I’d leave every one of them alone. Add the exact address instead.'
         : 'That doesn’t look like a site address. Try something like example.com.';
     return;
   }
@@ -121,7 +121,7 @@ form.addEventListener('submit', (ereignis) => {
   const deckt = aktuellListe.find((m) => passtAusnahme(alsAdresse(muster), [m]));
   if (deckt) {
     meldung.classList.remove('fehler');
-    meldung.textContent = deckt === muster ? `${muster} is on your list already.` : `${muster} is already covered by ${deckt}.`;
+    meldung.textContent = deckt === muster ? `${muster} is on your list already.` : `${muster} is already on your list through ${deckt}.`;
     feld.value = '';
     return;
   }

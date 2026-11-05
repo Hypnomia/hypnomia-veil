@@ -123,7 +123,7 @@ test('Einstellungsseite: eigene Seiten, Verweigern-Anteil, Freilegen-Dauer, Ruhi
     await expect(seite.locator('#seite-meldung')).toContainText('already');
     await seite.fill('#seite-feld', 'kein host');
     await seite.click('#seite-add');
-    await expect(seite.locator('#seite-meldung')).toContainText("doesn't look like");
+    await expect(seite.locator('#seite-meldung')).toContainText('doesn’t look like');
     expect((await lies(seite, 'einstellungen')).erwachsen.eigeneSeiten).toEqual(['example.com']);
     expect((await lies(seite, 'einstellungen')).erwachsen.an).toBe(anVorher ?? true);
 

@@ -10,7 +10,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEDGER_TITEL, LOESCHEN_FERTIG, popupZeile } from '../../src/ledger/texte.ts';
+import { LEDGER_TITEL, LOESCHEN_FERTIG, popupZeile, stufeWert } from '../../src/ledger/texte.ts';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 
@@ -359,7 +359,7 @@ try {
   await oeffneErweiterung('options.html');
   try {
     await bis('Ledger-Zahlen', async () => (await text('#ledger-gesamt-zensiert')) === '340');
-    pruefe((await text('#ledger-heute-zensiert')) === '12' && (await text('#ledger-gesamt-besuche')) === '3' && (await text('#ledger-stufe')) === '2', 'Zahlen angezeigt');
+    pruefe((await text('#ledger-heute-zensiert')) === '12' && (await text('#ledger-gesamt-besuche')) === '3' && (await text('#ledger-stufe')) === stufeWert(2), 'Zahlen angezeigt');
     pruefe((await text('#ledger-titel')).toLowerCase() === LEDGER_TITEL.toLowerCase() && (await text('#ledger-satz-zensiert')).length > 5 && (await text('#ledger-seit')).includes('With me since'), 'Titel, Satz, seit');
     pruefe(!(await sichtbar('#ledger-frage')), 'Rueckfrage anfangs zu');
     await driver.findElement(By.css('#ledger-loeschen')).click();

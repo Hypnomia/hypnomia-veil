@@ -37,7 +37,7 @@ export const UEBER_TEXTE = {
     unbekannt: 'Couldn’t check just now. Try again later.',
   },
   chromeNetz: 'At most once a day I ask GitHub if there’s a newer me. No sign-in, and I send nothing about you.',
-  pause: 'Pausing me is always allowed and never costs a thing (my popup, or Alt+Shift+M on a desktop), and uninstalling works the normal way, any time.',
+  pause: 'Pausing me is always allowed and never costs a thing (the Pause Mia button up top, my popup, or Alt+Shift+M on a desktop), and uninstalling works the normal way, any time.',
   schritte: [
     'Grab the new package from the release page.',
     'Unpack it into the very same folder as before and replace the old files, so the new manifest.json sits exactly where the old one was.',

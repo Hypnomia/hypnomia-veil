@@ -18,6 +18,8 @@ import { hebeStufe, istStrengeZeit, naechsterWechselMs } from '../../src/kontrol
 import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type SteigerungStand, type SteigerungStufe } from '../../src/steigerung';
 import { STUFEN_TEXT, formatiereRest, hatErwachsenFunktionen, posePopup, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
+import * as T from './texte';
+import { FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
 // Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): eigene Module je Auftrag, jedes zeichnet nur seinen Platz.
@@ -57,6 +59,9 @@ const ausnahmeHinweis = el<HTMLParagraphElement>('ausnahme-hinweis');
 const stilFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stil"]')];
 const packHinweis = el<HTMLParagraphElement>('pack-hinweis');
 const packLink = el<HTMLButtonElement>('pack-link');
+const fehlerZeile = el<HTMLParagraphElement>('fehler');
+el<HTMLSpanElement>('ende-links').textContent = T.REGLER_ENDE_LINKS;
+el<HTMLSpanElement>('ende-rechts').textContent = T.REGLER_ENDE_RECHTS;
 
 const erwAn = el<HTMLInputElement>('erw-an');
 const erwErsatz = el<HTMLInputElement>('erw-ersatz');
@@ -108,8 +113,15 @@ function statusText(e: Einstellungen): string {
   if (e.pause) return "Paused on every page. I’ll be here when you want me back.";
   if (!seite) return 'Nothing to veil on this page. Everywhere else, I have it covered.';
   if (passtAusnahme(seite, standardMuster)) return 'This site is on my never-touch list: banks, mail, that sort of thing. Nothing is covered here.';
-  if (passtAusnahme(seite, e.ausnahmen)) return "You asked me to skip this site, so I’m leaving it alone.";
+  if (passtAusnahme(seite, e.ausnahmen)) return T.STATUS_AUSNAHME;
   return "On watch. I’ll keep the pages quiet for you.";
+}
+
+// UX-Fund 6: ein Wort statt der rohen Zahl, auch als aria-valuetext des Reglers.
+function zeigeStimmung(schwelle: number): void {
+  const wort = stimmungsWort(schwelle);
+  stimmungWert.textContent = wort;
+  stimmung.setAttribute('aria-valuetext', wort);
 }
 
 function zeichne(e: Einstellungen): void {
@@ -120,7 +132,7 @@ function zeichne(e: Einstellungen): void {
   pauseKnopf.setAttribute('aria-pressed', String(e.pause));
 
   if (document.activeElement !== stimmung) stimmung.value = e.schwelle.toFixed(2);
-  stimmungWert.textContent = e.schwelle.toFixed(2);
+  zeigeStimmung(e.schwelle);
 
   zeichneStil(e);
   strict.checked = e.strict;
@@ -150,16 +162,15 @@ function zeichneStil(e: Einstellungen): void {
       feld.closest('label')?.classList.toggle('gesperrt', !frei);
     }
   }
-  packHinweis.textContent = frei
-    ? `Mia patch uses ${pack?.bilder ?? 0} of my pictures from your pack.`
-    : 'Add the Mia Pack and I can cover things with my own pictures.';
-  packLink.textContent = frei ? 'Mia Pack settings' : 'Add the Mia Pack';
+  packHinweis.textContent = frei ? T.PACK_HINWEIS_MIT(pack?.bilder ?? 0) : pack ? T.PACK_HINWEIS_OHNE_PATCH : T.PACK_HINWEIS_OHNE;
+  // Beschriftung und Ziel aus derselben Bedingung: mit Pack "settings" (#stand), ohne Pack "Add" (#neu)
+  packLink.textContent = pack ? T.PACK_KNOPF_MIT : T.PACK_KNOPF_OHNE;
 }
 
 function zeichneAusnahme(e: Einstellungen): void {
   const muster = seite ? musterFuerSeite(seite) : null;
   if (!seite || !muster) {
-    ausnahmeKnopf.textContent = 'Leave this site alone';
+    ausnahmeKnopf.textContent = T.AUSNAHME_KNOPF_AN;
     ausnahmeKnopf.disabled = true;
     ausnahmeHinweis.textContent = 'Not available on this page.';
     return;
@@ -172,11 +183,13 @@ function zeichneAusnahme(e: Einstellungen): void {
   }
   ausnahmeKnopf.disabled = false;
   if (passtAusnahme(seite, e.ausnahmen)) {
-    ausnahmeKnopf.textContent = 'Let Mia back on this site';
-    ausnahmeHinweis.textContent = `${muster} is on your list of sites I leave alone.`;
+    ausnahmeKnopf.textContent = T.AUSNAHME_KNOPF_ZURUECK;
+    ausnahmeKnopf.dataset.modus = 'weg';
+    ausnahmeHinweis.textContent = T.AUSNAHME_NACH(muster);
   } else {
-    ausnahmeKnopf.textContent = 'Leave this site alone';
-    ausnahmeHinweis.textContent = `I’ll skip ${muster} from now on. You can undo it here anytime.`;
+    ausnahmeKnopf.textContent = T.AUSNAHME_KNOPF_AN;
+    ausnahmeKnopf.dataset.modus = 'hinzu';
+    ausnahmeHinweis.textContent = T.AUSNAHME_VOR(muster);
   }
 }
 
@@ -204,7 +217,7 @@ function zeichneErwachsen(e: Einstellungen): void {
   } else if (e.pause) {
     erwHinweis.textContent = "Paused, so I’m keeping my hands off these sites too.";
   } else {
-    erwHinweis.textContent = e.erwachsen.an ? "I know the usual places. Nothing there gets by me." : 'Adult-site mode is off. I’m leaving these sites alone.';
+    erwHinweis.textContent = e.erwachsen.an ? "I know the usual places. Nothing there gets by me." : T.ERW_HINWEIS_AUS;
   }
   zeichneStufe(e);
 }
@@ -243,7 +256,8 @@ function zeichneStufe(e: Einstellungen): void {
     strengText.textContent = '';
   }
   if (!hat) return;
-  stufeZeile.textContent = `Level ${stufe} of 4`;
+  const stufeKlein = STUFE_TEXT(stufe);
+  stufeZeile.textContent = stufeKlein.charAt(0).toUpperCase() + stufeKlein.slice(1);
   // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.
   if (a.stufe === 0) stufeZeit.textContent = streng ? 'One level up for these hours.' : 'Nothing to count down yet.';
   else if (e.pause || a.pausiert) stufeZeit.textContent = "Paused, so the clock stands still. It picks up where it stopped.";
@@ -257,12 +271,40 @@ window.addEventListener('pagehide', () => {
   tickerId = null;
 });
 
-erwAn.addEventListener('change', () => void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, an: erwAn.checked } })));
-erwErsatz.addEventListener('change', () => void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, komplettErsatz: erwErsatz.checked } })));
-erwInhalt.addEventListener('change', () => void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, erkennenAmInhalt: erwInhalt.checked } })));
-erwPackLink.addEventListener('click', () => {
-  void browser.runtime.openOptionsPage().then(() => window.close());
+// Der Wert wird beim Ereignis festgehalten (nicht erst in der Schreibkette gelesen): schnelle Folgeklicks ueberholen sich nicht.
+erwAn.addEventListener('change', () => {
+  const wert = erwAn.checked;
+  void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, an: wert } }));
 });
+erwErsatz.addEventListener('change', () => {
+  const wert = erwErsatz.checked;
+  void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, komplettErsatz: wert } }));
+});
+erwInhalt.addEventListener('change', () => {
+  const wert = erwInhalt.checked;
+  void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, erkennenAmInhalt: wert } }));
+});
+// UX-Fund 7: die Pack-Knoepfe oeffnen die Einstellungsseite gleich beim Pack-Abschnitt (#neu ohne Pack, #stand mit Pack).
+// Ist die Einstellungsseite schon offen, wird dieser Tab nach vorn geholt und auf den Anker gesetzt (kein zweiter Tab); ohne neues Recht
+// sieht die Erweiterung die Adressen ihrer eigenen Seiten. Scheitert etwas, faellt es auf openOptionsPage() zurueck.
+async function oeffneOptionen(anker: string): Promise<void> {
+  const basis = (browser.runtime.getURL as (p: string) => string)('/options.html');
+  const adresse = anker ? `${basis}#${anker}` : basis;
+  try {
+    const offene = (await browser.tabs.query({})).filter((t) => (t.url ?? '').split('#')[0] === basis);
+    const da = offene[0];
+    if (da?.id !== undefined) {
+      await browser.tabs.update(da.id, { url: adresse, active: true });
+      if (da.windowId !== undefined) await browser.windows.update(da.windowId, { focused: true }).catch(() => undefined);
+    } else {
+      await browser.tabs.create({ url: adresse });
+    }
+    window.close();
+  } catch {
+    void browser.runtime.openOptionsPage().then(() => window.close(), () => {});
+  }
+}
+erwPackLink.addEventListener('click', () => void oeffneOptionen('neu'));
 
 async function ladeStand(): Promise<void> {
   const a = await browser.storage.local.get(STEIGERUNG_SCHLUESSEL);
@@ -312,6 +354,8 @@ for (const zone of ZONEN) {
     const bedeckt = document.createElement('input');
     bedeckt.type = 'checkbox';
     bedeckt.dataset.bedeckt = zone;
+    // UX-Fund 12: der Bildschirmleser nennt die Zone mit (wie auf der Einstellungsseite).
+    bedeckt.setAttribute('aria-label', `${ZONEN_NAMEN[zone]}: even when clothed`);
     auch.append(bedeckt, document.createTextNode('even when clothed'));
     zeile.append(auch);
   }
@@ -322,59 +366,113 @@ for (const zone of ZONEN) {
 
 // Die Funktion wird innerhalb der Kette von aendereEinstellungen auf den frisch gelesenen Stand angewendet (atomar auch gegen
 // Hintergrund und Content-Skripte).
+// `offen` zaehlt noch nicht geschriebene Aenderungen: solange eine laeuft, setzt kein Neuzeichnen (weder das Ergebnis eines frueheren
+// Schreibens noch storage.onChanged) einen spaeteren Klick zurueck. Nach dem letzten Schreiben zeigt die Anzeige den gespeicherten Stand.
+// Scheitert das Speichern (UX-Fund 26), kommt der gemeinsame Fehlersatz und Schalter und Regler springen auf den gespeicherten Stand zurueck.
+let offen = 0;
+let fehlerSeitRuhe = false;
+let letzteSchreibung = 0;
 async function aendere(teil: (alt: Einstellungen) => Partial<Einstellungen>): Promise<void> {
-  zeichne(await aendereEinstellungen(teil));
+  offen++;
+  let neu: Einstellungen | null = null;
+  let gescheitert = false;
+  try {
+    neu = await aendereEinstellungen(teil);
+  } catch {
+    gescheitert = true;
+  }
+  offen--;
+  letzteSchreibung = Date.now();
+  // Ein Fehler bleibt stehen, bis alle offenen Schreibvorgaenge durch sind; ein spaeterer, gelungener Klick blendet ihn nicht aus.
+  if (gescheitert) {
+    fehlerSeitRuhe = true;
+    fehlerZeile.textContent = FEHLER_SPEICHERN;
+    fehlerZeile.hidden = false;
+  }
+  if (offen > 0) return;
+  if (!fehlerSeitRuhe) {
+    fehlerZeile.hidden = true;
+    fehlerZeile.textContent = '';
+  }
+  // Die Anzeige wird gleich auf den gespeicherten Stand gestellt; ab dem naechsten Schreibvorgang zaehlt neu.
+  const hatteFehler = fehlerSeitRuhe;
+  fehlerSeitRuhe = false;
+  if (neu && !hatteFehler) {
+    zeichne(neu);
+    return;
+  }
+  try {
+    const gespeichert = await ladeEinstellungen();
+    if (document.activeElement === stimmung) stimmung.value = gespeichert.schwelle.toFixed(2);
+    zeichne(gespeichert);
+  } catch {
+    /* Anzeige bleibt, der Fehlersatz steht */
+  }
 }
 
-pauseKnopf.addEventListener('click', () => void aendere((alt) => ({ pause: !alt.pause })));
+// Das Ziel wird beim Klick aus der Beschriftung festgehalten, nicht in der Schreibkette aus dem frischen Stand umgekehrt:
+// hat ein anderes Fenster inzwischen pausiert, hebt der Klick auf "Pause Mia" die Pause nicht auf.
+pauseKnopf.addEventListener('click', () => {
+  const ziel = pauseKnopf.getAttribute('aria-pressed') !== 'true';
+  pauseKnopf.setAttribute('aria-pressed', String(ziel));
+  void aendere(() => ({ pause: ziel }));
+});
 
 stimmung.min = String(SCHWELLE_MIN);
 stimmung.max = String(SCHWELLE_MAX);
 // Beim Ziehen nur die Zahl nachfuehren; gespeichert wird erst beim Loslassen (change). Jede Speicherung setzt auf allen Seiten
 // alle Urteile zurueck, ein Schreiben im Takt waehrend des Ziehens liesse sie laufend neu pruefen.
 stimmung.addEventListener('input', () => {
-  stimmungWert.textContent = Number(stimmung.value).toFixed(2);
+  zeigeStimmung(Number(stimmung.value));
 });
 stimmung.addEventListener('change', () => {
-  void aendere(() => ({ schwelle: Number(stimmung.value) }));
+  const wert = Number(stimmung.value);
+  void aendere(() => ({ schwelle: wert }));
 });
 
 for (const feld of stilFelder) {
   feld.addEventListener('change', () => {
-    if (feld.checked) void aendere(() => ({ stil: feld.value as Stil }));
+    if (!feld.checked) return;
+    const wert = feld.value as Stil;
+    void aendere(() => ({ stil: wert }));
   });
 }
 
-strict.addEventListener('change', () => void aendere(() => ({ strict: strict.checked })));
+strict.addEventListener('change', () => {
+  const wert = strict.checked;
+  void aendere(() => ({ strict: wert }));
+});
 
 zonenListe.addEventListener('change', (ereignis) => {
   const feld = ereignis.target as HTMLInputElement;
   const zone = (feld.dataset.zone ?? feld.dataset.bedeckt) as Zone | undefined;
   if (!zone) return;
+  const istAn = !!feld.dataset.zone;
+  const wert = feld.checked;
   void aendere((alt) => {
     const z = { ...alt.zonen[zone] };
-    if (feld.dataset.zone) z.an = feld.checked;
-    else z.bedeckt = feld.checked;
+    if (istAn) z.an = wert;
+    else z.bedeckt = wert;
     return { zonen: { ...alt.zonen, [zone]: z } };
   });
 });
 
 // Einstellungsseite des Packs oeffnen; das Popup schliesst sich danach von selbst (Firefox) bzw. wir schliessen es.
-packLink.addEventListener('click', () => {
-  void browser.runtime.openOptionsPage().then(() => window.close());
-});
+packLink.addEventListener('click', () => void oeffneOptionen(pack ? 'stand' : 'neu'));
 
 ausnahmeKnopf.addEventListener('click', () => {
   if (!seite) return;
   const url = seite;
   const muster = musterFuerSeite(url);
   if (!muster) return;
+  // Die Richtung steht beim Klick fest (nach der Beschriftung des Knopfs), nicht nach dem frischen Stand.
+  const hinzu = ausnahmeKnopf.dataset.modus !== 'weg';
+  ausnahmeKnopf.dataset.modus = hinzu ? 'weg' : 'hinzu';
   void aendere((alt) => {
-    const steht = passtAusnahme(url, alt.ausnahmen);
     // Entfernen: alle eigenen Muster, die diese Seite treffen. Hinzufuegen: das Host-Muster, ohne Doppelte.
-    const ausnahmen = steht
-      ? alt.ausnahmen.filter((m) => !passtAusnahme(url, [m]))
-      : [...new Set([...alt.ausnahmen, muster])];
+    const ausnahmen = hinzu
+      ? [...new Set([...alt.ausnahmen, muster])]
+      : alt.ausnahmen.filter((m) => !passtAusnahme(url, [m]));
     return { ausnahmen };
   });
 });
@@ -383,7 +481,21 @@ ausnahmeKnopf.addEventListener('click', () => {
 
 el<HTMLSpanElement>('version').textContent = `v${browser.runtime.getManifest().version}`;
 
-const abmelden = beiEinstellungsAenderung(zeichne);
+// Ereignisse eigener, frueherer Schreibvorgaenge koennen nach dem letzten Zeichnen eintreffen und einen alten Stand zeigen: waehrend
+// offener Schreibvorgaenge und kurz danach wird nicht aus dem Ereignis gezeichnet, sondern spaeter aus dem gespeicherten Stand.
+const abmelden = beiEinstellungsAenderung((e) => {
+  if (offen > 0) {
+    aktuell = e;
+    return;
+  }
+  if (Date.now() - letzteSchreibung < 300) {
+    window.setTimeout(() => {
+      if (offen === 0) void ladeEinstellungen().then((g) => offen === 0 && zeichne(g), () => undefined);
+    }, 320);
+    return;
+  }
+  zeichne(e);
+});
 // Das Pack (storage.local.pack) kann sich aendern, waehrend das Popup offen ist (Import auf der Einstellungsseite).
 const packHorcher = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
   if (bereich === 'local' && STEIGERUNG_SCHLUESSEL in aenderungen) {
@@ -396,7 +508,7 @@ const packHorcher = (aenderungen: Record<string, { newValue?: unknown }>, bereic
   chibiPose = '';
   texte = null;
   void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
-  if (aktuell) zeichne(aktuell);
+  if (aktuell && offen === 0) zeichne(aktuell);
 };
 browser.storage.onChanged.addListener(packHorcher);
 window.addEventListener(
@@ -418,6 +530,4 @@ void (async () => {
 })();
 
 // Session 11 (Vertrag): Weg zur Einstellungsseite (alle Einstellungen auf einem Bildschirm, Auftrag S).
-document.getElementById('alle-einstellungen')?.addEventListener('click', () => {
-  void browser.runtime.openOptionsPage().then(() => window.close(), () => {});
-});
+document.getElementById('alle-einstellungen')?.addEventListener('click', () => void oeffneOptionen(''));

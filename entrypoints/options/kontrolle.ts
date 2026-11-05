@@ -1,6 +1,7 @@
 // Einstellungsseite, Abschnitt "Mia’s control" (Phase 5, Vertrag Session 9, Orchestrator). Schalter fuer Werbe-Tausch, Blitzwoerter und
 // Leerlauf-Spirale; wie der Abschnitt "Adult sites" auch ohne Pack einstellbar (wirkt erst mit Pack und Freischaltung). Die Warnung vor
 // Fotosensibilitaet erscheint, solange sie weder im Quiz noch auf der Spirale noch hier bestaetigt wurde.
+import { speichere, zeigeSpeicherFehler } from './grund-speichern';
 import {
   BLITZ_HAEUFIGKEITEN,
   CURSOR_ARTEN,
@@ -9,7 +10,6 @@ import {
   type StrengeZeit,
   LEERLAUF_MAX_MINUTEN,
   LEERLAUF_MIN_MINUTEN,
-  aendereEinstellungen,
   beiEinstellungsAenderung,
   ladeEinstellungen,
   type BlitzHaeufigkeit,
@@ -121,12 +121,14 @@ function zeichneZeiten(zeiten: readonly StrengeZeit[]): void {
     weg.textContent = 'Remove';
     weg.setAttribute('aria-label', `Remove strict time ${nr}`);
     weg.addEventListener('click', () => {
-      void aendereEinstellungen((alt) =>
-        JSON.stringify(alt.kontrolle.zeiten[i]) === zeile.dataset.stand
-          ? { kontrolle: { ...alt.kontrolle, zeiten: alt.kontrolle.zeiten.filter((_, j) => j !== i) } }
-          : {},
+      void speichere(
+        (alt) =>
+          JSON.stringify(alt.kontrolle.zeiten[i]) === zeile.dataset.stand
+            ? { kontrolle: { ...alt.kontrolle, zeiten: alt.kontrolle.zeiten.filter((_, j) => j !== i) } }
+            : {},
+        sp,
       ).then((neu) => {
-        zeichne(neu, true);
+        if (!neu) return;
         // Fokus nicht auf body fallen lassen (Pruefer-Fund 4): auf "Remove" der Zeile, die nachrueckt, sonst auf "Add strict time".
         const naechste = zeitenListe.querySelectorAll<HTMLButtonElement>('.zeit-weg')[Math.min(i, neu.kontrolle.zeiten.length - 1)];
         (naechste ?? zeitNeu).focus();
@@ -155,11 +157,11 @@ function zeichnePack(pack: PackKurz | null): void {
     (f) => !istFreigeschaltet(pack, f),
   );
   hinweis.textContent = teilweise
-    ? 'Some of this needs a newer Mia Pack. Import it to unlock the rest. Pause Mia stops it all.'
+    ? 'Some of this needs a newer Mia Pack. Add it further down to unlock the rest. Pause Mia stops it all.'
     : mit
     ? 'I run all of this. You pick how much, and Pause Mia stops it all.'
     : pack
-      ? 'Your pack is older than this part. Import a newer Mia Pack to unlock it.'
+      ? 'This part needs a newer Mia Pack than yours. Add the newer one further down to unlock it.'
       : 'These only work with the Mia Pack. Set them now and they’ll be ready.';
 }
 
@@ -172,39 +174,61 @@ async function zeichneWarnung(): Promise<void> {
   }
 }
 
-werbung.addEventListener('change', () => void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, werbung: werbung.checked } })));
+// Fund 26: Speichern ueber die gemeinsame Stelle, bei Fehler Satz in der Leiste und zurueck auf den gespeicherten Stand.
+function sp(e: Einstellungen): void {
+  zeichne(e, true);
+}
+werbung.addEventListener('change', () => {
+  const wert = werbung.checked;
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, werbung: wert } }), sp);
+});
 blitz.addEventListener('change', () => {
   const wert = blitz.value as BlitzHaeufigkeit;
   if (!(BLITZ_HAEUFIGKEITEN as readonly string[]).includes(wert)) return;
-  void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, blitz: wert } }));
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, blitz: wert } }), sp);
 });
-leerlauf.addEventListener('change', () => void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, leerlauf: leerlauf.checked } })));
+leerlauf.addEventListener('change', () => {
+  const wert = leerlauf.checked;
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, leerlauf: wert } }), sp);
+});
 minuten.addEventListener('change', () => {
   const roh = minuten.value.trim();
   const zahl = Number(roh);
   // Leeres oder ungueltiges Feld: alter Wert bleibt (nie still die kuerzeste Zeit). Zahlen ausserhalb der Grenzen begrenzt vervollstaendige();
   // danach zeigt zeichne() den gespeicherten Wert, auch im Feld mit Fokus.
-  void aendereEinstellungen((alt) => ({
-    kontrolle: { ...alt.kontrolle, leerlaufMinuten: roh !== '' && Number.isFinite(zahl) ? zahl : alt.kontrolle.leerlaufMinuten },
-  })).then((neu) => zeichne(neu, true));
+  void speichere(
+    (alt) => ({
+      kontrolle: { ...alt.kontrolle, leerlaufMinuten: roh !== '' && Number.isFinite(zahl) ? zahl : alt.kontrolle.leerlaufMinuten },
+    }),
+    sp,
+  );
 });
 // Nach dem Verlassen eines Feldes den gespeicherten Stand zeigen (Aenderungen aus anderen Fenstern, die waehrend des Fokus kamen).
 for (const feld of [blitz, minuten, cursor]) feld.addEventListener('blur', () => zuletzt && zeichne(zuletzt, true));
-tabtitel.addEventListener('change', () => void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, tabtitel: tabtitel.checked } })));
+tabtitel.addEventListener('change', () => {
+  const wert = tabtitel.checked;
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, tabtitel: wert } }), sp);
+});
 cursor.addEventListener('change', () => {
   const wert = cursor.value as CursorArt;
   if (!(CURSOR_ARTEN as readonly string[]).includes(wert)) return;
-  void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, cursor: wert } }));
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, cursor: wert } }), sp);
 });
-meldungen.addEventListener('change', () => void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, meldungen: meldungen.checked } })));
-besuche.addEventListener('change', () => void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, besuche: besuche.checked } })));
+meldungen.addEventListener('change', () => {
+  const wert = meldungen.checked;
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, meldungen: wert } }), sp);
+});
+besuche.addEventListener('change', () => {
+  const wert = besuche.checked;
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, besuche: wert } }), sp);
+});
 // Eine Zeile speichern: nur, wenn sie im Speicher noch so aussieht wie gezeichnet; sonst nichts aendern und neu zeichnen. Der letzte Tag
 // laesst sich nicht abwaehlen (ohne Tag gilt der alte Stand).
 function speichereZeile(zeile: HTMLElement): void {
   const i = Number(zeile.dataset.index);
   if (!Number.isInteger(i)) return;
   let veraltet = false;
-  void aendereEinstellungen((alt) => {
+  void speichere((alt) => {
     const z = alt.kontrolle.zeiten[i];
     if (!z || JSON.stringify(z) !== zeile.dataset.stand) {
       veraltet = true;
@@ -212,7 +236,8 @@ function speichereZeile(zeile: HTMLElement): void {
     }
     const zeiten = alt.kontrolle.zeiten.map((x, j) => (j === i ? liesZeile(zeile, x) : x));
     return { kontrolle: { ...alt.kontrolle, zeiten } };
-  }).then((neu) => {
+  }, sp, false).then((neu) => {
+    if (!neu) return;
     if (veraltet) return zeichne(neu, true);
     const z = neu.kontrolle.zeiten[i];
     if (!z) return;
@@ -238,16 +263,26 @@ zeitenListe.addEventListener('focusout', (ereignis) => {
   else if (!zeitenListe.contains(ereignis.relatedTarget as Node | null) && zuletzt) zeichne(zuletzt, true);
 });
 zeitNeu.addEventListener('click', () => {
-  void aendereEinstellungen((alt) => ({
-    kontrolle: { ...alt.kontrolle, zeiten: alt.kontrolle.zeiten.length >= MAX_STRENGE_ZEITEN ? alt.kontrolle.zeiten : [...alt.kontrolle.zeiten, NEUE_ZEIT] },
-  })).then((neu) => {
-    zeichne(neu, true);
+  void speichere(
+    (alt) => ({
+      kontrolle: { ...alt.kontrolle, zeiten: alt.kontrolle.zeiten.length >= MAX_STRENGE_ZEITEN ? alt.kontrolle.zeiten : [...alt.kontrolle.zeiten, NEUE_ZEIT] },
+    }),
+    sp,
+  ).then((neu) => {
+    if (!neu) return;
     // Fokus auf das erste Zeitfeld der neuen Zeile (Pruefer-Fund 4).
     zeitenListe.querySelector<HTMLInputElement>('.zeit-zeile:last-child .zeit-von')?.focus();
   });
 });
 warnungOk.addEventListener('click', () => {
-  void browser.storage.local.set({ [WARNUNG_SPIRALE_SCHLUESSEL]: true }).then(zeichneWarnung, zeichneWarnung);
+  // Runde 3, N3: nach dem Bestaetigen verschwindet der Knopf; der Fokus geht zur Auswahl der Blitzwoerter, die die Warnung betrifft.
+  void browser.storage.local.set({ [WARNUNG_SPIRALE_SCHLUESSEL]: true }).then(async () => {
+    await zeichneWarnung();
+    if (warnung.hidden) el<HTMLSelectElement>('kon-blitz').focus();
+  }, () => {
+    zeigeSpeicherFehler();
+    return zeichneWarnung();
+  });
 });
 
 beiEinstellungsAenderung(zeichne);

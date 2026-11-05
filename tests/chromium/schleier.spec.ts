@@ -1,4 +1,5 @@
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
+import { stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -280,7 +281,7 @@ test('g) Popup: Pause, Regler, Stil, Strict und Zonen schreiben in storage.local
   // Mia's mood: Grenzen 0,10 bis 0,25
   await popup.locator('#stimmung').fill('0.25');
   await expect.poll(async () => (await lese()).schwelle).toBe(0.25);
-  await expect(popup.locator('#stimmung-wert')).toHaveText('0.25');
+  await expect(popup.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.25));
   // Stil
   await popup.locator('input[name="stil"][value="blur"]').check({ force: true });
   await expect.poll(async () => (await lese()).stil).toBe('blur');

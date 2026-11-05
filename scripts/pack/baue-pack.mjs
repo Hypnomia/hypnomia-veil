@@ -1,6 +1,6 @@
 // Pack-Bau (PHASE-2-BAUPLAN Abschnitt 9.5). Schreibt eine `.miapack`-Datei (Format: src/pack/format.ts).
 //   npm run pack:bau -- --quelle <ordner> --aus <datei>   Ordner mit pack.json und den Dateien
-//   npm run pack:dummy [-- --aus <datei>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
+//   npm run pack:dummy [-- --aus <datei> --version <x.y.z> --id <kennung>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
 // pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch", ...], "lizenz": "<Name der Lizenzdatei>",
 //              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung"|"ton",
 //                            "stufe"?: "tease"|"hot"|"explicit", "format"?: "300x250"|... }] }
@@ -131,7 +131,7 @@ export const DUMMY_FARBEN_WARM = [
 ];
 
 // Baut das Dummy-Pack im Speicher. Liefert die Bytes und die verwendeten Farben (Tests pruefen Pixel dagegen).
-// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`.
+// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`.
 export async function baueDummyPack(opts = {}) {
   const paare = opts.farben ?? DUMMY_FARBEN;
   const dateien = [{ name: 'lizenz.txt', typ: 'text/plain', daten: new TextEncoder().encode(lizenzTextDummy()), rolle: 'lizenz' }];
@@ -172,7 +172,7 @@ export async function baueDummyPack(opts = {}) {
   const bytes = await pruefeErgebnis(await schreibePack(
     {
       id: opts.id ?? 'dummy',
-      version: '0.0.1',
+      version: opts.version ?? '0.0.1',
       titel: 'Dummy pack (synthetic pictures)',
       erstellt: new Date().toISOString(),
       mindestVeil: paketJson.version,
@@ -264,7 +264,10 @@ async function main() {
   pruefeAusgabeOrt(aus);
   let bytes;
   if (dummy) {
-    bytes = (await baueDummyPack()).bytes;
+    const opts = {};
+    if (argument('--version')) opts.version = argument('--version');
+    if (argument('--id')) opts.id = argument('--id');
+    bytes = (await baueDummyPack(opts)).bytes;
   } else {
     const quelle = argument('--quelle');
     if (!quelle || !argument('--aus')) throw new Error('Aufruf: npm run pack:bau -- --quelle <ordner> --aus <datei>');

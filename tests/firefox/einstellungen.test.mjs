@@ -9,6 +9,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 150 s ueberschritten');
@@ -128,6 +129,7 @@ const tasten = async (css, key, n) => {
 };
 const geklickt = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const gesperrt = (css) => driver.executeScript(`return document.querySelector(arguments[0]).disabled`, css);
+const wertVon = (css) => driver.executeScript(`return document.querySelector(arguments[0]).value`, css);
 const geprueft = (css) => driver.executeScript(`return document.querySelector(arguments[0]).checked`, css);
 
 // Neue Seite beobachten: Griffe vor dem Klick merken, danach den neuen Griff, seine Adresse lesen, schliessen, zurueckwechseln.
@@ -173,9 +175,9 @@ try {
   pruefe((await text('#status')).includes('On watch'), 'Status: On watch');
   pruefe((await text('#pause')) === 'Pause Mia', 'Pause-Knopf: Pause Mia');
   const reihenfolge = await driver.executeScript(`return [...document.querySelectorAll('main > section')].map((s) => s.id)`);
-  const soll = ['abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-strict', 'abschnitt-ausnahmen', 'erwachsen', 'abschnitt-ruhig', 'kontrolle', 'ton', 'ledger', 'stand', 'neu', 'ueber', 'abschnitt-interview'];
+  const soll = ['abschnitt-interview', 'abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-ausnahmen', 'erwachsen', 'abschnitt-ruhig', 'kontrolle', 'ton', 'ledger', 'stand', 'neu', 'ueber'];
   pruefe(JSON.stringify(reihenfolge) === JSON.stringify(soll), `Abschnitte in der Reihenfolge des Auftrags (${reihenfolge.length})`);
-  const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung a')].every((a) => !!document.getElementById(a.getAttribute('href').slice(1))) ? document.querySelectorAll('#sprung a').length : -1`);
+  const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung a:not([hidden])')].every((a) => !!document.getElementById(a.getAttribute('href').slice(1))) ? document.querySelectorAll('#sprung a:not([hidden])').length : -1`);
   pruefe(links >= 10, `Sprungleiste: ${links} Links, alle mit Ziel`);
   pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-zone]').length`)) === 10, '10 Zonen aufgebaut');
   pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-bedeckt]').length`)) === 6, '6 "even when clothed"');
@@ -192,7 +194,7 @@ try {
   // ---- Stimmung ----
   await tasten('#stimmung', Key.ARROW_RIGHT, 8);
   await bis('schwelle 0.18', async () => Math.abs((await einst()).schwelle - 0.18) < 1e-6);
-  pruefe((await text('#stimmung-wert')) === '0.18', 'Stimmung 0.18 (8 Pfeiltasten) gespeichert und angezeigt');
+  pruefe((await text('#stimmung-wert')) === stimmungsWort(0.18), 'Stimmung 0.18 (8 Pfeiltasten) gespeichert, als Wort angezeigt');
   await tasten('#stimmung', Key.END, 1);
   await bis('schwelle 0.25', async () => Math.abs((await einst()).schwelle - 0.25) < 1e-6);
   await tasten('#stimmung', Key.ARROW_RIGHT, 1);
@@ -253,7 +255,7 @@ try {
   await feld('kein host');
   await bis('Meldung ungueltig', async () => (await text('#ausnahme-meldung')).includes('look like'));
   await feld('sub.example.com');
-  await bis('Meldung abgedeckt', async () => (await text('#ausnahme-meldung')).includes('already covered by example.com'));
+  await bis('Meldung abgedeckt', async () => (await text('#ausnahme-meldung')).includes('already on your list through example.com'));
   await feld('co.uk');
   await bis('Meldung Endung', async () => (await text('#ausnahme-meldung')).includes('whole crowd'));
   await feld('bücher.de');
@@ -285,7 +287,7 @@ try {
   await zone('Mouth');
   await bis('mouth an', async () => (await einst()).zonen?.mouth?.an === true);
   await driver.switchTo().window(popup);
-  await bis('Popup zeigt Aenderungen', async () => (await text('#pause')) === 'Let Mia back in' && (await text('#stimmung-wert')) === '0.22' && (await geprueft('#strict')) && (await geprueft('#zonen input[data-zone="mouth"]')));
+  await bis('Popup zeigt Aenderungen', async () => (await text('#pause')) === 'Let Mia back in' && (await wertVon('#stimmung')) === '0.22' && (await geprueft('#strict')) && (await geprueft('#zonen input[data-zone="mouth"]')));
   pruefe(true, 'Einstellungsseite aendert, das Popup zeigt Pause, Stimmung 0.22, Strict und Mund');
   await klick('#pause');
   await bis('pause aus (2)', async () => (await einst()).pause === false);
@@ -295,7 +297,7 @@ try {
   await strictKlick();
   await bis('strict aus (2)', async () => (await einst()).strict === false);
   await driver.switchTo().window(optionenSeite);
-  await bis('Seite zeigt Aenderungen', async () => (await text('#pause')) === 'Pause Mia' && (await text('#stimmung-wert')) === '0.12' && !(await geprueft('#strict')));
+  await bis('Seite zeigt Aenderungen', async () => (await text('#pause')) === 'Pause Mia' && (await text('#stimmung-wert')) === stimmungsWort(0.12) && !(await geprueft('#strict')));
   pruefe(true, 'Popup aendert, die Einstellungsseite zeigt Pause aus, Stimmung 0.12 und Strict aus');
 
   // ---- Adult sites: drei Schalter ----
@@ -364,8 +366,14 @@ try {
   await setze({ einstieg: EINSTIEG_FERTIG });
   await bis('Dateifeld frei', async () => !(await gesperrt('#datei')));
   pruefe(!(await sichtbar('#pack-sperre')) && (await sichtbar('#abschnitt-interview')), 'Einstieg fertig: Sperre faellt, Interview-Knopf erscheint');
-  const interview = await neueSeiteNach(() => klick('#interview-neu'));
-  pruefe(interview === `moz-extension://${uuid}/willkommen.html#interview`, '"Do the interview again" oeffnet willkommen.html#interview');
+  // Runde 3, N12: das Wiederholen laeuft im selben Tab (keine zweite Seite), danach zurueck zur Einstellungsseite.
+  const tabsVorher = (await driver.getAllWindowHandles()).length;
+  await klick('#interview-neu');
+  await bis('Interview im selben Tab', async () => (await driver.getCurrentUrl()) === `moz-extension://${uuid}/willkommen.html#interview`);
+  pruefe((await driver.getAllWindowHandles()).length === tabsVorher, '"Redo the interview" oeffnet willkommen.html#interview im selben Tab');
+  await driver.navigate().back();
+  await bis('zurueck auf der Einstellungsseite', async () => (await text('#status')).length > 0);
+  await bis('Dateifeld wieder frei', async () => !(await gesperrt('#datei')));
   await (await driver.findElement(By.css('#datei'))).sendKeys(dateiPfad);
   await bis('Datei geprueft', async () => (await text('#meldung')).includes('doesn'));
   pruefe(true, 'Einstieg fertig: dieselbe Datei wird angenommen und geprueft (als kein Pack erkannt)');

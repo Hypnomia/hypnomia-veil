@@ -78,6 +78,9 @@ test('Schritte: Reihenfolge, Zurueck nur im Interview, Fortschritt', () => {
   assert.equal(vorheriger('alter'), null);
   assert.deepEqual(fortschritt('warnung'), { nr: 1, von: 8 });
   assert.deepEqual(fortschritt('interview-5'), { nr: 8, von: 8 });
+  // Fund 19: beim Wiederholen zaehlen nur die fuenf Interview-Seiten
+  assert.deepEqual(fortschritt('interview-1', true), { nr: 1, von: 5 });
+  assert.deepEqual(fortschritt('interview-5', true), { nr: 5, von: 5 });
 });
 
 test('Schritte: Startschritt nach Stand und Adresse', () => {

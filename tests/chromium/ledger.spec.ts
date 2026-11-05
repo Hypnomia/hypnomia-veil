@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEDGER_TITEL, LOESCHEN_FERTIG, LOESCHEN_FRAGE, ZAEHLER_NAMEN, popupZeile } from '../../src/ledger/texte';
+import { LEDGER_TITEL, LOESCHEN_FERTIG, LOESCHEN_FRAGE, ZAEHLER_NAMEN, popupZeile, stufeWert } from '../../src/ledger/texte';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -293,7 +293,7 @@ test('Einstellungsseite: Zahlen, Mias Saetze, Loeschen mit Rueckfrage', async ()
   await expect(p.locator('#ledger-heute-zensiert')).toHaveText('12');
   await expect(p.locator('#ledger-gesamt-zensiert')).toHaveText('340');
   await expect(p.locator('#ledger-gesamt-besuche')).toHaveText('3');
-  await expect(p.locator('#ledger-stufe')).toHaveText('2');
+  await expect(p.locator('#ledger-stufe')).toHaveText(stufeWert(2));
   await expect(p.locator('#ledger-zeile-zensiert .ledger-name')).toHaveText(ZAEHLER_NAMEN.zensiert);
   expect(((await p.locator('#ledger-satz-zensiert').textContent()) ?? '').length).toBeGreaterThan(5);
   expect(await p.locator('#ledger-seit').textContent()).toContain('With me since');

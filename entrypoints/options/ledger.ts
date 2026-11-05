@@ -6,6 +6,8 @@ import { LEDGER_SCHLUESSEL, LEDGER_ZAEHLER, type Ledger, type LedgerZaehler } fr
 import { neuerTag, tageSeit, vervollstaendigeLedger } from '../../src/ledger/logik';
 import {
   LEDGER_EINLEITUNG,
+  LEDGER_MEHR,
+  LEDGER_MEHR_NEUER,
   GESAMT_ETIKETT,
   HEUTE_ETIKETT,
   LEDGER_TITEL,
@@ -20,10 +22,26 @@ import {
   satzFuer,
   seitText,
   stufeSatz,
+  stufeWert,
 } from '../../src/ledger/texte';
 import type { NachrichtHintergrundLedgerLoeschen } from '../../src/nachrichten';
+import { datumLang } from '../../src/oberflaeche/gemeinsam';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, type Freischaltung, type PackKurz } from '../../src/pack/vertrag';
 
 const abschnitt = document.getElementById('ledger');
+
+// UX-Fund 25: welche Freischaltung (eine davon genuegt) einen Zaehler moeglich macht. Ohne sie und mit Wert 0 bleibt die Zeile weg.
+const FREISCHALTUNG: Partial<Record<LedgerZaehler, readonly Freischaltung[]>> = {
+  quizGeloest: ['erwachsen:quiz', 'quiz:freilegen'],
+  quizFalsch: ['erwachsen:quiz', 'quiz:freilegen'],
+  quizVerweigert: ['erwachsen:quiz', 'quiz:freilegen'],
+  // Minuten und hoechste Stufe kommen nur mit der Steigerung (src/hintergrund/ledger.ts).
+  erwachsenMinuten: ['zensur:steigerung'],
+  werbung: ['kontrolle:werbung'],
+  blitzwoerter: ['kontrolle:blitz'],
+  spiralen: ['kontrolle:leerlauf'],
+  besuche: ['kontrolle:besuche'],
+};
 
 function neu<K extends keyof HTMLElementTagNameMap>(tag: K, klasse?: string, id?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -39,7 +57,7 @@ if (abschnitt) {
   const einleitung = neu('p', 'hinweis', 'ledger-einleitung', LEDGER_EINLEITUNG);
   const seit = neu('p', 'ledger-seit', 'ledger-seit');
   const liste = neu('ul', 'ledger-liste', 'ledger-liste');
-  const zeilen: Array<{ z: LedgerZaehler; heute: HTMLElement; gesamt: HTMLElement; satz: HTMLElement }> = [];
+  const zeilen: Array<{ z: LedgerZaehler; li: HTMLElement; heute: HTMLElement; gesamt: HTMLElement; satz: HTMLElement }> = [];
   for (const z of LEDGER_ZAEHLER) {
     const li = neu('li', 'ledger-zeile', `ledger-zeile-${z}`);
     const kopf = neu('div', 'ledger-kopf');
@@ -53,10 +71,12 @@ if (abschnitt) {
     kopf.append(zahlen);
     const satz = neu('p', 'ledger-satz hinweis', `ledger-satz-${z}`);
     li.append(kopf, satz);
-    zeilen.push({ z, heute, gesamt, satz });
+    zeilen.push({ z, li, heute, gesamt, satz });
     liste.append(li);
   }
-  const stufeZeile = neu('div', 'ledger-zeile ledger-stufe');
+  const mehr = neu('p', 'hinweis', 'ledger-mehr', LEDGER_MEHR);
+  mehr.hidden = true;
+  const stufeZeile = neu('div', 'ledger-zeile ledger-stufe', 'ledger-stufe-zeile');
   const stufeKopf = neu('div', 'ledger-kopf');
   stufeKopf.append(neu('strong', 'ledger-name', undefined, STUFE_NAME));
   const stufeZahl = neu('span', 'ledger-zahl', 'ledger-stufe', '0');
@@ -82,20 +102,33 @@ if (abschnitt) {
   meldung.setAttribute('role', 'status');
   meldung.setAttribute('aria-live', 'polite');
 
-  abschnitt.replaceChildren(titel, einleitung, seit, liste, stufeZeile, loeschen, frage, meldung);
+  abschnitt.replaceChildren(titel, einleitung, seit, liste, mehr, stufeZeile, loeschen, frage, meldung);
 
   // ---------- Anzeige ----------
+  let pack: PackKurz | null = null;
+  let zuletztRoh: unknown;
   function zeige(roh: unknown): void {
+    zuletztRoh = roh;
     const jetzt = new Date();
     const l: Ledger = neuerTag(vervollstaendigeLedger(roh, jetzt), jetzt);
-    const datum = new Date(l.seit).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    const datum = datumLang(l.seit);
     seit.textContent = seitText(datum, tageSeit(l.seit, jetzt));
+    let versteckt = false;
     for (const r of zeilen) {
       r.heute.textContent = String(l.heute[r.z]);
       r.gesamt.textContent = String(l.gesamt[r.z]);
       r.satz.textContent = satzFuer(r.z, l.gesamt[r.z]);
+      const noetig = FREISCHALTUNG[r.z];
+      const frei = !noetig || noetig.some((f) => istFreigeschaltet(pack, f));
+      r.li.hidden = !(frei || l.gesamt[r.z] > 0 || l.heute[r.z] > 0);
+      if (r.li.hidden) versteckt = true;
     }
-    stufeZahl.textContent = String(l.hoechsteStufe);
+    // Die Stufenzeile steht ohne Steigerung und ohne Stufe nicht da (sonst immer "Level 0 of 4").
+    stufeZeile.hidden = !istFreigeschaltet(pack, 'zensur:steigerung') && l.hoechsteStufe <= 0;
+    if (stufeZeile.hidden) versteckt = true;
+    mehr.hidden = !versteckt;
+    mehr.textContent = pack ? LEDGER_MEHR_NEUER : LEDGER_MEHR;
+    stufeZahl.textContent = stufeWert(l.hoechsteStufe);
     stufeSatzEl.textContent = stufeSatz(l.hoechsteStufe);
   }
 
@@ -120,6 +153,13 @@ if (abschnitt) {
     loeschen.hidden = false;
     loeschen.focus();
   });
+  // Runde 3, N4: Escape behaelt die Zahlen wie "Keep them" (Fokus zurueck auf den Knopf).
+  frage.addEventListener('keydown', (ereignis) => {
+    if (ereignis.key === 'Escape') {
+      ereignis.preventDefault();
+      nein.click();
+    }
+  });
   ja.addEventListener('click', async () => {
     ja.disabled = true;
     try {
@@ -138,13 +178,23 @@ if (abschnitt) {
   });
 
   browser.storage.onChanged.addListener((aenderungen, bereich) => {
-    if (bereich !== 'local' || !(LEDGER_SCHLUESSEL in aenderungen)) return;
-    zeige(aenderungen[LEDGER_SCHLUESSEL].newValue);
+    if (bereich !== 'local') return;
+    if (PACK_SPEICHER_SCHLUESSEL in aenderungen) {
+      pack = kurzAusRoh(aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue);
+      zeige(zuletztRoh);
+    }
+    if (LEDGER_SCHLUESSEL in aenderungen) zeige(aenderungen[LEDGER_SCHLUESSEL].newValue);
   });
   // Bei offener Seite rollt "Today" um Mitternacht um: neu zeigen, wenn die Seite wieder sichtbar wird und einmal je Minute.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void lade();
   });
   setInterval(() => void lade(), 60_000);
-  void lade();
+  void ladePackKurz().then(
+    (p) => {
+      pack = p;
+      void lade();
+    },
+    () => void lade(),
+  );
 }

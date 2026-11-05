@@ -14,6 +14,13 @@ import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 
+// Session 12: die Einstellungsseite hat eine klebende Leiste; Knoepfe vor dem Klick in die Mitte holen, sonst verdeckt die Leiste sie.
+async function mitteKlick(sel) {
+  const e = await driver.findElement(By.css(sel));
+  await driver.executeScript('arguments[0].scrollIntoView({ block: "center" })', e);
+  await e.click();
+}
+
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 600 s ueberschritten');
   process.exit(1);
@@ -145,9 +152,9 @@ async function entferneImTab() {
   await bis('Optionsseite da', async () => (await text('#pack-status').catch(() => '')).length > 0);
   await warte(300);
   if (await sichtbar('#entfernen')) {
-    await driver.findElement(By.css('#entfernen')).click();
+    await mitteKlick('#entfernen');
     await bis('Rueckfrage', () => sichtbar('#entfernen-frage'));
-    await driver.findElement(By.css('#entfernen-ja')).click();
+    await mitteKlick('#entfernen-ja');
     await bis('Pack entfernt', async () => (await text('#pack-status')).includes('No pack yet'));
   }
 }

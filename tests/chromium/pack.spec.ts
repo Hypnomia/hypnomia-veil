@@ -415,7 +415,7 @@ test('Entfernen mit Rueckfrage: Pack weg, Stil Mosaik, Erkenner zeichnet Mosaik 
     await seite.locator('#entfernen').click();
     await seite.locator('#entfernen-ja').click();
     await expect(seite.locator('#pack-status')).toContainText('No pack yet');
-    await expect(seite.locator('#meldung')).toContainText('Pack removed');
+    await expect(seite.locator('#meldung')).toContainText('Mia Pack removed');
     expect(await speicher(seite, 'pack')).toBeUndefined();
     expect((await speicher(seite, 'einstellungen')).stil).toBe('mosaik');
     expect(await zaehleIdb(seite)).toEqual({ dateien: 0, meta: 0 });

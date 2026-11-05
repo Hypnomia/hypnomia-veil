@@ -21,7 +21,7 @@ import { baueDummyPack, DUMMY_WERBUNG } from '../../scripts/pack/baue-pack.mjs';
 import { DUMMY_TEXTE } from '../../scripts/pack/dummy-inhalte.mjs';
 import { readFileSync } from 'node:fs';
 
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 const kodiere = (t) => new TextEncoder().encode(t);
 const LIZENZ = { name: 'lizenz.txt', typ: 'text/plain', daten: kodiere('Lizenz'), rolle: 'lizenz' };
 const kopf = (freischaltungen) => ({ id: 't', version: '1.0.0', titel: 'T', erstellt: 'x', mindestVeil: VERSION, freischaltungen });

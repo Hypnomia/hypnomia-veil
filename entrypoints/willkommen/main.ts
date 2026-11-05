@@ -20,6 +20,7 @@ import { einstiegFertig, ladeEinstieg, type EinstiegStand } from '../../src/eins
 import { fortschritt, istInterview, naechster, startSchritt, vorheriger, type Schritt } from '../../src/einstieg/schritte';
 import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenWahl, type ZonenWahl } from '../../src/einstieg/zonen';
 import { TEXT } from '../../src/einstieg/texte';
+import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 
 // Anker des Pack-Abschnitts ("Add a pack") auf der Einstellungsseite: die id `neu` steht in entrypoints/options/index.html.
 const PACK_ANKER = '#neu';
@@ -126,7 +127,37 @@ let pack: PackKurz | null = null;
 let aktualisiere: ((e: Einstellungen, p: PackKurz | null) => void) | null = null;
 
 const istFirefox = location.protocol === 'moz-extension:';
-const speichere = (teil: Parameters<typeof aendereEinstellungen>[0]) => void aendereEinstellungen(teil).catch(() => {});
+// Beim Wiederholen des Interviews zaehlen nur seine Seiten ("Question 1 of 5", Fund 19).
+let wiederholung = false;
+// Fund 26: scheitert ein Speichern, steht der Satz FEHLER_SPEICHERN auf der Seite und das Bedienelement springt auf den gespeicherten Stand.
+let fehlerZeile: HTMLParagraphElement | null = null;
+function zeigeFehler(): void {
+  if (!fehlerZeile) return;
+  // Erst leeren, dann im naechsten Frame setzen: so kuendigt ein Screenreader auch den zweiten gleichen Fehler an.
+  const z = fehlerZeile;
+  z.textContent = '';
+  z.hidden = false;
+  requestAnimationFrame(() => {
+    z.textContent = FEHLER_SPEICHERN;
+  });
+}
+async function nachFehler(): Promise<void> {
+  zeigeFehler();
+  try {
+    einst = await ladeEinstellungen();
+  } catch {
+    // dann gilt der zuletzt gesehene gespeicherte Stand
+  }
+  aktualisiere?.(einst, pack);
+}
+const speichere = (teil: Parameters<typeof aendereEinstellungen>[0]) =>
+  void aendereEinstellungen(teil).then(
+    () => {
+      if (fehlerZeile) fehlerZeile.hidden = true;
+    },
+    () => void nachFehler(),
+  );
+const pfadOptionen = (anker = '') => (browser.runtime.getURL as (p: string) => string)('/options.html') + anker;
 
 async function schliesse(): Promise<void> {
   try {
@@ -154,7 +185,7 @@ function seiteWarnung(): HTMLElement {
       void Promise.all([
         aendereEinstieg({ warnung: true }),
         browser.storage.local.set({ [QUIZ_WARNUNG_SCHLUESSEL]: true, [WARNUNG_SPIRALE_SCHLUESSEL]: true }),
-      ]).then(() => zeige(naechster('warnung')), () => {});
+      ]).then(() => zeige(naechster('warnung')), zeigeFehler);
     }),
   );
   return s;
@@ -166,7 +197,17 @@ function seiteAlter(): HTMLElement {
   const absage = knoten('div', undefined, undefined, 'alter-absage');
   absage.hidden = true;
   absage.setAttribute('role', 'alert');
-  absage.append(knoten('p', undefined, TEXT.alterAbsage), knoten('p', 'kern', istFirefox ? TEXT.entfernenFirefox : TEXT.entfernenChrome, 'alter-entfernen'));
+  absage.append(
+    knoten('p', undefined, TEXT.alterAbsage),
+    knoten('p', 'kern', istFirefox ? TEXT.entfernenFirefox : TEXT.entfernenChrome, 'alter-entfernen'),
+    // Fund 18: wer aus Versehen "No" getippt hat, kommt zur Frage zurueck. Gespeichert wurde nichts.
+    knopf('alter-zurueck', TEXT.alterZurueck, 'klein ruhig', () => {
+      absage.hidden = true;
+      frage.hidden = false;
+      fortschrittZeile.hidden = false;
+      el<HTMLButtonElement>('alter-ja').focus();
+    }),
+  );
   frage.append(
     knoten('p', undefined, TEXT.alterFrage),
     (() => {
@@ -174,7 +215,7 @@ function seiteAlter(): HTMLElement {
       k.append(
         (() => {
           const ja = knopf('alter-ja', TEXT.alterJa, 'gross', () => {
-            void aendereEinstieg({ alter: true }).then(() => zeige(naechster('alter')), () => {});
+            void aendereEinstieg({ alter: true }).then(() => zeige(naechster('alter')), zeigeFehler);
           });
           ja.setAttribute('aria-label', TEXT.alterJaAria);
           return ja;
@@ -200,14 +241,21 @@ function seiteEinwilligung(): HTMLElement {
   const liste = knoten('ul', 'punkte', undefined, 'einwilligung-punkte');
   for (const p of TEXT.einwilligungPunkte) liste.append(knoten('li', undefined, p));
   const k = knoten('div', 'knoepfe');
+  const nein = knopf('einwilligung-nein', TEXT.einwilligungNein, 'klein ruhig', () => void schliesse());
+  nein.setAttribute('aria-describedby', 'einwilligung-nein-hinweis');
   k.append(
     knopf('einwilligung-ok', TEXT.einwilligungOk, 'gross', () => {
-      void aendereEinstieg({ einwilligung: true, zeit: Date.now() }).then(() => zeige(naechster('einwilligung')), () => {});
+      void aendereEinstieg({ einwilligung: true, zeit: Date.now() }).then(() => zeige(naechster('einwilligung')), zeigeFehler);
     }),
-    // "Not now": nichts wird gespeichert, die Seite schliesst.
-    knopf('einwilligung-nein', TEXT.einwilligungNein, 'klein ruhig', () => void schliesse()),
+    // "Not now": nichts wird gespeichert, die Seite schliesst. Der Satz darunter sagt, was dann gilt (Fund 2).
+    nein,
   );
-  s.append(liste, k);
+  s.append(
+    knoten('p', undefined, TEXT.einwilligungLaeuft, 'einwilligung-laeuft'),
+    liste,
+    k,
+    knoten('p', 'hinweis', TEXT.einwilligungNeinHinweis, 'einwilligung-nein-hinweis'),
+  );
   return s;
 }
 
@@ -218,8 +266,15 @@ interface Seite {
   aktualisiere: (e: Einstellungen, p: PackKurz | null) => void;
 }
 
-function packHinweis(): HTMLParagraphElement {
-  const p = knoten('p', 'hinweis', TEXT.ohnePack, 'iv-ohne-pack');
+// Fund 4: ohne Pack ein Satz, was das Pack auf dieser Seite zeigt, und der Link zum Pack-Abschnitt (die Seite merkt sich den Schritt).
+function packHinweis(text: string): HTMLParagraphElement {
+  const p = knoten('p', 'hinweis', `${text} `, 'iv-ohne-pack');
+  const link = knoten('a', undefined, TEXT.packLink, 'iv-pack-link');
+  link.href = pfadOptionen(PACK_ANKER);
+  // Fund N11: neuer Tab, das Interview bleibt auf seiner Seite (Zurueck-Taste und gemerkter Schritt bleiben unberuehrt).
+  link.target = '_blank';
+  link.rel = 'noopener';
+  p.append(link);
   p.hidden = true;
   return p;
 }
@@ -238,9 +293,12 @@ function seite1(): Seite {
   regler.step = '0.01';
   regler.setAttribute('aria-labelledby', 'iv-stimmung-titel');
   // Beim Ziehen nur die Anzeige, gespeichert wird beim Loslassen (change).
-  regler.addEventListener('input', () => {
-    wert.textContent = Number(regler.value).toFixed(2);
-  });
+  const zeigeWort = () => {
+    const w = stimmungsWort(Number(regler.value));
+    wert.textContent = w;
+    regler.setAttribute('aria-valuetext', w);
+  };
+  regler.addEventListener('input', zeigeWort);
   regler.addEventListener('change', () => speichere({ schwelle: Number(regler.value) }));
   const enden = knoten('div', 'enden');
   enden.append(knoten('span', undefined, TEXT.stimmungSuspicious), knoten('span', undefined, TEXT.stimmungRelaxed));
@@ -250,7 +308,7 @@ function seite1(): Seite {
     knoten: k,
     aktualisiere: (e) => {
       regler.value = String(e.schwelle);
-      wert.textContent = e.schwelle.toFixed(2);
+      zeigeWort();
       strict.feld.checked = e.strict;
     },
   };
@@ -307,8 +365,7 @@ function seite3(): Seite {
   }
   const sperre = knoten('p', 'hinweis', TEXT.stilPatchGesperrt, 'iv-stil-sperre');
   sperre.hidden = true;
-  const ruhig = schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an }));
-  k.append(gruppe, sperre, ruhig.zeile);
+  k.append(gruppe, sperre);
   return {
     knoten: k,
     aktualisiere: (e, p) => {
@@ -317,7 +374,6 @@ function seite3(): Seite {
       sperre.hidden = patchFrei;
       const wirksam = wirksamerStil(e.stil, p);
       for (const [stil, feld] of felder) feld.checked = stil === wirksam;
-      ruhig.feld.checked = e.ruhig;
     },
   };
 }
@@ -325,7 +381,7 @@ function seite3(): Seite {
 function seite4(): Seite {
   const k = knoten('div');
   k.append(knoten('p', undefined, TEXT.i4Text));
-  const hinweis = packHinweis();
+  const hinweis = packHinweis(TEXT.ohnePack4);
   const an = schalter('iv-erw-an', TEXT.erwAnTitel, TEXT.erwAnText, (a) =>
     speichere((alt) => ({ erwachsen: { ...alt.erwachsen, an: a } })),
   );
@@ -363,7 +419,7 @@ function seite4(): Seite {
 function seite5(): Seite {
   const k = knoten('div');
   k.append(knoten('p', undefined, TEXT.i5Text));
-  const hinweis = packHinweis();
+  const hinweis = packHinweis(TEXT.ohnePack5);
   const blitz = auswahl(
     'iv-blitz',
     [
@@ -379,6 +435,7 @@ function seite5(): Seite {
   const leerlauf = schalter('iv-leerlauf', TEXT.leerlaufTitel, TEXT.leerlaufText, (a) =>
     speichere((alt) => ({ kontrolle: { ...alt.kontrolle, leerlauf: a } })),
   );
+  const ruhig = schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an }));
   const cursor = auswahl(
     'iv-cursor',
     [
@@ -392,13 +449,18 @@ function seite5(): Seite {
   const cursorZeile = knoten('div', 'regel');
   cursorZeile.append(knoten('strong', undefined, TEXT.cursorTitel, 'iv-cursor-titel'), cursor);
   const ton = schalter('iv-ton', TEXT.tonTitel, TEXT.tonText, (a) => speichere((alt) => ({ ton: { ...alt.ton, an: a } })));
-  k.append(hinweis, blitzZeile, leerlauf.zeile, cursorZeile, ton.zeile);
+  const auchAn = knoten('p', 'hinweis', undefined, 'iv-auch-an');
+  k.append(hinweis, blitzZeile, leerlauf.zeile, ruhig.zeile, cursorZeile, ton.zeile, auchAn);
   return {
     knoten: k,
     aktualisiere: (e, p) => {
       hinweis.hidden = p !== null;
       blitz.value = e.kontrolle.blitz;
       leerlauf.feld.checked = e.kontrolle.leerlauf;
+      ruhig.feld.checked = e.ruhig;
+      const an = (['werbung', 'tabtitel', 'meldungen'] as const).filter((n) => e.kontrolle[n]).map((n) => TEXT.auchAnNamen[n]);
+      auchAn.textContent = an.length ? TEXT.auchAn(an) : '';
+      auchAn.hidden = an.length === 0;
       cursor.value = e.kontrolle.cursor;
       ton.feld.checked = e.ton.an;
     },
@@ -420,7 +482,7 @@ function navigation(s: Schritt): HTMLElement {
   if (zurueck) zeile.append(knopf('iv-zurueck', TEXT.zurueck, 'klein ruhig', () => zeige(zurueck)));
   const weiter = knopf('iv-weiter', letzte ? TEXT.fertig : TEXT.weiter, 'gross', () => {
     if (!letzte) return zeige(naechster(s));
-    void aendereEinstieg({ interview: 'fertig' }).then(() => zeige('ende'), () => {});
+    void aendereEinstieg({ interview: 'fertig' }).then(() => zeige('ende'), zeigeFehler);
   });
   weiter.classList.add('rechts');
   zeile.append(weiter);
@@ -432,14 +494,17 @@ function seiteInterview(s: Schritt): HTMLElement {
   aktualisiere = s1.aktualisiere;
   s1.aktualisiere(einst, pack);
   const alles = knoten('div');
+  alles.append(s1.knoten, navigation(s));
+  // Auf der letzten Seite tut "Skip the rest" dasselbe wie "Finish", dort fehlt der Block (Fund 20).
+  if (naechster(s) === 'ende') return alles;
   const ueber = knoten('div', 'ueberspringen');
   ueber.append(
     knopf('iv-ueberspringen', TEXT.ueberspringen, 'klein', () => {
-      void aendereEinstieg((alt) => ({ interview: alt.interview === 'fertig' ? 'fertig' : 'uebersprungen' })).then(() => zeige('ende'), () => {});
+      void aendereEinstieg((alt) => ({ interview: alt.interview === 'fertig' ? 'fertig' : 'uebersprungen' })).then(() => zeige('ende'), zeigeFehler);
     }),
     knoten('p', 'hinweis', TEXT.ueberspringenHinweis),
   );
-  alles.append(s1.knoten, navigation(s), ueber);
+  alles.append(ueber);
   return alles;
 }
 
@@ -447,19 +512,24 @@ function seiteInterview(s: Schritt): HTMLElement {
 
 function seiteEnde(): HTMLElement {
   const s = knoten('div');
+  // Beide Knoepfe gehen im selben Tab zur Einstellungsseite (Fund 22); openOptionsPage kennt keinen Anker.
   const packKnopf = knopf('ende-pack', TEXT.endePack, 'gross', () => {
-    // Direkt zum Pack-Abschnitt der Einstellungsseite (openOptionsPage kennt keinen Anker).
-    location.href = (browser.runtime.getURL as (p: string) => string)('/options.html') + PACK_ANKER;
+    location.href = pfadOptionen(PACK_ANKER);
   });
+  const text = knoten('p', undefined, undefined, 'ende-text');
   const k = knoten('div', 'knoepfe');
   k.append(
     packKnopf,
-    knopf('ende-einstellungen', TEXT.endeEinstellungen, 'klein', () => void browser.runtime.openOptionsPage().catch(() => {})),
+    knopf('ende-einstellungen', TEXT.endeEinstellungen, 'klein', () => {
+      location.href = pfadOptionen();
+    }),
     knopf('ende-schliessen', TEXT.endeSchliessen, 'klein ruhig', () => void schliesse()),
   );
-  s.append(knoten('p', undefined, TEXT.endeText), k);
+  s.append(text, k);
   aktualisiere = (_e, p) => {
     packKnopf.hidden = p !== null;
+    // Fund 21: mit Pack sagt der Satz nicht mehr, dass es fehlt.
+    text.textContent = p !== null ? TEXT.endeTextMitPack : TEXT.endeText;
   };
   aktualisiere(einst, pack);
   return s;
@@ -487,17 +557,21 @@ function zeige(s: Schritt): void {
   else if (s === 'einwilligung') inhalt = seiteEinwilligung();
   else if (istInterview(s)) inhalt = seiteInterview(s);
   else inhalt = seiteEnde();
-  platz.append(titel, inhalt);
+  fehlerZeile = knoten('p', 'fehler', undefined, 'fehler');
+  fehlerZeile.setAttribute('role', 'alert');
+  fehlerZeile.hidden = true;
+  platz.append(titel, inhalt, fehlerZeile);
 
   if (s === 'ende') {
     fortschrittZeile.hidden = true;
   } else {
-    const f = fortschritt(s);
+    const nurFragen = wiederholung && istInterview(s);
+    const f = fortschritt(s, nurFragen);
     fortschrittZeile.hidden = false;
     fortschrittBalken.max = f.von;
     fortschrittBalken.value = f.nr;
     fortschrittText.id = 'fortschritt-text';
-    fortschrittText.textContent = TEXT.schrittVon(f.nr, f.von);
+    fortschrittText.textContent = nurFragen ? TEXT.frageVon(f.nr, f.von) : TEXT.schrittVon(f.nr, f.von);
   }
   titel.focus({ preventScroll: true });
 }
@@ -527,8 +601,12 @@ async function start(): Promise<void> {
   });
   window.addEventListener('hashchange', () => {
     // Ist die Seite schon offen und der Einstieg fertig, springt `#interview` direkt ins Interview.
-    if (location.hash === '#interview' && einstiegFertig(einstieg)) zeige('interview-1');
+    if (location.hash === '#interview' && einstiegFertig(einstieg)) {
+      wiederholung = true;
+      zeige('interview-1');
+    }
   });
+  wiederholung = einstiegFertig(einstieg) && (location.hash === '#interview' || einstieg.interview !== 'offen');
   let start = startSchritt(einstieg, location.hash);
   const alt = gemerkt() as Schritt | null;
   if (start === 'interview-1' && alt && istInterview(alt)) start = alt;

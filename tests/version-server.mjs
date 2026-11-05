@@ -1,5 +1,5 @@
 // Eigener Mini-Server fuer die Version-Tests (Auftrag V): liefert version.json in Varianten und zaehlt die Abrufe je Pfad.
-// Die Tests treffen nie das echte GitHub. Pfade: /v/9.9.9.json (neuere Version), /v/0.6.0.json (gleich), /v/404.json (404),
+// Die Tests treffen nie das echte GitHub. Pfade: /v/9.9.9.json (neuere Version), /v/0.6.1.json (gleich), /v/404.json (404),
 // /v/kaputt.json (kein JSON), /v/falsch.json (JSON, aber ohne gueltige Version),
 // /v/vorab.json (9.9.9-beta), /v/gross.json (ueber 4 KB), /v/langsam.json (9.9.9 nach 2,5 s), /v/umleiten.json (302 auf 9.9.9.json). Mit CORS-Kopf, damit der Abruf nie am Browser scheitert.
 import { createServer } from 'node:http';
@@ -8,7 +8,7 @@ export const VERSION_PORT = Number(process.env.VEIL_VERSION_PORT ?? 47487);
 
 const ANTWORTEN = {
   '/v/9.9.9.json': [200, JSON.stringify({ version: '9.9.9', datum: '2030-01-01' })],
-  '/v/0.6.0.json': [200, JSON.stringify({ version: '0.6.0', datum: '2026-11-05' })],
+  '/v/0.6.1.json': [200, JSON.stringify({ version: '0.6.1', datum: '2026-11-05' })],
   '/v/404.json': [404, 'nicht gefunden'],
   '/v/kaputt.json': [200, '{ das ist kein json'],
   '/v/falsch.json': [200, JSON.stringify({ version: 'neu', datum: 5 })],

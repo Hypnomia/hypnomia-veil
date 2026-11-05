@@ -1,0 +1,51 @@
+/* Pack-Teil der Einstellungsseite (Session 12, Auftrag P): Ablage fuer Ziehen und Ablegen, Lizenz-Ansicht, Hinweis zum Ersetzen.
+   Farben aus style.css (:root). Nichts hier erzeugt waagrechtes Scrollen bei 360 px. */
+#ablage {
+  margin: 12px 0;
+  padding: 12px;
+  border: 2px dashed var(--linie);
+  border-radius: 12px;
+  background: var(--karte);
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+#ablage .datei {
+  margin: 0 0 6px;
+}
+
+#ablage-text {
+  margin: 0;
+}
+
+#ablage.ueber {
+  border-color: var(--akzent);
+  background: var(--akzent-hell);
+}
+
+#lizenz-zeile {
+  margin: 8px 0;
+}
+
+#lizenz-ansicht {
+  margin: 8px 0;
+}
+
+#lizenz-ansicht-text,
+#lizenz-text {
+  max-width: 100%;
+  max-height: 16em;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#ersetzen-hinweis {
+  overflow-wrap: anywhere;
+}
+
+/* Die Warnung beim Zuruecksetzen auf eine aeltere Version: kraeftiger Rand und fette Schrift, damit sie nicht wie ein Hinweis aussieht. */
+#ersetzen-hinweis.stark {
+  border-width: 3px;
+  border-color: var(--fehler);
+  font-weight: 600;
+}

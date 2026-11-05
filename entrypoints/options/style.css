@@ -10,6 +10,10 @@
   --linie: #f0cfe0;
   --fokus: #6a4bc4;
   --fehler: #a8324f;
+  /* Fund 9 und 10: Text auf hellem Rosa ueber 4,5:1, Feldraender und Schalterbahn ueber 3:1 gegen Weiss. */
+  --akzent-text: #8f2d61;
+  --feld-rand: #8f7285;
+  --bahn-aus: #9a7c8e;
 }
 
 * {
@@ -44,18 +48,19 @@ h1 {
   color: var(--leise);
 }
 
+/* Fund 15: Abschnittstitel gross und in Textfarbe, Unterueberschriften klein darunter. */
 h2 {
   margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--leise);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 h3 {
   margin: 14px 0 4px;
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--leise);
 }
 
 p {
@@ -114,7 +119,7 @@ button.klein {
   border: 1px solid var(--akzent);
   border-radius: 10px;
   background: var(--akzent-hell);
-  color: var(--akzent);
+  color: var(--akzent-text);
   font-weight: 600;
 }
 
@@ -231,7 +236,7 @@ footer {
   padding: 8px 10px;
   font: inherit;
   color: inherit;
-  border: 1px solid var(--linie);
+  border: 1px solid var(--feld-rand);
   border-radius: 10px;
   background: var(--grund);
 }
@@ -302,7 +307,7 @@ input[type='range'] {
   width: 38px;
   height: 22px;
   border-radius: 11px;
-  background: #e3cfdb;
+  background: var(--bahn-aus);
 }
 
 .regler::after {
@@ -344,7 +349,7 @@ input[type='range'] {
   font: inherit;
   color: var(--text);
   background: var(--karte);
-  border: 1px solid var(--linie);
+  border: 1px solid var(--feld-rand);
   border-radius: 8px;
   padding: 4px 8px;
 }
@@ -397,6 +402,10 @@ input[type='range'] {
 }
 .zeit-zeile input[type='time'] {
   font: inherit;
+  color: var(--text);
+  border: 1px solid var(--feld-rand);
+  border-radius: 8px;
+  padding: 3px 6px;
 }
 
 /* Session 11, Auftrag S: Status, Sprungleiste, Grundeinstellungen */
@@ -409,9 +418,54 @@ header .gross {
   margin-top: 6px;
 }
 
+/* Fund 5 und 29: die Leiste klebt oben (Sprungleiste, Pause-Knopf, Fehlersatz). */
+#leiste {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 0 -20px;
+  padding: 8px 20px;
+  background: var(--grund);
+  border-bottom: 1px solid var(--linie);
+}
+
+.leiste-zeile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#pause-leiste {
+  flex: none;
+  white-space: nowrap;
+}
+
+@keyframes meldung-neu {
+  from {
+    background: var(--akzent-hell);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+#speicher-meldung.neu {
+  animation: meldung-neu 0.8s ease-out;
+}
+
+#speicher-meldung {
+  margin: 8px 0 0;
+  color: var(--fehler);
+  font-weight: 600;
+}
+
 #sprung {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-wrap: wrap;
+  /* Platz fuer den Fokusrahmen der Chips (outline 3 px plus Abstand). */
+  padding: 5px 4px;
   gap: 6px 8px;
 }
 
@@ -420,17 +474,22 @@ header .gross {
   border: 1px solid var(--linie);
   border-radius: 999px;
   background: var(--karte);
-  color: var(--akzent);
+  color: var(--akzent-text);
   font-size: 13px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 #sprung a:hover {
   background: var(--akzent-hell);
 }
 
+/* Sprungziele und fokussierte Elemente rutschen nicht unter die klebende Leiste; grund.ts setzt scroll-padding-top aus der echten Hoehe. */
+html {
+  scroll-padding-top: 80px;
+}
+
 section {
-  scroll-margin-top: 12px;
   min-width: 0;
 }
 
@@ -465,7 +524,7 @@ section:empty {
   display: block;
   padding: 8px 4px;
   text-align: center;
-  border: 1px solid var(--linie);
+  border: 1px solid var(--feld-rand);
   border-radius: 10px;
   background: var(--grund);
   cursor: pointer;
@@ -539,6 +598,59 @@ section:empty {
   main {
     padding: 20px 12px 20px;
   }
+  /* Fund 5: bei schmalen Fenstern eine waagrecht scrollbare Zeile. */
+  #leiste {
+    margin: 0 -12px;
+    padding: 6px 12px;
+  }
+  #sprung {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Verlauf am rechten Rand: es gibt noch mehr Chips. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  /* Fund 11: Finger-Ziele mindestens 44 px hoch. */
+  #sprung a,
+  button.klein,
+  button.gross,
+  .liste button,
+  .wahl span,
+  .auch,
+  .zeit-tage label,
+  .zonen .schalter,
+  .schalter {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .schalter {
+    display: flex;
+  }
+  .wahl span {
+    display: flex;
+    justify-content: center;
+  }
+  .auch,
+  .zeit-tage label {
+    gap: 6px;
+    padding: 0 6px;
+    font-size: 14px;
+  }
+  .zeit-tage {
+    gap: 2px;
+  }
+  .zeit-zeile input[type='time'],
+  #kontrolle select,
+  #kontrolle input[type='number'],
+  .zeile input[type='text'] {
+    min-height: 44px;
+  }
+  .liste button {
+    min-width: 44px;
+    justify-content: center;
+  }
   .zeit-zeile,
   .regel {
     flex-wrap: wrap;
@@ -546,5 +658,47 @@ section:empty {
   pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+}
+
+/* ---------- Runde 3 nach der zweiten UX-Lesung (Orchestrator) ---------- */
+/* N5: ueber 480 px kleinere Chips, damit die klebende Leiste niedrig bleibt; der aktuelle Abschnitt ist markiert (grund.ts, aria-current). */
+/* Lesung Runde 3, Nr. 5: nur mit Maus; Tablets mit Touch behalten die grossen Chips. Abweichung von der Festlegung N5: die Leiste
+   bricht weiter um (eine Zeile mit verstecktem Rest hatte die erste Lesung bemaengelt), die Chips sind nur kleiner. */
+@media (min-width: 481px) and (pointer: fine) {
+  #sprung {
+    gap: 4px;
+  }
+  #sprung a {
+    padding: 2px 7px;
+    font-size: 12px;
+  }
+}
+#sprung a[aria-current="true"] {
+  background: var(--akzent-hell);
+  border-color: var(--akzent);
+  font-weight: 650;
+}
+/* N6: der Pause-Knopf der Leiste erscheint erst, wenn der grosse Knopf oben aus dem Bild ist (grund.ts setzt hidden). */
+/* N7: Ziehen und Ablegen gibt es nur mit Maus oder Stift, auf Touch-Geraeten entfaellt der Satz. */
+@media not (pointer: fine) {
+  #ablage-text {
+    display: none;
+  }
+}
+/* N8: gesperrtes "even when clothed" sieht auch gesperrt aus. */
+.auch:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* N10: Regler und Links bekommen auf schmalen Schirmen und Touch-Geraeten eine Fingerflaeche von 44 px. */
+@media (max-width: 480px), (pointer: coarse) {
+  input[type="range"] {
+    min-height: 44px;
+  }
+  #ueber .ue-links a {
+    display: inline-block;
+    min-height: 44px;
+    line-height: 44px;
   }
 }

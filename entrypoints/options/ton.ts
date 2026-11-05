@@ -3,7 +3,8 @@
 // (oder mit einem Pack ohne Klaenge) steht ein Hinweis da; Schalter und Regler lassen sich trotzdem stellen, nur die Probe ruht. Alle Texte
 // per textContent. Die Klaenge holt der Hintergrund aus dem Pack (`packton`).
 import './ton.css';
-import { TON_LAUTSTAERKE_STANDARD, aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
+import { speichere } from './grund-speichern';
+import { TON_LAUTSTAERKE_STANDARD, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
 import type { AntwortPackTon, NachrichtHintergrundPackTon } from '../../src/nachrichten';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { TESTHAKEN } from '../../src/schleier/konstanten';
@@ -74,7 +75,8 @@ if (abschnitt) {
 
   function zeichnePack(): void {
     const mit = istFreigeschaltet(pack, 'ton');
-    probe.disabled = !mit || !!zuletzt?.pause;
+    // Fund 24: in der Pause bleibt die Probe frei, ihr Klick sagt, warum es still bleibt (TON_TEXTE.probePause).
+    probe.disabled = !mit;
     hinweis.textContent = mit ? TON_TEXTE.hinweisMitTon : pack ? TON_TEXTE.hinweisAltesPack : TON_TEXTE.hinweisOhnePack;
     if (!mit) probeMeldung.textContent = '';
   }
@@ -82,24 +84,30 @@ if (abschnitt) {
   // `erzwingen`: auch den Regler mit Fokus neu zeichnen (nach dem eigenen Speichern).
   function zeichne(e: Einstellungen, erzwingen = false): void {
     zuletzt = e;
-    probe.disabled = !istFreigeschaltet(pack, 'ton') || e.pause;
-    // UX-Pruefung Fund 24: der gesperrte Knopf sagt in der Pause, warum (der Klick-Handler kommt bei gesperrtem Knopf nie an).
-    if (e.pause && istFreigeschaltet(pack, 'ton')) probeMeldung.textContent = TON_TEXTE.probePause;
-    else if (probeMeldung.textContent === TON_TEXTE.probePause) probeMeldung.textContent = '';
+    probe.disabled = !istFreigeschaltet(pack, 'ton');
+    // Fund 24: der Satz aus der Pause verschwindet, sobald Mia wieder da ist.
+    if (!e.pause && probeMeldung.textContent === TON_TEXTE.probePause) probeMeldung.textContent = '';
     an.checked = e.ton.an;
     if (erzwingen || document.activeElement !== laut) laut.value = String(prozent(e.ton.lautstaerke));
     zeigeLautstaerke(Number(laut.value));
   }
 
-  an.addEventListener('change', () => void aendereEinstellungen((alt) => ({ ton: { ...alt.ton, an: an.checked } })));
+  // Fund 26: Speichern ueber die gemeinsame Stelle (Fehlersatz in der Leiste, Schalter und Regler springen auf den gespeicherten Stand).
+  an.addEventListener('change', () => {
+    const wert = an.checked;
+    void speichere((alt) => ({ ton: { ...alt.ton, an: wert } }), (e) => zeichne(e, true));
+  });
   laut.addEventListener('input', () => zeigeLautstaerke(Number(laut.value)));
   laut.addEventListener('change', () => {
     const v = Number(laut.value);
     if (!Number.isFinite(v)) return;
     // Nach dem Speichern den gespeicherten Stand zeigen, aber nur, wenn der Regler seither nicht weitergeschoben wurde (schnelle Tastenfolge).
-    void aendereEinstellungen((alt) => ({ ton: { ...alt.ton, lautstaerke: Math.min(Math.max(v, 0), 100) / 100 } })).then((e) => {
-      if (Number(laut.value) === v) zeichne(e, true);
-    });
+    void speichere(
+      (alt) => ({ ton: { ...alt.ton, lautstaerke: Math.min(Math.max(v, 0), 100) / 100 } }),
+      (e) => {
+        if (Number(laut.value) === v) zeichne(e, true);
+      },
+    );
   });
   laut.addEventListener('blur', () => zuletzt && zeichne(zuletzt, true));
 
@@ -151,7 +159,7 @@ if (abschnitt) {
         notiere(klang.name, lautstaerke, 'abgelehnt');
       }
     } finally {
-      probe.disabled = !istFreigeschaltet(pack, 'ton') || !!zuletzt?.pause;
+      probe.disabled = !istFreigeschaltet(pack, 'ton');
     }
   });
 

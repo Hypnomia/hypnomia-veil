@@ -277,7 +277,7 @@ try {
   pruefe(((await einst()).erwachsen.eigeneSeiten ?? []).length === 1, 'Doppelte Seite wird nicht noch einmal gespeichert');
   await driver.findElement(feld).sendKeys('kein host');
   await driver.findElement(By.css('#seite-add')).click();
-  await bis('Fehler gemeldet', async () => (await text('#seite-meldung')).includes("doesn't look like"));
+  await bis('Fehler gemeldet', async () => (await text('#seite-meldung')).includes('doesn’t look like'));
   pruefe(((await einst()).erwachsen.eigeneSeiten ?? []).length === 1, 'ungueltige Eingabe wird abgewiesen');
 
   await setzeRange('#verweigern', 20);

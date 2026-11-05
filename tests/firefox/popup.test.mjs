@@ -1,13 +1,16 @@
 // Firefox-Test des Popups ueber geckodriver/WebDriver (PHASE-2-BAUPLAN 9.3 und 9.6): Pause schaltet storage.local, Mia patch ist ohne Pack
 // gesperrt und mit Pack waehlbar, der Verweis auf die Einstellungsseite ist da und oeffnet sie.
 // Das Popup wird als Tab geoeffnet (moz-extension://<uuid>/popup.html), siehe tests/firefox/pack.test.mjs.
-import { Builder, By } from 'selenium-webdriver';
+import { Builder, By, Key } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { Command } from 'selenium-webdriver/lib/command.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as T from '../../entrypoints/popup/texte.ts';
+import { createServer } from 'node:http';
+import { FEHLER_SPEICHERN, STIMMUNG_WOERTER, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 90 s ueberschritten');
@@ -56,7 +59,7 @@ async function oeffne(seite) {
     await driver.executeScript(
       `const w = Services.wm.getMostRecentWindow('navigator:browser');
        w.gBrowser.selectedTab = w.gBrowser.addTab(arguments[0], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`,
-      `moz-extension://${uuid}/${seite}`,
+      seite.startsWith('http') ? seite : `moz-extension://${uuid}/${seite}`,
     );
   } finally {
     await driver.setContext(firefox.Context.CONTENT);
@@ -89,7 +92,14 @@ async function bis(beschreibung, fn, frist = 15_000) {
   const t0 = Date.now();
   let letzter;
   while (Date.now() - t0 < frist) {
-    letzter = await fn();
+    // Session 12: waehrend eine Seite noch laedt, fehlt das Element kurz (Firefox 128); weiter warten statt abbrechen.
+    try {
+      letzter = await fn();
+    } catch (fehler) {
+      letzter = String(fehler?.name ?? fehler);
+      await warte(50);
+      continue;
+    }
     if (letzter) return letzter;
     await warte(50);
   }
@@ -130,7 +140,7 @@ try {
 
   // Mia patch ohne Pack gesperrt
   pruefe((await eigenschaft(radio('mia-patch'), 'disabled')) === true, 'Mia patch ist ohne Pack gesperrt');
-  pruefe((await text('#pack-hinweis')).includes('Add the Mia Pack'), 'Hinweis nennt den Weg zum Pack');
+  pruefe((await text('#pack-hinweis')) === T.PACK_HINWEIS_OHNE, 'Hinweis nennt den Weg zum Pack');
   pruefe((await eigenschaft(radio('mosaik'), 'checked')) === true, 'ohne Pack gilt Mosaik');
   pruefe((await text('#pack-link')).length > 0, 'Verweis auf die Einstellungsseite ist da');
   // Blur ist waehlbar
@@ -155,14 +165,113 @@ try {
   pruefe((await eigenschaft(radio('mosaik'), 'checked')) === true, 'ohne Pack zeigt das Popup Mosaik');
   await imSeitenkontext(`await api.storage.local.set({ einstellungen: { ...(await api.storage.local.get('einstellungen')).einstellungen, stil: 'mosaik' } });`);
 
-  // Verweis oeffnet die Einstellungsseite
-  const vorherTabs = await driver.getAllWindowHandles();
+  // Auftrag U, Session 12: UX-Funde im echten Firefox (Popup als Tab, Fenster 1280 px breit)
+  pruefe((await text('#pack-hinweis')).length > 0, 'U Vorbereitung');
+  // Fund 8: "All settings" oben, ueber der Pause-Taste
+  const lage = await driver.executeScript(`const k = document.getElementById('alle-einstellungen').getBoundingClientRect(); const p = document.getElementById('pause').getBoundingClientRect(); return { kBis: k.bottom, pTop: p.top };`);
+  pruefe(lage.kBis <= 80 && lage.kBis < lage.pTop, `Fund 8: All settings liegt bis y ${Math.round(lage.kBis)} px, ueber Pause (${Math.round(lage.pTop)} px)`);
+  // Fund 27: Breite hoechstens 360 px, Schrift mindestens 12,5 px
+  const mass = await driver.executeScript(`const w = [...document.querySelectorAll('.hinweis, .enden, .schalter small, .auch, footer')].map((e) => parseFloat(getComputedStyle(e).fontSize)); return { breite: document.body.getBoundingClientRect().width, klein: Math.min(...w) };`);
+  pruefe(mass.breite <= 360 && mass.klein >= 12.5, `Fund 27: Breite ${mass.breite} px, kleinste Schrift ${mass.klein} px`);
+  // Fund 12: sechs Kaestchen mit Zonennamen
+  const namen = await driver.executeScript(`return [...document.querySelectorAll('#zonen input[data-bedeckt]')].map((e) => e.getAttribute('aria-label'))`);
+  pruefe(namen.length === 6 && namen.every((n) => /^[A-Z][a-z]+: even when clothed$/.test(n)) && new Set(namen).size === 6, `Fund 12: ${namen.length} Namen (${namen[0]})`);
+  // Fund 9 und 10: Kontraste (WCAG)
+  const kontraste = await driver.executeScript(`const l = (c) => { const m = c.match(/[\\d.]+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
+    const k = (a, b) => { const x = l(a), y = l(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const knopf = document.querySelector('button.klein'); const weiss = getComputedStyle(document.querySelector('section')).backgroundColor;
+    const f = (e, p) => getComputedStyle(e)[p]; const feld = document.querySelector('.wahl input:not(:checked) + span'); const gew = document.querySelector('.wahl input:checked + span');
+    return { knopf: k(f(knopf, 'color'), f(knopf, 'backgroundColor')), bahn: k(f(document.querySelector('.schalter input:not(:checked) + .regler'), 'backgroundColor'), weiss), rand: k(f(feld, 'borderTopColor'), weiss), randFeld: k(f(feld, 'borderTopColor'), f(feld, 'backgroundColor')), gewRand: k(f(gew, 'borderTopColor'), weiss), gewFuellung: k(f(gew, 'borderTopColor'), f(gew, 'backgroundColor')) };`);
+  pruefe(kontraste.knopf >= 4.5 && kontraste.bahn >= 3 && kontraste.rand >= 3 && kontraste.randFeld >= 3 && kontraste.gewRand >= 3 && kontraste.gewFuellung >= 3, `Fund 9/10: ${Object.entries(kontraste).map(([n, v]) => n + ' ' + v.toFixed(2)).join(', ')}`);
+  // Fund 6: Stimmungswort mit echten Tasten
+  await driver.findElement(By.css('#stimmung')).sendKeys(Key.END);
+  await bis('Stimmung 0.25 gespeichert', async () => Math.abs(((await speicher('einstellungen'))?.schwelle ?? 0) - 0.25) < 1e-6);
+  pruefe((await text('#stimmung-wert')) === stimmungsWort(0.25) && (await driver.findElement(By.css('#stimmung')).getAttribute('aria-valuetext')) === stimmungsWort(0.25), `Fund 6: ${await text('#stimmung-wert')}`);
+  await driver.findElement(By.css('#stimmung')).sendKeys(Key.HOME);
+  await bis('Stimmung 0.10 gespeichert', async () => Math.abs(((await speicher('einstellungen'))?.schwelle ?? 0) - 0.1) < 1e-6);
+  pruefe((await text('#stimmung-wert')) === STIMMUNG_WOERTER[0], 'Fund 6: Home zeigt das erste Wort');
+  // Schnelle Folgeklicks (Pack mit allen Freischaltungen): drei Klicks im selben Augenblick
+  await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch', 'erwachsen:vorschau', 'erwachsen:ersatz'], bilder: 3, groesse: 100, importiert: 1 } });`);
+  await bis('Erwachsenen-Schalter da', async () => await driver.findElement(By.css('#erw-an')).isDisplayed().catch(() => false) || (await eigenschaft('#erwachsen-schalter', 'hidden')) === false);
+  const vor = await driver.executeScript(`return [document.getElementById('erw-an').checked, document.getElementById('erw-ersatz').checked, document.querySelector('input[data-zone="mouth"]').checked];`);
+  await driver.executeScript(`document.getElementById('erw-an').click(); document.getElementById('erw-ersatz').click(); document.querySelector('input[data-zone="mouth"]').click();`);
+  await bis('drei Klicks gespeichert', async () => {
+    const e = await speicher('einstellungen');
+    return e && e.erwachsen?.an === !vor[0] && e.erwachsen?.komplettErsatz === !vor[1] && e.zonen?.mouth?.an === !vor[2];
+  });
+  const nach = await driver.executeScript(`return [document.getElementById('erw-an').checked, document.getElementById('erw-ersatz').checked, document.querySelector('input[data-zone="mouth"]').checked];`);
+  pruefe(nach.every((w, i) => w === !vor[i]), 'schnelle Folgeklicks: Speicher und Anzeige zeigen alle drei');
+  // Fund 7: Verweis des Erwachsenen-Pack-Knopfs ist ohne Pack da; mit Pack fuehrt pack-link zu #stand (unten)
+  // Fund 26: Speichern scheitert, Fehlersatz, Schalter springt zurueck (Seitenwelt ueberschreibt set)
+  const ueberschrieben = await driver.executeScript(`try { const a = (window.wrappedJSObject && window.wrappedJSObject.browser) || window.browser; a.storage.local.set = () => Promise.reject(new Error('kaputt')); return true; } catch (e) { return String(e); }`);
+  if (ueberschrieben === true) {
+    const strictVor = await driver.executeScript(`return document.getElementById('strict').checked`);
+    await driver.findElement(By.css('label.schalter:has(#strict)')).click();
+    await bis('Fehlersatz', async () => (await text('#fehler')) === FEHLER_SPEICHERN);
+    pruefe((await driver.executeScript(`return document.getElementById('strict').checked`)) === strictVor, 'Fund 26: Fehlersatz, Strict springt auf den gespeicherten Stand zurueck');
+  } else {
+    pruefe(false, `Fund 26: Speicher-Override nicht moeglich (${ueberschrieben})`);
+  }
+  await imSeitenkontext(`await api.storage.local.remove('pack');`);
+
+  // Fund 13: Satz vor und nach "Leave this site alone" (eine http-Seite ist der aktive Tab; das Popup wird danach neu geladen)
+  const web = createServer((_, antwort) => antwort.end('<!doctype html><title>t</title><p>hi</p>')).listen(Number(process.env.VEIL_FIXTURE_PORT ?? 47533), '127.0.0.1');
+  try {
+    await oeffne(`http://localhost:${process.env.VEIL_FIXTURE_PORT ?? 47533}/`).catch(() => oeffne(`http://127.0.0.1:${process.env.VEIL_FIXTURE_PORT ?? 47533}/`));
+    // Das Popup laedt neu, waehrend der http-Tab der gewaehlte ist (Umschalten des Treibers wuerde das Popup auswaehlen)
+    await driver.setContext(firefox.Context.CHROME);
+    try {
+      await driver.executeScript(`const w = Services.wm.getMostRecentWindow('navigator:browser'); const t = w.gBrowser.tabs.find((x) => x.linkedBrowser.currentURI.spec.endsWith('/popup.html')); t.linkedBrowser.reload();`);
+    } finally {
+      await driver.setContext(firefox.Context.CONTENT);
+    }
+    await warte(800);
+    await driver.switchTo().window(popup);
+    await bis('Ausnahme-Knopf frei', async () => (await driver.findElement(By.css('#ausnahme')).isEnabled()));
+    const muster = (await text('#ausnahme-hinweis')).match(/^Tap and I’ll leave (\S+) alone/)?.[1] ?? '';
+    pruefe(muster !== '' && (await text('#ausnahme-hinweis')) === T.AUSNAHME_VOR(muster), `Fund 13: vor dem Klick "${await text('#ausnahme-hinweis')}"`);
+    await driver.findElement(By.css('#ausnahme')).click();
+    await bis('Ausnahme gespeichert', async () => ((await speicher('einstellungen'))?.ausnahmen ?? []).includes(muster));
+    await bis('Satz danach', async () => (await text('#ausnahme-hinweis')) === T.AUSNAHME_NACH(muster));
+    pruefe((await text('#ausnahme')) === T.AUSNAHME_KNOPF_ZURUECK && (await text('#status')) === T.STATUS_AUSNAHME, 'Fund 13: nach dem Klick gilt es, Knopf und Status nennen es');
+    await driver.findElement(By.css('#ausnahme')).click();
+    await bis('Ausnahme entfernt', async () => !((await speicher('einstellungen'))?.ausnahmen ?? []).includes(muster));
+  } finally {
+    web.close();
+  }
+
+  // Fund 7 und Nr 8: Pack-Knoepfe fuehren zu #neu und #stand; die offene Einstellungsseite wird wiederverwendet (kein zweiter Tab)
+  const tabsVor = await driver.getAllWindowHandles();
   await driver.findElement(By.css('#pack-link')).click();
-  const options = await bis('Einstellungsseite geoeffnet', async () => (await driver.getAllWindowHandles()).find((h) => !vorherTabs.includes(h)));
+  const options = await bis('Einstellungsseite geoeffnet', async () => (await driver.getAllWindowHandles()).find((h) => !tabsVor.includes(h)));
   await driver.switchTo().window(options);
-  await bis('Einstellungsseite geladen', async () => (await driver.getCurrentUrl()).endsWith('/options.html'));
-  pruefe((await driver.getCurrentUrl()).endsWith('/options.html'), 'Verweis oeffnet options.html');
+  await bis('Einstellungsseite #neu', async () => (await driver.getCurrentUrl()).endsWith('/options.html#neu'));
+  pruefe((await driver.getCurrentUrl()).endsWith('/options.html#neu'), 'Fund 7: pack-link oeffnet options.html#neu (ohne Pack)');
+  const imBlick = (anker) => driver.executeScript(`const r = document.getElementById(arguments[0]).getBoundingClientRect(); return r.top >= -1 && r.top < innerHeight;`, anker);
+  await bis('#neu im Blick', async () => imBlick('neu'));
+  pruefe(true, 'Fund 7: Abschnitt #neu liegt im Blick');
+  const nachErstem = (await driver.getAllWindowHandles()).length;
   await driver.switchTo().window(popup).catch(() => {});
+  const popup2 = await oeffne('popup.html');
+  await bis('Popup 2 gezeichnet', async () => (await text('#status')).length > 0);
+  await driver.findElement(By.css('#erwachsen-pack-link')).click();
+  await bis('Einstellungsseite wiederverwendet', async () => (await driver.getAllWindowHandles()).length <= nachErstem);
+  pruefe((await driver.getAllWindowHandles()).length <= nachErstem, 'Nr 8: erwachsen-pack-link nutzt den offenen Options-Tab (Tabs ' + (await driver.getAllWindowHandles()).length + ')');
+  await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch'], bilder: 3, groesse: 100, importiert: 1 } });`).catch(() => {});
+  await driver.switchTo().window(options);
+  await driver.executeScript(`location.hash = '';`);
+  await driver.switchTo().window(popup2).catch(() => {});
+  const popup3 = await oeffne('popup.html');
+  await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch'], bilder: 3, groesse: 100, importiert: 1 } });`);
+  await bis('Knopf mit Pack', async () => (await text('#pack-link')) === T.PACK_KNOPF_MIT);
+  await driver.findElement(By.css('#pack-link')).click();
+  await driver.switchTo().window(options);
+  await bis('Einstellungsseite #stand', async () => (await driver.getCurrentUrl()).endsWith('/options.html#stand'));
+  pruefe((await driver.getCurrentUrl()).endsWith('/options.html#stand'), 'Fund 7: pack-link oeffnet options.html#stand (mit Pack)');
+  await bis('#stand im Blick', async () => imBlick('stand'));
+  pruefe(true, 'Fund 7: Abschnitt #stand liegt im Blick');
+  await driver.switchTo().window(popup3).catch(() => {});
+  await imSeitenkontext(`await api.storage.local.remove('pack');`).catch(() => {});
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);
   code = 1;

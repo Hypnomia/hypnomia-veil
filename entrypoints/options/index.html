@@ -17,21 +17,35 @@
         <button id="pause" class="gross" type="button"></button>
       </header>
 
-      <!-- Session 11, Auftrag S: Sprungleiste, dann alle Einstellungen untereinander (Module grund*.ts). -->
-      <nav id="sprung" aria-label="Jump to a section">
-        <a href="#abschnitt-stimmung">Mood</a>
-        <a href="#abschnitt-zonen">What I cover</a>
-        <a href="#abschnitt-stil">Style</a>
-        <a href="#abschnitt-strict">Strict</a>
-        <a href="#abschnitt-ausnahmen">Left alone</a>
-        <a href="#erwachsen">Adult sites</a>
-        <a href="#abschnitt-ruhig">Calm</a>
-        <a href="#kontrolle">Control</a>
-        <a href="#ton">Sound</a>
-        <a href="#ledger">Ledger</a>
-        <a href="#stand">Pack</a>
-        <a href="#ueber">About</a>
-      </nav>
+      <!-- Session 12, Auftrag O (UX-Funde 5, 11, 26, 29): die Leiste klebt oben. Sprungleiste (bei 480 px waagrecht scrollbar), kleiner
+           Pause-Knopf (derselbe Weg wie #pause) und die Statuszeile fuer Speicherfehler (grund-speichern.ts). -->
+      <div id="leiste">
+        <div class="leiste-zeile">
+          <nav id="sprung" aria-label="Jump to a section">
+            <a id="chip-interview" href="#abschnitt-interview" hidden>Interview</a>
+            <a href="#abschnitt-stimmung">Mood</a>
+            <a href="#abschnitt-zonen">What I cover</a>
+            <a href="#abschnitt-stil">Style</a>
+            <a href="#abschnitt-ausnahmen">Sites I leave alone</a>
+            <a href="#erwachsen">Adult sites</a>
+            <a href="#abschnitt-ruhig">Calm mode</a>
+            <a href="#kontrolle">Mia’s control</a>
+            <a href="#ton">Sound</a>
+            <a href="#ledger">Ledger</a>
+            <a href="#stand">Mia Pack</a>
+            <a href="#ueber">About</a>
+          </nav>
+          <button id="pause-leiste" class="klein ruhig" type="button"></button>
+        </div>
+        <p id="speicher-meldung" class="fehler" role="alert" hidden></p>
+      </div>
+
+      <!-- Fund 17: "Redo the interview" direkt unter der Leiste (vor dem Einstieg verborgen, der Chip auch). -->
+      <section id="abschnitt-interview" aria-labelledby="interview-titel" hidden>
+        <h2 id="interview-titel">Your interview</h2>
+        <p class="hinweis">Answer my questions again. Anything you don’t touch stays as it is.</p>
+        <button id="interview-neu" class="klein" type="button">Redo the interview</button>
+      </section>
 
       <section aria-labelledby="stimmung-titel" id="abschnitt-stimmung">
         <div class="regel">
@@ -39,14 +53,19 @@
           <output id="stimmung-wert" for="stimmung"></output>
         </div>
         <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
-        <div class="enden"><span>Suspicious</span><span>Relaxed</span></div>
+        <div class="enden"><span>Very suspicious</span><span>Relaxed</span></div>
         <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
       </section>
 
       <section aria-labelledby="zonen-titel" id="abschnitt-zonen">
         <h2 id="zonen-titel">What I cover</h2>
         <ul id="zonen" class="zonen"></ul>
-        <p class="hinweis">Tick “even when clothed” and I cover it under clothing too.</p>
+        <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+        <label class="schalter">
+          <input id="strict" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>Strict</strong><small>hide each page until I’ve checked it (a little slower)</small></span>
+        </label>
       </section>
 
       <section aria-labelledby="stil-titel" id="abschnitt-stil">
@@ -57,15 +76,6 @@
           <label><input type="radio" name="stil" value="mia-patch" /><span>Mia patch</span></label>
         </div>
         <p id="stil-hinweis" class="hinweis"></p>
-      </section>
-
-      <section aria-labelledby="strict-titel" id="abschnitt-strict">
-        <h2 id="strict-titel">Strict</h2>
-        <label class="schalter">
-          <input id="strict" type="checkbox" role="switch" />
-          <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Strict</strong><small>hide each page until I’ve checked it (a little slower)</small></span>
-        </label>
       </section>
 
       <section aria-labelledby="ausnahmen-titel" id="abschnitt-ausnahmen">
@@ -91,7 +101,7 @@
         <label class="schalter" id="erw-ersatz-zeile">
           <input id="erw-ersatz" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Full replacement</strong><small>Careful: listed and your own sites show my gallery instead. Pause Mia or an exception shows the real site.</small></span>
+          <span class="text"><strong>Full replacement</strong><small>Careful: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.</small></span>
         </label>
         <label class="schalter">
           <input id="erw-inhalt" type="checkbox" role="switch" />
@@ -100,7 +110,7 @@
         </label>
 
         <h3>Your own sites</h3>
-        <p class="hinweis">My list covers the big names. Add any other site by its address, like example.com, and I’ll treat it the same.</p>
+        <p class="hinweis">I already know the big adult sites. Add any other site by its address, like example.com, and I’ll treat it the same.</p>
         <form id="seite-form" class="zeile">
           <input id="seite-feld" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Adult site address" placeholder="example.com" />
           <button id="seite-add" class="klein" type="submit" aria-label="Add adult site">Add</button>
@@ -194,7 +204,7 @@
 
         <div id="kon-zeiten-block">
           <h3 id="kon-zeiten-titel">Strict times</h3>
-          <p class="hinweis" id="kon-zeiten-hinweis">During these hours I’m stricter: censoring one level up, flash words more often, a quiz before videos on every site if adult-site mode is on.</p>
+          <p class="hinweis" id="kon-zeiten-hinweis">During these hours I’m stricter: my grip one level tighter, flash words more often, a quiz before videos on every site if adult-site mode is on.</p>
           <div id="kon-zeiten" role="list" aria-labelledby="kon-zeiten-titel"></div>
           <button id="kon-zeit-neu" class="klein" type="button">Add a strict time</button>
         </div>
@@ -210,7 +220,7 @@
       <section id="ton" aria-labelledby="ton-titel"></section>
       <section id="ledger" aria-labelledby="ledger-titel"></section>
       <section aria-labelledby="stand-titel" id="stand">
-        <h2 id="stand-titel">Your pack</h2>
+        <h2 id="stand-titel">Your Mia Pack</h2>
         <p id="pack-status" role="status" aria-live="polite"></p>
         <div id="begruessung" class="mia-zeile" hidden>
           <img id="begruessung-chibi" class="chibi" alt="" width="96" height="96" hidden />
@@ -219,15 +229,22 @@
         <dl id="pack-daten" hidden>
           <div><dt>Title</dt><dd id="pack-titel"></dd></div>
           <div><dt>Version</dt><dd id="pack-version"></dd></div>
-          <div><dt>Pictures</dt><dd id="pack-bilder"></dd></div>
+          <div><dt>Patch pictures</dt><dd id="pack-bilder"></dd></div>
           <div><dt>Size</dt><dd id="pack-groesse"></dd></div>
           <div><dt>Added</dt><dd id="pack-datum"></dd></div>
         </dl>
+        <!-- Session 12, Auftrag P: Lizenz jederzeit ansehen (pack.ts fuellt den Text aus dem gespeicherten Pack). -->
+        <div id="lizenz-zeile" hidden>
+          <button id="lizenz-zeigen" class="klein ruhig" type="button" aria-expanded="false" aria-controls="lizenz-ansicht">Read the license</button>
+        </div>
+        <div id="lizenz-ansicht" hidden>
+          <pre id="lizenz-ansicht-text" tabindex="0" aria-label="License text of your Mia Pack"></pre>
+        </div>
         <div id="entfernen-zeile" hidden>
-          <button id="entfernen" class="klein" type="button">Remove pack</button>
+          <button id="entfernen" class="klein" type="button">Remove Mia Pack</button>
         </div>
         <div id="entfernen-frage" class="frage" role="alertdialog" aria-labelledby="entfernen-text" hidden>
-          <p id="entfernen-text">Remove the pack? The pictures go, and the cover style goes back to Mosaic. You can add it again whenever you like, as long as you keep the pack file.</p>
+          <p id="entfernen-text">Remove the Mia Pack? My pictures, sounds and words go with it, and if Mia patch is your cover style, it goes back to Mosaic. Your settings stay. You can add it again whenever you like, as long as you keep the pack file.</p>
           <div class="knoepfe">
             <button id="entfernen-ja" class="klein" type="button">Remove</button>
             <button id="entfernen-nein" class="klein ruhig" type="button">Keep it</button>
@@ -236,16 +253,20 @@
       </section>
 
       <section aria-labelledby="neu-titel" id="neu">
-        <h2 id="neu-titel">Add a pack</h2>
-        <p>The pack holds my pictures for the Mia patch style. It is checked here, stored on this device only, and never leaves your browser.</p>
+        <h2 id="neu-titel">Add the Mia Pack</h2>
+        <p>The Mia Pack holds my pictures, sounds and words, and it unlocks the rest of me. I check it here and keep it on this device only. It never leaves your browser.</p>
         <div id="pack-sperre" class="warnblock" hidden>
-          <p id="pack-sperre-text">Meet me first, then bring the pack. It takes a minute.</p>
+          <p id="pack-sperre-text">Meet me first, then bring the Mia Pack. It takes a minute.</p>
           <button id="pack-sperre-knopf" class="klein" type="button">Meet Mia first</button>
         </div>
-        <label class="datei" for="datei">
-          <span>Choose a pack file</span>
-          <input id="datei" type="file" accept=".miapack" disabled aria-describedby="pack-sperre-text" />
-        </label>
+        <!-- Session 12, Auftrag P: Ablage fuer Ziehen und Ablegen (pack.ts), das Dateifeld bleibt der Weg per Tastatur. -->
+        <div id="ablage" class="ablage">
+          <label class="datei" for="datei">
+            <span>Choose a pack file</span>
+            <input id="datei" type="file" accept=".miapack" disabled aria-describedby="pack-sperre-text" />
+          </label>
+          <p id="ablage-text" class="hinweis">Or drop the pack file here.</p>
+        </div>
 
         <div id="fortschritt-zeile" hidden>
           <progress id="fortschritt" max="1" value="0" aria-labelledby="fortschritt-text"></progress>
@@ -255,6 +276,8 @@
         <div id="lizenz-block" hidden>
           <h3>Before it goes in</h3>
           <p id="lizenz-kopf" class="hinweis"></p>
+          <!-- Session 12, Auftrag P: Hinweis beim Ersetzen eines vorhandenen Packs (neuer, gleich, aelter, anderes Pack). -->
+          <p id="ersetzen-hinweis" class="warnblock" hidden></p>
           <pre id="lizenz-text" tabindex="0" aria-label="License text of the pack"></pre>
           <p class="hinweis">The pictures are mine. This license says what you may do with them. Accept it to add the pack.</p>
           <div class="knoepfe">
@@ -267,12 +290,6 @@
       </section>
 
       <section id="ueber" aria-labelledby="ueber-titel"></section>
-
-      <section id="abschnitt-interview" aria-labelledby="interview-titel" hidden>
-        <h2 id="interview-titel">Getting to know you</h2>
-        <p class="hinweis">Answer my questions again. Anything you don’t touch stays as it is.</p>
-        <button id="interview-neu" class="klein" type="button">Redo the interview</button>
-      </section>
 
       <footer>
         <span>Pausing and uninstalling are always allowed.</span>

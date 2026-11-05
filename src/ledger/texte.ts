@@ -1,5 +1,6 @@
 // Mia’s Ledger, eingebaute Texte (Entwurf, der Texter liest gegen): amerikanisches Englisch in Mias Stimme. Die Zeilen wechseln mit der Hoehe
 // der Zahl. Tests pruefen gegen diese Konstanten, nicht gegen den Wortlaut.
+import { STUFE_TEXT } from '../oberflaeche/gemeinsam.ts';
 import type { LedgerZaehler } from './vertrag.ts';
 
 export const LEDGER_TITEL = 'Mia’s Ledger';
@@ -11,7 +12,7 @@ export const LOESCHEN_FRAGE = 'Wipe all my numbers? Everything goes back to zero
 export const LOESCHEN_JA = 'Yes, wipe it';
 export const LOESCHEN_NEIN = 'Keep it';
 export const LOESCHEN_FERTIG = 'Wiped. We start fresh.';
-export const LOESCHEN_FEHLER = 'That didn’t work. Try again in a moment.';
+export const LOESCHEN_FEHLER = 'I couldn’t wipe my numbers just now. Try again in a moment.';
 
 export const ZAEHLER_NAMEN: Record<LedgerZaehler, string> = {
   zensiert: 'Pictures I covered',
@@ -106,6 +107,15 @@ export function satzFuer(z: LedgerZaehler, gesamt: number): string {
 }
 
 export const STUFE_NAME = 'My tightest grip';
+// UX-Fund 14: die Stufe heisst ueberall "level n of 4", am Zeilenanfang gross.
+export function stufeWert(stufe: number): string {
+  const t = STUFE_TEXT(Math.min(4, Math.max(0, Math.floor(stufe) || 0)));
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+// UX-Fund 25: Zaehler ohne Freischaltung und mit Wert 0 fallen weg, eine Zeile sagt, dass mehr mit dem Pack kommt.
+export const LEDGER_MEHR = 'More counts come with the Mia Pack.';
+// Fund 13: mit vorhandenem, aber aeltere Pack.
+export const LEDGER_MEHR_NEUER = 'More counts come with a newer Mia Pack.';
 const STUFE_SAETZE = [
   'I haven’t tightened my grip yet.',
   'I tightened it a little.',

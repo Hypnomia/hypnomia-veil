@@ -1,9 +1,12 @@
-/* Popup: hell und pastellfarben, 320 px breit (Entscheidung 4). */
+/* Popup: hell und pastellfarben, bis 360 px breit, auf schmalen Bildschirmen (Android, ganze Seite) die volle Breite (UX-Fund 27). */
 :root {
   --grund: #fff5fa;
   --karte: #ffffff;
   --text: #4f3345;
   --leise: #86647a;
+  --feld-rand: #8f7285; /* Feldraender, wie auf der Einstellungsseite (4,0:1 und mehr) */
+  --rand: #9a7c8e; /* Schalterbahn aus: 3,72:1 auf Weiss, 3,49:1 auf #fff5fa (UX-Fund 10, wie Einstellungsseite) */
+  --akzent-text: #8f2d61; /* Text auf --akzent-hell mindestens 4,5:1 (UX-Fund 9) */
   --akzent: #b03f7a;
   --akzent-hell: #f9d6e7;
   --pastell: #e9def9;
@@ -17,7 +20,9 @@
 
 body {
   margin: 0;
-  width: 320px;
+  width: 100%;
+  min-width: 320px;
+  max-width: 360px;
   background: var(--grund);
   color: var(--text);
   font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -60,7 +65,7 @@ section {
 
 .hinweis {
   margin: 6px 0 0;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--leise);
 }
 
@@ -90,7 +95,34 @@ button.klein {
   border: 1px solid var(--akzent);
   border-radius: 10px;
   background: var(--akzent-hell);
-  color: var(--akzent);
+  color: var(--akzent-text);
+  font-weight: 600;
+}
+
+.kopfzeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+button.kopfknopf {
+  width: auto;
+  flex: none;
+  padding: 6px 12px;
+}
+
+/* UX-Fund N1 (zweite Lesung): der Fehlersatz klebt oben, damit er auch nach dem Scrollen im Bild ist. */
+.fehler {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--akzent);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--akzent-text);
   font-weight: 600;
 }
 
@@ -128,7 +160,7 @@ input[type='range'] {
 .enden {
   display: flex;
   justify-content: space-between;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--leise);
 }
 
@@ -150,7 +182,7 @@ input[type='range'] {
   display: block;
   padding: 6px 2px;
   text-align: center;
-  border: 1px solid var(--linie);
+  border: 1px solid var(--feld-rand);
   border-radius: 10px;
   background: var(--grund);
   cursor: pointer;
@@ -163,7 +195,8 @@ input[type='range'] {
 
 .wahl input:checked + span {
   background: var(--pastell);
-  border-color: #b9a2e4;
+  border-color: var(--fokus);
+  box-shadow: 0 0 0 1px var(--fokus);
   font-weight: 650;
 }
 
@@ -191,7 +224,7 @@ input[type='range'] {
   width: 34px;
   height: 20px;
   border-radius: 10px;
-  background: #e3cfdb;
+  background: var(--rand);
   transition: background 0.15s;
 }
 
@@ -227,7 +260,7 @@ input[type='range'] {
 
 .schalter small {
   color: var(--leise);
-  font-size: 11.5px;
+  font-size: 12.5px;
 }
 
 /* Zonen */
@@ -248,7 +281,7 @@ input[type='range'] {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--leise);
   cursor: pointer;
 }
@@ -261,7 +294,7 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--leise);
 }
 
@@ -315,4 +348,47 @@ footer {
 
 [hidden] {
   display: none !important;
+}
+
+/* Lesung Runde 3, Nr. 7: solange der Fehlersatz oben klebt, rutschen fokussierte Elemente nicht darunter. */
+html:has(#fehler:not([hidden])) {
+  scroll-padding-top: 72px;
+}
+
+/* UX-Fund N8 (zweite Lesung): gesperrtes "even when clothed" sieht auch gesperrt aus. */
+.auch:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* UX-Fund N2 (zweite Lesung), bewusst nur (pointer: coarse) und nicht "bis 480 px": das Desktop-Popup ist immer hoechstens 360 px breit
+   und soll mit Maus kompakt bleiben. Auf Touch-Geraeten (Android, dort ist das Popup die ganze Seite) Fingerziele mindestens 44 px,
+   wie auf der Einstellungsseite. Desktop-Popups mit Maus bleiben kompakt. */
+@media (pointer: coarse) {
+  h2 {
+    font-size: 13px;
+  }
+  button.klein,
+  button.kopfknopf {
+    min-height: 44px;
+  }
+  button.gross {
+    min-height: 48px;
+  }
+  .wahl span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .zonen li {
+    min-height: 44px;
+  }
+  .auch {
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .schalter {
+    min-height: 44px;
+  }
 }

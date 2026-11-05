@@ -1,5 +1,5 @@
 // Ablage des Mia Packs (PHASE-2-BAUPLAN Abschnitt 9.2): Import in EINER Transaktion, Entfernen, Kurzfassung in storage.local,
-// Umschalten des Stils, Abgleich beider Ablagen. Laeuft auf Erweiterungsseiten mit `storage` (Einstellungsseite).
+// Umschalten des Stils (nur beim ersten Pack), Abgleich beider Ablagen. Laeuft auf Erweiterungsseiten mit `storage` (Einstellungsseite).
 // Der Erkenner liest nur ueber patches.ts.
 
 import { aendereEinstellungen, ladeEinstellungen } from '../einstellungen';
@@ -14,6 +14,7 @@ import {
 } from './db';
 import { PackFehler, filtereFreischaltungen, sha256, type Fortschritt, type GeprueftesPack } from './format';
 import { pruefeQuizBank, pruefeTexte } from '../quiz/vertrag';
+import { ersetztVorhandenes, vergleichePacks, type PackVergleich } from './ersetzen';
 import {
   filtereNachGruppen,
   FREISCHALTUNGEN,
@@ -68,10 +69,22 @@ async function schreibeKurz(kurz: PackKurz): Promise<void> {
   }
 }
 
+// Das vorhandene Pack ist nicht mehr das, gegen das die Einstellungsseite die Datei geprueft hat (z. B. in einem anderen Tab ersetzt).
+// Nichts wurde geschrieben; die Seite soll die Datei neu pruefen (Session 12, Runde 2).
+export class PackVorhandenGeaendert extends Error {
+  constructor() {
+    super('vorhandenes Pack hat sich seit der Pruefung geaendert');
+    this.name = 'PackVorhandenGeaendert';
+  }
+}
+
 export interface ImportErgebnis {
   kurz: PackKurz;
   // false: das Pack ist drin, aber der Stil liess sich nicht auf Mia-Patch stellen (im Popup waehlbar).
   stilGesetzt: boolean;
+  // Session 12: was der Import mit einem vorhandenen Pack gemacht hat. Nur bei 'erstes' stellt er den Stil um; sonst bleiben alle
+  // Einstellungen unveraendert (Entscheidung 141).
+  fall: PackVergleich;
 }
 
 // Speicherbedarf: die Bytes jeder Datei werden einmal gelesen, gehasht und als Blob gehalten, bis die Transaktion steht. Faustwert
@@ -79,8 +92,15 @@ export interface ImportErgebnis {
 // Schreibt ein geprueftes Pack (siehe pruefePack) aus `datei` in die Ablage. Die Bytes jeder Datei werden hier noch einmal gelesen und
 // gegen den Hash aus dem Manifest geprueft; gespeichert wird genau das, was gehasht wurde (die Datei darf sich zwischen Pruefung und
 // Import nicht mehr aendern). Dann EINE Transaktion: altes Pack leeren, neue Dateien, Stand und Meta schreiben. Scheitert etwas davor oder
-// darin, bleibt das alte Pack unveraendert. Danach storage.local.pack und, mit Freischaltung, der Stil Mia-Patch (Entscheidung 12).
-export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fortschritt?: Fortschritt): Promise<ImportErgebnis> {
+// darin, bleibt das alte Pack unveraendert. Danach storage.local.pack und, nur beim ersten Pack und mit Freischaltung, der Stil Mia-Patch (Entscheidung 12). Ersetzt der Import ein
+// vorhandenes Pack (neuer, gleich, aelter, anderes), bleiben alle Einstellungen unveraendert (Entscheidung 141).
+export async function importierePack(
+  datei: Blob,
+  geprueft: GeprueftesPack,
+  fortschritt?: Fortschritt,
+  // Der Fall, den die Seite bei der Pruefung gezeigt hat. Stimmt er beim Schreiben nicht mehr, bricht der Import ab (PackVorhandenGeaendert).
+  erwarteterFall?: PackVergleich,
+): Promise<ImportErgebnis> {
   const m = geprueft.manifest;
   const meta: PackMeta = {
     id: m.id,
@@ -109,6 +129,8 @@ export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fort
     groesse: geprueft.groesse,
     importiert: Date.now(),
   };
+
+  let fall: PackVergleich = 'erstes';
 
   // 1. Bytes lesen und gegen den Hash halten. Die Blobs entstehen aus genau diesen Bytes.
   const eintraege: PackDateiGespeichert[] = [];
@@ -141,6 +163,12 @@ export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fort
       try {
         const dateien = tx.objectStore(PACK_STORE_DATEIEN);
         const metaSpeicher = tx.objectStore(PACK_STORE_META);
+        // Das vorhandene Pack wird in derselben Transaktion gelesen, in der es ersetzt wird: nichts kann dazwischenkommen. Kann es nicht
+        // gelesen werden, scheitert der Import (kein Rueckfall auf "erstes", sonst wuerde der Stil umgestellt).
+        const vorhanden = (await anfrage(metaSpeicher.get(PACK_META_SCHLUESSEL))) as PackMeta | undefined;
+        const alt = vorhanden && typeof vorhanden === 'object' && typeof vorhanden.id === 'string' ? vorhanden : null;
+        fall = vergleichePacks(alt, { id: m.id, version: m.version, titel: m.titel });
+        if (erwarteterFall && fall !== erwarteterFall) throw new PackVorhandenGeaendert();
         dateien.clear();
         metaSpeicher.clear();
         for (const e of eintraege) dateien.put(e);
@@ -154,6 +182,7 @@ export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fort
       await fertig;
     });
   } catch (e) {
+    if (e instanceof PackVorhandenGeaendert) throw e;
     throw new PackSpeicherFehler('ablage', e);
   }
   meldePackGeaendert();
@@ -167,14 +196,14 @@ export async function importierePack(datei: Blob, geprueft: GeprueftesPack, fort
     throw new PackSpeicherFehler('kurzfassung', e);
   }
   let stilGesetzt = true;
-  if (istFreigeschaltet(kurz, 'stil:mia-patch')) {
+  if (!ersetztVorhandenes(fall) && istFreigeschaltet(kurz, 'stil:mia-patch')) {
     try {
       await aendereEinstellungen({ stil: 'mia-patch' });
     } catch {
       stilGesetzt = false;
     }
   }
-  return { kurz, stilGesetzt };
+  return { kurz, stilGesetzt, fall };
 }
 
 async function leereAblage(): Promise<void> {

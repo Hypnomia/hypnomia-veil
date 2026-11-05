@@ -14,6 +14,7 @@ const sperreKnopf = el<HTMLButtonElement>('pack-sperre-knopf');
 const datei = el<HTMLInputElement>('datei');
 const interviewAbschnitt = el<HTMLElement>('abschnitt-interview');
 const interviewKnopf = el<HTMLButtonElement>('interview-neu');
+const interviewChip = el<HTMLAnchorElement>('chip-interview');
 
 function zeichne(fertig: boolean): void {
   document.body.dataset.packGesperrt = fertig ? '0' : '1';
@@ -21,7 +22,9 @@ function zeichne(fertig: boolean): void {
   // Waehrend eines laufenden Imports bleibt das Feld ohnehin gesperrt (main.ts); hier nur die Sperre selbst.
   if (!fertig) datei.disabled = true;
   else if (!document.getElementById('annehmen')?.hasAttribute('disabled')) datei.disabled = false;
+  // Fund 17: Abschnitt und Chip "Interview" erst nach dem Einstieg.
   interviewAbschnitt.hidden = !fertig;
+  interviewChip.hidden = !fertig;
 }
 
 function oeffneWillkommen(anker: string): void {
@@ -30,7 +33,8 @@ function oeffneWillkommen(anker: string): void {
 }
 
 sperreKnopf.addEventListener('click', () => oeffneWillkommen(''));
-interviewKnopf.addEventListener('click', () => oeffneWillkommen('#interview'));
+// Runde 3, N12: das Wiederholen laeuft im selben Tab; am Ende fuehrt "All settings" hierher zurueck (keine zweite Einstellungsseite).
+interviewKnopf.addEventListener('click', () => window.location.assign(browser.runtime.getURL(WILLKOMMEN_PFAD as never) + '#interview'));
 
 const horcher = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
   if (bereich === 'local' && EINSTIEG_SCHLUESSEL in aenderungen) zeichne(einstiegFertig(vervollstaendigeEinstieg(aenderungen[EINSTIEG_SCHLUESSEL]?.newValue)));

@@ -40,8 +40,13 @@ export function startSchritt(stand: EinstiegStand, adresse: string): Schritt {
   return 'ende';
 }
 
-// Fortschritt als "Schritt n von m" ueber Gate und Interview (der Abschluss zaehlt nicht mit).
-export function fortschritt(s: Schritt): { nr: number; von: number } {
+// Fortschritt als "Schritt n von m" ueber Gate und Interview (der Abschluss zaehlt nicht mit). Beim Wiederholen des Interviews
+// (`nurInterview`, UX-Fund 19) zaehlen nur die Interview-Seiten: "Frage 1 von 5".
+export function fortschritt(s: Schritt, nurInterview = false): { nr: number; von: number } {
+  if (nurInterview) {
+    const k = INTERVIEW_SCHRITTE.indexOf(s as InterviewSchritt);
+    return { nr: Math.max(1, k + 1), von: INTERVIEW_SCHRITTE.length };
+  }
   const von = GATE_SCHRITTE.length + INTERVIEW_SCHRITTE.length;
   const i = ALLE_SCHRITTE.indexOf(s);
   return { nr: Math.min(i + 1, von), von };
