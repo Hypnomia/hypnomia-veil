@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nachbau pornhub fuer Stufe und Format (synthetisch, Phase 7 Auftrag I)</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .liste { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+      .karte { display: block; position: relative; }
+      .karte img.vorschau { display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="liste" id="liste">
+      <!-- quer 16:9, hoch 9:16 (180 x 320), quadratisch 200 x 200; jede Karte hat ihren eigenen viewkey (die Wahl haengt am Schluessel der Kennung) -->
+      <a class="karte" href="/view_video.php?viewkey=ph5s1&amp;n=x"><img class="vorschau thumb" id="s1" alt="quer" width="320" height="180" src="/synthetisch/61.png" /></a>
+      <a class="karte" href="/view_video.php?viewkey=ph5s2&amp;n=x"><img class="vorschau thumb" id="s2" alt="hoch" width="180" height="320" src="/synthetisch/62.png" /></a>
+      <a class="karte" href="/view_video.php?viewkey=ph5s3&amp;n=x"><img class="vorschau thumb" id="s3" alt="quadratisch" width="200" height="200" src="/synthetisch/63.png" /></a>
+    </div>
+    <script>
+      // Haengt eine weitere Karte an (Tests rufen das nach einem Stufenwechsel auf, ohne die Seite neu zu laden). `key` ist der viewkey
+      // (Standard "ph5" + Bildnummer); gleicher key = gleiche Quelle fuer die Wahl.
+      window.addTile = function (id, w, h, n, key) {
+        var a = document.createElement('a');
+        a.className = 'karte';
+        a.href = '/view_video.php?viewkey=' + (key || 'ph5' + n) + '&n=x';
+        var i = document.createElement('img');
+        i.className = 'vorschau thumb';
+        i.id = id;
+        i.alt = id;
+        i.width = w;
+        i.height = h;
+        i.src = '/synthetisch/' + n + '.png';
+        a.appendChild(i);
+        document.getElementById('liste').appendChild(a);
+      };
+    </script>
+  </body>
+</html>

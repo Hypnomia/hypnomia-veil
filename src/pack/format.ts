@@ -336,6 +336,8 @@ export interface GeprueftesPack {
   // Inhalt der JSON-Dateien (Rollen `quiz`, `texte`) als geparstes JSON, ungeprueft gegen das Schema (das prueft src/quiz/vertrag.ts
   // beim Import in speicher.ts). Fehlt die Rolle oder war die Datei kein JSON: undefined.
   json: Partial<Record<Rolle, unknown>>;
+  // Pixelmasse der Bilder nach Dateiname (Phase 7), beim Pruefen einmal gelesen.
+  masse: Record<string, { breite: number; hoehe: number }>;
 }
 
 // Freischaltungen, deren Datei fehlt, verwerfen (eine Freischaltung gilt nur mit gueltiger Datei). `gueltig(rolle)` sagt, ob die
@@ -528,6 +530,7 @@ export async function pruefePack(quelle: PackQuelle, eigeneVersion: string, fort
   let patches = 0;
   const rollen = Object.fromEntries(ROLLEN.map((r) => [r, 0])) as Record<Rolle, number>;
   const json: Partial<Record<Rolle, unknown>> = {};
+  const masseNachName: Record<string, { breite: number; hoehe: number }> = {};
   const reihenfolge = [...manifest.dateien].sort((a, b) => a.offset - b.offset);
   let fertig = 0;
   fortschritt?.(0, reihenfolge.length);
@@ -541,6 +544,7 @@ export async function pruefePack(quelle: PackQuelle, eigeneVersion: string, fort
       if (masse.breite > MAX_BILD_SEITE || masse.hoehe > MAX_BILD_SEITE) {
         throw new PackFehler('bild-zu-gross', `Bild ${d.name} ist ${masse.breite} x ${masse.hoehe}, erlaubt sind ${MAX_BILD_SEITE} je Seite`);
       }
+      masseNachName[d.name] = { breite: masse.breite, hoehe: masse.hoehe };
     } else if (istAudio(d.typ)) {
       if (!signaturPasst(d.typ, bytes)) throw new PackFehler('signatur', `Audio passt nicht zum Typ ${d.typ}: ${d.name}`);
     } else {
@@ -562,7 +566,7 @@ export async function pruefePack(quelle: PackQuelle, eigeneVersion: string, fort
   }
   if (lizenzText.trim().length === 0) throw new PackFehler('lizenz', 'Lizenztext ist leer');
   const gefiltert: PackManifest = { ...manifest, freischaltungen: filtereFreischaltungen(manifest.freischaltungen as Freischaltung[], (r) => rollen[r] > 0) };
-  return { manifest: gefiltert, lizenzText, groesse, datenStart, patches, rollen, json };
+  return { manifest: gefiltert, lizenzText, groesse, datenStart, patches, rollen, json, masse: masseNachName };
 }
 
 // ---------- Schreiben ----------

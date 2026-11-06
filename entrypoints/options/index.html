@@ -109,6 +109,17 @@
           <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal. Pages I only spot by their content never get thumbnail swaps or my gallery.</small></span>
         </label>
 
+        <h3 id="stufe-titel">How hot do I get?</h3>
+        <!-- Anfangs verborgen und gesperrt: grund-erwachsen.ts schaltet frei, sobald das Pack mit erwachsen:vorschau gelesen ist (keine Klickflaeche vorher). -->
+        <div id="stufe-wahl" hidden>
+          <div class="wahl stufen" role="radiogroup" aria-labelledby="stufe-titel">
+            <label><input type="radio" name="stufe" value="tease" disabled /><span><strong>Tease</strong><small>I only hint.</small></span></label>
+            <label><input type="radio" name="stufe" value="hot" disabled /><span><strong>Hot</strong><small>I show more.</small></span></label>
+            <label><input type="radio" name="stufe" value="explicit" disabled /><span><strong>Explicit</strong><small>Nothing held back.</small></span></label>
+          </div>
+        </div>
+        <p id="stufe-gesperrt" class="hinweis" hidden>My pictures decide how hot I get, so this unlocks with the Mia Pack.</p>
+
         <h3>Your own sites</h3>
         <p class="hinweis">I already know the big adult sites. Add any other site by its address, like example.com, and I’ll treat it the same.</p>
         <form id="seite-form" class="zeile">
@@ -255,6 +266,11 @@
       <section aria-labelledby="neu-titel" id="neu">
         <h2 id="neu-titel">Add the Mia Pack</h2>
         <p>The Mia Pack holds my pictures, sounds and words, and it unlocks the rest of me. I check it here and keep it on this device only. It never leaves your browser.</p>
+        <!-- Phase 7 (Auftrag I3): ohne Pack ein Streifen mit Kern-Bildern (kern-streifen.ts); ohne Kern-Bilder im Bau oder mit Pack bleibt er weg. -->
+        <div id="kern-streifen" hidden>
+          <div id="kern-bilder" class="kern-bilder" hidden></div>
+          <p id="kern-text">This is me dressed for the office. The Mia Pack is me off duty.</p>
+        </div>
         <div id="pack-sperre" class="warnblock" hidden>
           <p id="pack-sperre-text">Meet me first, then bring the Mia Pack. It takes a minute.</p>
           <button id="pack-sperre-knopf" class="klein" type="button">Meet Mia first</button>

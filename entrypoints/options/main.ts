@@ -15,6 +15,7 @@ import './grund';
 import './grund-ausnahmen';
 import './grund-pack';
 import './grund-erwachsen';
+import './kern-streifen';
 // Session 11: eigene Module je Auftrag (Ton T, Ledger L, Ueber/Version V), jedes fuellt nur seinen Abschnitt.
 import './ton';
 import './ledger';

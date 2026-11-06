@@ -452,7 +452,7 @@ test('Pack-Bilder: stabile Wahl je Schluessel, Vorschau als JPEG bis 480 px, Chi
   expect(a1.dataUrl.length).toBeLessThanOrEqual(600_000);
   expect(a2.name).toBe(a1.name);
   const namen = new Set<string>();
-  for (let i = 0; i < 40; i++) namen.add((await ausWorker({ ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel: `quelle-${i}` })).name);
+  for (let i = 0; i < 40; i++) namen.add((await ausWorker({ ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel: `quelle-${i}`, stufe: 'hot' })).name);
   console.log(`chromium E: 40 Quellen verteilen sich auf ${namen.size} von 4 Vorschau-Bildern`);
   expect(namen.size).toBeGreaterThanOrEqual(3);
   // kleiner maxSeite-Wunsch wird beachtet
@@ -556,7 +556,7 @@ async function baueKaputtesPack(): Promise<string> {
   await writeFile(path.join(quelle, 'lizenz.txt'), 'Test pack, synthetic pictures only.\n');
   await writeFile(
     path.join(quelle, 'pack.json'),
-    JSON.stringify({ id: 'kaputt', version: '0.0.1', titel: 'Broken test pack', lizenz: 'lizenz.txt', freischaltungen: ['erwachsen:vorschau'], dateien: [{ name: 'lizenz.txt' }, { name: 'vorschau/kaputt.webp', rolle: 'vorschau', stufe: 'explicit' }] }),
+    JSON.stringify({ id: 'kaputt', version: '0.0.1', titel: 'Broken test pack', lizenz: 'lizenz.txt', freischaltungen: ['erwachsen:vorschau'], dateien: [{ name: 'lizenz.txt' }, { name: 'vorschau/kaputt.webp', rolle: 'vorschau', stufe: 'hot' }] }),
   );
   const bau = (await import('../../scripts/pack/baue-pack.mjs' as string)) as { bauePackAusOrdner(q: string): Promise<Uint8Array> };
   const pfad = path.join(ordner, 'kaputt.miapack');
@@ -605,7 +605,7 @@ test('Chibi: ohne Pack kommt das Demo-Chibi aus der Erweiterung (wenn mitgebaut)
     path.join(quelle, 'pack.json'),
     JSON.stringify({
       id: 'gruen', version: '0.0.1', titel: 'Green test pack', lizenz: 'lizenz.txt', freischaltungen: ['erwachsen:vorschau'],
-      dateien: [{ name: 'lizenz.txt' }, { name: 'vorschau/gruen.webp', rolle: 'vorschau', stufe: 'explicit' }],
+      dateien: [{ name: 'lizenz.txt' }, { name: 'vorschau/gruen.webp', rolle: 'vorschau', stufe: 'hot' }],
     }),
   );
   const bau = (await import('../../scripts/pack/baue-pack.mjs' as string)) as { bauePackAusOrdner(q: string): Promise<Uint8Array> };

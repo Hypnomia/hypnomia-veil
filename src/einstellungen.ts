@@ -93,7 +93,13 @@ export function bereinigeZeiten(roh: unknown): StrengeZeit[] {
   return aus;
 }
 
+// Intensitaet der Pack-Bilder auf Erwachsenenseiten (Phase 7, Entscheidung 148), kumulativ: tease = nur tease, hot = tease und hot,
+// explicit = alle drei. Standard hot. Die Wahl der Bilder liegt in src/pack/wahl.ts.
+export const STUFEN_WAHL = ['tease', 'hot', 'explicit'] as const;
+export type StufeWahl = (typeof STUFEN_WAHL)[number];
+
 export interface ErwachsenEinstellung {
+  stufe: StufeWahl; // wirkt nur mit Pack und Freischaltung `erwachsen:vorschau`
   an: boolean; // Pornoseiten-Modus (Standard an, wirkt nur mit Pack)
   komplettErsatz: boolean; // Komplett-Ersatz: Mia-Galerie in der Seite statt der Seite (Standard aus, Entscheidung 100)
   erkennenAmInhalt: boolean; // Zusatz zur Liste: Seite am Inhalt erkennen (nur Quiz und Freilegen, nie Vorschau oder Ersatz)
@@ -138,7 +144,7 @@ export const STANDARD: Einstellungen = {
   },
   ausnahmen: [],
   ruhig: false,
-  erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
+  erwachsen: { stufe: 'hot', an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
   quiz: { verweigern: 0.1, freilegenMs: 10000 },
   kontrolle: { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] },
   ton: { an: false, lautstaerke: TON_LAUTSTAERKE_STANDARD },
@@ -185,6 +191,7 @@ export function vervollstaendige(roh: unknown): Einstellungen {
       const e = objekt(r.erwachsen);
       const s = STANDARD.erwachsen;
       return {
+        stufe: (STUFEN_WAHL as readonly unknown[]).includes(e.stufe) ? (e.stufe as StufeWahl) : s.stufe,
         an: wahr(e.an, s.an),
         komplettErsatz: wahr(e.komplettErsatz, s.komplettErsatz),
         erkennenAmInhalt: wahr(e.erkennenAmInhalt, s.erkennenAmInhalt),

@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'wxt';
 import { manifestMuster, musterAusListe } from './scripts/ausnahmen-muster.mjs';
+import { pruefeWebpDateien } from './scripts/webp-pruefung.mjs';
 
 const paket = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -46,12 +47,36 @@ function demoChibis(): { absoluteSrc: string; relativeDest: string }[] {
     .map((d) => ({ absoluteSrc: `${ordner}${d}`, relativeDest: `chibi/${d}` }));
 }
 
+// Kern-Bilder (Phase 7, Entscheidung 147, src/kern.ts): `../02 Assets Mia/kern/kern-NN.webp` (NN 01 bis 20) kommen beim Bau nach `kern/`,
+// nie ins Repo. Fehlt der Ordner, warnt der Bau, die Seiten zeigen dann keinen Rahmen. `VEIL_KERN=<ordner>` waehlt einen anderen Quellordner
+// (Tests mit synthetischen Bildern ausserhalb des Repos).
+function kernBilder(): { absoluteSrc: string; relativeDest: string }[] {
+  const ordner = process.env.VEIL_KERN
+    ? `${process.env.VEIL_KERN.replace(/\/+$/, '')}/`
+    : fileURLToPath(new URL('../02 Assets Mia/kern/', import.meta.url));
+  if (!existsSync(ordner)) {
+    console.warn('Kern-Bilder: Ordner 02 Assets Mia/kern fehlt, die Seiten zeigen keine Kern-Bilder.');
+    return [];
+  }
+  const namen = readdirSync(ordner)
+    .filter((d) => /^kern-(0[1-9]|1[0-9]|20)\.webp$/.test(d))
+    .sort();
+  // src/kern.ts sucht der Reihe nach und hoert an der ersten Luecke auf: eine Luecke in der Nummerierung bricht den Bau ab.
+  namen.forEach((d, i) => {
+    if (d !== `kern-${String(i + 1).padStart(2, '0')}.webp`) throw new Error(`Kern-Bilder: Luecke in der Nummerierung vor ${d} (erwartet kern-01 bis kern-${String(namen.length).padStart(2, '0')})`);
+  });
+  return namen.map((d) => ({ absoluteSrc: `${ordner}${d}`, relativeDest: `kern/${d}` }));
+}
+
 export default defineConfig({
   // VEIL_AUSGABE erlaubt einen zweiten Ausgabeordner (z. B. waehrend eine Messung auf .output laeuft).
   outDir: process.env.VEIL_AUSGABE ?? '.output',
   hooks: {
     'build:publicAssets': (_wxt, dateien) => {
-      dateien.push(...demoChibis());
+      const kopiert = [...demoChibis(), ...kernBilder()];
+      // Regel 1: keine EXIF- oder XMP-Chunks in kopierten Bildern, sonst bricht der Bau ab.
+      pruefeWebpDateien(kopiert.map((d) => [d.relativeDest, readFileSync(d.absoluteSrc)] as [string, Uint8Array]));
+      dateien.push(...kopiert);
     },
     'build:manifestGenerated': (_wxt, manifest) => {
       // Gilt fuer jedes Content-Script (Schleier und Haken fuer Shadow Roots in der Seitenwelt): auf der Ausnahmeliste laeuft keins.

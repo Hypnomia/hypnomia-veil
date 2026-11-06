@@ -395,7 +395,7 @@ try {
     const voll = await sharp({ create: { width: 640, height: 360, channels: 3, background: { r: 120, g: 30, b: 200 } } }).webp({ quality: 90 }).toBuffer();
     await writeFile(path.join(quelle, 'vorschau', 'kaputt.webp'), voll.subarray(0, Math.min(voll.length - 1, 40)));
     await writeFile(path.join(quelle, 'lizenz.txt'), 'Test pack, synthetic pictures only.\n');
-    await writeFile(path.join(quelle, 'pack.json'), JSON.stringify({ id: 'kaputt', version: '0.0.1', titel: 'Broken test pack', lizenz: 'lizenz.txt', freischaltungen: ['erwachsen:vorschau'], dateien: [{ name: 'lizenz.txt' }, { name: 'vorschau/kaputt.webp', rolle: 'vorschau', stufe: 'explicit' }] }));
+    await writeFile(path.join(quelle, 'pack.json'), JSON.stringify({ id: 'kaputt', version: '0.0.1', titel: 'Broken test pack', lizenz: 'lizenz.txt', freischaltungen: ['erwachsen:vorschau'], dateien: [{ name: 'lizenz.txt' }, { name: 'vorschau/kaputt.webp', rolle: 'vorschau', stufe: 'hot' }] }));
     const kaputtPfad = path.join(ordner, 'kaputt.miapack');
     await writeFile(kaputtPfad, await bauePackAusOrdner(quelle));
     await entfernePack();

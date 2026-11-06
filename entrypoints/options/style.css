@@ -702,3 +702,20 @@ section:empty {
     line-height: 44px;
   }
 }
+
+/* Phase 7 (Auftrag I1): Knopf der Intensitaet mit Name und kurzer Zeile; Fingerziel bleibt mindestens 44 px. */
+.wahl.stufen span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.wahl.stufen small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--leise);
+}

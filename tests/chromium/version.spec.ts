@@ -1,5 +1,5 @@
 // Chromium: Auftrag V (Session 11). Version und Update-Hinweis: Testserver liefert 9.9.9 (Hinweis im Popup, Anleitung auf der
-// Einstellungsseite), 0.6.1 (kein Hinweis), 404 und kaputtes JSON (Fehlersatz), zweite Pruefung innerhalb von 24 Stunden ohne Abruf,
+// Einstellungsseite), 0.7.0 (kein Hinweis), 404 und kaputtes JSON (Fehlersatz), zweite Pruefung innerhalb von 24 Stunden ohne Abruf,
 // "Check now" ruft ab, ohne Adresse im Testbau kein Netz. Der Abruf geht an einen lokalen Mini-Server (tests/version-server.mjs), nie ans echte GitHub.
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -65,7 +65,7 @@ test('Neuere Version (9.9.9): Hinweis im Popup, Anleitung in vier Schritten, ein
     // Gegenprobe: eine normale Seite mit credentials 'include' schickt es sehr wohl (sonst misst der Test nichts).
     const fremd = await context.newPage();
     await fremd.goto(`http://127.0.0.1:${process.env.VEIL_FIXTURE_PORT ?? 47173}/hello.html`);
-    await fremd.evaluate((u) => fetch(u, { credentials: 'include', mode: 'no-cors' }).then(() => 0), server.adresse('0.6.1.json'));
+    await fremd.evaluate((u) => fetch(u, { credentials: 'include', mode: 'no-cors' }).then(() => 0), server.adresse('0.7.0.json'));
     expect(String(server.kopfzeilen.at(-1).cookie)).toContain('veil_test=1');
     await fremd.close();
     server.kopfzeilen.length = 0;
@@ -151,14 +151,14 @@ test('Zweite Pruefung innerhalb von 24 Stunden ruft nicht ab, "erzwingen" und "C
   }
 });
 
-test('Gleiche Version (0.6.1): kein Hinweis im Popup, Einstellungsseite sagt newest, Baudatum steht da', async () => {
+test('Gleiche Version (0.7.0): kein Hinweis im Popup, Einstellungsseite sagt newest, Baudatum steht da', async () => {
   const seite = await context.newPage();
   try {
     await seite.goto(optionsUrl());
-    await vorbereiten(seite, '0.6.1.json');
+    await vorbereiten(seite, '0.7.0.json');
     const popup = await context.newPage();
     await popup.goto(popupUrl());
-    await expect.poll(() => server.zaehler['/v/0.6.1.json']).toBe(1);
+    await expect.poll(() => server.zaehler['/v/0.7.0.json']).toBe(1);
     await popup.waitForTimeout(400);
     await expect(popup.locator('#version-hinweis')).toBeHidden();
     await popup.close();

@@ -2,7 +2,7 @@
 // Alle Nachrichten sind reine JSON-Objekte (Chrome serialisiert runtime.sendMessage als JSON).
 // Jeder Empfaenger antwortet nur auf sein `ziel`; auf fremde Ziele und unbekannte Typen gibt er undefined zurueck.
 
-import type { Einstellungen, Zone } from './einstellungen';
+import type { Einstellungen, StufeWahl, Zone } from './einstellungen';
 import type { QuizBank, Texte } from './quiz/vertrag';
 import type { WerbeFormat } from './pack/vertrag';
 import type { LedgerPlus } from './ledger/vertrag';
@@ -182,6 +182,12 @@ export interface NachrichtErkennerPackBild {
   schluessel: string;
   maxSeite?: number;
   format?: WerbeFormat;
+  // Phase 7 (Auftrag I2), nur Rolle `vorschau`: Masse der Zielflaeche in CSS-Pixeln (Wahl nach Seitenverhaeltnis) und die Intensitaet
+  // `erwachsen.stufe`. Die Stufe schickt der Absender mit (das Content-Script liest `storage.local` ohnehin): das Chrome-Offscreen-Dokument
+  // hat kein `storage`, und so braucht der Erkenner in keinem Browser ein neues Recht. Fehlt die Stufe oder ist sie unbekannt, gilt `tease`.
+  breite?: number;
+  hoehe?: number;
+  stufe?: StufeWahl;
 }
 export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerPruefe | NachrichtErkennerPackBild;
 export const PACKBILD_MAX_SEITE = 480;

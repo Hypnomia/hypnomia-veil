@@ -158,7 +158,8 @@ export interface PackMeta {
   erstellt: string;
   freischaltungen: Freischaltung[];
   lizenzText: string;
-  dateien: { name: string; typ: PackDateiEintrag['typ']; rolle?: Rolle; stufe?: Stufe; format?: WerbeFormat; laenge: number }[];
+  dateien: { name: string; typ: PackDateiEintrag['typ']; rolle?: Rolle; stufe?: Stufe; format?: WerbeFormat; laenge: number; breite?: number; hoehe?: number }[];
+  // `breite` und `hoehe` (Phase 7): Pixelmasse bei Bildern, beim Import einmal gelesen. Fehlen bei Packs, die vor 0.7.0 importiert wurden.
   groesse: number; // Bytes der Pack-Datei
   importiert: number; // Date.now()
 }

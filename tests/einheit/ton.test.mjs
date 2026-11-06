@@ -8,7 +8,7 @@ import { TON_NAMEN } from '../../src/ton/vertrag.ts';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { baueWav, dummyToene } from '../../scripts/pack/dummy-toene.mjs';
 
-const VERSION = '0.6.1';
+const VERSION = '0.7.0';
 const kodiere = (t) => new TextEncoder().encode(t);
 const KOPF = { id: 'tontest', version: '1.0.0', titel: 'Tontest', erstellt: '2026-11-05T10:00:00Z', mindestVeil: '0.0.1', freischaltungen: ['ton'] };
 const LIZENZ = { name: 'lizenz.txt', typ: 'text/plain', daten: kodiere('Test license.'), rolle: 'lizenz' };

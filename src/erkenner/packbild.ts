@@ -1,7 +1,10 @@
 // Bilder aus dem Pack fuer das Content-Script (Auftrag E, PHASE-4-BAUPLAN Abschnitt 8 Punkt 1). Laeuft im Erkenner-Kontext (Chrome
 // Offscreen, Firefox Hintergrund), liest aus IndexedDB (src/pack/db.ts: leseMeta, leseDatei), verkleinert auf PACKBILD_MAX_SEITE (Chibi
 // PACKBILD_MAX_SEITE_CHIBI) und liefert eine Data-URL. Vertrag: NachrichtErkennerPackBild in src/nachrichten.ts.
-// - Vorschau: nur mit Freischaltung `erwachsen:vorschau` im Meta; stabile Wahl per Hash des Schluessels (Quelladresse), JPEG.
+// - Vorschau: nur mit Freischaltung `erwachsen:vorschau` im Meta; JPEG. Wahl nach Stufe (kumulativ, nie schaerfer als `stufe` der Nachricht) und
+//   Seitenverhaeltnis der Flaeche, dann stabil per Hash des Schluessels (Quelladresse); Logik in src/pack/wahl.ts. Der Zwischenspeicher
+//   (`fertig`) haelt das Ergebnis je Datei und Kantenlaenge: weil die Wahl von Stufe und Klasse vor dem Nachschlagen laeuft, landet ein
+//   Stufenwechsel von selbst bei anderen Dateien, ohne dass alte Eintraege das falsche Bild liefern koennten.
 // - Chibi: Schluessel = Pose. Mit `chibi:pack` ein passendes Pack-Chibi (passtZurPose), sonst das Demo-Chibi `/chibi/<pose>.webp` aus der
 //   Erweiterung, fehlt beides `ok: false`. Chibis behalten ihre Transparenz (WebP oder PNG).
 // Das Ergebnis je Datei bleibt im Speicher (kleine Menge), der Meta-Stand wird hoechstens einmal je Sekunde gelesen und bei einer Meldung
@@ -19,6 +22,8 @@ import {
 import { horchePackGeaendert, leseDatei, leseMeta } from '../pack/db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from '../pack/format';
 import { hashe } from '../pack/patches';
+import { waehleVorschauNamen } from '../pack/wahl';
+import { STUFEN_WAHL, type StufeWahl } from '../einstellungen';
 import { formatMasse, WERBE_FORMATE, type Freischaltung, type PackMeta, type WerbeFormat } from '../pack/vertrag';
 
 const LESE_ABSTAND_MS = 1000;
@@ -140,10 +145,17 @@ function merke(schluessel: string, antwort: AntwortPackBild, lauf: number, speic
 }
 
 // Waehlt stabil (Hash des Schluessels) und versucht bei einer nicht lesbaren Datei die naechsten.
-async function ausPack(namen: string[], schluessel: string, maxSeite: number, mitAlpha: boolean, speicher: Map<string, AntwortPackBild> = fertig): Promise<AntwortPackBild | null> {
+async function ausPack(
+  namen: string[],
+  schluessel: string,
+  maxSeite: number,
+  mitAlpha: boolean,
+  speicher: Map<string, AntwortPackBild> = fertig,
+  geordnet = false, // true: `namen` ist schon in der Versuchsreihenfolge (Vorschau, src/pack/wahl.ts)
+): Promise<AntwortPackBild | null> {
   if (!namen.length) return null;
   const lauf = generation;
-  const start = hashe(schluessel) % namen.length;
+  const start = geordnet ? 0 : hashe(schluessel) % namen.length;
   for (let i = 0; i < Math.min(4, namen.length); i++) {
     const name = namen[(start + i) % namen.length]!;
     const zwischen = `${mitAlpha ? 'c' : 'v'}|${maxSeite}|${name}`;
@@ -199,8 +211,17 @@ export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<Ant
     if (!m || !frei(m, braucht)) m = await ladeMeta(true);
     if (n.rolle === 'vorschau') {
       if (!m || !frei(m, 'erwachsen:vorschau')) return fehler('keine Vorschau-Bilder freigeschaltet');
-      const namen = m.dateien.filter((d) => d.rolle === 'vorschau' && d.typ.startsWith('image/')).map((d) => d.name).sort();
-      const a = await ausPack(namen, n.schluessel, begrenze(n.maxSeite, PACKBILD_MAX_SEITE), false);
+      // Fehlt die Stufe oder ist sie unbekannt, gilt die mildeste ("unbekannt ergibt hot" gilt nur fuer die gespeicherte Einstellung).
+      const stufe: StufeWahl = (STUFEN_WAHL as readonly unknown[]).includes(n.stufe) ? (n.stufe as StufeWahl) : 'tease';
+      const namen = waehleVorschauNamen(
+        m.dateien.filter((d) => d.rolle === 'vorschau' && d.typ.startsWith('image/')),
+        stufe,
+        n.schluessel,
+        n.breite,
+        n.hoehe,
+      );
+      if (!namen.length) return fehler('kein Vorschau-Bild in dieser Stufe');
+      const a = await ausPack(namen, n.schluessel, begrenze(n.maxSeite, PACKBILD_MAX_SEITE), false, fertig, true);
       return a ?? fehler('kein Vorschau-Bild lesbar');
     }
     if (n.rolle === 'werbung') {

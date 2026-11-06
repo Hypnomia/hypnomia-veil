@@ -1,0 +1,21 @@
+/* Kern-Streifen der Einstellungsseite (Phase 7, Auftrag I3): drei kleine Bilder in einer Reihe, auch bei 360 px ohne Seitwaertsscrollen. */
+#kern-streifen {
+  margin: 0 0 12px;
+}
+
+.kern-bilder {
+  display: flex;
+  gap: 8px;
+}
+
+.kern-bilder img {
+  flex: 1 1 0;
+  min-width: 0;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+#kern-text {
+  margin: 8px 0 0;
+}

@@ -7,6 +7,7 @@ import { SatzWahl } from '../quiz/saetze';
 import { pruefeTexte } from '../quiz/vertrag';
 import { ANTWORT_MAX_MS, TESTHAKEN } from '../schleier/konstanten';
 import { vergissWecken, wecke } from '../schleier/pruefung';
+import { ladeEinstellungen, type StufeWahl } from '../einstellungen';
 
 // Marke am Host nur im Testbau (im Release-Bau faellt der Name weg); die Regel in style.css braucht sie nicht.
 export const HOST_MARKE: string = TESTHAKEN ? 'data-veil-ersatz-host' : '';
@@ -90,6 +91,8 @@ export class Galerie {
   readonly pauseKnopf: HTMLButtonElement;
   private readonly linkListe: HTMLAnchorElement[] = [];
   private lauf = 0;
+  // Dateinamen der gezeigten Pack-Bilder (nur fuer das Abbild des Testhakens).
+  private readonly namen: string[] = [];
 
   constructor(private readonly opt: GalerieOptionen) {
     const host = document.createElement('div');
@@ -262,12 +265,22 @@ export class Galerie {
       this.chibiBild.addEventListener('load', () => this.meldeAbbild(), { once: true });
       this.chibiBox.hidden = false;
     });
+    // Intensitaet der Bilder aus den Einstellungen (Auftrag I2); die Galerie fragt mit 16:9 (Kacheln sind quer).
+    // Die Stufe wird einmal je Anzeige gelesen; eine offene Galerie folgt einem Stufenwechsel nicht (sie wird beim naechsten Oeffnen neu geladen).
+    // Bei einem Lesefehler gilt die mildeste Stufe, nie die Standardstufe.
+    let stufe: StufeWahl = 'tease';
+    try {
+      stufe = (await ladeEinstellungen()).erwachsen.stufe;
+    } catch {
+      // mildeste Stufe
+    }
     // Nacheinander: der Erkenner waehlt je Schluessel stabil ein Bild, doppelte (gleicher Name) werden weggelassen.
     for (let i = 1; i <= GALERIE_BILDER && noch(); i++) {
-      const a = await frageBild({ ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel: `galerie-${i}` }, noch, ANTWORT_MAX_MS);
+      const a = await frageBild({ ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel: `galerie-${i}`, breite: 16, hoehe: 9, stufe }, noch, ANTWORT_MAX_MS);
       if (!noch()) return;
       if (!a || gesehen.has(a.name)) continue;
       gesehen.add(a.name);
+      this.namen.push(a.name);
       const bild = el('img');
       bild.alt = 'Mia';
       bild.decoding = 'async';
@@ -301,6 +314,7 @@ export class Galerie {
       popoverOffen: offen,
       titel: this.titel.textContent,
       bilder: bilder.length,
+      namen: [...this.namen],
       breiten: bilder.map((b) => b.naturalWidth),
       chibi: !this.chibiBox.hidden && this.chibiBild.naturalWidth > 0,
       links: this.linkListe.map((a) => ({ text: a.textContent, href: a.getAttribute('href'), target: a.target, rel: a.rel })),

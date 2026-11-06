@@ -2,7 +2,8 @@
 // Beide Tests laufen auch dann, wenn einer rot ist. Am Ende steht eine Zusammenfassung mit Millisekunden.
 // Zusaetzlich baut der Lauf ohne Testhaken (Release-Pruefung) und sucht in allen JS-Dateien beider Bauten nach den Spuren der Testhaken.
 import { spawn } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -10,6 +11,14 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const TESTBAU = { WXT_TESTHAKEN: '1', VEIL_AUSGABE: process.env.VEIL_AUSGABE ?? '.output-test' };
 // Bau ohne Testhaken fuer die Release-Pruefung: der Schalter ist leer (nicht "1"), der Ordner gehoert nur dieser Pruefung.
 const RELEASEBAU = { WXT_TESTHAKEN: '', VEIL_AUSGABE: '.output-release-pruefung' };
+// Kern-Bilder der Testbaue (Phase 7, Auftrag I3): synthetische Bilder in einem Ordner ausserhalb des Repos statt der echten aus `../02 Assets Mia/kern/`,
+// damit der Fall "mit Kern-Bildern" nie an echten Mia-Bildern haengt. Ein VEIL_KERN von aussen gewinnt. VEIL_KERN_PFLICHT=1 sagt den Kern-Tests,
+// dass sie ihre Faelle nicht still ueberspringen duerfen (fehlt ein Bau, sind sie rot).
+if (!process.env.VEIL_KERN && process.env.VEIL_NUR_RELEASEPRUEFUNG !== '1') {
+  const { baueKernTest } = await import('./pack/baue-kern-test.mjs');
+  TESTBAU.VEIL_KERN = await baueKernTest(mkdtempSync(path.join(tmpdir(), 'veil-kern-test-')), 3);
+}
+TESTBAU.VEIL_KERN_PFLICHT = '1';
 // Spuren der Testhaken: das, was der Testhaken in Seiten und Erweiterung schreibt oder abhoert. Im Release-Bau darf nichts davon stehen.
 //   veil-test             CustomEvent, ueber das Tests Einstellungen setzen und den Erkenner abfragen
 //   veil-freigabe         Seitenparameter "Freigabe sperren"
@@ -68,6 +77,18 @@ for (const schritt of NUR_RELEASE ? [] : ['build', 'build:firefox', 'zip:firefox
   const { code } = await lauf(schritt, TESTBAU);
   if (code !== 0) {
     console.error(`\nTEST-LAUF ABGEBROCHEN: Schritt "${schritt}" ist fehlgeschlagen (Exit ${code}).`);
+    process.exit(code);
+  }
+}
+
+// Testbau ohne Kern-Bilder (Phase 7, Auftrag I3): VEIL_KERN zeigt auf einen Ordner, den es nicht gibt, der Bau warnt und kopiert nichts. Die Kern-Tests
+// pruefen damit den Fall "kein Rahmen ohne Bild", auch wenn `../02 Assets Mia/kern/` im Standardbau da ist.
+const OHNEKERN = { WXT_TESTHAKEN: '1', VEIL_AUSGABE: process.env.VEIL_AUSGABE_OHNE_KERN ?? '.output-test-ohnekern', VEIL_KERN: '/nonexistent-kern-ordner' };
+for (const schritt of NUR_RELEASE ? [] : ['build', 'build:firefox', 'zip:firefox']) {
+  console.log(`\n== ${schritt} (ohne Kern-Bilder, ${OHNEKERN.VEIL_AUSGABE}) ==`);
+  const { code } = await lauf(schritt, OHNEKERN);
+  if (code !== 0) {
+    console.error(`\nTEST-LAUF ABGEBROCHEN: Schritt "${schritt}" ohne Kern-Bilder ist fehlgeschlagen (Exit ${code}).`);
     process.exit(code);
   }
 }

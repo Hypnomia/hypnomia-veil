@@ -11,9 +11,10 @@ import { adapterFuer, istHoverVideo, istVorschau, VORSCHAU_MIN_KANTE } from '../
 import { InhaltsZaehler, type InhaltsUrteil } from '../adapter/inhalt';
 import { seiteFuer, TEST_DOMAIN, type SeitenName } from '../adapter/liste';
 import { erwachsenStatus, setzeErwachsenStatus } from '../adapter/status';
-import type { Einstellungen } from '../einstellungen';
+import { STUFEN_WAHL, type Einstellungen, type StufeWahl } from '../einstellungen';
 import type { AntwortFehler, AntwortPackBild, NachrichtErkennerPackBild } from '../nachrichten';
 import { istFreigeschaltet, type PackKurz } from '../pack/vertrag';
+import { schluesselMitKlasse, trenneKlasse } from '../pack/wahl';
 import { bildSignatur, hintergrundWert, setzeBildSofortNeu, setzeHintergrund, stelleWiederHer, starteBildTausch } from './anwenden';
 import { ANTWORT_MAX_MS, TAUSCH_MAX_MS } from './konstanten';
 import { urlAusEbene, vergissWecken, wecke, zerlegeEbenen } from './pruefung';
@@ -43,10 +44,12 @@ export interface VorschauRueckrufe {
 }
 
 // Eine Anfrage an den Erkenner. 'transport': keine verwertbare Antwort (nicht geweckt, Zeitgrenze, Empfaenger weg).
-function frageErkenner(lebt: () => boolean): (schluessel: string) => Promise<AntwortPackBild | AntwortFehler | 'transport'> {
-  return async (schluessel) => {
+// `zusammen`: Schluessel der Quelle samt Klasse der Flaeche (src/pack/wahl.ts), `stufe`: aktuelle Intensitaet (wird bei jeder Anfrage gelesen).
+function frageErkenner(lebt: () => boolean, stufe: () => StufeWahl): (zusammen: string) => Promise<AntwortPackBild | AntwortFehler | 'transport'> {
+  return async (zusammen) => {
     if (!(await wecke(lebt))) return 'transport';
-    const nachricht: NachrichtErkennerPackBild = { ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel };
+    const { schluessel, breite, hoehe } = trenneKlasse(zusammen);
+    const nachricht: NachrichtErkennerPackBild = { ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel, breite, hoehe, stufe: stufe() };
     let uhr: ReturnType<typeof setTimeout> | undefined;
     const zeit = new Promise<null>((fertig) => {
       uhr = setTimeout(() => fertig(null), ANTWORT_MAX_MS);
@@ -68,8 +71,8 @@ function frageErkenner(lebt: () => boolean): (schluessel: string) => Promise<Ant
 }
 
 // Mit einem zweiten Versuch nach einem Transportfehler (frisch wecken). null = endgueltig kein Bild; wirft bei bleibendem Transportfehler.
-function holeVomErkenner(lebt: () => boolean): (schluessel: string) => Promise<AntwortPackBild | null> {
-  const einmal = frageErkenner(lebt);
+function holeVomErkenner(lebt: () => boolean, stufe: () => StufeWahl): (schluessel: string) => Promise<AntwortPackBild | null> {
+  const einmal = frageErkenner(lebt, stufe);
   return async (schluessel) => {
     let a = await einmal(schluessel);
     if (a === 'transport') {
@@ -84,6 +87,8 @@ function holeVomErkenner(lebt: () => boolean): (schluessel: string) => Promise<A
 export class Vorschau {
   private liste: SeitenName | null = null;
   private tausch = false;
+  // Vor der ersten Einstellung und bei jedem Zweifel die mildeste Stufe (Rueckfall nie schaerfer); aktualisiere() setzt die gespeicherte.
+  private stufe: StufeWahl = 'tease';
   private erkennen = false;
   private importiert = 0;
   private readonly zaehler = new InhaltsZaehler();
@@ -97,7 +102,7 @@ export class Vorschau {
   private testTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly r: VorschauRueckrufe, speicher?: VorschauSpeicher) {
-    this.speicher = speicher ?? new VorschauSpeicher(holeVomErkenner(() => r.lebt()));
+    this.speicher = speicher ?? new VorschauSpeicher(holeVomErkenner(() => r.lebt(), () => this.stufe));
   }
 
   // ---------- Zustand der Seite ----------
@@ -108,7 +113,9 @@ export class Vorschau {
     const neuTausch = liste !== null && istFreigeschaltet(pack, 'erwachsen:vorschau');
     const neuImportiert = pack?.importiert ?? 0;
     // Anderes Pack oder anderer Schalter: gehaltene Bilder gehoeren zum alten Stand.
-    if (neuTausch !== this.tausch || (neuTausch && neuImportiert !== this.importiert)) this.speicher.leere();
+    // Auch bei einem Stufenwechsel: gehaltene Bilder gehoeren zur alten Stufe, das naechste Bild fragt neu (bereits getauschte bleiben stehen).
+    if (neuTausch !== this.tausch || (neuTausch && neuImportiert !== this.importiert) || (neuTausch && e.erwachsen.stufe !== this.stufe)) this.speicher.leere();
+    this.stufe = e.erwachsen.stufe;
     this.liste = liste;
     this.tausch = neuTausch;
     this.importiert = neuImportiert;
@@ -124,7 +131,8 @@ export class Vorschau {
 
   // Beitrag zum Pruefstand: ein anderer Wert beginnt eine neue Epoche und beurteilt alles neu (Schalter, Liste, Pack).
   stand(): string {
-    return `${this.tausch ? 1 : 0}|${this.liste ?? ''}|${this.tausch ? this.importiert : 0}`;
+    // Die Stufe gehoert dazu: ein Wechsel beurteilt alles neu, bereits getauschte Kacheln bekommen ein Bild der neuen Stufe (auch bei einer milderen).
+    return `${this.tausch ? 1 : 0}|${this.liste ?? ''}|${this.tausch ? this.importiert : 0}|${this.tausch ? this.stufe : ''}`;
   }
 
   // Tauscht diese Seite Vorschaubilder?
@@ -240,14 +248,22 @@ export class Vorschau {
 
     z.eingereiht = true; // belegt das Element, bis die Antwort da ist (bewerte laeuft nicht doppelt)
     const generation = z.generation;
+    schluessel = schluesselMitKlasse(schluessel, mass.width, mass.height); // Klasse der Flaeche (quer, hoch, quadratisch) gehoert zum Zwischenspeicher
     const jetzt = this.speicher.sofort(schluessel);
     if (jetzt) {
       this.stapele(el, z, jetzt, mass, schluessel, generation);
       return true;
     }
+    const stufeBeiAnfrage = this.stufe;
     void this.speicher.hole(schluessel).then(
       (a) => {
         if (!this.r.lebt() || !this.r.aktiv() || z.generation !== generation) return;
+        // Antwort auf eine Anfrage vor einem Wechsel zu einer milderen Stufe: nicht einsetzen, das Element neu bewerten (zweiter Gurt, der erste
+        // ist die neue Epoche durch stand()).
+        if (STUFEN_WAHL.indexOf(stufeBeiAnfrage) > STUFEN_WAHL.indexOf(this.stufe)) {
+          z.eingereiht = false;
+          return this.r.neuBewerten(el, z);
+        }
         if (!a) return this.scheitert(el, z, 'kein Bild');
         this.stapele(el, z, a, mass!, schluessel, generation);
       },
@@ -327,7 +343,8 @@ export class Vorschau {
   // neu einsetzen, ohne auf das Laden des Originals zu warten (Vorschau-Rotation beim Darueberfahren).
   ersetzeSofort(el: HTMLImageElement, z: Zustand): boolean {
     if (!this.tausch || !z.ersetzt?.schluessel || !this.r.aktiv() || z.tauschLaeuft) return false;
-    if (this.schluesselBild(el) !== z.ersetzt.schluessel) return false;
+    // Der gemerkte Schluessel traegt die Klasse von damals (aus derselben Messung wie der Tausch): nur die Quelle davor wird verglichen.
+    if (trenneKlasse(z.ersetzt.schluessel).schluessel !== this.schluesselBild(el)) return false;
     const a = this.speicher.sofort(z.ersetzt.schluessel);
     if (!a) return false;
     z.eigen = a.dataUrl;

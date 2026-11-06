@@ -355,3 +355,18 @@ select {
   min-height: 44px;
   padding: 0 4px;
 }
+
+/* Phase 7 (Auftrag I3): Kern-Bild von Mia ueber dem Text der Einwilligungsseite, hoechstens 40 % der Fensterhoehe, nie breiter als die Spalte. */
+.mia-bild {
+  display: flex;
+  justify-content: center;
+}
+
+.mia-bild img {
+  display: block;
+  max-width: 100%;
+  max-height: 40vh;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+}

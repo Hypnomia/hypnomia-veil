@@ -21,6 +21,7 @@ import { fortschritt, istInterview, naechster, startSchritt, vorheriger, type Sc
 import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenWahl, type ZonenWahl } from '../../src/einstieg/zonen';
 import { TEXT } from '../../src/einstieg/texte';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { zeigeKernBilder } from '../../src/oberflaeche/kern-platz';
 
 // Anker des Pack-Abschnitts ("Add a pack") auf der Einstellungsseite: die id `neu` steht in entrypoints/options/index.html.
 const PACK_ANKER = '#neu';
@@ -250,7 +251,13 @@ function seiteEinwilligung(): HTMLElement {
     // "Not now": nichts wird gespeichert, die Seite schliesst. Der Satz darunter sagt, was dann gilt (Fund 2).
     nein,
   );
+  // Phase 7 (Auftrag I3, Entscheidung 150): "erste Seite" heisst die Einwilligungsseite, die erste nach Warnung und 18+. Ein Kern-Bild von Mia ueber dem Text, erst wenn es geladen ist (ohne Kern-Bilder im Bau bleibt der Platz weg).
+  // Die Warn- und die 18+-Seite bleiben ohne Bild.
+  const bild = knoten('div', 'mia-bild', undefined, 'kern-bild');
+  bild.hidden = true;
+  void zeigeKernBilder(bild, 1, () => bild.isConnected);
   s.append(
+    bild,
     knoten('p', undefined, TEXT.einwilligungLaeuft, 'einwilligung-laeuft'),
     liste,
     k,

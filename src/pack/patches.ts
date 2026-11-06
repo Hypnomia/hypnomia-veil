@@ -11,6 +11,7 @@ import { PACK_STORE_DATEIEN, type PackDateiGespeichert } from './vertrag';
 import { anfrage, horchePackGeaendert, leseStandAus, oeffneDb, type PackStand } from './db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from './format';
 import { Zwischenspeicher, type Leihe } from './leihe';
+import { hashe } from './hash';
 
 // Laengste Seite eines gehaltenen Patch-Bildes: groesser als jede sinnvolle Flaeche, aber klein genug fuer den Speicher.
 const MAX_SEITE = 1024;
@@ -39,14 +40,7 @@ let leseLauf: Promise<void> | null = null;
 let horcht = false;
 
 // FNV-1a ueber einen Text: stabile Zahl fuer die Auswahl (nicht zufaellig je Aufruf).
-export function hashe(text: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
+export { hashe };
 
 function holeDb(): Promise<IDBDatabase> {
   if (db) return Promise.resolve(db);

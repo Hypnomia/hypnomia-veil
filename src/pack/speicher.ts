@@ -124,6 +124,11 @@ export async function importierePack(
       if (d.rolle) e.rolle = d.rolle;
       if (d.stufe) e.stufe = d.stufe;
       if (d.format) e.format = d.format;
+      const masse = geprueft.masse?.[d.name];
+      if (masse) {
+        e.breite = masse.breite;
+        e.hoehe = masse.hoehe;
+      }
       return e;
     }),
     groesse: geprueft.groesse,

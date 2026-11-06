@@ -7,7 +7,7 @@ export const RELEASE_URL = 'https://github.com/Hypnomia/hypnomia-veil/releases/l
 export const VERSION_SCHLUESSEL = 'versionPruefung';
 export const VERSION_ABSTAND_MS = 24 * 60 * 60 * 1000;
 
-// Inhalt von `version.json` im Repo (Release-Skript pflegt sie, Phase 10): { "version": "0.6.1", "datum": "2026-11-05" }.
+// Inhalt von `version.json` im Repo (Release-Skript pflegt sie, Phase 10): { "version": "0.7.0", "datum": "2026-11-06" }.
 export interface VersionDatei {
   version: string;
   datum?: string;
