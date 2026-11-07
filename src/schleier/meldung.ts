@@ -5,6 +5,8 @@ import { CHIBI_MINI_SEITE, type ChibiPose } from '../chibi';
 import type { AntwortPackBild, NachrichtErkennerPackBild } from '../nachrichten';
 import { testhakenAktiv } from './status';
 import { TESTHAKEN } from './konstanten';
+import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 
 const ANZEIGE_MS = 4500;
 const BILD_FRIST_MS = 3000;
@@ -12,11 +14,14 @@ const ABBILD_ATTR: string = TESTHAKEN ? 'data-veil-freilegen-meldung' : '';
 
 const CSS = `
 :host { all: initial; }
-.box { position: fixed; right: 16px; bottom: 16px; max-width: min(320px, calc(100vw - 32px)); display: flex; gap: 8px; align-items: center;
-  box-sizing: border-box; padding: 8px 12px; border-radius: 14px; background: #fff0f7; color: #4a1d3d; border: 2px solid #f5a6cf;
-  font: 600 14px/1.35 system-ui, sans-serif; box-shadow: 0 2px 10px rgba(74, 29, 61, .25); pointer-events: none; }
+${SEITEN_TOKENS}
+/* Phase 8b ("Sakura Glas"): Glas-Kaertchen wie die Meldungen, ohne Knopf (nicht klickbar). */
+.box { position: fixed; right: 16px; bottom: 16px; max-width: min(320px, calc(100vw - 32px)); display: flex; gap: 10px; align-items: center;
+  box-sizing: border-box; padding: 9px 14px 9px 12px; border-radius: var(--v-r-m); background: rgba(255, 255, 255, 0.86); color: var(--v-rosa-800);
+  border: 1px solid var(--v-glas-kante); font: 700 14px/1.4 var(--v-schrift-text); box-shadow: 0 0 0 1px rgba(255, 179, 211, 0.35), var(--v-schatten);
+  pointer-events: none; }
 .box[hidden] { display: none; }
-img { width: 48px; height: 48px; object-fit: contain; flex: none; }
+img { width: 48px; height: 48px; object-fit: contain; flex: none; filter: drop-shadow(0 3px 6px rgba(168, 50, 111, 0.25)); }
 img[hidden] { display: none; }
 `;
 
@@ -32,6 +37,7 @@ export class Meldung {
   // Das Statusfeld muss vor dem Text da sein, sonst liest der Bildschirmleser die erste Meldung nicht vor.
   private baue(): void {
     if (this.host?.isConnected) return;
+    void ladeSeitenSchriften();
     const host = document.createElement('div');
     const wurzel = host.attachShadow({ mode: 'closed' });
     const stil = document.createElement('style');

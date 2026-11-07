@@ -3,9 +3,9 @@
 #ablage {
   margin: 12px 0;
   padding: 12px;
-  border: 2px dashed var(--linie);
-  border-radius: 12px;
-  background: var(--karte);
+  border: 2px dashed var(--v-lav-300);
+  border-radius: var(--v-r-m);
+  background: rgba(255, 255, 255, 0.6);
   transition: background-color 0.12s, border-color 0.12s;
 }
 

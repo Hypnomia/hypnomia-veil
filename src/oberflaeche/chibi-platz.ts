@@ -34,6 +34,7 @@ async function demo(pose: ChibiPose): Promise<string | null> {
 export async function zeigeChibi(bild: HTMLImageElement, pose: ChibiPose, pack: PackKurz | null): Promise<boolean> {
   const nr = (zaehler.get(bild) ?? 0) + 1;
   zaehler.set(bild, nr);
+  bild.dataset.pose = pose; // Phase 8b: das CSS kann die gemalte leere Blase der Pose sprechblase abschneiden
   const gilt = () => zaehler.get(bild) === nr;
   let blob: string | null = null;
   try {

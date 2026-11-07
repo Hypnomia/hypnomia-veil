@@ -2,6 +2,8 @@
 // Einheitstests (node --experimental-strip-types). Daten stehen in data/werbung.json (nur Erkennungsmerkmale, es wird nichts blockiert).
 import daten from '../../data/werbung.json' with { type: 'json' };
 import links from '../../data/links.json' with { type: 'json' };
+import motive from '../../data/werbung-motive.json' with { type: 'json' };
+import type { LogoName } from '../oberflaeche/design/logos';
 import { WERBE_FORMATE, formatMasse, type WerbeFormat } from '../pack/vertrag.ts';
 
 // Testdomain (nur im Testbau): `*.veil-werbung.test` gilt als Werbe-Host. Im Release-Bau eine nie aufloesbare Domain; der Testname faellt
@@ -102,12 +104,39 @@ export function hashText(s: string): number {
   return h >>> 0;
 }
 
-export const LINK_NAMEN = ['patreon', 'subscribestar', 'itch', 'youtube', 'linkbio'] as const;
-export type LinkName = (typeof LINK_NAMEN)[number];
+// Plattformen der Werbe-Motive (data/werbung-motive.json). Je Flaeche stabil gewaehlt: Plattform, darin eine Zeile; der Link kommt aus
+// data/links.json unter dem Namen `link` der Plattform. Logo und Knopftext gehoeren immer zur Plattform des Links.
+export const PLATTFORMEN = ['patreon', 'subscribestar', 'discord', 'youtube', 'x', 'itch'] as const;
+export type Plattform = (typeof PLATTFORMEN)[number];
+export type LinkName = keyof typeof links;
+export const LINK_NAMEN: readonly string[] = PLATTFORMEN.map((p) => (motive.plattformen as Record<string, { link: string }>)[p]!.link);
 
-export function linkFuer(schluessel: string): { name: LinkName; url: string } {
-  const name = LINK_NAMEN[hashText(`link|${schluessel}`) % LINK_NAMEN.length]!;
-  return { name, url: (links as Record<string, string>)[name]! };
+export interface Motiv {
+  plattform: Plattform;
+  name: string; // Name des Links in links.json
+  url: string;
+  logo: LogoName;
+  knopf: string;
+  titel: string;
+  unter: string;
+}
+
+export function linkFuer(schluessel: string): Motiv {
+  const plattform = PLATTFORMEN[(hashText(`link|${schluessel}`) >>> 7) % PLATTFORMEN.length]!;
+  const p = (motive.plattformen as Record<string, { link: string; logo: string; knopf: string; zeilen: { titel: string; unter: string }[] }>)[plattform]!;
+  const z = p.zeilen[(hashText(`zeile|${schluessel}`) >>> 11) % p.zeilen.length]!;
+  // Lesung S2/R Nr. 9: nur https-Adressen, sonst Mias Patreon.
+  const roh = (links as Record<string, string>)[p.link];
+  const url = typeof roh === 'string' && /^https:\/\//.test(roh) ? roh : links.patreon;
+  return { plattform, name: p.link, url, logo: p.logo as LogoName, knopf: p.knopf, titel: z.titel, unter: z.unter };
+}
+
+// Layout nach Format der Flaeche: Banner (breit und niedrig), Hochformat (hoch und schmal), sonst Rechteck.
+export type Layout = 'banner' | 'rechteck' | 'hoch';
+export function layoutFuer(breite: number, hoehe: number): Layout {
+  if (hoehe >= breite * 1.6) return 'hoch';
+  if (breite >= hoehe * 2.5) return 'banner';
+  return 'rechteck';
 }
 
 export const STANDARD_KENNZEICHNUNG = 'Mia’s ad';

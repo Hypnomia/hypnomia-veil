@@ -1,17 +1,20 @@
-/* Popup: hell und pastellfarben, bis 360 px breit, auf schmalen Bildschirmen (Android, ganze Seite) die volle Breite (UX-Fund 27). */
+@import '../../src/oberflaeche/design/tokens.css';
+
+/* Popup im Look "Sakura Glas" (Phase 8b, Auftrag U): Verlaufskopf mit Spirale, Glas-Karten, Segment, Schalter-Kacheln.
+   Breite 320 bis 360 px, auf schmalen Bildschirmen (Android, ganze Seite) die volle Breite (UX-Fund 27). Alle Farben aus werte.ts (--v-*). */
 :root {
-  --grund: #fff5fa;
-  --karte: #ffffff;
-  --text: #4f3345;
-  --leise: #86647a;
-  --feld-rand: #8f7285; /* Feldraender, wie auf der Einstellungsseite (4,0:1 und mehr) */
-  --rand: #9a7c8e; /* Schalterbahn aus: 3,72:1 auf Weiss, 3,49:1 auf #fff5fa (UX-Fund 10, wie Einstellungsseite) */
-  --akzent-text: #8f2d61; /* Text auf --akzent-hell mindestens 4,5:1 (UX-Fund 9) */
-  --akzent: #b03f7a;
-  --akzent-hell: #f9d6e7;
-  --pastell: #e9def9;
-  --linie: #f0cfe0;
-  --fokus: #6a4bc4;
+  --grund: var(--v-rosa-50);
+  --karte: var(--v-glas-stark);
+  --text: var(--v-text);
+  --leise: var(--v-leise);
+  --feld-rand: var(--v-rand);
+  --rand: var(--v-rand);
+  --akzent-text: var(--v-rosa-800);
+  --akzent: var(--v-rosa-700);
+  --akzent-hell: var(--v-rosa-100);
+  --pastell: var(--v-lav-100);
+  --linie: var(--v-rosa-200);
+  --fokus: var(--v-lav-500);
 }
 
 * {
@@ -23,80 +26,187 @@ body {
   width: 100%;
   min-width: 320px;
   max-width: 360px;
-  background: var(--grund);
+  background: var(--v-verlauf-grund);
   color: var(--text);
-  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 13px/1.4 var(--v-schrift-text);
 }
 
 main {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 12px;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+/* Kopf im Verlauf, grosse halbtransparente Spirale rechts (langsam). */
+header {
+  position: relative;
+  margin: 0 -12px;
+  padding: 14px 16px 22px;
+  background: var(--v-verlauf-kopf);
+  overflow: hidden;
+}
+
+header::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 247, 251, 0.6));
+  pointer-events: none;
+}
+
+.spirale-gross {
+  position: absolute;
+  right: -78px;
+  top: -66px;
+  width: 150px;
+  height: 150px;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.spirale-gross .v-auge {
+  filter: none;
+}
+
+html[data-ruhig='true'] .v-dreht {
+  animation: none;
+}
+
+.kopfzeile,
+#status {
+  position: relative;
+  z-index: 1;
+}
+
+.marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 h1 {
   margin: 0;
-  font-size: 15px;
-  letter-spacing: 0.14em;
-  color: var(--akzent);
+  font: 800 13px/1.2 var(--v-schrift-display);
+  letter-spacing: 0.12em;
+  color: var(--v-rosa-800);
 }
 
 h2 {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  font: 800 12.5px/1.2 var(--v-schrift-display);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--leise);
+  color: var(--v-rosa-700);
 }
 
+h3 {
+  font-family: var(--v-schrift-display);
+}
+
+/* Status mit gruenem Punkt (bei Pause lavendel). */
 #status {
-  margin: 4px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
   min-height: 2.8em;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--v-leise);
 }
 
+#status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--v-ok-punkt);
+  box-shadow: 0 0 0 3px rgba(63, 174, 122, 0.2);
+}
+
+main:has(#pause[aria-pressed='true']) #status::before {
+  background: var(--v-lav-500);
+  box-shadow: 0 0 0 3px rgba(143, 107, 232, 0.2);
+}
+
+/* Abschnitte als weisse Glas-Karten */
 section {
-  padding: 10px 12px;
-  background: var(--karte);
-  border: 1px solid var(--linie);
-  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--v-glas-stark);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-m);
+  box-shadow: var(--v-schatten-klein);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  section {
+    background: var(--v-glas);
+    -webkit-backdrop-filter: var(--v-glas-unschaerfe);
+    backdrop-filter: var(--v-glas-unschaerfe);
+  }
 }
 
 .hinweis {
   margin: 6px 0 0;
   font-size: 12.5px;
-  color: var(--leise);
+  color: var(--v-leise);
 }
 
 button {
   font: inherit;
   cursor: pointer;
+  transition: box-shadow var(--v-dauer-kurz), background var(--v-dauer-kurz), transform var(--v-dauer-kurz);
 }
 
+/* Pause-Knopf: gross, weiss nach rosa, Leuchtring, rundes Ikon im Akzent-Verlauf. */
 button.gross {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   width: 100%;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: 14px;
-  background: var(--akzent);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 650;
+  min-height: 52px;
+  padding: 10px 16px;
+  border: 1px solid var(--v-rosa-300);
+  border-radius: var(--v-r-voll);
+  background: linear-gradient(180deg, var(--v-weiss), var(--v-rosa-100));
+  box-shadow: var(--v-schatten-pause);
+  color: var(--v-rosa-800);
+  font: 800 16px/1.2 var(--v-schrift-display);
+}
+
+button.gross::before {
+  content: '';
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--v-ikon-pause) center / 100% no-repeat, var(--v-verlauf-akzent);
 }
 
 button.gross[aria-pressed='true'] {
-  background: #7a5cc4;
+  border-color: transparent;
+  background: var(--v-verlauf-akzent);
+  color: #fff;
+  box-shadow: var(--v-schatten-knopf);
 }
 
+button.gross[aria-pressed='true']::before {
+  background: var(--v-ikon-weiter) center / 100% no-repeat, rgba(255, 255, 255, 0.28);
+}
+
+/* Zweitknopf: Glas stark, Rand rosa-200, Schrift rosa-800; "All settings" als Pille. */
 button.klein {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--akzent);
-  border-radius: 10px;
-  background: var(--akzent-hell);
-  color: var(--akzent-text);
-  font-weight: 600;
+  padding: 9px 14px;
+  border: 1px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll);
+  background: var(--v-glas-stark);
+  color: var(--v-rosa-800);
+  font-weight: 700;
 }
 
 .kopfzeile {
@@ -109,7 +219,8 @@ button.klein {
 button.kopfknopf {
   width: auto;
   flex: none;
-  padding: 6px 12px;
+  padding: 6px 14px;
+  box-shadow: var(--v-schatten-klein);
 }
 
 /* UX-Fund N1 (zweite Lesung): der Fehlersatz klebt oben, damit er auch nach dem Scrollen im Bild ist. */
@@ -119,11 +230,30 @@ button.kopfknopf {
   z-index: 5;
   margin: 0;
   padding: 8px 12px;
-  border: 1px solid var(--akzent);
-  border-radius: 10px;
+  border: 1px solid var(--v-fehler);
+  border-radius: var(--v-r-s);
   background: #fff;
-  color: var(--akzent-text);
-  font-weight: 600;
+  color: var(--v-fehler);
+  font-weight: 700;
+}
+
+/* Einstiegs-Hinweis: Pfirsich-Flaeche wie auf der Einwilligungsseite, "Meet Mia" als Hauptknopf im Akzent-Verlauf. */
+#einstieg-hinweis section {
+  background: var(--v-pfirsich-100);
+  border-color: var(--v-pfirsich-200);
+}
+
+#einstieg-hinweis .hinweis {
+  margin-top: 0;
+}
+
+#einstieg-knopf {
+  margin-top: 10px;
+  border-color: transparent;
+  background: var(--v-verlauf-akzent);
+  box-shadow: var(--v-schatten-knopf);
+  color: #fff;
+  font-weight: 800;
 }
 
 #pack-link {
@@ -136,7 +266,7 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 3px solid var(--fokus);
+  outline: 3px solid var(--v-lav-500);
   outline-offset: 2px;
 }
 
@@ -146,31 +276,41 @@ button:disabled {
   align-items: baseline;
 }
 
-output {
-  font-variant-numeric: tabular-nums;
-  color: var(--akzent);
-  font-weight: 600;
+.kopf h2 {
+  margin-bottom: 4px;
 }
 
-input[type='range'] {
-  width: 100%;
-  accent-color: var(--akzent);
+output {
+  font-variant-numeric: tabular-nums;
+  padding: 2px 10px;
+  border-radius: var(--v-r-voll);
+  background: var(--v-verlauf-zart);
+  color: var(--v-rosa-800);
+  font-weight: 800;
 }
+
+/* Regler: gemeinsamer Regler aus tokens.css (Lesung W/U/O Nr. 3). */
 
 .enden {
   display: flex;
   justify-content: space-between;
   font-size: 12.5px;
-  color: var(--leise);
+  color: var(--v-leise);
 }
 
+/* Stil-Wahl als Segment */
 .wahl {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--v-r-s);
+  background: #f3e8f0;
 }
 
 .wahl label {
-  flex: 1;
+  position: relative;
+  min-width: 0;
 }
 
 .wahl input {
@@ -179,13 +319,19 @@ input[type='range'] {
 }
 
 .wahl span {
-  display: block;
-  padding: 6px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 4px;
   text-align: center;
-  border: 1px solid var(--feld-rand);
+  border: 1.5px solid var(--v-rand);
   border-radius: 10px;
-  background: var(--grund);
+  background: #fff;
+  color: var(--v-leise);
+  font-weight: 800;
   cursor: pointer;
+  transition: background var(--v-dauer-kurz), box-shadow var(--v-dauer-kurz);
 }
 
 .wahl input:disabled + span {
@@ -194,18 +340,18 @@ input[type='range'] {
 }
 
 .wahl input:checked + span {
-  background: var(--pastell);
-  border-color: var(--fokus);
-  box-shadow: 0 0 0 1px var(--fokus);
-  font-weight: 650;
+  border-color: var(--v-rosa-800);
+  background: var(--v-rosa-100);
+  color: var(--v-rosa-800);
+  box-shadow: 0 2px 8px -2px rgba(168, 50, 111, 0.35);
 }
 
 .wahl input:focus-visible + span {
-  outline: 3px solid var(--fokus);
+  outline: 3px solid var(--v-lav-500);
   outline-offset: 2px;
 }
 
-/* Schalter */
+/* Schalter: Bahn aus #e9dbe4 mit Rand, an im Verlauf */
 .schalter {
   display: flex;
   align-items: center;
@@ -221,27 +367,29 @@ input[type='range'] {
 .regler {
   position: relative;
   flex: none;
-  width: 34px;
-  height: 20px;
-  border-radius: 10px;
-  background: var(--rand);
-  transition: background 0.15s;
+  width: 36px;
+  height: 22px;
+  border-radius: var(--v-r-voll);
+  background: var(--v-rand);
+  transition: background var(--v-dauer-kurz);
 }
 
 .regler::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 3px;
+  left: 3px;
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background: #fff;
-  transition: transform 0.15s;
+  box-shadow: 0 1px 3px rgba(67, 40, 60, 0.35);
+  transition: transform var(--v-dauer-kurz);
 }
 
 .schalter input:checked + .regler {
-  background: var(--akzent);
+  background-color: var(--v-rosa-800);
+  background-image: var(--v-verlauf-akzent);
 }
 
 .schalter input:checked + .regler::after {
@@ -249,7 +397,7 @@ input[type='range'] {
 }
 
 .schalter input:focus-visible + .regler {
-  outline: 3px solid var(--fokus);
+  outline: 3px solid var(--v-lav-500);
   outline-offset: 2px;
 }
 
@@ -259,22 +407,59 @@ input[type='range'] {
 }
 
 .schalter small {
-  color: var(--leise);
+  color: var(--v-leise);
   font-size: 12.5px;
 }
 
-/* Zonen */
+/* Zonen als Schalter-Kacheln, zwei Spalten */
 .zonen {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
 
 .zonen li {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: var(--v-r-s);
+  border: 1px solid var(--v-rosa-200);
+  background: #fff;
+  font-weight: 700;
+  color: var(--v-leise);
+}
+
+.zonen li:has(input[data-zone]:checked) {
+  border-color: transparent;
+  background: var(--v-verlauf-zart);
+  color: var(--v-rosa-800);
+  box-shadow: inset 0 0 0 1.5px #e7a6c8;
+}
+
+.zonen .schalter {
+  min-height: 34px;
+}
+
+.zonen .regler {
+  width: 32px;
+  height: 20px;
+}
+
+.zonen .regler::after {
+  top: 2.5px;
+  left: 3px;
+  width: 15px;
+  height: 15px;
+}
+
+.zonen .schalter input:checked + .regler::after {
+  transform: translateX(11px);
 }
 
 .auch {
@@ -282,25 +467,30 @@ input[type='range'] {
   align-items: center;
   gap: 4px;
   font-size: 12.5px;
-  color: var(--leise);
+  font-weight: 600;
+  color: var(--v-leise);
   cursor: pointer;
 }
 
 .auch input {
-  accent-color: var(--akzent);
+  accent-color: var(--v-rosa-700);
 }
 
 footer {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 2px 6px 0;
+  text-align: center;
   font-size: 12.5px;
-  color: var(--leise);
+  color: var(--v-leise);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .regler,
-  .regler::after {
+  .regler::after,
+  .wahl span,
+  button {
     transition: none;
   }
 }
@@ -309,24 +499,27 @@ footer {
 #erwachsen-schalter {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin-top: 8px;
 }
 
 #erwachsen h3 {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--leise);
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--v-rosa-700);
 }
 
 #erwachsen button.klein {
   margin-top: 8px;
 }
 
+/* Mias Satz: Chibi links, weisse Sprechblase mit Spitze unten links. */
 .mia-zeile {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: flex-end;
 }
 
 .chibi {
@@ -336,10 +529,43 @@ footer {
   object-fit: contain;
 }
 
+.mia-zeile .hinweis {
+  position: relative;
+  flex: 1;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: var(--v-r-m);
+  background: #fff;
+  box-shadow: var(--v-schatten-klein);
+  color: var(--v-text);
+  font-weight: 600;
+}
+
+.mia-zeile .hinweis::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  bottom: 12px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.mia-zeile .hinweis:empty {
+  display: none;
+}
+
+/* Lesung W/U/O Nr. 12: ohne Chibi keine Spitze ins Leere. */
+.mia-zeile img.chibi[hidden] + .hinweis::before {
+  display: none;
+}
+
 .stufe {
   margin: 2px 0 0;
-  font-weight: 650;
-  color: var(--akzent);
+  font-weight: 800;
+  color: var(--v-rosa-800);
 }
 
 #stufe-zeit {
@@ -361,10 +587,12 @@ html:has(#fehler:not([hidden])) {
   cursor: not-allowed;
 }
 
-/* UX-Fund N2 (zweite Lesung), bewusst nur (pointer: coarse) und nicht "bis 480 px": das Desktop-Popup ist immer hoechstens 360 px breit
-   und soll mit Maus kompakt bleiben. Auf Touch-Geraeten (Android, dort ist das Popup die ganze Seite) Fingerziele mindestens 44 px,
-   wie auf der Einstellungsseite. Desktop-Popups mit Maus bleiben kompakt. */
-@media (pointer: coarse) {
+/* Ohne Maus mit Hover: Fingerziele mindestens 44 px und volle Breite (Android, dort ist das Popup die ganze Seite). Firefox Android meldet
+   `pointer: fine` ohne Hover (Entscheidung 154), darum dieselbe Bedingung wie auf der Einstellungsseite. Desktop-Popup mit Maus bleibt kompakt. */
+@media not ((pointer: fine) and (hover: hover)) {
+  body {
+    max-width: none;
+  }
   h2 {
     font-size: 13px;
   }
@@ -373,15 +601,15 @@ html:has(#fehler:not([hidden])) {
     min-height: 44px;
   }
   button.gross {
-    min-height: 48px;
+    min-height: 52px;
   }
   .wahl span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     min-height: 44px;
   }
   .zonen li {
+    min-height: 56px;
+  }
+  .zonen .schalter {
     min-height: 44px;
   }
   .auch {
@@ -391,4 +619,22 @@ html:has(#fehler:not([hidden])) {
   .schalter {
     min-height: 44px;
   }
+  input[type='range'] {
+    height: 44px;
+  }
+}
+
+/* Schmale Schirme (Seite statt Popup): volle Breite, nur das Desktop-Popup hat die feste Breite 320 bis 360 px. */
+@media (max-width: 319px) {
+  body {
+    min-width: 0;
+  }
+}
+
+/* UX-Pruefung 8b Nr. 3 (Orchestrator): die Pose sprechblase hat oben rechts eine gemalte leere Blase; neben der echten Sprechblase nur die Figur. */
+img.chibi[data-pose='sprechblase'] {
+  aspect-ratio: 0.7;
+  width: auto;
+  object-fit: cover;
+  object-position: 0% 100%;
 }

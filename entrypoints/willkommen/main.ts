@@ -17,11 +17,17 @@ import { QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL } from '../../src/k
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
 import { WILLKOMMEN_KANAL, aendereEinstieg } from '../../src/einstieg/speicher';
 import { einstiegFertig, ladeEinstieg, type EinstiegStand } from '../../src/einstieg/vertrag';
+import type { ChibiPose } from '../../src/chibi';
 import { fortschritt, istInterview, naechster, startSchritt, vorheriger, type Schritt } from '../../src/einstieg/schritte';
 import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenWahl, type ZonenWahl } from '../../src/einstieg/zonen';
 import { TEXT } from '../../src/einstieg/texte';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { zeigeKernBilder } from '../../src/oberflaeche/kern-platz';
+import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
+import { augenpaar } from '../../src/oberflaeche/design/motive';
+import { belebeRegler } from '../../src/oberflaeche/design/regler';
+
+belebeRegler(); // Phase 8b: gemeinsamer Regler, Fuellung bis zum Wert auch in Chromium
 
 // Anker des Pack-Abschnitts ("Add a pack") auf der Einstellungsseite: die id `neu` steht in entrypoints/options/index.html.
 const PACK_ANKER = '#neu';
@@ -237,6 +243,7 @@ function seiteAlter(): HTMLElement {
   return s;
 }
 
+let szeneBild: HTMLElement | null = null;
 function seiteEinwilligung(): HTMLElement {
   const s = knoten('div');
   const liste = knoten('ul', 'punkte', undefined, 'einwilligung-punkte');
@@ -251,15 +258,15 @@ function seiteEinwilligung(): HTMLElement {
     // "Not now": nichts wird gespeichert, die Seite schliesst. Der Satz darunter sagt, was dann gilt (Fund 2).
     nein,
   );
-  // Phase 7 (Auftrag I3, Entscheidung 150): "erste Seite" heisst die Einwilligungsseite, die erste nach Warnung und 18+. Ein Kern-Bild von Mia ueber dem Text, erst wenn es geladen ist (ohne Kern-Bilder im Bau bleibt der Platz weg).
-  // Die Warn- und die 18+-Seite bleiben ohne Bild.
-  const bild = knoten('div', 'mia-bild', undefined, 'kern-bild');
-  bild.hidden = true;
+  // Phase 7 (Auftrag I3, Entscheidung 150): "erste Seite" heisst die Einwilligungsseite, die erste nach Warnung und 18+. Ein Kern-Bild von Mia, erst wenn es geladen ist (ohne Kern-Bilder im Bau bleibt der Platz weg).
+  // Die Warn- und die 18+-Seite bleiben ohne Bild. Phase 8b (Auftrag W): das Bild steht links neben der Karte (Szene), gebaut in zeige().
+  szeneBild = knoten('div', 'mia-bild', undefined, 'kern-bild');
+  szeneBild.hidden = true;
+  const bild = szeneBild;
   void zeigeKernBilder(bild, 1, () => bild.isConnected);
   s.append(
-    bild,
-    knoten('p', undefined, TEXT.einwilligungLaeuft, 'einwilligung-laeuft'),
     liste,
+    knoten('p', undefined, TEXT.einwilligungLaeuft, 'einwilligung-laeuft'),
     k,
     knoten('p', 'hinweis', TEXT.einwilligungNeinHinweis, 'einwilligung-nein-hinweis'),
   );
@@ -496,10 +503,42 @@ function navigation(s: Schritt): HTMLElement {
   return zeile;
 }
 
+const POSE_JE_SEITE: Record<string, ChibiPose> = {
+  'interview-1': 'arme',
+  'interview-2': 'schild',
+  'interview-3': 'nein',
+  'interview-4': 'schmollen',
+  'interview-5': 'jubeln',
+};
+
 function seiteInterview(s: Schritt): HTMLElement {
   const s1 = INTERVIEW[s]!.bauen();
   aktualisiere = s1.aktualisiere;
   s1.aktualisiere(einst, pack);
+  // Phase 8b (Auftrag W): der Erklaertext steht in einer Sprechblase neben dem Chibi (Demo-Chibi oder Pack-Chibi ueber den vorhandenen Weg).
+  const erklaer = s1.knoten.firstElementChild;
+  if (erklaer && erklaer.tagName === 'P') {
+    const chibi = knoten('img', 'chibi');
+    chibi.alt = '';
+    chibi.hidden = true;
+    // UX-Pruefung 8b Nr. 16: je Interview-Seite eine andere Pose (nie sprechblase, die echte Blase steht daneben).
+    const pose = POSE_JE_SEITE[s] ?? 'arme';
+    erklaer.classList.add('blase');
+    const zeile = knoten('div', 'mia-zeile');
+    zeile.append(chibi, erklaer);
+    s1.knoten.prepend(zeile);
+    let letztes: PackKurz | null | undefined;
+    const innen = s1.aktualisiere;
+    s1.aktualisiere = (e, p) => {
+      innen(e, p);
+      if (p !== letztes) {
+        letztes = p;
+        void zeigeChibi(chibi, pose, p);
+      }
+    };
+    aktualisiere = s1.aktualisiere;
+    s1.aktualisiere(einst, pack);
+  }
   const alles = knoten('div');
   alles.append(s1.knoten, navigation(s));
   // Auf der letzten Seite tut "Skip the rest" dasselbe wie "Finish", dort fehlt der Block (Fund 20).
@@ -523,20 +562,30 @@ function seiteEnde(): HTMLElement {
   const packKnopf = knopf('ende-pack', TEXT.endePack, 'gross', () => {
     location.href = pfadOptionen(PACK_ANKER);
   });
-  const text = knoten('p', undefined, undefined, 'ende-text');
+  const text = knoten('p', 'blase', undefined, 'ende-text');
+  // UX-Pruefung 8b Nr. 15: Mia jubelt zum Abschluss (Demo- oder Pack-Chibi), der Satz steht in ihrer Sprechblase.
+  const chibi = knoten('img', 'chibi');
+  chibi.alt = '';
+  chibi.hidden = true;
+  const zeile = knoten('div', 'mia-zeile');
+  zeile.append(chibi, text);
+  const einstellungenKnopf = knopf('ende-einstellungen', TEXT.endeEinstellungen, 'klein', () => {
+    location.href = pfadOptionen();
+  });
   const k = knoten('div', 'knoepfe');
-  k.append(
-    packKnopf,
-    knopf('ende-einstellungen', TEXT.endeEinstellungen, 'klein', () => {
-      location.href = pfadOptionen();
-    }),
-    knopf('ende-schliessen', TEXT.endeSchliessen, 'klein ruhig', () => void schliesse()),
-  );
-  s.append(text, k);
+  k.append(packKnopf, einstellungenKnopf, knopf('ende-schliessen', TEXT.endeSchliessen, 'klein ruhig', () => void schliesse()));
+  s.append(zeile, k);
+  let letztes: PackKurz | null | undefined;
   aktualisiere = (_e, p) => {
     packKnopf.hidden = p !== null;
+    // Mit Pack ist "All settings" der Hauptknopf (UX-Pruefung 8b Nr. 15), ohne Pack bleibt es der Pack-Knopf.
+    einstellungenKnopf.className = p !== null ? 'gross' : 'klein';
     // Fund 21: mit Pack sagt der Satz nicht mehr, dass es fehlt.
     text.textContent = p !== null ? TEXT.endeTextMitPack : TEXT.endeText;
+    if (p !== letztes) {
+      letztes = p;
+      void zeigeChibi(chibi, 'jubeln', p);
+    }
   };
   aktualisiere(einst, pack);
   return s;
@@ -567,7 +616,18 @@ function zeige(s: Schritt): void {
   fehlerZeile = knoten('p', 'fehler', undefined, 'fehler');
   fehlerZeile.setAttribute('role', 'alert');
   fehlerZeile.hidden = true;
-  platz.append(titel, inhalt, fehlerZeile);
+  if (s === 'einwilligung' && szeneBild) {
+    // Zweispaltige Szene: Mia-Bild mit Namensschild links, Glas-Karte rechts (unter 640 px gestapelt).
+    const links = knoten('div', 'szene-links');
+    const schild = knoten('div', 'namensschild');
+    schild.append(augenpaar(22), knoten('span', undefined, 'Mia'));
+    links.append(szeneBild, schild);
+    const karte = knoten('div', 'szene-karte');
+    karte.append(titel, inhalt, fehlerZeile);
+    platz.append(links, karte);
+  } else {
+    platz.append(titel, inhalt, fehlerZeile);
+  }
 
   if (s === 'ende') {
     fortschrittZeile.hidden = true;
@@ -577,6 +637,7 @@ function zeige(s: Schritt): void {
     fortschrittZeile.hidden = false;
     fortschrittBalken.max = f.von;
     fortschrittBalken.value = f.nr;
+    fortschrittZeile.style.setProperty('--anteil', String(f.nr / f.von));
     fortschrittText.id = 'fortschritt-text';
     fortschrittText.textContent = nurFragen ? TEXT.frageVon(f.nr, f.von) : TEXT.schrittVon(f.nr, f.von);
   }
@@ -585,6 +646,7 @@ function zeige(s: Schritt): void {
 
 async function start(): Promise<void> {
   document.title = TEXT.seitenTitel;
+  el<HTMLElement>('marke').prepend(augenpaar(26));
   // Antwortet dem Popup ("Meet Mia") mit der eigenen Tab-Nummer, damit es diesen Tab nach vorn holt statt einen zweiten zu oeffnen.
   const kanal = new BroadcastChannel(WILLKOMMEN_KANAL);
   kanal.onmessage = (e) => {

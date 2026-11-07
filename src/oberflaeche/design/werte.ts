@@ -1,0 +1,120 @@
+// Gestaltungs-System "Sakura Glas" (Phase 8b, Entscheidung 161): eine Quelle fuer alle Werte.
+// Erweiterungsseiten lesen `tokens.css` (gleiche Werte, ein Einheitstest prueft die Gleichheit), Shadow Roots in fremden Seiten
+// bekommen `SEITEN_TOKENS` aus `tokens.ts`. Namen als CSS-Variable: `--v-<schluessel>`.
+// Kontraste (Einheitstest): Text auf Weiss, rosa-50 und Glas mindestens 4,5:1; Raender und Bahnen mindestens 3:1.
+
+export const FARBEN = {
+  // Rosa (Sakura)
+  'rosa-50': '#fff6fa',
+  'rosa-100': '#ffe9f3',
+  'rosa-200': '#ffd3e6',
+  'rosa-300': '#ffb3d3',
+  'rosa-500': '#e2559a', // nur Flaechen, Leuchten, Punkte; nie Text auf hellem Grund (3,5:1)
+  'rosa-700': '#a8326f',
+  'rosa-800': '#8a2759',
+  // Lavendel
+  'lav-100': '#f1ebff',
+  'lav-200': '#e2d7ff',
+  'lav-300': '#c9b6ff',
+  'lav-500': '#8f6be8', // Fokusring (3,9:1 als Nicht-Text)
+  'lav-700': '#5d3fb4',
+  // Pfirsich
+  'pfirsich-100': '#fff0e6',
+  'pfirsich-200': '#ffdcc7',
+  'pfirsich-400': '#ffb08a',
+  // Text
+  text: '#43283c',
+  leise: '#7a5670',
+  hauch: '#a1849a', // nur Zierde, nie Text
+  rand: '#9c7e91', // Schalterbahn aus, Feldraender (3,6:1)
+  fehler: '#a8324f',
+  ok: '#23704c',
+  'ok-punkt': '#3fae7a',
+  weiss: '#ffffff',
+  // Kennzeichnung der Werbung: dunkles Etikett, weisse Schrift
+  etikett: '#2b1630',
+} as const;
+
+// Akzent-Verlauf fuer Hauptknoepfe mit weisser Schrift: jede Stufe hat mindestens 5,5:1 gegen Weiss.
+export const AKZENT_STUFEN = ['#b8327a', '#8a3fb8', '#6a4bc4'] as const;
+
+export const WERTE: Record<string, string> = {
+  ...FARBEN,
+  'verlauf-akzent': `linear-gradient(135deg, ${AKZENT_STUFEN[0]} 0%, ${AKZENT_STUFEN[1]} 55%, ${AKZENT_STUFEN[2]} 100%)`,
+  'verlauf-zart': 'linear-gradient(135deg, #ffe3ef 0%, #efe7ff 100%)',
+  'verlauf-kopf': 'linear-gradient(135deg, #ffd6e8 0%, #e6dcff 100%)',
+  'verlauf-grund':
+    'radial-gradient(1200px 700px at 8% -10%, #ffe1ee 0%, transparent 60%), radial-gradient(900px 600px at 100% 0%, #e9e0ff 0%, transparent 55%), radial-gradient(800px 600px at 50% 110%, #ffe8db 0%, transparent 60%), #fff7fb',
+  glas: 'rgba(255, 255, 255, 0.62)',
+  'glas-stark': 'rgba(255, 255, 255, 0.82)',
+  'glas-kante': 'rgba(255, 255, 255, 0.9)',
+  'glas-unschaerfe': 'blur(18px) saturate(1.4)',
+  schatten: '0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 10px 30px -8px rgba(168, 50, 111, 0.22), 0 2px 8px -2px rgba(93, 63, 180, 0.12)',
+  'schatten-klein': '0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 4px 14px -4px rgba(168, 50, 111, 0.25)',
+  'schatten-knopf': '0 8px 22px -8px rgba(138, 63, 184, 0.7), 0 1px 0 rgba(255, 255, 255, 0.4) inset',
+  'schatten-pause': '0 0 0 3px rgba(226, 85, 154, 0.14), 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 4px 14px -4px rgba(168, 50, 111, 0.25)',
+  'r-s': '12px',
+  'r-m': '18px',
+  'r-l': '26px',
+  'r-voll': '999px',
+  // Abstaende im 4er-Raster
+  'a-1': '4px',
+  'a-2': '8px',
+  'a-3': '12px',
+  'a-4': '16px',
+  'a-5': '20px',
+  'a-6': '24px',
+  'a-8': '32px',
+  // Schrift: eigene Familien (VEIL Rounded, VEIL Text), Rueckfall Systemschrift
+  'schrift-display': "'VEIL Rounded', 'M PLUS Rounded 1c', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif",
+  'schrift-text': "'VEIL Text', 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+  // Bewegung: nur weiche Uebergaenge und langsame Zyklen (ab 2 s), aus bei prefers-reduced-motion und im Ruhig-Modus
+  'dauer-kurz': '0.2s',
+  'dauer-mittel': '0.3s',
+  'zyklus-funkel': '6s',
+  'zyklus-spirale': '14s',
+  fingerziel: '44px',
+  // Ikone fuer den Pause-Knopf der Erweiterungsseiten (weiss, auf dem Akzent-Verlauf): zwei Balken, im Pausen-Zustand ein Abspiel-Dreieck.
+  'ikon-pause': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3Crect x='13.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3C/svg%3E")`,
+  'ikon-weiter': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.5 6.8 17.5 12l-8 5.2z' fill='white' stroke='white' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+};
+
+// Schriftdateien (public/schrift/), Familie und Schnitt; Erweiterungsseiten per @font-face, fremde Seiten per FontFace.
+export const SCHRIFTEN = [
+  { familie: 'VEIL Rounded', gewicht: '700', datei: 'schrift/rounded-700.woff2' },
+  { familie: 'VEIL Rounded', gewicht: '800', datei: 'schrift/rounded-800.woff2' },
+  { familie: 'VEIL Text', gewicht: '400', datei: 'schrift/text-400.woff2' },
+  { familie: 'VEIL Text', gewicht: '600', datei: 'schrift/text-600.woff2' },
+  { familie: 'VEIL Text', gewicht: '700', datei: 'schrift/text-700.woff2' },
+  { familie: 'VEIL Text', gewicht: '800', datei: 'schrift/text-800.woff2' },
+] as const;
+
+export type SchriftDatei = (typeof SCHRIFTEN)[number]['datei'];
+
+/** Alle Werte als Deklarationen `--v-name: wert;` (fuer :root oder :host). */
+export function deklarationen(): string {
+  return Object.entries(WERTE)
+    .map(([k, v]) => `--v-${k}: ${v};`)
+    .join(' ');
+}
+
+// Gemeinsame Klassen der Motive (motive.ts), fuer tokens.css und SEITEN_TOKENS gleich.
+export const GEMEINSAM = `.v-augenpaar { display: inline-flex; gap: 3px; flex: none; }
+.v-auge { display: block; filter: drop-shadow(0 2px 4px rgba(226, 85, 154, 0.35)); }
+.v-dreht { animation: v-dreh var(--v-zyklus-spirale) linear infinite; transform-origin: 0 0; }
+.v-funkel { animation: v-funkeln var(--v-zyklus-funkel) ease-in-out infinite; }`;
+
+// Nur Erweiterungsseiten (tokens.css, nicht SEITEN_TOKENS): ein gemeinsamer Regler fuer Willkommensseite, Popup und Einstellungsseite
+// (Lesung W/U/O Nr. 3). Spur zart rosa nach lavendel, gefuellt im Akzent-Verlauf bis zum Wert; Chromium liest den Wert aus `--wert`
+// (regler.ts setzt ihn), Firefox fuellt selbst. Griff weiss mit rosa Ring. Fingerflaeche: Feldhoehe 32 px, 44 px bei Finger und schmal.
+export const ERWEITERUNG = `input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; }
+input[type='range']::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; box-shadow: inset 0 1px 2px rgba(67, 40, 60, 0.18);
+  background: linear-gradient(90deg, #b8327a, #8a3fb8) 0 0 / var(--wert, 0%) 100% no-repeat, linear-gradient(90deg, var(--v-rosa-200), var(--v-lav-200)); }
+input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; margin-top: -8px; border-radius: 50%; border: 0;
+  background: var(--v-weiss); box-shadow: 0 0 0 4px var(--v-rosa-700), 0 4px 10px rgba(168, 50, 111, 0.35); }
+input[type='range']::-moz-range-track { height: 10px; border-radius: 999px; background: linear-gradient(90deg, var(--v-rosa-200), var(--v-lav-200)); }
+input[type='range']::-moz-range-progress { height: 10px; border-radius: 999px; background: var(--v-verlauf-akzent); }
+input[type='range']::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--v-weiss); border: 4px solid var(--v-rosa-700); }
+input[type='range']:disabled { opacity: 0.55; cursor: default; }
+input[type='range']:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 3px; border-radius: 999px; }
+@media (max-width: 480px), (pointer: coarse) { input[type='range'] { min-height: 44px; } }`;

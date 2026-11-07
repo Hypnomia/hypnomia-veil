@@ -18,6 +18,9 @@ import type { KontextLeicht } from '../schleier/schleier';
 import { testhakenAktiv } from '../schleier/status';
 import { BESUCH_PLAN_SCHLUESSEL, BESUCH_PRUEF_TAKT_MS, neuerBesuchPlan, pruefeBesuchPlan } from './plan';
 import { melde } from '../ereignisse';
+import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { spiralAuge } from '../oberflaeche/design/motive';
 
 export const NICHT_JETZT = 'Not now';
 const WIEDERHOLUNG_MS = 10 * 60_000;
@@ -29,13 +32,19 @@ const TASTEN = ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'composi
 
 const STIL = `
 :host { all: initial; }
+${SEITEN_TOKENS}
 * { box-sizing: border-box; }
-.karte { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: linear-gradient(160deg, #ffe3f1 0%, #efe6ff 100%);
-  color: #3b2a4a; border: 2px solid #ffb3d6; border-radius: 16px; box-shadow: 0 6px 24px rgba(120, 70, 140, 0.35);
-  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-.text { margin: 0; }
-button { font: inherit; color: #3b2a4a; background: #fff; border: 2px solid #d9a6ff; border-radius: 12px; padding: 6px 12px; min-height: 36px; cursor: pointer; white-space: nowrap; }
-button:hover { background: #fdf2ff; }
+/* Phase 8b ("Sakura Glas"): Glas-Karte mit Spiral-Auge, Knopf als Pille mit 44 px (vorher 37 px, UEBERGABE-14 Punkt 5). */
+.karte { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; background: rgba(255, 255, 255, 0.94);
+  color: var(--v-text); border: 1px solid var(--v-glas-kante); border-radius: var(--v-r-l); box-shadow: 0 0 0 1px rgba(255, 179, 211, 0.35), var(--v-schatten);
+  font: 700 15px/1.4 var(--v-schrift-text); }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .karte { background: rgba(255, 255, 255, 0.92); -webkit-backdrop-filter: var(--v-glas-unschaerfe); backdrop-filter: var(--v-glas-unschaerfe); }
+}
+.v-auge { flex: none; }
+.text { margin: 0; color: var(--v-rosa-800); }
+button { font: 800 14px/1 var(--v-schrift-text); color: var(--v-weiss); background: var(--v-verlauf-akzent); border: 0; border-radius: var(--v-r-voll);
+  padding: 0 18px; min-height: 44px; cursor: pointer; white-space: nowrap; box-shadow: var(--v-schatten-knopf); }
 `;
 
 const HOST_STIL: ReadonlyArray<[string, string]> = [
@@ -183,8 +192,9 @@ export function starteBesuche(ctx: KontextLeicht): void {
     knopf.type = 'button';
     knopf.tabIndex = -1; // nie Fokus: die Seite behaelt ihren Fokus und ihre Tasten
     knopf.textContent = NICHT_JETZT;
-    karte.append(text, knopf);
+    karte.append(spiralAuge(32), text, knopf);
     wurzel.append(stil, karte);
+    void ladeSeitenSchriften();
     (document.documentElement ?? document).appendChild(host);
     try {
       if (typeof host.showPopover === 'function') host.showPopover();

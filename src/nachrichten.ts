@@ -79,6 +79,11 @@ export type AntwortVersion = {
   firefoxStatus?: 'update_available' | 'no_update' | 'throttled' | 'unbekannt';
 };
 export interface AntwortPackTon { ok: true; dataUrl: string | null }
+// Phase 8b (Gestaltungs-System): eine Schriftdatei aus `public/schrift/` als Base64, damit Shadow Roots in fremden Seiten sie per `FontFace`
+// aus einem ArrayBuffer laden koennen (kein `web_accessible_resources`, keine CSP der Seite betroffen). Nur Dateien aus `SCHRIFTEN`
+// (src/oberflaeche/design/werte.ts), sonst `ok: false`. Handler: src/hintergrund/schrift.ts.
+export interface NachrichtHintergrundSchrift { ziel: 'hintergrund'; typ: 'schrift'; datei: string }
+export type AntwortSchrift = { ok: true; base64: string } | { ok: false };
 export type AntwortEinstiegTest = { ok: true; tabId?: number | null } | { ok: false; fehler: string };
 export type AntwortVersionTest = { ok: true } | { ok: false; fehler: string };
 
@@ -101,7 +106,8 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundVersion
   | NachrichtHintergrundVersionTest
   | NachrichtHintergrundEinstiegTest
-  | NachrichtHintergrundPackTon;
+  | NachrichtHintergrundPackTon
+  | NachrichtHintergrundSchrift;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -124,6 +130,7 @@ export const HINTERGRUND_TYPEN = [
   'version-test',
   'einstieg-test',
   'packton',
+  'schrift',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }

@@ -19,6 +19,7 @@ import { bearbeiteEinstiegTest, starteEinstieg } from '../src/hintergrund/einsti
 import { bearbeiteLedger, bearbeiteLedgerLoeschen, notiereLedgerMinute, starteLedger } from '../src/hintergrund/ledger';
 import { bearbeiteVersion, bearbeiteVersionTest, starteVersion } from '../src/hintergrund/version';
 import { bearbeitePackTon } from '../src/hintergrund/ton';
+import { bearbeiteSchrift } from '../src/hintergrund/schrift';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -300,6 +301,8 @@ export default defineBackground(() => {
         return bearbeiteEinstiegTest(n);
       case 'packton':
         return bearbeitePackTon(n);
+      case 'schrift':
+        return bearbeiteSchrift(n);
       default:
         return undefined;
     }

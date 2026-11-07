@@ -13,7 +13,9 @@
   min-width: 0;
   max-height: 140px;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: var(--v-r-m);
+  border: 2px solid var(--v-weiss);
+  box-shadow: 0 8px 18px -8px rgba(168, 50, 111, 0.45);
 }
 
 #kern-text {

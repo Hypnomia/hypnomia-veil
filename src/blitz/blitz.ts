@@ -10,6 +10,8 @@ import type { AntwortPackDaten, NachrichtHintergrundPackDaten } from '../nachric
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, type PackKurz } from '../pack/vertrag';
 import { beiLokalerPause, istLokalePause } from '../pause-lokal';
 import { pruefeTexte } from '../quiz/vertrag';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { SEITEN_ROUNDED } from '../oberflaeche/design/familie';
 import { TESTHAKEN } from '../schleier/konstanten';
 import type { KontextLeicht } from '../schleier/schleier';
 import { testhakenAktiv } from '../schleier/status';
@@ -27,7 +29,7 @@ const ATTR_ABBILD: string = TESTHAKEN ? 'data-veil-blitz' : '';
 const STIL = `
 :host { all: initial; }
 .w { position: fixed; transform: translate(-50%, -50%); width: max-content; max-width: 90vw; text-align: center; pointer-events: none;
-  font: 900 clamp(32px, 8vw, 96px)/1.1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: 0.02em; color: ${MIAS_PINK};
+  font: 800 clamp(32px, 8vw, 96px)/1.1 '${SEITEN_ROUNDED}', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: 0.02em; color: ${MIAS_PINK};
   -webkit-text-stroke: 0.08em ${KONTUR}; paint-order: stroke fill; text-shadow: 0 0 0.06em ${KONTUR}; user-select: none; }
 .w[hidden] { display: none; }
 `;
@@ -166,6 +168,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
     h.setAttribute('aria-hidden', 'true');
     for (const [k, v] of HOST_STIL) h.style.setProperty(k, v, 'important');
     const wurzel = h.attachShadow({ mode: 'closed' });
+    void ladeSeitenSchriften();
     const st = document.createElement('style');
     st.textContent = STIL;
     const w = document.createElement('div');

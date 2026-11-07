@@ -17,6 +17,9 @@ const portFremd = Number(process.env.VEIL_FIXTURE_PORT_FREMD ?? 47175);
 const nachrichten = `http://127.0.0.1:${port}/werbung-nachrichten.html?fremd=${portFremd}`;
 const lageSeite = `http://127.0.0.1:${port}/werbung-lage.html`;
 const erwachsenSeite = `http://pornhub.veil-erwachsen.test:${port}/werbung-erwachsen.html`;
+const MOTIVE = JSON.parse(readFileSync(path.join(wurzel, 'data/werbung-motive.json'), 'utf8')).plattformen as Record<string, { link: string; logo: string; knopf: string; zeilen: { titel: string; unter: string }[] }>;
+const LINKS_JSON = JSON.parse(readFileSync(path.join(wurzel, 'data/links.json'), 'utf8')) as Record<string, string>;
+const formateSeite = `http://127.0.0.1:${port}/werbung-formate.html`;
 const LINKS = Object.values(JSON.parse(readFileSync(path.join(wurzel, 'data/links.json'), 'utf8'))).filter((v) => typeof v === 'string' && v.startsWith('https://')) as string[];
 
 interface Flaeche {
@@ -35,6 +38,13 @@ interface Flaeche {
   box: { l: number; t: number; w: number; h: number } | null;
   voll: { l: number; t: number; w: number; h: number } | null;
   hinweis: string;
+  plattform: string;
+  layout: string;
+  logo: string;
+  knopf: string;
+  titel: string;
+  knopfBox: { l: number; t: number; w: number; h: number } | null;
+  titelBox: { l: number; t: number; w: number; h: number } | null;
   badge: { l: number; t: number; w: number; h: number; schrift: number; abgeschnitten: boolean; klickbar: boolean } | null;
 }
 interface Stand {
@@ -76,7 +86,7 @@ test.beforeAll(async () => {
     ],
   });
   // Links der Marke: nie wirklich ins Netz, nur die Adresse zaehlt.
-  await context.route(/^https:\/\/(www\.)?(patreon\.com|subscribestar\.adult|hypnomia\.itch\.io|youtube\.com|lnk\.bio)\//, (r) => {
+  await context.route(/^https:\/\/(www\.)?(patreon\.com|subscribestar\.adult|hypnomia\.itch\.io|youtube\.com|lnk\.bio|discord\.gg|x\.com)\//, (r) => {
     geoeffnet.push({ url: r.request().url(), referer: r.request().headers()['referer'] });
     return r.fulfill({ status: 200, contentType: 'text/html', body: '<title>ok</title>' });
   });
@@ -142,7 +152,7 @@ async function warteLeer(s: Page | Frame, frist = 10_000) {
   await expect.poll(async () => (await flaechenIds(s)).length, { timeout: frist, intervals: [30] }).toBe(0);
 }
 
-// Rote Pixel (Dummy-Werbung ist Rot mit Dunkelgrau oder Weiss) in den mittleren 60 % der Breite der Flaeche. Bis zu 3 s Wiederholung, falls das
+// Rote Pixel (Dummy-Werbung ist Rot mit Dunkelgrau oder Weiss; Phase 8b: unter dem dunklen Verlauf der Werbeflaeche nur noch Rot-dominant, nicht mehr grell) in den mittleren 60 % der Breite der Flaeche. Bis zu 3 s Wiederholung, falls das
 // Bildschirmfoto vor dem Zeichnen der Flaeche entsteht.
 async function rotAnteilMitte(s: Page, id: string): Promise<number> {
   await s.evaluate((i) => document.getElementById(i)!.scrollIntoView({ block: 'center' }), id);
@@ -158,7 +168,7 @@ async function rotAnteilMitte(s: Page, id: string): Promise<number> {
     const clip = { x: Math.round(r.x + r.w / 2 - bw / 2), y: Math.round(r.y), width: bw, height: bh };
     const { data, info } = await sharp(await s.screenshot({ clip })).raw().toBuffer({ resolveWithObject: true });
     let n = 0;
-    for (let i = 0; i < data.length; i += info.channels) if (data[i]! > 170 && data[i + 1]! < 90 && data[i + 2]! < 100) n++;
+    for (let i = 0; i < data.length; i += info.channels) if (data[i]! > 90 && data[i]! > data[i + 1]! * 2.2 && data[i]! > data[i + 2]! * 2) n++;
     rot = n / (info.width * info.height);
     if (rot > 0.1) break;
   }
@@ -169,7 +179,7 @@ async function rotAnteilMitte(s: Page, id: string): Promise<number> {
 async function rotAnteilBereich(s: Page, clip: { x: number; y: number; width: number; height: number }): Promise<number> {
   const { data, info } = await sharp(await s.screenshot({ clip })).raw().toBuffer({ resolveWithObject: true });
   let n = 0;
-  for (let i = 0; i < data.length; i += info.channels) if (data[i]! > 170 && data[i + 1]! < 90 && data[i + 2]! < 100) n++;
+  for (let i = 0; i < data.length; i += info.channels) if (data[i]! > 90 && data[i]! > data[i + 1]! * 2.2 && data[i]! > data[i + 2]! * 2) n++;
   return n / (info.width * info.height);
 }
 const rechteck = (s: Page, id: string) =>
@@ -379,6 +389,71 @@ test('Klick oeffnet genau einen Link aus links.json in neuem Tab, Bild rotiert j
   }
   console.log(`werbung: Rotation, ${namen.size} verschiedene Bilder in 12 Aufrufen: ${[...namen].join(', ')}`);
   expect(namen.size).toBeGreaterThanOrEqual(2);
+});
+
+// Phase 8b, Auftrag R: Logo und Knopftext passen zur Plattform des Links; Etikett in allen drei Layouts sichtbar, nie vom Knopf oder Text verdeckt.
+test('Plattform-Werbung: Logo, Knopftext und Link passen zusammen; Etikett sichtbar in Banner, Rechteck und Hochformat', async () => {
+  const fotos = process.env.VEIL_FOTO_ORDNER;
+  const layouts = new Set<string>();
+  const plattformen = new Set<string>();
+  const ids = ['f-728', 'f-468', 'f-320', 'f-970', 'f-300', 'f-336', 'f-160', 'f-300h'];
+  for (let durchlauf = 0; durchlauf < 6; durchlauf++) {
+    const s = await context.newPage();
+    await s.setViewportSize({ width: durchlauf === 5 ? 360 : 1280, height: 900 });
+    await s.goto(formateSeite);
+    await warteAuf(s, ids);
+    await abwarten(600);
+    const stand = (await standVon(s))!;
+    for (const id of ids) {
+      const f = stand.flaechen.find((x) => x.id === id)!;
+      const m = MOTIVE[f.plattform]!;
+      expect(m, `${id}: Plattform ${f.plattform}`).toBeTruthy();
+      expect(f.logo, `${id}: Logo`).toBe(m.logo);
+      expect(f.knopf, `${id}: Knopftext`).toBe(m.knopf);
+      expect(f.link, `${id}: Link`).toBe(LINKS_JSON[m.link]);
+      expect(m.zeilen.some((z) => z.titel === f.titel), `${id}: Ueberschrift aus derselben Plattform`).toBe(true);
+      const layout = f.layout.split(' ')[1]!;
+      layouts.add(layout);
+      plattformen.add(f.plattform);
+      expect(layout, id).toBe(f.box!.w >= f.box!.h * 2.5 ? 'banner' : f.box!.h >= f.box!.w * 1.6 ? 'hoch' : 'rechteck');
+      // Etikett: sichtbar, mindestens 11 px, nicht abgeschnitten, nicht klickbar, ganz in der Flaeche
+      const b = f.badge!;
+      expect(b.schrift, `${id}: Etikett Schrift`).toBeGreaterThanOrEqual(11);
+      expect(b.abgeschnitten, id).toBe(false);
+      expect(b.klickbar, id).toBe(false);
+      expect(f.kennzeichnung, id).toBe('Test ad by Mia');
+      expect(b.l).toBeGreaterThanOrEqual(f.box!.l - 1);
+      expect(b.t).toBeGreaterThanOrEqual(f.box!.t - 1);
+      expect(b.l + b.w).toBeLessThanOrEqual(f.box!.l + f.box!.w + 1);
+      expect(b.t + b.h).toBeLessThanOrEqual(f.box!.t + f.box!.h + 1);
+      // nie vom Knopf oder der Ueberschrift verdeckt: Etikett schneidet beide nicht
+      const schneidet = (a: { l: number; t: number; w: number; h: number } | null) => !!a && a.w > 0 && a.h > 0 && b.l < a.l + a.w - 0.5 && b.l + b.w > a.l + 0.5 && b.t < a.t + a.h - 0.5 && b.t + b.h > a.t + 0.5;
+      expect(schneidet(f.knopfBox), `${id} (${layout}): Etikett ueber dem Knopf ${JSON.stringify([b, f.knopfBox])}`).toBe(false);
+      expect(schneidet(f.titelBox), `${id} (${layout}): Etikett ueber der Ueberschrift ${JSON.stringify([b, f.titelBox])}`).toBe(false);
+      // Knopf und Ueberschrift bleiben in der Flaeche
+      if (f.knopfBox) {
+        expect(f.knopfBox.l).toBeGreaterThanOrEqual(f.box!.l - 1);
+        expect(f.knopfBox.l + f.knopfBox.w).toBeLessThanOrEqual(f.box!.l + f.box!.w + 1);
+        expect(f.knopfBox.t + f.knopfBox.h).toBeLessThanOrEqual(f.box!.t + f.box!.h + 1);
+        if (layout !== 'banner') expect(f.knopfBox.h, `${id}: Knopf mindestens 44 px`).toBeGreaterThanOrEqual(43.5);
+      }
+      expect(f.titelBox!.l + f.titelBox!.w, `${id}: Ueberschrift ueberlaeuft nicht`).toBeLessThanOrEqual(f.box!.l + f.box!.w + 1);
+    }
+    // Der Text steht als echter Text in der Shadow Root (nicht im Bild): Tabelle der sichtbaren Layouts
+    if (fotos && (durchlauf === 0 || durchlauf === 5)) {
+      const breite = durchlauf === 5 ? '360' : '1280';
+      for (const id of ids) {
+        await s.evaluate((i) => document.getElementById(i)!.scrollIntoView({ block: 'center' }), id);
+        await abwarten(250);
+        const r = await rechteck(s, id);
+        await s.screenshot({ path: path.join(fotos, `r-${id}-${breite}.png`), clip: { x: Math.max(0, r.left - 4), y: Math.max(0, r.top - 4), width: Math.min(r.width + 8, durchlauf === 5 ? 360 : 1280), height: r.height + 8 } });
+      }
+    }
+    console.log(`werbung: Plattformen dieses Aufrufs ${[...new Set(stand.flaechen.map((f) => f.plattform))].join(', ')}`);
+    await s.close();
+  }
+  expect([...layouts].sort()).toEqual(['banner', 'hoch', 'rechteck']);
+  expect(plattformen.size, `Plattformen gesehen: ${[...plattformen].join(', ')}`).toBeGreaterThanOrEqual(4);
 });
 
 test('Scrollen, Groessenwechsel und Transformation: hoechstens 2 px Versatz', async () => {

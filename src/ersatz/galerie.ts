@@ -8,6 +8,10 @@ import { pruefeTexte } from '../quiz/vertrag';
 import { ANTWORT_MAX_MS, TESTHAKEN } from '../schleier/konstanten';
 import { vergissWecken, wecke } from '../schleier/pruefung';
 import { ladeEinstellungen, type StufeWahl } from '../einstellungen';
+import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { augenpaar } from '../oberflaeche/design/motive';
+import { logoSvg, type LogoName } from '../oberflaeche/design/logos';
 
 // Marke am Host nur im Testbau (im Release-Bau faellt der Name weg); die Regel in style.css braucht sie nicht.
 export const HOST_MARKE: string = TESTHAKEN ? 'data-veil-ersatz-host' : '';
@@ -18,25 +22,38 @@ const CHIBI_FRIST_MS = 8000;
 
 const CSS = `
 :host { all: initial; }
-.wurzel { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; background: #fff5fa; color: #4f3345;
-  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+${SEITEN_TOKENS}
+/* Phase 8b ("Sakura Glas"): Grund im Verlauf, Kopf und Bereiche als Glas, Kacheln mit grossem Radius, Pause-Knopf wie ueberall. */
+.wurzel { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; background: var(--v-verlauf-grund); color: var(--v-text);
+  font: 400 15px/1.5 var(--v-schrift-text); }
 * { box-sizing: border-box; }
-main { display: flex; flex-direction: column; gap: 20px; max-width: 960px; margin: 0 auto; padding: 24px 16px; }
-h1 { margin: 0; font-size: 18px; letter-spacing: 0.14em; color: #b03f7a; }
-h2 { margin: 0 0 6px; font-size: 22px; color: #b03f7a; }
-h2.klein { font-size: 13px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: #86647a; }
+main { display: flex; flex-direction: column; gap: 18px; max-width: 980px; margin: 0 auto; padding: 24px 16px 32px; }
+header { display: flex; align-items: center; gap: 10px; }
+h1 { margin: 0; font: 800 15px/1.2 var(--v-schrift-display); letter-spacing: 0.14em; color: var(--v-rosa-800); }
+h2 { margin: 0 0 6px; font: 800 26px/1.2 var(--v-schrift-display); color: var(--v-text); letter-spacing: -0.01em; }
+h2.klein { font: 800 12px/1.2 var(--v-schrift-text); letter-spacing: 0.1em; text-transform: uppercase; color: var(--v-rosa-700); margin-bottom: 10px; }
 p { margin: 0 0 8px; }
-.leise { color: #86647a; }
-.kopf { display: flex; align-items: center; gap: 16px; padding: 16px; background: #fff; border: 1px solid #f0cfe0; border-radius: 16px; }
-.chibi img { display: block; max-width: 160px; max-height: 160px; width: auto; height: auto; }
-.bilder { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.bilder img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; background: #e9def9; }
-.knopf, .pause { display: inline-block; padding: 8px 16px; margin-right: 8px; border: 1px solid #b03f7a; border-radius: 999px;
-  background: #f9d6e7; color: #b03f7a; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
-.knopf:hover, .pause:hover { background: #b03f7a; color: #fff; }
-.knopf:focus-visible, .pause:focus-visible { outline: 3px solid #6a4bc4; outline-offset: 2px; }
-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #86647a; font-size: 13px; }
-@media (max-width: 480px) { .kopf { flex-direction: column; align-items: flex-start; } }
+.leise { color: var(--v-leise); }
+section { padding: 18px; background: rgba(255, 255, 255, 0.7); border: 1px solid var(--v-glas-kante); border-radius: var(--v-r-l); box-shadow: var(--v-schatten); }
+.kopf { position: relative; overflow: hidden; display: flex; align-items: center; gap: 18px; background: var(--v-verlauf-kopf); }
+.kopf::after { content: ''; position: absolute; right: -50px; top: -60px; width: 200px; height: 200px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, transparent 70%); pointer-events: none; }
+.chibi img { display: block; max-width: 150px; max-height: 150px; width: auto; height: auto; filter: drop-shadow(0 10px 16px rgba(168, 50, 111, 0.3)); }
+.bilder { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.bilder img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--v-r-m); background: var(--v-lav-100);
+  border: 2px solid var(--v-weiss); box-shadow: 0 10px 22px -10px rgba(168, 50, 111, 0.5); }
+.knopf, .pause { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px 0 8px; margin: 0 8px 8px 0; border: 1px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll); background: var(--v-weiss); color: var(--v-rosa-800); font: 800 14px/1 var(--v-schrift-text); text-decoration: none; cursor: pointer;
+  box-shadow: var(--v-schatten-klein); }
+.knopf:hover, .pause:hover { background: var(--v-rosa-50); }
+header .pause { margin: 0 0 0 auto; white-space: nowrap; flex: none; }
+@media (max-width: 400px) { header .v-augenpaar svg + svg { display: none; } h1 { font-size: 13px; letter-spacing: 0.1em; } }
+.pause { padding: 0 18px 0 10px; font-family: var(--v-schrift-display); background: linear-gradient(180deg, #ffffff 0%, var(--v-rosa-50) 100%); box-shadow: var(--v-schatten-pause); }
+.pause::before { content: ''; flex: none; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(#fff, #fff) 9px 7px / 2.5px 10px no-repeat,
+  linear-gradient(#fff, #fff) 13px 7px / 2.5px 10px no-repeat, var(--v-verlauf-akzent); }
+.knopf:focus-visible, .pause:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
+footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--v-leise); font-size: 13px; }
+@media (max-width: 480px) { .kopf { flex-direction: column; align-items: flex-start; } h2 { font-size: 22px; } }
 `;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, klasse?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -110,7 +127,8 @@ export class Galerie {
     main.setAttribute('aria-label', 'Mia');
 
     const kopfzeile = el('header');
-    kopfzeile.append(el('h1', undefined, 'HYPNOMIA VEIL'));
+    kopfzeile.append(augenpaar(26), el('h1', undefined, 'HYPNOMIA VEIL'));
+    void ladeSeitenSchriften();
 
     const kopf = el('section', 'kopf');
     this.chibiBox = el('div', 'chibi');
@@ -132,7 +150,7 @@ export class Galerie {
 
     const linkBereich = el('section');
     const absatz = el('p');
-    this.linkListe.push(this.baueLink('Patreon', links.patreon), this.baueLink('SubscribeStar', links.subscribestar));
+    this.linkListe.push(this.baueLink('Patreon', links.patreon, 'patreon'), this.baueLink('SubscribeStar', links.subscribestar, 'subscribestar'));
     absatz.append(...this.linkListe);
     linkBereich.append(el('h2', 'klein', 'Find me properly'), absatz);
 
@@ -140,7 +158,9 @@ export class Galerie {
     const pause = el('button', 'pause', 'Pause Mia');
     pause.type = 'button';
     this.pauseKnopf = pause;
-    fuss.append(pause, el('span', undefined, 'Pausing is always allowed. The site shows up right away.'));
+    // Phase 8b (Lesung S2/R Nr. 15): Pause steht oben im Kopf neben der Marke, auch bei 360 px ohne Scrollen erreichbar.
+    kopfzeile.append(pause);
+    fuss.append(el('span', undefined, 'Pausing is always allowed. The site shows up right away.'));
 
     main.append(kopfzeile, kopf, bilderBereich, linkBereich, fuss);
     huelle.append(main);
@@ -149,8 +169,9 @@ export class Galerie {
     this.legeLage();
   }
 
-  private baueLink(text: string, adresse: unknown): HTMLAnchorElement {
+  private baueLink(text: string, adresse: unknown, logo: LogoName): HTMLAnchorElement {
     const a = el('a', 'knopf', text);
+    a.prepend(logoSvg(logo, 28)); // Phase 8b: Logo der Plattform vor dem Namen (aria-hidden, der Linktext bleibt)
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     if (typeof adresse === 'string' && /^https:\/\//.test(adresse)) a.href = adresse;

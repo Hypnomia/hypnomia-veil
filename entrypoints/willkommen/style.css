@@ -1,19 +1,6 @@
-/* Einstieg (Auftrag E): hell und pastellfarben, Farben wie Popup und Einstellungsseite (Entscheidung 4). Auch bei 360 px ohne Seitwaertsscrollen. */
-:root {
-  --grund: #fff5fa;
-  --karte: #ffffff;
-  --text: #4f3345;
-  --leise: #86647a;
-  --akzent: #b03f7a;
-  --akzent-hell: #f9d6e7;
-  --pastell: #e9def9;
-  --linie: #f0cfe0;
-  --rand: #8f6f83; /* Nicht-Text-Kontrast: mindestens 3:1 gegen Weiss und gegen --grund (Fund 10) */
-  --akzent-text: #8f2d61; /* Text auf --akzent-hell: 5,82:1 (Fund 9) */
-  --fokus: #6a4bc4;
-  --fehler: #a8324f;
-}
+@import '../../src/oberflaeche/design/tokens.css';
 
+/* Einstieg, Sakura Glas (Phase 8b, Auftrag W): Verlaufsgrund, Glas-Karten, Verlaufsknoepfe. Auch bei 360 px ohne Seitwaertsscrollen. */
 * {
   box-sizing: border-box;
 }
@@ -24,31 +11,57 @@
 
 body {
   margin: 0;
-  background: var(--grund);
-  color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  background: var(--v-verlauf-grund);
+  background-attachment: fixed;
+  color: var(--v-text);
+  font: 400 15px/1.5 var(--v-schrift-text);
 }
 
 main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   max-width: 600px;
   margin: 0 auto;
-  padding: 28px 20px 32px;
+  padding: 24px 20px 40px;
+}
+
+main:has(#schritt[data-schritt='einwilligung']) {
+  max-width: 1000px;
+}
+
+/* Lesung W/U/O Nr. 16: Marke und Fortschritt behalten auf allen Schritten Breite und Lage, nur die Szene der Einwilligung ist breiter. */
+main:has(#schritt[data-schritt='einwilligung']) > header {
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Kopf: Augenpaar und Marke, darunter der Fortschritt */
+header {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.marke {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 h1 {
-  margin: 0 0 10px;
-  font-size: 20px;
-  letter-spacing: 0.14em;
-  color: var(--akzent);
+  margin: 0;
+  font: 800 15px/1.2 var(--v-schrift-display);
+  letter-spacing: 0.16em;
+  color: var(--v-rosa-800);
 }
 
 h2 {
-  margin: 0 0 10px;
-  font-size: 22px;
-  line-height: 1.25;
+  margin: 0 0 12px;
+  font: 800 26px/1.2 var(--v-schrift-display);
+  color: var(--v-text);
 }
 
 h2:focus {
@@ -57,7 +70,7 @@ h2:focus {
 
 h3 {
   margin: 14px 0 4px;
-  font-size: 15px;
+  font: 700 15px/1.3 var(--v-schrift-display);
 }
 
 p {
@@ -65,85 +78,221 @@ p {
   overflow-wrap: anywhere;
 }
 
+/* Glas-Karte */
 section#schritt {
-  padding: 20px 20px 18px;
-  background: var(--karte);
-  border: 1px solid var(--linie);
-  border-radius: 14px;
+  padding: 26px 26px 22px;
+  background: var(--v-glas-stark);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  section#schritt,
+  .szene-karte {
+    background: var(--v-glas);
+    -webkit-backdrop-filter: var(--v-glas-unschaerfe);
+    backdrop-filter: var(--v-glas-unschaerfe);
+  }
 }
 
 .hinweis {
   font-size: 13px;
-  color: var(--leise);
+  color: var(--v-leise);
 }
 
+/* Warnung: sachlich, eigene Warnflaeche in Pfirsich mit kraeftigem Rand (UX-Pruefung 8b Nr. 1: muss sich von den Glaskarten abheben) */
 .kern {
-  padding: 10px 12px;
-  border: 1px solid var(--akzent);
-  border-radius: 10px;
-  background: var(--akzent-hell);
-  font-weight: 650;
+  position: relative;
+  padding: 14px 16px 14px 44px;
+  border: 1.5px solid var(--v-pfirsich-400);
+  border-radius: var(--v-r-m);
+  background: var(--v-pfirsich-100);
+  box-shadow: 0 6px 16px -8px rgba(224, 119, 63, 0.45);
+  color: var(--v-text);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
+.kern::before {
+  content: '!';
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #7a3a2a;
+  color: var(--v-weiss);
+  font: 800 13px/20px var(--v-schrift-text);
+  text-align: center;
+}
+
+/* Fortschritt: Verlaufsbahn mit leuchtendem Punkt */
 #fortschritt-zeile {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  --anteil: 0.125;
+}
+
+.bahn {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 8px;
+}
+
+.bahn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--anteil) * (100% - 8px));
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--v-weiss);
+  box-shadow: 0 0 8px 2px rgba(226, 85, 154, 0.7);
+  pointer-events: none;
 }
 
 progress {
-  flex: 1;
-  min-width: 0;
-  height: 10px;
-  accent-color: var(--akzent);
+  display: block;
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: var(--v-r-voll);
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 2px rgba(168, 50, 111, 0.15);
+}
+
+progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+progress::-webkit-progress-value {
+  background: var(--v-verlauf-akzent);
+  border-radius: var(--v-r-voll);
+}
+
+progress::-moz-progress-bar {
+  background: var(--v-verlauf-akzent);
+  border-radius: var(--v-r-voll);
 }
 
 #fortschritt-text {
   flex: none;
-  font-size: 13px;
-  color: var(--leise);
+  font: 700 13px/1 var(--v-schrift-text);
+  color: var(--v-leise);
+  white-space: nowrap;
 }
 
+/* Einwilligungspunkte als Glas-Zeilen mit Haken im Verlauf */
 ul.punkte {
+  display: grid;
+  gap: 4px;
   margin: 0 0 14px;
-  padding-left: 20px;
+  padding: 0;
+  list-style: none;
 }
 
 ul.punkte li {
-  margin-bottom: 6px;
+  position: relative;
+  margin: 0;
+  padding: 6px 4px 6px 34px;
+  font-size: 14.5px;
+  line-height: 1.5;
 }
 
-button {
-  font: inherit;
-  cursor: pointer;
+ul.punkte li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--v-verlauf-akzent);
+  box-shadow: 0 2px 6px rgba(177, 91, 214, 0.45);
 }
 
-button {
-  min-height: 44px;
+ul.punkte li::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 12px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
 }
 
-button.gross {
-  padding: 10px 18px;
-  border: 0;
-  border-radius: 12px;
-  background: var(--akzent);
-  color: #fff;
-  font-weight: 650;
-}
-
-button.klein {
-  padding: 8px 14px;
-  border: 1px solid var(--akzent);
-  border-radius: 10px;
-  background: var(--akzent-hell);
-  color: var(--akzent-text);
+/* "I'm already covering pictures": Pfirsich-Zeile */
+#einwilligung-laeuft {
+  position: relative;
+  margin: 0 0 14px;
+  padding: 11px 14px 11px 40px;
+  background: var(--v-pfirsich-100);
+  border: 1px solid var(--v-pfirsich-200);
+  border-radius: 14px;
+  color: var(--v-text);
   font-weight: 600;
 }
 
-button.ruhig {
-  border-color: #b9a2e4;
-  background: var(--pastell);
-  color: var(--text);
+#einwilligung-laeuft::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--v-pfirsich-400);
+  box-shadow: 0 0 0 4px rgba(255, 176, 138, 0.3);
+}
+
+/* Knoepfe */
+button {
+  font: inherit;
+  cursor: pointer;
+  min-height: var(--v-fingerziel);
+  transition: box-shadow var(--v-dauer-kurz), background var(--v-dauer-kurz), transform var(--v-dauer-kurz);
+}
+
+button.gross {
+  min-height: 48px;
+  padding: 10px 26px;
+  border: 0;
+  border-radius: var(--v-r-voll);
+  background: var(--v-verlauf-akzent);
+  box-shadow: var(--v-schatten-knopf);
+  color: #fff;
+  font-weight: 700;
+}
+
+button.klein {
+  padding: 8px 18px;
+  border: 1.5px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll);
+  background: var(--v-glas-stark);
+  color: var(--v-rosa-800);
+  font-weight: 700;
+}
+
+button.klein.ruhig {
+  border-color: var(--v-lav-200);
+  color: var(--v-lav-700);
+}
+
+#iv-zurueck {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 button:disabled {
@@ -152,14 +301,14 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 3px solid var(--fokus);
+  outline: 3px solid var(--v-lav-500);
   outline-offset: 2px;
 }
 
 .knoepfe {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   margin-top: 16px;
 }
 
@@ -168,10 +317,12 @@ button:disabled {
 }
 
 .ueberspringen {
-  margin-top: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--v-rosa-200);
 }
 
-/* Wahl: Karten als Radio */
+/* Wahl: Glas-Zeilen als Radio */
 .wahl {
   display: flex;
   flex-direction: column;
@@ -180,19 +331,22 @@ button:disabled {
 }
 
 .wahl label {
-  min-height: 44px;
+  min-height: var(--v-fingerziel);
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--rand);
-  border-radius: 10px;
+  padding: 9px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--v-rand);
+  border-radius: 14px;
   cursor: pointer;
 }
 
 .wahl label:has(input:checked) {
-  border-color: var(--akzent);
-  background: var(--akzent-hell);
+  border-color: var(--v-rosa-700);
+  background-color: var(--v-rosa-100);
+  background-image: var(--v-verlauf-zart);
+  box-shadow: 0 0 0 2px rgba(226, 85, 154, 0.25);
 }
 
 .wahl label:has(input:disabled) {
@@ -202,7 +356,7 @@ button:disabled {
 
 .wahl input {
   margin-top: 4px;
-  accent-color: var(--akzent);
+  accent-color: var(--v-rosa-700);
 }
 
 .wahl .text {
@@ -212,21 +366,20 @@ button:disabled {
 
 .wahl small,
 .schalter small {
-  color: var(--leise);
+  color: var(--v-leise);
 }
 
-/* Fund N9: in der gewaehlten Karte (Grund --akzent-hell) reicht --leise nicht (3,84:1), die Unterzeile nimmt --akzent-text (5,82:1). */
 .wahl label:has(input:checked) small {
-  color: var(--akzent-text);
+  color: var(--v-rosa-800);
 }
 
-/* Schalter */
+/* Schalter: Bahn aus #e9dbe4, an im Verlauf */
 .schalter {
   position: relative;
-  min-height: 44px;
+  min-height: var(--v-fingerziel);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-top: 12px;
   cursor: pointer;
 }
@@ -239,10 +392,12 @@ button:disabled {
 .regler {
   position: relative;
   flex: none;
-  width: 38px;
-  height: 22px;
-  border-radius: 11px;
-  background: var(--rand);
+  width: 46px;
+  height: 26px;
+  border-radius: 13px;
+  /* Bahn aus: --v-rand (3,6:1 gegen Weiss, Fund 10), ueberall gleich (Entscheidung 163) */
+  background: var(--v-rand);
+  border: 1.5px solid var(--v-rand);
 }
 
 .regler::after {
@@ -250,22 +405,25 @@ button:disabled {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   border-radius: 50%;
   background: #fff;
+  box-shadow: 0 1px 4px rgba(67, 40, 60, 0.35);
+  transition: transform var(--v-dauer-kurz);
 }
 
 .schalter input:checked + .regler {
-  background: var(--akzent);
+  background: var(--v-verlauf-akzent);
+  border-color: transparent;
 }
 
 .schalter input:checked + .regler::after {
-  transform: translateX(16px);
+  transform: translateX(20px);
 }
 
 .schalter input:focus-visible + .regler {
-  outline: 3px solid var(--fokus);
+  outline: 3px solid var(--v-lav-500);
   outline-offset: 2px;
 }
 
@@ -278,31 +436,28 @@ button:disabled {
 .kopf {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   margin-top: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 output {
+  padding: 2px 12px;
+  border-radius: var(--v-r-voll);
+  background: var(--v-rosa-100);
   font-variant-numeric: tabular-nums;
-  color: var(--akzent);
-  font-weight: 600;
+  color: var(--v-rosa-800);
+  font-weight: 700;
 }
 
-input[type='range'] {
-  width: 100%;
-  /* Fund N10: Trefferflaeche mindestens 44 px hoch (Polster um den Daumen). */
-  height: 44px;
-  margin: 0;
-  padding: 0;
-  accent-color: var(--akzent);
-}
+/* Regler: gemeinsamer Regler aus tokens.css (Lesung W/U/O Nr. 3). */
 
 .enden {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  color: var(--leise);
+  color: var(--v-leise);
 }
 
 .regel {
@@ -316,57 +471,184 @@ input[type='range'] {
 
 select {
   font: inherit;
-  color: var(--text);
-  background: var(--karte);
-  border: 1px solid var(--rand);
-  border-radius: 8px;
-  padding: 4px 8px;
+  color: var(--v-text);
+  background: var(--v-glas-stark);
+  border: 1px solid var(--v-rand);
+  border-radius: var(--v-r-s);
+  padding: 4px 10px;
   max-width: 100%;
-  min-height: 44px;
-}
-
-@media (max-width: 400px) {
-  main {
-    padding: 18px 12px 24px;
-  }
-  section#schritt {
-    padding: 16px 14px;
-  }
-  .knoepfe .rechts {
-    margin-left: 0;
-  }
+  min-height: var(--v-fingerziel);
 }
 
 .hinweis a {
-  color: var(--akzent-text);
-  font-weight: 600;
+  color: var(--v-rosa-800);
+  font-weight: 700;
 }
 
 .fehler {
   margin-top: 12px;
-  color: var(--fehler);
-  font-weight: 600;
+  color: var(--v-fehler);
+  font-weight: 700;
 }
 
-/* Fund N10: der Link zum Pack steht in einer eigenen Zeile mit 44 px Trefferflaeche. */
 #iv-pack-link {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: var(--v-fingerziel);
   padding: 0 4px;
 }
 
-/* Phase 7 (Auftrag I3): Kern-Bild von Mia ueber dem Text der Einwilligungsseite, hoechstens 40 % der Fensterhoehe, nie breiter als die Spalte. */
-.mia-bild {
+/* Mia mit Sprechblase (Interview) */
+.mia-zeile {
   display: flex;
-  justify-content: center;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.mia-zeile img.chibi {
+  flex: none;
+  width: 72px;
+  height: auto;
+  filter: drop-shadow(0 6px 10px rgba(168, 50, 111, 0.25));
+}
+
+.mia-zeile .blase {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  margin: 0 0 6px;
+  padding: 11px 14px;
+  background: #fff;
+  border: 1px solid #ffe0ee;
+  border-radius: 18px 18px 18px 6px;
+  box-shadow: var(--v-schatten-klein);
+  color: var(--v-rosa-800);
+  font-weight: 700;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.mia-zeile img.chibi:not([hidden]) + .blase::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  bottom: 8px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-left: 1px solid #ffe0ee;
+  border-bottom: 1px solid #ffe0ee;
+  transform: rotate(45deg);
+  border-radius: 0 0 0 4px;
+}
+
+/* Einwilligung als Szene: Mia-Bild links (weich ausgeblendet), Glas-Karte rechts ueberlappend; unter 640 px gestapelt */
+section#schritt[data-schritt='einwilligung'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.szene-links {
+  position: relative;
+  margin-bottom: -40px;
+}
+
+.szene-links:has(.mia-bild[hidden]) {
+  display: none;
+}
+
+.mia-bild {
+  position: relative;
 }
 
 .mia-bild img {
   display: block;
-  max-width: 100%;
-  max-height: 40vh;
-  width: auto;
-  height: auto;
-  border-radius: 12px;
+  width: 100%;
+  height: 38vh;
+  object-fit: cover;
+  object-position: center 20%;
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+}
+
+.namensschild {
+  position: absolute;
+  left: 14px;
+  bottom: 50px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 6px 10px;
+  background: var(--v-glas-stark);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-voll);
+  box-shadow: var(--v-schatten-klein);
+  font: 800 15px/1 var(--v-schrift-display);
+  color: var(--v-rosa-800);
+}
+
+.mia-bild[hidden] ~ .namensschild {
+  display: none;
+}
+
+.szene-karte {
+  position: relative;
+  padding: 24px 22px 20px;
+  background: var(--v-glas-stark);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+}
+
+@media (min-width: 640px) {
+  section#schritt[data-schritt='einwilligung'] {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: center;
+  }
+  section#schritt[data-schritt='einwilligung']:has(.mia-bild[hidden]) {
+    grid-template-columns: minmax(0, 560px);
+    justify-content: center;
+  }
+  .szene-links {
+    margin: 0;
+  }
+  .mia-bild img {
+    height: clamp(380px, 68vh, 640px);
+    -webkit-mask-image: linear-gradient(to right, #000 70%, transparent 100%), linear-gradient(to bottom, #000 80%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to right, #000 70%, transparent 100%), linear-gradient(to bottom, #000 80%, transparent 100%);
+    mask-composite: intersect;
+  }
+  .namensschild {
+    bottom: 28px;
+  }
+  .szene-karte {
+    margin-left: -72px;
+    padding: 30px 30px 24px;
+  }
+}
+
+@media (max-width: 400px) {
+  main {
+    padding: 16px 12px 28px;
+  }
+  section#schritt {
+    padding: 18px 14px;
+  }
+  .szene-karte {
+    padding: 20px 14px 16px;
+  }
+  h2 {
+    font-size: 23px;
+  }
+  .knoepfe .rechts {
+    margin-left: 0;
+  }
 }

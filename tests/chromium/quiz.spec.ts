@@ -611,6 +611,31 @@ test('Ruhig-Modus und reduzierte Bewegung: Spirale langsamer bzw. steht; nie ueb
   }
 });
 
+test('Sakura Glas: Schrift VEIL Text steht nach dem Oeffnen bereit, Marke, nummerierte Antworten, Fuss und Fingerziele', async () => {
+  const s = await frischeSeite();
+  try {
+    await oeffne(s, { frage: 'test-w1', verweigern: 0, richtigMs: 100 });
+    const a = await bis(s, (x) => x.zustand === 'frage');
+    // Lesung S1 Nr. 1: document.fonts.check() ist auch ohne passende Schrift wahr; geprueft wird, dass die Familie geladen im Schriften-Satz steht.
+    // Familien tragen je Seite einen Zufallsteil (familie.ts, Lesung S2/R Nr. 1): "VEIL Text <zufall>".
+    const geladen = (name: string) => s.evaluate((n) => [...document.fonts].some((f) => f.family.replace(/["']/g, '').startsWith(`${n} `) && f.status === 'loaded'), name);
+    await expect.poll(() => geladen('VEIL Text'), { timeout: 8000 }).toBe(true);
+    await expect.poll(() => geladen('VEIL Rounded'), { timeout: 8000 }).toBe(true);
+    expect(a.marke).toBe('Mia’s quiz');
+    expect(a.fussNummer).toMatch(/^Question \d+$/);
+    expect(a.pause.h).toBeGreaterThanOrEqual(40);
+    expect(a.antworten.length).toBeGreaterThanOrEqual(2);
+    for (const b of a.antworten) expect(b.h).toBeGreaterThanOrEqual(44);
+    await s.setViewportSize({ width: 360, height: 700 });
+    const b = await bis(s, (x) => x.pause && x.pause.h >= 44 && x.karte.w <= 360);
+    expect(b.pause.h).toBeGreaterThanOrEqual(44);
+    expect(b.karte.x).toBeGreaterThanOrEqual(0);
+    expect(b.karte.x + b.karte.w).toBeLessThanOrEqual(360);
+  } finally {
+    await s.close();
+  }
+});
+
 test('Strenge Seiten-CSP: Riegel ist trotzdem gestaltet und bedienbar', async () => {
   const s = await frischeSeite(`${basis}/schleier-csp.html?satz=sfw`);
   try {

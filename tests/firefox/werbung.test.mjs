@@ -31,6 +31,8 @@ const nachrichten = `http://127.0.0.1:${port}/werbung-nachrichten.html?fremd=${p
 const GECKO_ID = 'veil@hypnomia';
 const HOSTS = ['pornhub.veil-erwachsen.test', 'ad.veil-werbung.test'];
 const erwachsenSeite = `http://pornhub.veil-erwachsen.test:${port}/werbung-erwachsen.html`;
+const MOTIVE = JSON.parse(readFileSync(path.join(wurzel, 'data/werbung-motive.json'), 'utf8')).plattformen;
+const LINKS_JSON = JSON.parse(readFileSync(path.join(wurzel, 'data/links.json'), 'utf8'));
 const LINKS = Object.values(JSON.parse(readFileSync(path.join(wurzel, 'data/links.json'), 'utf8'))).filter((v) => typeof v === 'string' && v.startsWith('https://'));
 
 const paketJson = JSON.parse(readFileSync(path.join(wurzel, 'package.json'), 'utf8'));
@@ -198,7 +200,7 @@ async function rotAnteil(id) {
       for (let x = x0; x < x1; x++) {
         const i = (y * info.width + x) * info.channels;
         n++;
-        if (data[i] > 170 && data[i + 1] < 90 && data[i + 2] < 100) rot++;
+        if (data[i] > 90 && data[i] > data[i + 1] * 2.2 && data[i] > data[i + 2] * 2) rot++;
       }
     anteil = n ? rot / n : 0;
   }
@@ -278,6 +280,14 @@ try {
     pruefe(f.kennzeichnung === 'Test ad by Mia', `${id}: Kennzeichnung ${f.kennzeichnung}`);
     pruefe(f.hinweis === 'Advertisement by Mia, shown by the HYPNOMIA VEIL extension' && f.badge.klickbar === false, `${id}: Hinweis am Rahmen, Kennzeichnung nicht im Link`);
     pruefe(f.badge.schrift >= (f.box.h < 60 ? 8 : 11) && !f.badge.abgeschnitten, `${id}: Kennzeichnung lesbar (${f.badge.schrift}px) und nicht abgeschnitten`);
+    {
+      // Phase 8b (Auftrag R): Logo und Knopftext passen zur Plattform des Links, Etikett schneidet Knopf und Ueberschrift nicht
+      const m = MOTIVE[f.plattform];
+      pruefe(!!m && f.logo === m.logo && f.knopf === m.knopf && f.link === LINKS_JSON[m.link], `${id}: Logo ${f.logo} und Knopf "${f.knopf}" passen zur Plattform ${f.plattform}`);
+      const b = f.badge;
+      const schneidet = (x) => !!x && x.w > 0 && x.h > 0 && b.l < x.l + x.w - 0.5 && b.l + b.w > x.l + 0.5 && b.t < x.t + x.h - 0.5 && b.t + b.h > x.t + 0.5;
+      pruefe(!schneidet(f.knopfBox) && !schneidet(f.titelBox) && f.badge.schrift >= 11, `${id} (${f.layout}): Etikett sichtbar (${f.badge.schrift}px), nicht ueber Knopf oder Ueberschrift`);
+    }
     pruefe(f.badge.l >= f.box.l - 1 && f.badge.t >= f.box.t - 1 && f.badge.l + f.badge.w <= f.box.l + f.box.w + 1 && f.badge.t + f.badge.h <= f.box.t + f.box.h + 1, `${id}: Kennzeichnung liegt in der Flaeche`);
     pruefe(!(await originalSichtbar(id)), `${id}: Original unsichtbar`);
     const rot = await rotAnteil(id);
@@ -456,7 +466,7 @@ try {
       for (let xx = Math.round(x * sx); xx < Math.round((x + b) * sx); xx++) {
         const i = (yy * info.width + xx) * info.channels;
         n++;
-        if (data[i] > 170 && data[i + 1] < 90 && data[i + 2] < 100) rot++;
+        if (data[i] > 90 && data[i] > data[i + 1] * 2.2 && data[i] > data[i + 2] * 2) rot++;
       }
     return n ? rot / n : 0;
   };

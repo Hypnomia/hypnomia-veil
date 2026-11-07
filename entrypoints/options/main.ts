@@ -8,6 +8,7 @@ import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, type PackKurz } from '../../src
 import type { Texte } from '../../src/quiz/vertrag';
 import { FEHLER_SPEICHERN } from '../../src/oberflaeche/gemeinsam';
 import { speichere } from './grund-speichern';
+import { augenpaar } from '../../src/oberflaeche/design/motive';
 // Phase 5: Abschnitt "Mia’s control" (eigenes Modul).
 import './kontrolle';
 // Session 11 (Auftrag S): Grundeinstellungen, Ausnahmen, Einstieg und Pack-Sperre als eigene Module.
@@ -22,6 +23,9 @@ import './ledger';
 import './ueber';
 // Session 12: Mia Pack (Auftrag P).
 import './pack';
+import { belebeRegler } from '../../src/oberflaeche/design/regler';
+
+belebeRegler(); // Phase 8b: gemeinsamer Regler, Fuellung bis zum Wert auch in Chromium
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -30,6 +34,9 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 // ---------- Adult sites ----------
+
+// Phase 8b: Mias Spiral-Augen vor dem Titel (nur Zierde, aria-hidden, der Titeltext bleibt unveraendert).
+document.querySelector('header h1')?.prepend(augenpaar(30));
 
 const seiteForm = el<HTMLFormElement>('seite-form');
 const seiteFeld = el<HTMLInputElement>('seite-feld');

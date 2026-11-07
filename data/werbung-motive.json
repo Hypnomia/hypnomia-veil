@@ -1,0 +1,107 @@
+{
+  "LIES-MICH": "Werbe-Motive je Plattform (Phase 8b, Wunsch der Inhaberin: Mias Werbung soll offiziell aussehen, mit dem Logo der Plattform). Ueberschriften aus Mias eigenen Kampagnen (Promo-Content der Inhaberin), immer als echter Text ueber dem Werbebild, nie im Bild. Je Flaeche stabil gewaehlt (Schluessel), Link aus data/links.json unter demselben Namen. Typografisches Apostroph, keine Gedankenstriche, keine Ausrufezeichen.",
+  "plattformen": {
+    "patreon": {
+      "link": "patreon",
+      "logo": "patreon",
+      "knopf": "Join me on Patreon",
+      "zeilen": [
+        {
+          "titel": "THE REST IS LOCKED.",
+          "unter": "Videos, stories and tasks for members"
+        },
+        {
+          "titel": "I HOLD THE KEY.",
+          "unter": "Videos, stories and tasks for members"
+        },
+        {
+          "titel": "I RECORD. YOU WATCH.",
+          "unter": "New videos every few days, for members"
+        },
+        {
+          "titel": "EVERYTHING I MAKE. ONE PLACE.",
+          "unter": "Hypnosis stories and more on my Patreon"
+        }
+      ]
+    },
+    "subscribestar": {
+      "link": "subscribestar",
+      "logo": "subscribestar",
+      "knopf": "Join me on SubscribeStar",
+      "zeilen": [
+        {
+          "titel": "I WRITE STORIES FOR YOU.",
+          "unter": "Hypnosis to read, only for members"
+        },
+        {
+          "titel": "TURN THE PAGE FOR ME.",
+          "unter": "Hypnosis to read, only for members"
+        },
+        {
+          "titel": "NOT FOR EVERYONE.",
+          "unter": "18+ only. Members get everything."
+        }
+      ]
+    },
+    "discord": {
+      "link": "discord",
+      "logo": "discord",
+      "knopf": "Join my Discord",
+      "zeilen": [
+        {
+          "titel": "COME ON IN.",
+          "unter": "My server. New videos, announced there first."
+        },
+        {
+          "titel": "YOU’RE INVITED.",
+          "unter": "Chat events inside my server. Verify first."
+        }
+      ]
+    },
+    "youtube": {
+      "link": "youtube",
+      "logo": "youtube",
+      "knopf": "Watch on YouTube",
+      "zeilen": [
+        {
+          "titel": "PRESS PLAY FOR ME.",
+          "unter": "Free hypnosis videos on my channel"
+        },
+        {
+          "titel": "SOMETHING NEW. EVERY FEW DAYS.",
+          "unter": "Subscribe and I’ll keep you busy"
+        }
+      ]
+    },
+    "x": {
+      "link": "x",
+      "logo": "x",
+      "knopf": "Follow me on X",
+      "zeilen": [
+        {
+          "titel": "KEEP UP WITH ME.",
+          "unter": "Teasers and news on X"
+        },
+        {
+          "titel": "I’LL ALWAYS BRING YOU BACK.",
+          "unter": "Follow me for what’s next"
+        }
+      ]
+    },
+    "itch": {
+      "link": "submerge",
+      "logo": "itch",
+      "knopf": "Play SUBMERGE free",
+      "zeilen": [
+        {
+          "titel": "NOT A TRAILER. A GAME.",
+          "unter": "Free to play in your browser"
+        },
+        {
+          "titel": "NO EXCUSES LEFT.",
+          "unter": "No download. Free to play in your browser."
+        }
+      ]
+    }
+  }
+}

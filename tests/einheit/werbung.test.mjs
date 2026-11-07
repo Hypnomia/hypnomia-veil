@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import links from '../../data/links.json' with { type: 'json' };
-import { formatFuer, hatKennung, istKennzeichnung, istWerbeAdresse, istWerbeHost, kennzeichnungFuer, linkFuer, passtWerbeName, LINK_NAMEN, STANDARD_KENNZEICHNUNG } from '../../src/werbung/logik.ts';
+import motive from '../../data/werbung-motive.json' with { type: 'json' };
+import { formatFuer, hatKennung, istKennzeichnung, istWerbeAdresse, istWerbeHost, kennzeichnungFuer, layoutFuer, linkFuer, passtWerbeName, LINK_NAMEN, PLATTFORMEN, STANDARD_KENNZEICHNUNG } from '../../src/werbung/logik.ts';
 
 test('Format: genaue Masse und 10 % Toleranz', () => {
   assert.equal(formatFuer(300, 250), '300x250');
@@ -73,16 +74,47 @@ test('Kennzeichnung: kurzer Text genau gleich, Schreibweise egal', () => {
   assert.ok(!istKennzeichnung('Ad' + ' '.repeat(60)), 'sehr langer Text wird gar nicht erst bearbeitet');
 });
 
-test('Link: stabil je Flaeche, nur aus links.json, alle fuenf kommen vor', () => {
+test('Link: stabil je Flaeche, nur aus links.json, alle sechs Plattformen kommen vor', () => {
   const gesehen = new Set();
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 300; i++) {
     const a = linkFuer(`x#${i}`);
-    assert.equal(linkFuer(`x#${i}`).url, a.url);
+    const b = linkFuer(`x#${i}`);
+    assert.deepEqual(b, a);
+    assert.ok(PLATTFORMEN.includes(a.plattform));
     assert.ok(LINK_NAMEN.includes(a.name));
     assert.equal(a.url, links[a.name]);
-    gesehen.add(a.name);
+    assert.ok(a.url.startsWith('https://'));
+    gesehen.add(a.plattform);
   }
-  assert.equal(gesehen.size, 5);
+  assert.equal(gesehen.size, 6);
+  assert.deepEqual([...gesehen].sort(), [...PLATTFORMEN].sort());
+});
+
+test('Motiv: Logo, Knopftext und Zeile gehoeren zur Plattform des Links', () => {
+  for (const p of PLATTFORMEN) {
+    const d = motive.plattformen[p];
+    assert.ok(d, p);
+    assert.equal(d.logo, p === 'itch' ? 'itch' : p);
+    assert.ok(links[d.link], `${p}: Link ${d.link} fehlt in links.json`);
+    assert.ok(d.knopf.length > 0 && d.zeilen.length > 0);
+  }
+  const titel = new Set();
+  for (let i = 0; i < 400; i++) {
+    const m = linkFuer(`m#${i}`);
+    const d = motive.plattformen[m.plattform];
+    assert.equal(m.logo, d.logo);
+    assert.equal(m.knopf, d.knopf);
+    assert.equal(m.url, links[d.link]);
+    assert.ok(d.zeilen.some((z) => z.titel === m.titel && z.unter === m.unter), 'Zeile aus derselben Plattform');
+    titel.add(`${m.plattform}|${m.titel}`);
+  }
+  assert.equal(titel.size, Object.values(motive.plattformen).reduce((n, d) => n + d.zeilen.length, 0), 'jede Zeile jeder Plattform erreichbar');
+});
+
+test('Layout nach Format: Banner, Rechteck, Hochformat', () => {
+  for (const [b, h] of [[728, 90], [468, 60], [320, 50], [970, 90], [320, 100], [970, 250]]) assert.equal(layoutFuer(b, h), 'banner', `${b}x${h}`);
+  for (const [b, h] of [[300, 250], [336, 280]]) assert.equal(layoutFuer(b, h), 'rechteck', `${b}x${h}`);
+  for (const [b, h] of [[160, 600], [300, 600], [120, 600]]) assert.equal(layoutFuer(b, h), 'hoch', `${b}x${h}`);
 });
 
 test('Kennzeichnung der Flaeche: stabil, aus dem Pack, sonst eingebaut', () => {

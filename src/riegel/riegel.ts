@@ -17,6 +17,8 @@ import { meldeLokalePause } from '../pause-lokal';
 import { installiereTastaturschutz, registriereHost } from './tastatur';
 import { HOST_MARKE, schreibeAbbild, testRiegelAktiv } from './testspur';
 import { melde } from '../ereignisse';
+import { augenpaar } from '../oberflaeche/design/motive';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 
 export type RiegelErgebnis = 'geloest' | 'pause' | 'abgebrochen';
 
@@ -161,6 +163,9 @@ function baueSpirale(groesse: number, periodeS: number | null, dreht: boolean): 
   schalteDrehen(svg, periodeS !== null && dreht);
   return svg;
 }
+function schalteAugen(g: SVGElement, an: boolean): void {
+  g.classList.toggle('v-dreht', an);
+}
 function schalteDrehen(svg: SVGElement, an: boolean): void {
   const klasse = (svg.getAttribute('class') ?? '').split(' ').filter((k) => k && k !== 'dreht');
   if (an) klasse.push('dreht');
@@ -229,6 +234,7 @@ function mitFrist<T>(p: Promise<T>, ms: number, signal?: AbortSignal): Promise<T
 
 async function starte(opt: RiegelOptionen): Promise<RiegelErgebnis> {
   installiereTastaturschutz(kontext ?? undefined);
+  void ladeSeitenSchriften(); // Phase 8b: Schriften einmal je Seite; scheitert es, bleibt die Systemschrift
   if (opt.signal?.aborted) return 'abgebrochen';
   // Pause (auch aus anderem Tab oder Popup) waehrend des Ladens: schon jetzt zuhoeren, nicht erst im Riegel.
   let pauseWaehrendLaden = false;
@@ -312,17 +318,23 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     const kopf = el('div', 'kopf');
     const pauseKnopf = el('button', 'pause', 'Pause Mia');
     pauseKnopf.type = 'button';
-    kopf.append(el('span', 'marke', 'Mia'), pauseKnopf);
+    // Marke: Augenpaar des Gestaltungs-Systems und "Mia’s quiz". Drehen wie die Augen vor Phase 8b: erst nach der Warnung, im Ruhig-Modus langsamer (Periode), aus bei reduzierter Bewegung.
+    const marke = el('span', 'marke');
+    const paar = augenpaar(26, false);
+    const augenSpiralen = [...paar.querySelectorAll('g')] as SVGElement[];
+    for (const g of augenSpiralen) {
+      if (periode !== null) g.style.animationDuration = `${periode}s`;
+      schalteAugen(g, periode !== null && warnOk);
+    }
+    marke.append(paar, document.createTextNode('Mia’s quiz'));
+    kopf.append(marke, pauseKnopf);
     const miaZeile = el('div', 'mia');
-    const augen = el('div', 'augen');
-    const augenSpiralen = [baueSpirale(40, periode, warnOk), baueSpirale(40, periode, warnOk)];
-    augen.append(...augenSpiralen);
     const chibiBild = el('img', 'chibi');
     chibiBild.hidden = true;
     chibiBild.alt = '';
     const satzFeld = el('p', 'satz');
     satzFeld.setAttribute('aria-live', 'polite');
-    miaZeile.append(augen, chibiBild, satzFeld);
+    miaZeile.append(chibiBild, satzFeld);
     const buehne = el('div', 'buehne');
     const scroll = el('div', 'scroll');
     scroll.append(miaZeile, buehne);
@@ -330,7 +342,11 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     const ansage = el('div', 'ansage');
     ansage.setAttribute('aria-live', 'polite');
     ansage.setAttribute('role', 'status');
-    karte.append(kopf, scroll, ansage);
+    const fuss = el('div', 'fuss');
+    const fussNummer = el('span', 'fuss-nr');
+    fuss.append(fussNummer);
+    if (ruhigEinst) fuss.append(el('span', 'fuss-ruhig', 'Calm mode is on'));
+    karte.append(kopf, scroll, fuss, ansage);
     huelle.append(karte);
     wurzel.append(stil, huelle);
 
@@ -369,7 +385,9 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         wort: buehne.querySelector('.wortfeld')?.textContent ?? null,
         wortPink: !!buehne.querySelector('.wortfeld.pink'),
         augenPeriodeS: augenSpiralen[0]!.style.animationDuration || null,
-        augenDrehen: (augenSpiralen[0]!.getAttribute('class') ?? '').includes('dreht'),
+        augenDrehen: augenSpiralen[0]!.classList.contains('v-dreht'),
+        fussNummer: fussNummer.textContent,
+        marke: marke.textContent,
         aufgabe: aufgabenZustand,
         chibiPose,
         chibiBild: !chibiBild.hidden,
@@ -460,6 +478,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         if (beendet || chibiPose !== pose) return;
         if (url) {
           chibiBild.src = url;
+          chibiBild.dataset.pose = pose; // UX-Pruefung 8b Nr. 3: die gemalte leere Blase der Pose sprechblase schneidet das CSS ab
           chibiBild.hidden = false;
         } else chibiBild.hidden = true;
         schreibe();
@@ -719,7 +738,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         szene.hoere(ok, 'click', () => {
           warnOk = true;
           merkeWarnung();
-          for (const s of augenSpiralen) schalteDrehen(s, periode !== null);
+          for (const g of augenSpiralen) schalteAugen(g, periode !== null);
           weiter();
         });
         szene.fokus(ok);
@@ -765,9 +784,11 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     }
 
     let quizStartGemeldet = false;
+    let frageNr = 0;
     async function frageAnzeigen(frage: Frage): Promise<boolean> {
       leereFrage();
       aktuelleFrage = frage;
+      fussNummer.textContent = `Question ${++frageNr}`;
       if (brauchtWarnung(frage) && !warnOk) {
         await zeigeWarnung();
         if (beendet) return false;

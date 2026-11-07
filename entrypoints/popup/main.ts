@@ -27,6 +27,10 @@ import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerSti
 import './einstieg-hinweis';
 import './version-hinweis';
 import './ledger-kurz';
+import './design';
+import { belebeRegler } from '../../src/oberflaeche/design/regler';
+
+belebeRegler(); // Phase 8b: gemeinsamer Regler, Fuellung bis zum Wert auch in Chromium
 
 const ZONEN_NAMEN: Record<Zone, string> = {
   eyes: 'Eyes',
@@ -127,6 +131,7 @@ function zeigeStimmung(schwelle: number): void {
 
 function zeichne(e: Einstellungen): void {
   aktuell = e;
+  document.documentElement.dataset.ruhig = String(e.ruhig);
   statusZeile.textContent = statusText(e);
 
   pauseKnopf.textContent = e.pause ? 'Let Mia back in' : 'Pause Mia';

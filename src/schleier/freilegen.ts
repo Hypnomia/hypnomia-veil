@@ -41,14 +41,16 @@ const RUECKFALL_F: Partial<Record<SatzGruppe, string>> = {
   wiederZensiert: 'Time’s up. Back under my veil it goes.',
 };
 
+import { SEITEN_TEXT } from '../oberflaeche/design/familie';
 const CSS = `
 :host { all: initial; }
 .flaeche { position: fixed; inset: 0; pointer-events: none; }
 button { all: unset; box-sizing: border-box; position: absolute; left: 0; top: 0; width: ${KNOPF_BREITE}px; height: ${KNOPF_HOEHE}px;
-  display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #fff0f7; color: #4a1d3d; border: 2px solid #f5a6cf;
-  font: 700 12px/1 system-ui, sans-serif; cursor: pointer; pointer-events: auto; box-shadow: 0 1px 6px rgba(74, 29, 61, .35); }
-button:hover { background: #ffd9ec; }
-button:focus-visible { outline: 3px solid #4a1d3d; outline-offset: 2px; }
+  display: flex; align-items: center; justify-content: center; border-radius: 999px; background: rgba(255, 255, 255, 0.9); color: #8a2759;
+  border: 1px solid #9c7e91; font: 800 12px/1 '${SEITEN_TEXT}', system-ui, sans-serif; cursor: pointer; pointer-events: auto;
+  box-shadow: 0 0 0 3px rgba(226, 85, 154, 0.14), 0 4px 12px -4px rgba(168, 50, 111, 0.45); }
+button:hover { background: #ffffff; }
+button:focus-visible { outline: 3px solid #8f6be8; outline-offset: 2px; }
 button[hidden] { display: none; }
 `;
 

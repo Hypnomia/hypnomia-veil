@@ -1,19 +1,21 @@
-/* Einstellungsseite: hell und pastellfarben, Farben wie das Popup (Entscheidung 4). */
+@import '../../src/oberflaeche/design/tokens.css';
+/* Einstellungsseite: hell und pastellfarben (Entscheidung 4), seit Phase 8b im Look "Sakura Glas" (Entscheidung 161). */
 :root {
-  --grund: #fff5fa;
-  --karte: #ffffff;
-  --text: #4f3345;
-  --leise: #86647a;
-  --akzent: #b03f7a;
-  --akzent-hell: #f9d6e7;
-  --pastell: #e9def9;
-  --linie: #f0cfe0;
-  --fokus: #6a4bc4;
-  --fehler: #a8324f;
-  /* Fund 9 und 10: Text auf hellem Rosa ueber 4,5:1, Feldraender und Schalterbahn ueber 3:1 gegen Weiss. */
-  --akzent-text: #8f2d61;
-  --feld-rand: #8f7285;
-  --bahn-aus: #9a7c8e;
+  /* Phase 8b (Entscheidung 161, "Sakura Glas"): die alten Namen zeigen auf das Gestaltungs-System (tokens.css), damit pack.css,
+     ledger.css, ton.css, ueber.css und kern-streifen.css den neuen Look ohne eigene Aenderung uebernehmen. */
+  --grund: var(--v-rosa-50);
+  --karte: var(--v-weiss);
+  --text: var(--v-text);
+  --leise: var(--v-leise);
+  --akzent: var(--v-rosa-700);
+  --akzent-hell: var(--v-rosa-100);
+  --pastell: var(--v-lav-100);
+  --linie: var(--v-rosa-200);
+  --fokus: var(--v-lav-500);
+  --fehler: var(--v-fehler);
+  --akzent-text: var(--v-rosa-800);
+  --feld-rand: var(--v-rand);
+  --bahn-aus: var(--v-rand); /* Fund 10: 3,6:1, ueberall gleich (Entscheidung 163) */
 }
 
 * {
@@ -726,4 +728,486 @@ section:empty {
   font-size: 12px;
   font-weight: 400;
   color: var(--leise);
+}
+
+/* ========== Phase 8b: Look "Sakura Glas" (Entscheidung 161) ==========
+   Schicht ueber den bestehenden Regeln: nur Aussehen, keine Groessen kleiner als vorher (Fingerziele aus Fund 11 und N10 bleiben). */
+body {
+  background: var(--v-verlauf-grund);
+  background-attachment: fixed;
+  font-family: var(--v-schrift-text);
+  font-weight: 400;
+}
+
+main {
+  gap: 18px;
+  max-width: 720px;
+  padding-top: 32px;
+}
+
+/* Kopf als Glas-Karte mit Mias Spiral-Augen (main.ts setzt das Augenpaar vor den Titel). */
+header {
+  position: relative;
+  overflow: hidden;
+  padding: 22px 22px 20px;
+  background: var(--v-glas);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+}
+
+header::after {
+  content: '';
+  position: absolute;
+  right: -60px;
+  top: -70px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201, 182, 255, 0.45) 0%, rgba(255, 179, 211, 0.25) 45%, transparent 70%);
+  pointer-events: none;
+}
+
+h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 800 19px/1.2 var(--v-schrift-display);
+  letter-spacing: 0.14em;
+  color: var(--v-rosa-800);
+}
+
+h1 .v-augenpaar svg {
+  width: 30px;
+  height: 30px;
+}
+
+.unter {
+  margin-top: 6px;
+  font: 800 26px/1.2 var(--v-schrift-display);
+  letter-spacing: -0.01em;
+  color: var(--v-text);
+}
+
+header #status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--v-leise);
+  font-weight: 700;
+}
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font: 800 19px/1.3 var(--v-schrift-display);
+  color: var(--v-text);
+}
+
+h2::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--v-verlauf-akzent);
+  box-shadow: 0 0 0 4px rgba(226, 85, 154, 0.14), 0 2px 6px rgba(138, 63, 184, 0.4);
+}
+
+.regel h2 {
+  margin-bottom: 0;
+}
+
+h3 {
+  font: 800 12px/1.2 var(--v-schrift-text);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--v-rosa-700);
+  margin-top: 18px;
+}
+
+/* Abschnitte als Glas-Karten */
+section {
+  padding: 20px 22px;
+  background: var(--v-glas);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  header,
+  section {
+    -webkit-backdrop-filter: var(--v-glas-unschaerfe);
+    backdrop-filter: var(--v-glas-unschaerfe);
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  header,
+  section {
+    background: var(--v-glas-stark);
+  }
+}
+
+.hinweis {
+  color: var(--v-leise);
+}
+
+output {
+  padding: 6px 12px;
+  border-radius: var(--v-r-voll);
+  background: var(--v-verlauf-zart);
+  border: 1px solid var(--v-weiss);
+  box-shadow: var(--v-schatten-klein);
+  color: var(--v-rosa-800);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* Knoepfe */
+button {
+  font-family: var(--v-schrift-text);
+  transition: transform var(--v-dauer-kurz) ease, box-shadow var(--v-dauer-kurz) ease, background-color var(--v-dauer-kurz) ease;
+}
+
+button.gross {
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: var(--v-r-voll);
+  background: var(--v-verlauf-akzent);
+  color: var(--v-weiss);
+  font-weight: 800;
+  box-shadow: var(--v-schatten-knopf);
+}
+
+button.gross:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button.klein {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll);
+  background: var(--v-glas-stark);
+  color: var(--v-rosa-800);
+  font-weight: 800;
+  box-shadow: var(--v-schatten-klein);
+}
+
+button.klein:hover:not(:disabled) {
+  background: var(--v-weiss);
+}
+
+/* Pause: eigener, nie zu uebersehender Knopf (oben gross, in der Leiste klein) mit rundem Ikon im Verlauf. */
+#pause,
+#pause-leiste {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid var(--v-glas-kante);
+  background: linear-gradient(180deg, #ffffff 0%, var(--v-rosa-50) 100%);
+  color: var(--v-rosa-800);
+  font-family: var(--v-schrift-display);
+  font-weight: 800;
+  box-shadow: var(--v-schatten-pause);
+}
+
+#pause {
+  width: 100%;
+  min-height: 56px;
+  margin-top: 14px;
+  border-radius: var(--v-r-m);
+  font-size: 17px;
+}
+
+#pause-leiste {
+  min-height: 40px;
+  padding: 0 14px 0 10px;
+  border-radius: var(--v-r-voll);
+  font-size: 14px;
+}
+
+#pause,
+#pause-leiste {
+  border-color: var(--v-rosa-200);
+  border-radius: var(--v-r-voll);
+}
+
+#pause::before,
+#pause-leiste::before {
+  content: '';
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--v-ikon-pause) center / 100% no-repeat, var(--v-verlauf-akzent);
+  box-shadow: 0 3px 8px -2px rgba(138, 63, 184, 0.6);
+}
+
+#pause-leiste::before {
+  width: 24px;
+  height: 24px;
+}
+
+/* Gedrueckt (pausiert): Knopf im Verlauf, Ikon zeigt "weiter" (wie im Popup, Lesung W/U/O Nr. 4 und 10). */
+#pause[aria-pressed='true'],
+#pause-leiste[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--v-verlauf-akzent);
+  color: var(--v-weiss);
+  box-shadow: var(--v-schatten-knopf);
+}
+
+#pause[aria-pressed='true']::before,
+#pause-leiste[aria-pressed='true']::before {
+  background: var(--v-ikon-weiter) center / 100% no-repeat, rgba(255, 255, 255, 0.28);
+  box-shadow: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--v-lav-500);
+  outline-offset: 3px;
+}
+
+/* Klebende Leiste als Glas */
+#leiste {
+  margin: 0 -8px;
+  padding: 8px 12px;
+  background: rgba(255, 246, 250, 0.82);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-m);
+  box-shadow: var(--v-schatten-klein);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #leiste {
+    -webkit-backdrop-filter: var(--v-glas-unschaerfe);
+    backdrop-filter: var(--v-glas-unschaerfe);
+  }
+}
+
+#sprung a {
+  border: 1px solid var(--v-rosa-200);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--v-rosa-800);
+  font-weight: 700;
+}
+
+#sprung a:hover {
+  background: var(--v-weiss);
+}
+
+#sprung a[aria-current='true'] {
+  border-color: transparent;
+  background: var(--v-verlauf-akzent);
+  color: var(--v-weiss);
+  font-weight: 800;
+}
+
+/* Schalter: Bahn aus hell mit sichtbarem Rand (3:1), an im Akzent-Verlauf */
+.regler {
+  width: 46px;
+  height: 28px;
+  border-radius: var(--v-r-voll);
+  background: var(--bahn-aus);
+  border: 1.5px solid var(--v-rand);
+  transition: background var(--v-dauer-kurz) ease, border-color var(--v-dauer-kurz) ease;
+}
+
+.regler::after {
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  box-shadow: 0 2px 6px rgba(67, 40, 60, 0.3);
+  transition: transform var(--v-dauer-kurz) ease;
+}
+
+.schalter input:checked + .regler {
+  background: var(--v-verlauf-akzent);
+  border-color: transparent;
+}
+
+.schalter input:checked + .regler::after {
+  transform: translateX(18px);
+}
+
+.schalter strong {
+  font-weight: 800;
+}
+
+/* Regler */
+input[type='range'] {
+  accent-color: var(--v-rosa-700);
+}
+
+/* Wahl (Stil, Stufe) als Segment */
+.wahl {
+  gap: 6px;
+  padding: 5px;
+  border-radius: var(--v-r-m);
+  background: var(--v-rosa-100);
+}
+
+.wahl span {
+  border: 1.5px solid var(--v-rand);
+  border-radius: var(--v-r-s);
+  background: var(--v-weiss);
+  color: var(--v-leise);
+  font-weight: 800;
+}
+
+/* Gewaehlt wie im Popup: Rand rosa-800 (8,4:1), Grund rosa-100 (Lesung W/U/O Nr. 5). */
+.wahl input:checked + span {
+  background: var(--v-rosa-100);
+  border-color: var(--v-rosa-800);
+  color: var(--v-rosa-800);
+  box-shadow: 0 2px 8px -2px rgba(168, 50, 111, 0.35);
+}
+
+/* Zonen-Liste mit feinen Trennlinien */
+.zonen li {
+  min-height: 44px;
+  border-bottom: 1px solid rgba(255, 211, 230, 0.7);
+}
+
+.zonen li:last-child {
+  border-bottom: 0;
+}
+
+@media (min-width: 640px) {
+  .zonen {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 22px;
+  }
+  .zonen li:nth-last-child(2):nth-child(odd) {
+    border-bottom: 0;
+  }
+}
+
+/* Felder */
+.zeile input[type='text'],
+#kontrolle select,
+#kontrolle input[type='number'],
+.zeit-zeile input[type='time'] {
+  border: 1.5px solid var(--v-rand);
+  border-radius: var(--v-r-s);
+  background: var(--v-weiss);
+}
+
+.liste li {
+  border-bottom-color: rgba(255, 211, 230, 0.7);
+}
+
+.frage,
+.warnblock {
+  border-radius: var(--v-r-m);
+  border: 1px solid var(--v-weiss);
+  box-shadow: var(--v-schatten-klein);
+}
+
+.warnblock {
+  background: linear-gradient(135deg, rgba(255, 220, 199, 0.7), rgba(255, 233, 243, 0.7));
+}
+
+pre {
+  border-radius: var(--v-r-m);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+progress {
+  accent-color: var(--v-rosa-700);
+}
+
+.chibi {
+  filter: drop-shadow(0 6px 10px rgba(168, 50, 111, 0.25));
+}
+
+footer {
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  main {
+    padding-top: 16px;
+  }
+  header,
+  section {
+    padding: 16px;
+    border-radius: var(--v-r-m);
+  }
+  #leiste {
+    margin: 0 -4px;
+    padding: 6px 8px;
+  }
+  .unter {
+    font-size: 22px;
+  }
+}
+
+/* Fund 11 bleibt: die Phase-8b-Schicht setzt Knoepfe auf 40 px, auf schmalen Schirmen und mit Finger wieder 44 px. */
+@media (max-width: 480px), (pointer: coarse) {
+  button.klein,
+  #pause-leiste,
+  .liste button {
+    min-height: 44px;
+  }
+}
+
+/* Regler: gemeinsamer Regler aus tokens.css (Lesung W/U/O Nr. 3). */
+
+input[type='checkbox'] {
+  accent-color: var(--v-rosa-700);
+}
+
+#datei::file-selector-button {
+  margin-right: 10px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll);
+  background: var(--v-weiss);
+  color: var(--v-rosa-800);
+  font: 800 14px var(--v-schrift-text);
+  cursor: pointer;
+}
+
+@media (min-width: 481px) and (pointer: fine) {
+  #kontrolle select {
+    min-height: 36px;
+  }
+}
+
+/* Nr. 5 (Runde 3): der Fokusrahmen der Chips passt in das Polster der Leiste (5 px). */
+#sprung a:focus-visible {
+  outline-offset: 2px;
+}
+
+/* UX-Pruefung 8b Nr. 7: loeschende Knoepfe (Pack entfernen, Ledger leeren) heben sich ab; die Rueckfrage bleibt wie bisher. */
+#entfernen,
+#ledger-loeschen {
+  color: var(--v-fehler);
+  border-color: var(--v-fehler);
+  background: var(--v-weiss);
+}
+
+/* UX-Pruefung 8b Nr. 6: Auswahlfelder im Look A (eigener Pfeil, runder Rand) statt Browser-Standard. */
+#kontrolle select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 6px 34px 6px 12px;
+  border: 1.5px solid var(--v-rand);
+  border-radius: var(--v-r-s);
+  background: var(--v-weiss) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a2759' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 12px center / 12px 8px no-repeat;
+  color: var(--v-text);
+  font-weight: 700;
 }

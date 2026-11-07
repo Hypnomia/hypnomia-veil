@@ -295,6 +295,21 @@ try {
     console.log(`firefox quiz: Riegel offen, Shadow Root geschlossen, Popover offen, Host ${a.host.w}x${a.host.h}`);
   });
 
+  await fall('Sakura Glas: Schrift VEIL Text steht nach dem Oeffnen bereit, Marke, Fuss, Fingerziele', async () => {
+    await frischeSeite();
+    await oeffneRiegel({ frage: 'test-w1' });
+    const a = await abbildBis('Riegel offen', (x) => x.offen && x.zustand === 'frage');
+    // Lesung S1 Nr. 1: document.fonts.check() ist auch ohne passende Schrift wahr; geprueft wird die geladene Familie im Schriften-Satz.
+    const geladen = (n) => driver.executeScript("const n = arguments[0]; return [...document.fonts].some((f) => f.family.replace(/[\"']/g, '').startsWith(n + ' ') && f.status === 'loaded');", n);
+    await bis('VEIL Text geladen', async () => geladen('VEIL Text'));
+    await bis('VEIL Rounded geladen', async () => geladen('VEIL Rounded'));
+    pruefe(a.marke === 'Mia’s quiz', `Marke ${a.marke}`);
+    pruefe(/^Question \d+$/.test(a.fussNummer), `Fuss ${a.fussNummer}`);
+    pruefe(a.antworten.every((b) => b.h >= 44), `Antworten mindestens 44 px hoch ${JSON.stringify(a.antworten.map((b) => b.h))}`);
+    pruefe(a.pause.h >= 40, 'Pause-Knopf mindestens 40 px');
+    console.log('firefox quiz: VEIL Text und VEIL Rounded geladen im Schriften-Satz der Seite');
+  });
+
   await fall('richtige Antwort loest (Satz, Pose jubeln)', async () => {
     await frischeSeite();
     await oeffneRiegel({ frage: 'test-w1', verweigern: 0, richtigMs: 300 });

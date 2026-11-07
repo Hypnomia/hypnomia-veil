@@ -2,6 +2,8 @@
 // in der obersten Ebene per Popover (die Seite kann ihn nicht ueberdecken). Mini-Chibi links (nur wenn ein Bild da ist), Satz rechts, Knopf zum
 // Schliessen. Texte nur per textContent. Die Meldung nimmt nie den Fokus (kein focus()-Aufruf, Popover ohne autofocus).
 import { HOST_MARKE, ZEIT_MARKE } from './testspur';
+import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 
 export const SCHLIESSEN_LABEL = 'Close note';
 const BREITE = 360;
@@ -10,18 +12,24 @@ const EINBLEND_MS = 250;
 
 const CSS = `
 :host { all: initial; }
+${SEITEN_TOKENS}
 * { box-sizing: border-box; }
-.karte { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: linear-gradient(160deg, #ffe3f1 0%, #efe6ff 100%);
-  color: #3b2a4a; border: 2px solid #ffb3d6; border-radius: 16px; box-shadow: 0 6px 20px rgba(120, 70, 140, 0.35); opacity: 0;
-  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+/* Phase 8b ("Sakura Glas"): Glas-Toast mit Chibi und rundem Schliessen-Knopf (44 px). Nur Deckkraft blendet ein. */
+.karte { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 10px 10px 12px; background: var(--v-glas-stark);
+  color: var(--v-text); border: 1px solid var(--v-glas-kante); border-radius: var(--v-r-m); box-shadow: 0 0 0 1px rgba(255, 179, 211, 0.35), var(--v-schatten); opacity: 0;
+  font: 700 14.5px/1.45 var(--v-schrift-text); }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .karte { background: rgba(255, 255, 255, 0.92); -webkit-backdrop-filter: var(--v-glas-unschaerfe); backdrop-filter: var(--v-glas-unschaerfe); }
+}
+.karte::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; border-radius: var(--v-r-m) 0 0 var(--v-r-m); background: var(--v-verlauf-akzent); }
 .karte.sanft { transition: opacity ${EINBLEND_MS}ms ease-out; }
-.chibi { flex: none; width: 56px; height: 56px; object-fit: contain; display: block; }
+.chibi { flex: none; width: 56px; height: 56px; object-fit: contain; display: block; filter: drop-shadow(0 4px 8px rgba(168, 50, 111, 0.25)); }
 .chibi[hidden] { display: none; }
-.satz { flex: 1 1 auto; margin: 0; min-width: 0; overflow-wrap: anywhere; }
-button { flex: none; align-self: flex-start; font: inherit; line-height: 1; color: #3b2a4a; background: #fff; border: 2px solid #d9a6ff; border-radius: 10px;
-  width: 32px; height: 32px; padding: 0; cursor: pointer; }
-button:hover { background: #fdf2ff; }
-button:focus-visible { outline: 3px solid #7a4cff; outline-offset: 2px; }
+.satz { flex: 1 1 auto; margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--v-rosa-800); }
+button { flex: none; align-self: center; font: 800 20px/1 var(--v-schrift-text); color: var(--v-rosa-800); background: var(--v-weiss); border: 1px solid var(--v-rand);
+  border-radius: 50%; width: 44px; height: 44px; padding: 0; cursor: pointer; box-shadow: var(--v-schatten-klein); }
+button:hover { background: var(--v-rosa-50); }
+button:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
 `;
 
 export class MeldungAnsicht {
@@ -34,6 +42,7 @@ export class MeldungAnsicht {
 
   constructor(satz: string, anlass: string, ruhig: boolean) {
     this.satz = satz;
+    void ladeSeitenSchriften();
     const host = document.createElement('div');
     host.setAttribute('popover', 'manual');
     if (HOST_MARKE) host.setAttribute(HOST_MARKE, anlass);

@@ -67,7 +67,8 @@ export function foto(schritt, beschreibung = '') {
   mkdirSync(fotoOrdner, { recursive: true });
   const nr = (fotoZaehler.get(schritt) ?? 0) + 1;
   fotoZaehler.set(schritt, nr);
-  const name = `phase8-${schritt}-${String(nr).padStart(2, '0')}.png`;
+  // VEIL_FOTO_PRAEFIX (Phase 8b): andere Vorsilbe, damit spaetere Laeufe die Fotos von Phase 8 nicht ueberschreiben.
+  const name = `${process.env.VEIL_FOTO_PRAEFIX || 'phase8'}-${schritt}-${String(nr).padStart(2, '0')}.png`;
   writeFileSync(path.join(fotoOrdner, name), adbRoh('exec-out', 'screencap', '-p'));
   console.log(`android: Foto ${name}${beschreibung ? ` (${beschreibung})` : ''}`);
   return name;

@@ -35,7 +35,10 @@ import { AdressBeobachter } from '../schleier/adresse';
 import { ANTWORT_MAX_MS, TAB_FRIST_MS } from '../schleier/konstanten';
 import { vergissWecken, wecke } from '../schleier/pruefung';
 import type { KontextLeicht } from '../schleier/schleier';
-import { KENNUNG_ATTRIBUTE, formatFuer, hatKennung, istKennzeichnung, istWerbeAdresse, istWerbeHost, kennzeichnungFuer, linkFuer, passtWerbeName } from './logik';
+import { KENNUNG_ATTRIBUTE, formatFuer, hatKennung, istKennzeichnung, istWerbeAdresse, istWerbeHost, kennzeichnungFuer, layoutFuer, linkFuer, passtWerbeName, type Motiv } from './logik';
+import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { logoSvg } from '../oberflaeche/design/logos';
 import { melde } from '../ereignisse';
 
 // Testhaken nur im Testbau: ohne Schalter faellt der Name des Attributs samt Code beim Bauen weg (Release-Pruefung).
@@ -71,6 +74,7 @@ interface Ui {
   bild: HTMLImageElement;
   badge: HTMLElement;
   link: HTMLAnchorElement;
+  deck: HTMLElement; // Huelle fuer Verlauf und Texte, gleiche Lage wie das Bild
 }
 
 interface Rk {
@@ -93,6 +97,7 @@ interface Flaeche {
   ui: Ui | null;
   bildName: string;
   link: string;
+  motiv: Motiv;
   kennzeichnung: string;
   versteckt: { wert: string; prio: string; hatteStil: boolean } | null;
   klemmer: Element[]; // Vorfahren mit overflow ungleich visible (Clip-Rechtecke)
@@ -108,11 +113,51 @@ interface Flaeche {
 
 const SCHATTEN_STIL = `
 :host{all:initial}
-.f{position:absolute;left:0;top:0;overflow:hidden;pointer-events:auto;margin:0;padding:0;box-sizing:border-box;cursor:pointer;background:#2b1020;display:none}
+${SEITEN_TOKENS}
+.f{position:absolute;left:0;top:0;overflow:hidden;pointer-events:auto;margin:0;padding:0;box-sizing:border-box;cursor:pointer;background:var(--v-etikett,#2b1630);display:none}
 a.l{display:block;position:absolute;left:0;top:0;width:100%;height:100%;text-decoration:none;color:inherit;margin:0;padding:0;border:0}
+a.l:focus-visible{outline:3px solid var(--v-lav-500,#8f6be8);outline-offset:-3px}
 img.b{display:block;position:absolute;max-width:none;object-fit:cover;margin:0;padding:0;border:0;-webkit-user-drag:none;user-select:none}
-.k{position:absolute;left:0;top:0;width:max-content;max-width:100%;box-sizing:border-box;background:#2b1020;color:#fff;font:600 11px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;padding:2px 6px;border-bottom-left-radius:4px;overflow-wrap:anywhere;z-index:2;text-align:left;cursor:default;pointer-events:auto}
-.k.klein{font-size:9px;line-height:1.2;padding:1px 4px}
+.d{position:absolute;overflow:hidden;box-sizing:border-box;container-type:size;margin:0;padding:0;color:#fff;font-family:var(--v-schrift-text,system-ui,sans-serif);-webkit-user-select:none;user-select:none}
+.d *{box-sizing:border-box;margin:0;padding:0}
+.d .vl{position:absolute;left:0;top:0;width:100%;height:100%;background:linear-gradient(to bottom,rgba(43,22,48,.88) 0%,rgba(43,22,48,.76) 36%,rgba(43,22,48,.38) 56%,rgba(43,22,48,.46) 70%,rgba(43,22,48,.86) 100%)}
+.d .in{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;gap:2cqmin;padding:26px 5cqmin 4cqmin}
+.d .kp{display:flex;flex-direction:column;gap:1.5cqmin;min-width:0;max-width:100%}
+.d .pl{display:none;flex:none;line-height:0}
+.d .ti{font-family:var(--v-schrift-display,system-ui,sans-serif);font-weight:800;text-transform:uppercase;line-height:1.05;letter-spacing:.01em;font-size:clamp(14px,8.5cqmin,34px);transform:skewX(-6deg);transform-origin:left bottom;text-shadow:0 2px 8px rgba(43,22,48,.6);overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
+.d .un{font-weight:700;font-size:clamp(12px,4.6cqmin,16px);line-height:1.25;text-shadow:0 1px 5px rgba(43,22,48,.7);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.d .kn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;padding:6px 18px 6px 8px;border-radius:999px;background:var(--v-verlauf-akzent,#c2267e);color:#fff;font-family:var(--v-schrift-display,system-ui,sans-serif);font-weight:800;font-size:clamp(12px,5cqmin,16px);line-height:1.15;text-align:center;box-shadow:0 4px 16px rgba(43,22,48,.4);overflow-wrap:anywhere;transition:transform var(--v-dauer-kurz,.2s)}
+a.l:hover .kn{transform:scale(1.03)}
+.d .kn svg{flex:none;display:block;width:30px;height:30px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.9)}
+.d .fu{display:flex;align-items:center;gap:6px;align-self:center;font-family:var(--v-schrift-display,system-ui,sans-serif);font-weight:800;font-size:11px;letter-spacing:.24em;text-shadow:0 1px 4px rgba(43,22,48,.7)}
+.d .fu svg{display:block;width:14px;height:14px;flex:none}
+.d.rechteck .kn{align-self:center}
+.d.rechteck .in{padding-top:28px}
+.d.rechteck .kp{flex:1 1 auto;min-height:0}
+.d.hoch .in{align-items:stretch;padding:44px 8cqw 14px;gap:12px}
+.d.hoch .pl{display:block;align-self:center}
+.d.hoch .kp{flex:1 1 auto;min-height:0;gap:10px}
+.d.hoch .ti{font-size:clamp(14px,11cqw,32px);-webkit-line-clamp:6;line-clamp:6}
+.d.hoch .un{font-size:clamp(11px,7.5cqw,15px);-webkit-line-clamp:4;line-clamp:4}
+.d.hoch .kn{align-self:center;flex-direction:column;padding:10px 12px;border-radius:26px;font-size:clamp(12px,8.5cqw,16px)}
+.d.hoch .kn svg{width:26px;height:26px}
+.d.banner .in{flex-direction:row;align-items:center;justify-content:flex-start;gap:12px;padding:0 14px}
+.d.banner .pl{display:block}
+.d.banner .kp{flex:1 1 0;min-width:0}
+.d.banner .ti{font-size:clamp(13px,24cqh,30px);-webkit-line-clamp:1;line-clamp:1;white-space:nowrap;text-overflow:ellipsis;display:block}
+.d.banner .un{font-size:clamp(11px,14cqh,15px);-webkit-line-clamp:1;line-clamp:1;white-space:nowrap;text-overflow:ellipsis;display:block}
+.d.banner .kn{flex:none;font-size:clamp(12px,16cqh,16px)}
+.d.banner .fu{display:none}
+.d.banner .vl{background:linear-gradient(to right,rgba(43,22,48,.84) 0%,rgba(43,22,48,.68) 60%,rgba(43,22,48,.8) 100%)}
+.d.banner.niedrig .in{padding:17px 8px 0 8px;gap:8px}
+.d.banner.niedrig .un,.d.banner.niedrig .kn{display:none}
+.d.banner.niedrig .ti{font-size:clamp(11px,34cqh,18px)}
+.d.banner.niedrig .pl svg{width:24px;height:24px}
+.d.klein .un,.d.klein .fu{display:none}
+.d.klein .in{padding-top:22px}
+.k{position:absolute;left:0;top:0;width:max-content;max-width:100%;box-sizing:border-box;background:var(--v-etikett,#2b1630);color:#fff;font:600 11px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;padding:2px 6px;border-bottom-left-radius:4px;overflow-wrap:anywhere;z-index:2;text-align:left;cursor:default;pointer-events:auto}
+.k.klein{line-height:1.15;padding:1px 4px}
+@media (prefers-reduced-motion: reduce){.d .kn{transition:none}}
 `;
 
 const schnitt = (a: Rk, b: Rk): Rk => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
@@ -849,6 +894,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
       nummern.set(el, nr);
     }
     const schluessel = `${aufruf}#${nr}`;
+    const motiv = linkFuer(schluessel);
     const f: Flaeche = {
       nr,
       el,
@@ -858,7 +904,8 @@ export function starteWerbung(ctx: KontextLeicht): void {
       gen: generation,
       ui: null,
       bildName: '',
-      link: linkFuer(schluessel).url,
+      link: motiv.url,
+      motiv,
       kennzeichnung: '',
       versteckt: null,
       klemmer: [],
@@ -1000,6 +1047,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
       return;
     }
     if (!sichereHost() || !wurzel) return;
+    void ladeSeitenSchriften();
     // Session 11: Ledger, je Seitenelement einmal (Rotation, Pause-Ende und kurzes Groessenflackern zaehlen nicht erneut).
     if (!werbungGezaehlt.has(f.el)) {
       werbungGezaehlt.add(f.el);
@@ -1020,12 +1068,14 @@ export function starteWerbung(ctx: KontextLeicht): void {
     bild.alt = '';
     bild.draggable = false;
     link.append(bild);
+    const deck = baueDeck(f.motiv);
+    link.append(deck);
     // Kennzeichnung neben dem Link: sichtbar, aber nicht klickbar.
     const badge = document.createElement('div');
     badge.className = 'k';
     badge.textContent = f.kennzeichnung;
     knoten.append(link, badge);
-    f.ui = { knoten, bild, badge, link };
+    f.ui = { knoten, bild, badge, link, deck };
     frischeVorfahren(f);
     wurzel.append(knoten);
     const fertig = async (): Promise<void> => {
@@ -1051,6 +1101,44 @@ export function starteWerbung(ctx: KontextLeicht): void {
       schreibeTest();
     });
     bild.src = a.dataUrl;
+  }
+
+  // Verlauf, Ueberschrift, Unterzeile, Knopf (Logo und Text der Plattform) und Fusszeile: alles echter Text, nie im Bild.
+  function baueDeck(m: Motiv): HTMLElement {
+    const deck = document.createElement('div');
+    deck.className = 'd rechteck';
+    const verlauf = document.createElement('div');
+    verlauf.className = 'vl';
+    const innen = document.createElement('div');
+    innen.className = 'in';
+    const plakette = document.createElement('span');
+    plakette.className = 'pl';
+    plakette.append(logoSvg(m.logo, 40));
+    const kopf = document.createElement('div');
+    kopf.className = 'kp';
+    const titel = document.createElement('div');
+    titel.className = 'ti';
+    titel.textContent = m.titel;
+    const unter = document.createElement('div');
+    unter.className = 'un';
+    unter.textContent = m.unter;
+    kopf.append(titel, unter);
+    const knopf = document.createElement('span');
+    knopf.className = 'kn';
+    knopf.dataset.plattform = m.plattform;
+    knopf.append(logoSvg(m.logo, 30));
+    const knopfText = document.createElement('span');
+    knopfText.className = 'kt';
+    knopfText.textContent = m.knopf;
+    knopf.append(knopfText);
+    const fuss = document.createElement('div');
+    fuss.className = 'fu';
+    const schriftzug = document.createElement('span');
+    schriftzug.textContent = 'HYPNOMIA';
+    fuss.append(schriftzug, logoSvg(m.logo, 14));
+    innen.append(plakette, kopf, knopf, fuss);
+    deck.append(verlauf, innen);
+    return deck;
   }
 
   function verstecke(f: Flaeche): void {
@@ -1211,6 +1299,14 @@ export function starteWerbung(ctx: KontextLeicht): void {
       ui.bild.style.top = `${r.top - sicht.t}px`;
       ui.bild.style.width = `${r.width}px`;
       ui.bild.style.height = `${r.height}px`;
+      ui.deck.style.left = `${r.left - sicht.l}px`;
+      ui.deck.style.top = `${r.top - sicht.t}px`;
+      ui.deck.style.width = `${r.width}px`;
+      ui.deck.style.height = `${r.height}px`;
+      const layout = layoutFuer(r.width, r.height);
+      // Lesung S2/R Nr. 2 und 7: ohne Knopf, wenn Knopf (44 px) und Etikett oben und unten nicht uebereinander passen; nur bei Aenderung schreiben (Nr. 12).
+      const klasse = `d ${layout}${layout === 'banner' && r.height < 80 ? ' niedrig' : ''}${r.height < 140 && layout !== 'banner' ? ' klein' : ''}`;
+      if (ui.deck.className !== klasse) ui.deck.className = klasse;
       ui.badge.classList.toggle('klein', r.height < 60);
       // Nie ein Bild ohne Kennzeichnung: unter einem fremden Dialog oder ohne freie Stelle fuer die Kennzeichnung ganz verborgen.
       if (f.zugedeckt || performance.now() < f.ohneKennzeichnungBis) ui.knoten.style.display = 'none';
@@ -1403,6 +1499,20 @@ export function starteWerbung(ctx: KontextLeicht): void {
               ? { ...rk(bd), schrift: parseFloat(getComputedStyle(f.ui!.badge).fontSize), abgeschnitten: f.ui!.badge.scrollWidth > f.ui!.badge.clientWidth + 1 || f.ui!.badge.scrollHeight > f.ui!.badge.clientHeight + 1, klickbar: !!f.ui!.badge.closest('a') }
               : null,
             hinweis: f.ui?.knoten.title ?? '',
+            plattform: f.motiv.plattform,
+            layout: f.ui?.deck.className ?? '',
+            logo: (f.ui?.deck.querySelector('.kn svg') as SVGElement | null)?.dataset.logo ?? '',
+            knopf: f.ui?.deck.querySelector('.kt')?.textContent ?? '',
+            titel: f.ui?.deck.querySelector('.ti')?.textContent ?? '',
+            knopfBox: (() => {
+              const k = f.ui?.deck.querySelector('.kn');
+              const b = k && getComputedStyle(k).display !== 'none' ? k.getBoundingClientRect() : null;
+              return b ? rk(b) : null;
+            })(),
+            titelBox: (() => {
+              const t = f.ui?.deck.querySelector('.ti');
+              return t ? rk(t.getBoundingClientRect()) : null;
+            })(),
           };
         }),
       };

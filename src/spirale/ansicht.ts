@@ -5,6 +5,8 @@
 import type { Drehung } from './logik';
 import { SpiralenZeichner, type Bildstand } from './zeichne';
 import { HOST_MARKE } from './testspur';
+import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 
 export const WARN_TEXT = 'Before my spiral and flash words: not for you if you have photosensitive epilepsy or are prone to seizures.';
 export const WARN_OK = 'I understand';
@@ -12,23 +14,26 @@ export const WARN_NEIN = 'No spiral for me';
 
 const CSS = `
 :host { all: initial; }
+${SEITEN_TOKENS}
 * { box-sizing: border-box; }
 .huelle { position: fixed; inset: 0; background: #2b0f33; opacity: 0; overflow: hidden; }
 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .satz { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(80vw, 560px); margin: 0; padding: 14px 22px;
-  text-align: center; color: #fff0f8; background: rgba(43, 15, 51, 0.72); border: 2px solid #ff7ab8; border-radius: 18px;
-  font: 600 clamp(18px, 3vw, 28px)/1.3 system-ui, -apple-system, 'Segoe UI', sans-serif; outline: none; }
+  text-align: center; color: #fff0f8; background: rgba(43, 15, 51, 0.72); border: 1px solid rgba(255, 179, 211, 0.7); border-radius: 26px;
+  font: 800 clamp(18px, 3vw, 28px)/1.3 var(--v-schrift-display); outline: none; box-shadow: 0 0 0 4px rgba(226, 85, 154, 0.18); }
 .fang { position: fixed; inset: 0; background: transparent; display: flex; align-items: center; justify-content: center; padding: 16px; }
-.karte { width: 100%; max-width: 440px; padding: 18px 20px; background: linear-gradient(160deg, #ffe3f1 0%, #efe6ff 100%); color: #3b2a4a;
-  border: 2px solid #ffb3d6; border-radius: 18px; box-shadow: 0 6px 24px rgba(120, 70, 140, 0.35); outline: none;
-  font: 16px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-.marke { font-weight: 700; letter-spacing: 0.04em; color: #b03a86; margin: 0 0 8px; }
+.karte { width: 100%; max-width: 440px; padding: 20px 22px; background: rgba(255, 255, 255, 0.9); color: var(--v-text);
+  border: 1px solid var(--v-glas-kante); border-radius: var(--v-r-l); box-shadow: 0 0 0 1px rgba(255, 179, 211, 0.4), var(--v-schatten); outline: none;
+  font: 400 16px/1.5 var(--v-schrift-text); }
+.marke { display: flex; align-items: center; gap: 8px; font: 800 13px/1.2 var(--v-schrift-display); letter-spacing: 0.14em; color: var(--v-rosa-800); margin: 0 0 10px; }
 .text { margin: 0 0 14px; }
 .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
-button { font: inherit; color: #3b2a4a; background: #fff; border: 2px solid #d9a6ff; border-radius: 12px; padding: 8px 14px; min-height: 44px; cursor: pointer; }
-button:hover { background: #fdf2ff; }
-button:focus-visible { outline: 3px solid #7a4cff; outline-offset: 2px; }
-button.ja { border-color: #ff7ab8; font-weight: 600; }
+button { font: 800 15px/1 var(--v-schrift-text); color: var(--v-rosa-800); background: var(--v-weiss); border: 1px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll); padding: 0 20px; min-height: 48px; cursor: pointer; box-shadow: var(--v-schatten-klein); }
+button:hover { background: var(--v-rosa-50); }
+button:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
+/* UX-Pruefung 8b Nr. 2: bei der Anfallswarnung stehen Zustimmen und Ablehnen gleich stark nebeneinander. */
+.knoepfe button { flex: 1 1 140px; }
 `;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, klasse?: string, text?: string): HTMLElementTagNameMap[K] => {
@@ -55,6 +60,7 @@ export class LeerlaufAnsicht {
     host.setAttribute('popover', 'manual');
     if (HOST_MARKE) host.setAttribute(HOST_MARKE, '');
     this.wurzel = host.attachShadow({ mode: 'closed' });
+    void ladeSeitenSchriften();
     const stil = el('style');
     stil.textContent = CSS;
     this.wurzel.append(stil);
