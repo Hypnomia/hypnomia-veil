@@ -9,7 +9,7 @@
 import { aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../einstellungen';
 import { BESUCH_ABSTAND_MS, BESUCH_HINWEIS_MS } from '../kontrolle/grenzen';
 import { andereVorDerSeite, beiBelegtWechsel, eingabeAktiv, istOberstesFenster, kontrolleErlaubt, meldeBelegt, starteEingabeWache } from '../kontrolle/gemeinsam';
-import type { AntwortBesuch, AntwortPackDaten, NachrichtHintergrundBesuch, NachrichtHintergrundPackDaten } from '../nachrichten';
+import type { AntwortBesuch, AntwortPackDaten, NachrichtHintergrundBesuch, NachrichtHintergrundPackDaten, NachrichtHintergrundPause } from '../nachrichten';
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, type PackKurz } from '../pack/vertrag';
 import { beiLokalerPause, meldeLokalePause } from '../pause-lokal';
 import { pruefeTexte } from '../quiz/vertrag';
@@ -19,10 +19,13 @@ import { testhakenAktiv } from '../schleier/status';
 import { BESUCH_PLAN_SCHLUESSEL, BESUCH_PRUEF_TAKT_MS, neuerBesuchPlan, pruefeBesuchPlan } from './plan';
 import { melde } from '../ereignisse';
 import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
+import { HOST_ZUFALL } from '../oberflaeche/design/familie';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { spiralAuge } from '../oberflaeche/design/motive';
+import { eigeneWurzel } from '../schleier/eigene';
 
 export const NICHT_JETZT = 'Not now';
+export const PAUSE_TEXT = 'Pause Mia';
 const WIEDERHOLUNG_MS = 10 * 60_000;
 // Testabbild (nur Testbau): JSON am html-Element.
 const ATTR_ABBILD: string = TESTHAKEN ? 'data-veil-besuch' : '';
@@ -45,6 +48,10 @@ ${SEITEN_TOKENS}
 .text { margin: 0; color: var(--v-rosa-800); }
 button { font: 800 14px/1 var(--v-schrift-text); color: var(--v-weiss); background: var(--v-verlauf-akzent); border: 0; border-radius: var(--v-r-voll);
   padding: 0 18px; min-height: 44px; cursor: pointer; white-space: nowrap; box-shadow: var(--v-schatten-knopf); }
+/* Session 16 (UX 8b Nr. 21): "Pause Mia" als ruhiger zweiter Knopf, genau in dem Moment, in dem Mia gleich einen Tab oeffnet. */
+.knoepfe { display: flex; gap: 8px; flex: none; }
+button.pause { color: var(--v-rosa-800); background: var(--v-weiss); border: 1px solid var(--v-rand); box-shadow: none; padding: 0 14px; }
+@media (max-width: 420px) { .karte { flex-wrap: wrap; } .knoepfe { width: 100%; justify-content: flex-end; } }
 `;
 
 const HOST_STIL: ReadonlyArray<[string, string]> = [
@@ -79,6 +86,7 @@ interface Lage {
 interface Hinweis {
   host: HTMLElement;
   knopf: HTMLButtonElement;
+  pauseKnopf: HTMLButtonElement;
   satz: string;
   e: Einstellungen;
   pack: PackKurz;
@@ -108,7 +116,7 @@ export function starteBesuche(ctx: KontextLeicht): void {
       const h = hinweis;
       document.documentElement.setAttribute(
         ATTR_ABBILD,
-        JSON.stringify({ nr, ...(h ? { host: rechteck(h.host), knopf: rechteck(h.knopf) } : {}), jetzt: performance.now(), ...inhalt }),
+        JSON.stringify({ nr, ...(h ? { host: rechteck(h.host), knopf: rechteck(h.knopf), pauseKnopf: rechteck(h.pauseKnopf) } : {}), jetzt: performance.now(), ...inhalt }),
       );
     } catch {
       // Dokument weg
@@ -174,12 +182,12 @@ export function starteBesuche(ctx: KontextLeicht): void {
   }
 
   // ---------- Hinweis ----------
-  function baueHost(satz: string): { host: HTMLElement; knopf: HTMLButtonElement } {
+  function baueHost(satz: string): { host: HTMLElement; knopf: HTMLButtonElement; pauseKnopf: HTMLButtonElement } {
     // Eigener Elementname statt div: Seitenregeln auf `div` treffen den Host nicht.
-    const host = document.createElement('mia-hinweis');
+    const host = document.createElement(`mia-hinweis-${HOST_ZUFALL}`);
     host.setAttribute('popover', 'manual');
     for (const [k, v] of HOST_STIL) host.style.setProperty(k, v, 'important');
-    const wurzel = host.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(host);
     const stil = document.createElement('style');
     stil.textContent = STIL;
     const karte = document.createElement('div');
@@ -192,7 +200,15 @@ export function starteBesuche(ctx: KontextLeicht): void {
     knopf.type = 'button';
     knopf.tabIndex = -1; // nie Fokus: die Seite behaelt ihren Fokus und ihre Tasten
     knopf.textContent = NICHT_JETZT;
-    karte.append(spiralAuge(32), text, knopf);
+    const pauseKnopf = document.createElement('button');
+    pauseKnopf.type = 'button';
+    pauseKnopf.className = 'pause';
+    pauseKnopf.tabIndex = -1;
+    pauseKnopf.textContent = PAUSE_TEXT;
+    const knoepfe = document.createElement('div');
+    knoepfe.className = 'knoepfe';
+    knoepfe.append(pauseKnopf, knopf);
+    karte.append(spiralAuge(32), text, knoepfe);
     wurzel.append(stil, karte);
     void ladeSeitenSchriften();
     (document.documentElement ?? document).appendChild(host);
@@ -201,7 +217,7 @@ export function starteBesuche(ctx: KontextLeicht): void {
     } catch {
       // ohne Popover bleibt der Host mit z-index ganz oben
     }
-    return { host, knopf };
+    return { host, knopf, pauseKnopf };
   }
 
   function entferneHinweis(): Hinweis | null {
@@ -223,7 +239,7 @@ export function starteBesuche(ctx: KontextLeicht): void {
 
   function zeigeHinweis(l: Lage, satz: string, erzwungen: boolean, hinweisMs: number, zufall: () => number): void {
     if (hinweis) return;
-    const { host, knopf } = baueHost(satz);
+    const { host, knopf, pauseKnopf } = baueHost(satz);
     meldeBelegt('besuch', true);
     // Ein Quiz-Riegel, der waehrend des Hinweises aufgeht, bricht ihn ab (der Riegel meldet sich nicht ueber `meldeBelegt`).
     riegelTimer = setInterval(() => {
@@ -232,6 +248,7 @@ export function starteBesuche(ctx: KontextLeicht): void {
     const h: Hinweis = {
       host,
       knopf,
+      pauseKnopf,
       satz,
       e: l.e,
       pack: l.pack,
@@ -279,6 +296,19 @@ export function starteBesuche(ctx: KontextLeicht): void {
     epoche++;
     abbild({ phase: 'ende', ergebnis: 'nicht-jetzt', dauerMs: Math.round(performance.now() - h.beginn) });
     void schreibePlan(h.zufall).then(() => abbild({ phase: 'ende', ergebnis: 'nicht-jetzt', geplant: true, dauerMs: Math.round(performance.now() - h.beginn) }));
+  }
+
+  // "Pause Mia" im Hinweis: sofort lokal frei (wie im Riegel), dann die gespeicherte Pause ueber den Hintergrund. Kein neuer Plan: mit Pause
+  // lehnt der Hintergrund jeden Besuch ohnehin ab.
+  function pauseAusHinweis(): void {
+    brichAb('pause');
+    meldeLokalePause();
+    try {
+      const n: NachrichtHintergrundPause = { ziel: 'hintergrund', typ: 'pause', an: true };
+      (browser.runtime.sendMessage(n) as Promise<unknown>).catch(() => {});
+    } catch {
+      // Hintergrund nicht erreichbar: der Hinweis ist trotzdem weg
+    }
   }
 
   // Die Hinweiszeit ist um: noch einmal alle Bedingungen, dann der Hintergrund.
@@ -399,7 +429,9 @@ export function starteBesuche(ctx: KontextLeicht): void {
     const m = e as MouseEvent;
     const b = h.knopf.getBoundingClientRect();
     // Ein Klick ohne Position (Tastenaktivierung) gibt es hier nicht: der Knopf bekommt nie den Fokus (tabIndex -1, kein Standard bei mousedown).
+    const p = h.pauseKnopf.getBoundingClientRect();
     if (m.clientX >= b.left && m.clientX <= b.right && m.clientY >= b.top && m.clientY <= b.bottom) nichtJetzt();
+    else if (m.clientX >= p.left && m.clientX <= p.right && m.clientY >= p.top && m.clientY <= p.bottom) pauseAusHinweis();
   }
   const fruehListe: Array<() => void> = [];
   for (const t of [...ZEIGER, ...TASTEN]) {

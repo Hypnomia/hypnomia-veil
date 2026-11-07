@@ -548,6 +548,32 @@ try {
   await warte(2500);
   pruefe((await sichtIds()).length === 0, 'dieselbe Seite auf einem normalen Host: ohne zweites Merkmal nichts');
 
+  // 8b. Formate: Banner, Rechteck und Hochformat (wie der Chromium-Test, Fixture werbung-formate.html)
+  await driver.get(`http://127.0.0.1:${port}/werbung-formate.html`);
+  const formatIds = ['f-728', 'f-468', 'f-320', 'f-970', 'f-300', 'f-336', 'f-160', 'f-300h'];
+  await bisIds('Formate-Seite: alle Flaechen', formatIds);
+  await warte(600);
+  const formatStand = await attrStand();
+  const layouts = new Set();
+  for (const id of formatIds) {
+    const f = formatStand.flaechen.find((x) => x.id === id);
+    const layout = f.layout.split(' ')[1];
+    layouts.add(layout);
+    const erwartet = f.box.w >= f.box.h * 2.5 ? 'banner' : f.box.h >= f.box.w * 1.6 ? 'hoch' : 'rechteck';
+    pruefe(layout === erwartet, `Format ${id}: Layout ${layout} (erwartet ${erwartet})`);
+    pruefe(!(await originalSichtbar(id)), `Format ${id}: Original unsichtbar`);
+  }
+  pruefe([...layouts].sort().join(',') === 'banner,hoch,rechteck', `Formate decken Banner, Hochformat und Rechteck ab (${[...layouts].sort().join(',')})`);
+  for (const id of ['f-160', 'f-300h']) {
+    const f = formatStand.flaechen.find((x) => x.id === id);
+    const m = MOTIVE[f.plattform];
+    pruefe(f.layout.split(' ')[1] === 'hoch' && !!m && f.logo === m.logo && f.knopf === m.knopf && f.link === LINKS_JSON[m.link], `Hochformat ${id}: Logo, Knopftext und Link passen zur Plattform ${f.plattform}`);
+    const b = f.badge;
+    const schneidet = (x) => !!x && x.w > 0 && x.h > 0 && b.l < x.l + x.w - 0.5 && b.l + b.w > x.l + 0.5 && b.t < x.t + x.h - 0.5 && b.t + b.h > x.t + 0.5;
+    pruefe(b.schrift >= 11 && !b.abgeschnitten && !schneidet(f.knopfBox) && !schneidet(f.titelBox), `Hochformat ${id}: Etikett lesbar (${b.schrift}px), nicht ueber Knopf oder Ueberschrift`);
+    if (f.knopfBox) pruefe(f.knopfBox.h >= 43.5 && f.knopfBox.l >= f.box.l - 1 && f.knopfBox.l + f.knopfBox.w <= f.box.l + f.box.w + 1, `Hochformat ${id}: Knopf mindestens 44 px und in der Flaeche`);
+  }
+
   // 9. Pack entfernt
   await driver.get(nachrichten);
   await bisIds('vor dem Entfernen', ERWARTET);

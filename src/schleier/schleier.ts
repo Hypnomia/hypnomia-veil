@@ -96,6 +96,7 @@ import { Freilegen } from './freilegen';
 import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
 import { melde } from '../ereignisse';
+import { istEigeneWurzel } from './eigene';
 
 export interface KontextLeicht {
   readonly isValid: boolean;
@@ -574,8 +575,16 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // ---------- Entdecken und Bewerten ----------
 
+  let eigeneEntdeckt = 0;
   function entdecke(el: Element, art: Art): void {
     if (abgebaut) return;
+    // Session 16: Bilder in eigenen Wurzeln der Erweiterung (Galerie, Werbung, Riegel ...) nie pruefen; der Beobachter betritt sie schon nicht,
+    // dies ist die zweite Sperre. Im Testbau zaehlt ein Attribut jeden Versuch (der Regressionstest erwartet 0 Versuche ab dem Beobachter).
+    const wurzel = el.getRootNode();
+    if (wurzel instanceof ShadowRoot && istEigeneWurzel(wurzel)) {
+      if (TESTHAKEN) document.documentElement?.setAttribute('data-veil-eigene-entdeckt', String(++eigeneEntdeckt));
+      return;
+    }
     let z = zustaende.get(el);
     if (!z) {
       z = neuerZustand(art);

@@ -32,6 +32,7 @@ interface Abbild {
   geplant?: boolean;
   host?: { x: number; y: number; w: number; h: number };
   knopf?: { x: number; y: number; w: number; h: number };
+  pauseKnopf?: { x: number; y: number; w: number; h: number };
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -211,7 +212,7 @@ test('Hinweis, 5 s, neuer Tab neben dem Absender mit Testadresse, Adresse aus li
   // Der Hinweis steht nie im DOM der Seite: nur ein Host am Ende von html, geschlossene Shadow Root.
   const aufbau = await s.evaluate(() => {
     const h = document.documentElement.lastElementChild as HTMLElement;
-    return { tag: h.tagName.toLowerCase(), shadow: !!h.shadowRoot, imBody: !!document.body.querySelector('mia-hinweis'), text: document.body.textContent?.includes('Not now') };
+    return { tag: h.tagName.toLowerCase().replace(/^(mia-hinweis)-[a-z0-9]+$/, '$1'), shadow: !!h.shadowRoot, imBody: [...document.body.querySelectorAll('*')].some((e) => e.localName.startsWith('mia-hinweis')), text: document.body.textContent?.includes('Not now') };
   });
   expect(aufbau).toEqual({ tag: 'mia-hinweis', shadow: false, imBody: false, text: false });
   expect(besuchsSeiten().length).toBe(0); // noch kein Tab
@@ -310,7 +311,35 @@ test('"Not now": kein Besuch, neuer Plan; Klicks auf den Hinweis erreichen die S
   await expect.poll(async () => (await gesehen(s)).click ?? 0, { timeout: 3000 }).toBeGreaterThan(0);
   expect((await gesehen(s)).mousedown).toBeGreaterThan(0);
   // Nach dem Ende ist der Host weg
-  expect(await s.evaluate(() => document.querySelectorAll('mia-hinweis').length)).toBe(0);
+  expect(await s.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.localName.startsWith('mia-hinweis')).length)).toBe(0);
+  await s.close();
+});
+
+test('"Pause Mia" im Hinweis (Session 16, UX 8b Nr. 21): kein Besuch, kein neuer Plan, Pause gespeichert, nichts erreicht die Seite', async () => {
+  test.setTimeout(90_000);
+  await setzeKontrolle();
+  const s = await neueSeite();
+  const a = await loeseAus(s, { faellig: true, hinweisMs: 8000 });
+  expect(a.phase).toBe('hinweis');
+  expect(a.pauseKnopf, JSON.stringify(a)).toBeTruthy();
+  expect(a.pauseKnopf!.h).toBeGreaterThanOrEqual(44);
+  expect(a.pauseKnopf!.w).toBeGreaterThan(40);
+  const planVor = JSON.stringify((await liesSpeicher('besuchZeitplan')) ?? null);
+  // Die beiden Knoepfe ueberlappen nicht
+  const k = a.knopf!, p = a.pauseKnopf!;
+  expect(p.x + p.w <= k.x || k.x + k.w <= p.x || p.y + p.h <= k.y || k.y + k.h <= p.y).toBe(true);
+  await s.mouse.click(p.x + p.w / 2, p.y + p.h / 2);
+  const ende = await warteEnde(s, 5000);
+  console.log(`Pause im Hinweis: ${ende.ergebnis}/${ende.grund} nach ${ende.dauerMs} ms`);
+  expect(ende.ergebnis).toBe('abbruch');
+  expect(ende.grund).toBe('pause');
+  await expect.poll(async () => (await liesSpeicher<{ pause?: boolean }>('einstellungen'))?.pause, { timeout: 5000 }).toBe(true);
+  expect(await gesehen(s)).toEqual({});
+  await abwarten(500);
+  expect(besuchsSeiten().length).toBe(0);
+  expect(JSON.stringify((await liesSpeicher('besuchZeitplan')) ?? null)).toBe(planVor); // kein neuer Plan
+  expect(await s.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.localName.startsWith('mia-hinweis')).length)).toBe(0);
+  await setzeEinstellungen({ pause: false });
   await s.close();
 });
 
@@ -460,7 +489,7 @@ test('nichts in der Pause, auf eigener Ausnahme; Pause und Schalter aus im Hinwe
     console.log(`${wie} im Hinweis: ${ende.ergebnis} (${ende.grund}) nach ${Date.now() - t0} ms`);
     expect(ende.ergebnis).toBe('abbruch');
     expect(ende.grund).toBe('einstellung');
-    expect(await s.evaluate(() => document.querySelectorAll('mia-hinweis').length)).toBe(0);
+    expect(await s.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.localName.startsWith('mia-hinweis')).length)).toBe(0);
     await setzeEinstellungen({ pause: false });
     await setzeKontrolle();
     await abwarten(300);
@@ -479,7 +508,7 @@ test('nichts in Rahmen: das Modul laeuft nur in der obersten Seite', async () =>
   // Gegenprobe: das Content-Script (Schleier) lief im Rahmen sehr wohl, nur das Besuchs-Modul nicht.
   expect(await rahmen.evaluate(() => document.documentElement.hasAttribute('data-veil-status'))).toBe(true);
   expect(await rahmen.evaluate(() => document.documentElement.getAttribute('data-veil-besuch'))).toBeNull();
-  expect(await rahmen.evaluate(() => document.querySelectorAll('mia-hinweis').length)).toBe(0);
+  expect(await rahmen.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.localName.startsWith('mia-hinweis')).length)).toBe(0);
   expect(await abbildVon(s)).toBeNull();
   await s.close();
 });
@@ -574,7 +603,7 @@ test('lokale Pause (ohne Speicher): davor nichts, im Hinweis sofortiger Abbau', 
   const ende = await warteEnde(s, 5000);
   console.log(`lokale Pause im Hinweis: ${ende.ergebnis} (${ende.grund}), Abbau nach ${Date.now() - t0} ms`);
   expect(ende.grund).toBe('pause');
-  expect(await s.evaluate(() => document.querySelectorAll('mia-hinweis').length)).toBe(0);
+  expect(await s.evaluate(() => [...document.querySelectorAll('*')].filter((e) => e.localName.startsWith('mia-hinweis')).length)).toBe(0);
   await erwarteAbgelehnt(s, 'nicht-erlaubt');
   expect(((await liesSpeicher('einstellungen')) as any)?.pause ?? false).toBe(false);
   expect(besuchsSeiten().length).toBe(0);

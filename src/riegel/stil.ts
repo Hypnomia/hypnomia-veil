@@ -63,8 +63,10 @@ input { font: inherit; flex: 1; min-width: 0; min-height: 44px; padding: 8px 12p
 .wortfeld { min-height: 84px; width: 100%; display: flex; align-items: center; justify-content: center; font: 800 2rem/1.2 var(--v-schrift-display); color: var(--v-rosa-800); }
 .wortfeld.pink { color: #ff2d95; text-decoration: underline; text-decoration-thickness: 4px; text-underline-offset: 6px; }
 .kreis { width: 150px; height: 150px; border-radius: 50%; border: 4px solid var(--v-rosa-300); background: rgba(255, 179, 211, 0.35); }
-.zeit { font-weight: 800; color: var(--v-rosa-700); min-height: 1.4em; }
-.fang { min-height: 44px; width: 100%; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--v-lav-300); padding: 6px; text-align: center; }
+/* Session 16 (UX 8b Nr. 19): Zaehler immer mittig und groesser; das Fangfeld ist eine ruhige Pille statt eines gestrichelten Rahmens
+   (sah aus wie ein Eingabefeld oder eine Ablagezone). */
+.zeit { font: 800 1.6rem/1.2 var(--v-schrift-display); color: var(--v-rosa-700); min-height: 1.3em; width: 100%; text-align: center; }
+.fang { min-height: 44px; width: 100%; display: flex; align-items: center; justify-content: center; border-radius: var(--v-r-voll); border: 1px solid var(--v-glas-kante); background: rgba(255, 255, 255, 0.7); box-shadow: 0 0 0 1px rgba(201, 182, 240, 0.45); padding: 6px 16px; text-align: center; font-weight: 700; color: var(--v-rosa-800); }
 .warnung { margin: 4px 0 10px; }
 .fuss { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; font-size: 12.5px; font-weight: 700; color: var(--v-leise); }
 .ansage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

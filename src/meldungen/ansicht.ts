@@ -4,6 +4,7 @@
 import { HOST_MARKE, ZEIT_MARKE } from './testspur';
 import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { eigeneWurzel } from '../schleier/eigene';
 
 export const SCHLIESSEN_LABEL = 'Close note';
 const BREITE = 360;
@@ -47,7 +48,7 @@ export class MeldungAnsicht {
     host.setAttribute('popover', 'manual');
     if (HOST_MARKE) host.setAttribute(HOST_MARKE, anlass);
     if (ZEIT_MARKE) host.setAttribute(ZEIT_MARKE, String(Date.now()));
-    this.wurzel = host.attachShadow({ mode: 'closed' });
+    this.wurzel = eigeneWurzel(host);
     const stil = document.createElement('style');
     stil.textContent = CSS;
     const karte = document.createElement('div');

@@ -3,6 +3,7 @@
 
 import { HG_SELEKTOR, type Art } from './konstanten';
 import { sichereStil, versorgeWurzel, wurzelVon } from './shadow';
+import { istEigeneWurzel } from './eigene';
 
 const KANDIDAT = `img, video, canvas, ${HG_SELEKTOR}`;
 const ATTRIBUTE = ['src', 'srcset', 'style', 'class'];
@@ -161,6 +162,8 @@ export class Beobachter {
   private entdeckeWurzel(wurzel: ShadowRoot): void {
     // Schon beobachtet (das composed-Ereignis des Hakens trifft jede Wurzel auf dem Pfad): nichts weiter zu tun.
     if (this.beobachter.has(wurzel)) return;
+    // Eigene Wurzeln der Erweiterung (Galerie, Werbung, Riegel ...) nie betreten: Mias Bilder darin sind keine Seitenbilder.
+    if (istEigeneWurzel(wurzel)) return;
     versorgeWurzel(wurzel, this.ruf.istAus());
     this.ruf.neueWurzel(wurzel);
     this.beobachteWurzel(wurzel);

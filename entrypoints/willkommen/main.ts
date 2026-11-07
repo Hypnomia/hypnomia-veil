@@ -23,7 +23,7 @@ import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenWahl, typ
 import { TEXT } from '../../src/einstieg/texte';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { zeigeKernBilder } from '../../src/oberflaeche/kern-platz';
-import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
+import { gibChibiFrei, zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import { augenpaar } from '../../src/oberflaeche/design/motive';
 import { belebeRegler } from '../../src/oberflaeche/design/regler';
 
@@ -604,6 +604,7 @@ function zeige(s: Schritt): void {
   aktualisiere = null;
   platz.dataset.schritt = s;
   merke(istInterview(s) ? s : null);
+  platz.querySelectorAll('img.chibi').forEach((b) => gibChibiFrei(b as HTMLImageElement));
   platz.replaceChildren();
   const titel = knoten('h2', undefined, INTERVIEW[s]?.titel ?? TITEL[s] ?? '', 'schritt-titel');
   titel.tabIndex = -1;

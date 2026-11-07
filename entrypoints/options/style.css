@@ -609,9 +609,10 @@ section:empty {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
-    /* Verlauf am rechten Rand: es gibt noch mehr Chips. */
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    /* Verlauf am rechten Rand: es gibt noch mehr Chips. Session 16 (UX 8b Nr. 17): 56 px breit, damit auch dann ein Chip sichtbar
+       ausblendet, wenn eine Chip-Kante genau am Rand liegt (bei 28 px fiel der Verlauf in Chromium 360 px in die Luecke). */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
   }
   /* Fund 11: Finger-Ziele mindestens 44 px hoch. */
   #sprung a,

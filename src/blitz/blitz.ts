@@ -11,6 +11,7 @@ import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, type PackKurz } from '../pack/v
 import { beiLokalerPause, istLokalePause } from '../pause-lokal';
 import { pruefeTexte } from '../quiz/vertrag';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { mitZeitgrenze } from '../oberflaeche/design/zeitgrenze';
 import { SEITEN_ROUNDED } from '../oberflaeche/design/familie';
 import { TESTHAKEN } from '../schleier/konstanten';
 import type { KontextLeicht } from '../schleier/schleier';
@@ -18,6 +19,8 @@ import { testhakenAktiv } from '../schleier/status';
 import { planeEreignis, waehleArt, type Art, type GeplantesWort } from './ereignis';
 import { PRUEF_TAKT_MS, ZEITPLAN_SCHLUESSEL, pruefeZeitplan, wirksameHaeufigkeit } from './zeitplan';
 import { melde } from '../ereignisse';
+import { eigeneWurzel } from '../schleier/eigene';
+import { HOST_ZUFALL } from '../oberflaeche/design/familie';
 
 const MIAS_PINK = '#ff4fa3';
 const KONTUR = '#2a0a1f';
@@ -25,6 +28,9 @@ const KONTUR = '#2a0a1f';
 const FRAME_RESERVE_MS = 40;
 // Testabbild (nur Testbau): JSON am html-Element mit den gezeigten Woertern und Zeitpunkten (performance.now()).
 const ATTR_ABBILD: string = TESTHAKEN ? 'data-veil-blitz' : '';
+
+// Hoechstwartezeit auf die Schrift vor dem ersten Wort (Rueckfall Systemschrift).
+const SCHRIFT_GRENZE_MS = 300;
 
 const STIL = `
 :host { all: initial; }
@@ -112,6 +118,9 @@ export function starteBlitz(ctx: KontextLeicht): void {
     if (!(await warnungGesehen())) return 'warnung';
     g.woerter = await holeWoerter(g.pack);
     if (g.woerter.length === 0) return 'keine-woerter';
+    // Das erste Wort erst zeigen, wenn die Schrift bereit ist (sonst wechselt sie sichtbar von der Systemschrift); hoechstens SCHRIFT_GRENZE_MS,
+    // danach Rueckfall Systemschrift. Der Wortplan und die Blitz-Grenzen bleiben unberuehrt: die Wartezeit liegt vor dem Zeigen.
+    await mitZeitgrenze(ladeSeitenSchriften(), SCHRIFT_GRENZE_MS, false);
     // Waehrend der Awaits kann sich etwas geaendert haben.
     if (epoche !== g.ep) return 'geaendert';
     return augenblickGrund(g.e) ?? g;
@@ -164,10 +173,10 @@ export function starteBlitz(ctx: KontextLeicht): void {
   function baueHost(): void {
     if (host) return;
     // Eigener Elementname statt div: Seitenregeln auf `div` und `div::after` treffen den Host nicht (Inline-Styles erreichen keine Pseudo-Elemente).
-    const h = document.createElement('veil-blitz');
+    const h = document.createElement(`veil-blitz-${HOST_ZUFALL}`);
     h.setAttribute('aria-hidden', 'true');
     for (const [k, v] of HOST_STIL) h.style.setProperty(k, v, 'important');
-    const wurzel = h.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(h);
     void ladeSeitenSchriften();
     const st = document.createElement('style');
     st.textContent = STIL;

@@ -19,6 +19,7 @@ import { HOST_MARKE, schreibeAbbild, testRiegelAktiv } from './testspur';
 import { melde } from '../ereignisse';
 import { augenpaar } from '../oberflaeche/design/motive';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { eigeneWurzel } from '../schleier/eigene';
 
 export type RiegelErgebnis = 'geloest' | 'pause' | 'abgebrochen';
 
@@ -303,7 +304,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     const host = document.createElement('div');
     host.setAttribute('popover', 'manual');
     if (testRiegelAktiv()) host.setAttribute(HOST_MARKE, '');
-    const wurzel = host.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(host);
     const stil = document.createElement('style');
     stil.textContent = RIEGEL_CSS;
     const huelle = el('div', 'huelle');

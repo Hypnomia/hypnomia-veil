@@ -16,7 +16,7 @@ import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import { adapterFuer, istVideoLink, type Adapter } from '../adapter';
 import { seiteFuer } from '../adapter/liste';
 import { beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../einstellungen';
-import { istOberstesFenster, kontrolleErlaubt } from '../kontrolle/gemeinsam';
+import { istOberstesFenster, kontrolleErlaubt, ruhigGewuenscht } from '../kontrolle/gemeinsam';
 import {
   istFuer,
   type AntwortFehler,
@@ -40,6 +40,7 @@ import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { logoSvg } from '../oberflaeche/design/logos';
 import { melde } from '../ereignisse';
+import { eigeneWurzel } from '../schleier/eigene';
 
 // Testhaken nur im Testbau: ohne Schalter faellt der Name des Attributs samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN: boolean = import.meta.env.WXT_TESTHAKEN === '1';
@@ -127,7 +128,8 @@ img.b{display:block;position:absolute;max-width:none;object-fit:cover;margin:0;p
 .d .ti{font-family:var(--v-schrift-display,system-ui,sans-serif);font-weight:800;text-transform:uppercase;line-height:1.05;letter-spacing:.01em;font-size:clamp(14px,8.5cqmin,34px);transform:skewX(-6deg);transform-origin:left bottom;text-shadow:0 2px 8px rgba(43,22,48,.6);overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
 .d .un{font-weight:700;font-size:clamp(12px,4.6cqmin,16px);line-height:1.25;text-shadow:0 1px 5px rgba(43,22,48,.7);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
 .d .kn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;padding:6px 18px 6px 8px;border-radius:999px;background:var(--v-verlauf-akzent,#c2267e);color:#fff;font-family:var(--v-schrift-display,system-ui,sans-serif);font-weight:800;font-size:clamp(12px,5cqmin,16px);line-height:1.15;text-align:center;box-shadow:0 4px 16px rgba(43,22,48,.4);overflow-wrap:anywhere;transition:transform var(--v-dauer-kurz,.2s)}
-a.l:hover .kn{transform:scale(1.03)}
+a.l:hover .d:not(.still) .kn{transform:scale(1.03)}
+.d.still .kn{transition:none}
 .d .kn svg{flex:none;display:block;width:30px;height:30px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.9)}
 .d .fu{display:flex;align-items:center;gap:6px;align-self:center;font-family:var(--v-schrift-display,system-ui,sans-serif);font-weight:800;font-size:11px;letter-spacing:.24em;text-shadow:0 1px 4px rgba(43,22,48,.7)}
 .d .fu svg{display:block;width:14px;height:14px;flex:none}
@@ -157,7 +159,7 @@ a.l:hover .kn{transform:scale(1.03)}
 .d.klein .in{padding-top:22px}
 .k{position:absolute;left:0;top:0;width:max-content;max-width:100%;box-sizing:border-box;background:var(--v-etikett,#2b1630);color:#fff;font:600 11px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;padding:2px 6px;border-bottom-left-radius:4px;overflow-wrap:anywhere;z-index:2;text-align:left;cursor:default;pointer-events:auto}
 .k.klein{line-height:1.15;padding:1px 4px}
-@media (prefers-reduced-motion: reduce){.d .kn{transition:none}}
+@media (prefers-reduced-motion: reduce){.d .kn{transition:none;transform:none!important}}
 `;
 
 const schnitt = (a: Rk, b: Rk): Rk => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
@@ -981,7 +983,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
         'style',
         'all:initial!important;position:absolute!important;left:0!important;top:0!important;width:0!important;height:0!important;margin:0!important;padding:0!important;border:0!important;overflow:visible!important;z-index:0!important;pointer-events:none!important;display:block!important;visibility:visible!important;',
       );
-      wurzel = host.attachShadow({ mode: 'closed' });
+      wurzel = eigeneWurzel(host);
       const stil = document.createElement('style');
       stil.textContent = SCHATTEN_STIL;
       wurzel.append(stil);
@@ -1299,13 +1301,25 @@ export function starteWerbung(ctx: KontextLeicht): void {
       ui.bild.style.top = `${r.top - sicht.t}px`;
       ui.bild.style.width = `${r.width}px`;
       ui.bild.style.height = `${r.height}px`;
-      ui.deck.style.left = `${r.left - sicht.l}px`;
+      // Session 16 (UX 8b Nr. 22): ist die Flaeche breiter als das Fenster (970er-Banner bei 360 px), stehen Text und Knopf nur im sichtbaren
+      // Teil des Fensters; sonst endete die Ueberschrift mitten im Wort und der Knopf lag ausserhalb. Das Bild bleibt in voller Groesse.
+      let dl = r.left;
+      let dw = r.width;
+      if (r.width > vb + 1) {
+        const l = Math.max(sicht.l, 0);
+        const rr = Math.min(sicht.r, vb);
+        if (rr - l >= 120) {
+          dl = l;
+          dw = rr - l;
+        }
+      }
+      ui.deck.style.left = `${dl - sicht.l}px`;
       ui.deck.style.top = `${r.top - sicht.t}px`;
-      ui.deck.style.width = `${r.width}px`;
+      ui.deck.style.width = `${dw}px`;
       ui.deck.style.height = `${r.height}px`;
-      const layout = layoutFuer(r.width, r.height);
+      const layout = layoutFuer(dw, r.height);
       // Lesung S2/R Nr. 2 und 7: ohne Knopf, wenn Knopf (44 px) und Etikett oben und unten nicht uebereinander passen; nur bei Aenderung schreiben (Nr. 12).
-      const klasse = `d ${layout}${layout === 'banner' && r.height < 80 ? ' niedrig' : ''}${r.height < 140 && layout !== 'banner' ? ' klein' : ''}`;
+      const klasse = `d ${layout}${layout === 'banner' && r.height < 80 ? ' niedrig' : ''}${r.height < 140 && layout !== 'banner' ? ' klein' : ''}${ruhigGewuenscht(einstellungen) ? ' still' : ''}`;
       if (ui.deck.className !== klasse) ui.deck.className = klasse;
       ui.badge.classList.toggle('klein', r.height < 60);
       // Nie ein Bild ohne Kennzeichnung: unter einem fremden Dialog oder ohne freie Stelle fuer die Kennzeichnung ganz verborgen.
@@ -1509,6 +1523,10 @@ export function starteWerbung(ctx: KontextLeicht): void {
               const b = k && getComputedStyle(k).display !== 'none' ? k.getBoundingClientRect() : null;
               return b ? rk(b) : null;
             })(),
+            knopfTransform: (() => {
+              const k = f.ui?.deck.querySelector('.kn');
+              return k ? getComputedStyle(k).transform : '';
+            })(),
             titelBox: (() => {
               const t = f.ui?.deck.querySelector('.ti');
               return t ? rk(t.getBoundingClientRect()) : null;
@@ -1526,6 +1544,8 @@ export function starteWerbung(ctx: KontextLeicht): void {
   const abmelden = beiEinstellungsAenderung((neu) => {
     einstellungenGehoert = true;
     einstellungen = neu;
+    // Ruhig-Modus sofort auf schon stehende Flaechen anwenden (keine Vergroesserung, keine Bewegung).
+    for (const f of flaechen.values()) f.ui?.deck.classList.toggle('still', ruhigGewuenscht(neu));
     pruefeLage();
     // Das Ende einer lokalen Pause setzt der Pause-Vertrag in derselben Meldung zurueck: danach noch einmal bewerten.
     setTimeout(() => lebt() && pruefeLage(), 0);

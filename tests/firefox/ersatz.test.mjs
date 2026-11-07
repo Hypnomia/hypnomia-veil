@@ -221,6 +221,10 @@ try {
   pruefe(JSON.stringify(a.links.map((l) => l.text)) === '["Patreon","SubscribeStar"]', 'Links Patreon und SubscribeStar');
   pruefe(a.links.every((l) => l.target === '_blank' && l.rel === 'noopener noreferrer' && /^https:\/\//.test(l.href ?? '')), 'Links: neuer Tab, noopener noreferrer, https');
   pruefe(a.zeile === 'xhamster.veil-erwachsen.test is right behind me.', `Zeile mit dem Hostnamen (${a.zeile})`);
+  // Session 16 (Live-Lauf): der Schleier betritt die eigenen Wurzeln nicht (Zaehler aus schleier.ts im Testbau, ohne Sperre > 0).
+  await new Promise((r) => setTimeout(r, 2500));
+  const eigene = Number((await driver.executeScript(`return document.documentElement.getAttribute('data-veil-eigene-entdeckt');`)) ?? 0);
+  pruefe(eigene === 0, `Galerie-Bilder vom Schleier nicht entdeckt (${eigene})`);
   const gross = await driver.executeScript(`return { b: window.innerWidth, h: window.innerHeight };`);
   pruefe(a.host.w === gross.b && a.host.h === gross.h, 'Galerie fuellt die ganze Seite');
   const w = await waechter();

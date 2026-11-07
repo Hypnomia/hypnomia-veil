@@ -7,6 +7,7 @@ import { testhakenAktiv } from './status';
 import { TESTHAKEN } from './konstanten';
 import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { eigeneWurzel } from './eigene';
 
 const ANZEIGE_MS = 4500;
 const BILD_FRIST_MS = 3000;
@@ -39,7 +40,7 @@ export class Meldung {
     if (this.host?.isConnected) return;
     void ladeSeitenSchriften();
     const host = document.createElement('div');
-    const wurzel = host.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(host);
     const stil = document.createElement('style');
     stil.textContent = CSS;
     const kasten = document.createElement('div');

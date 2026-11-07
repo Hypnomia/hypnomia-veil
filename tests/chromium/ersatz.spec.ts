@@ -182,6 +182,10 @@ test('Schalter an: Galerie ueber der Seite, Seiteninhalt nie sichtbar, Seite nic
       expect(l.rel).toBe('noopener noreferrer');
     }
     expect(a.zeile).toBe('xhamster.veil-erwachsen.test is right behind me.');
+    // Session 16 (Live-Lauf: Mia-Patches auf Mias eigenen Galerie-Bildern): der Schleier laesst die Bilder der Galerie in Ruhe.
+    await new Promise((r) => setTimeout(r, 2500));
+    // Zaehler aus schleier.ts (Testbau): Versuche, ein Element in einer eigenen Wurzel zu entdecken. Ohne die Sperre im Beobachter > 0.
+    expect(await seite.evaluate(() => Number(document.documentElement.getAttribute('data-veil-eigene-entdeckt') ?? 0)), 'Galerie-Bilder vom Schleier entdeckt').toBe(0);
     const gross = seite.viewportSize()!;
     expect(a.host.w).toBe(gross.width);
     expect(a.host.h).toBe(gross.height);

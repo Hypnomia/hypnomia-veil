@@ -45,6 +45,7 @@ interface Flaeche {
   titel: string;
   knopfBox: { l: number; t: number; w: number; h: number } | null;
   titelBox: { l: number; t: number; w: number; h: number } | null;
+  knopfTransform: string;
   badge: { l: number; t: number; w: number; h: number; schrift: number; abgeschnitten: boolean; klickbar: boolean } | null;
 }
 interface Stand {
@@ -415,7 +416,14 @@ test('Plattform-Werbung: Logo, Knopftext und Link passen zusammen; Etikett sicht
       const layout = f.layout.split(' ')[1]!;
       layouts.add(layout);
       plattformen.add(f.plattform);
-      expect(layout, id).toBe(f.box!.w >= f.box!.h * 2.5 ? 'banner' : f.box!.h >= f.box!.w * 1.6 ? 'hoch' : 'rechteck');
+      // Session 16 (UX 8b Nr. 22): breiter als das Fenster, dann richtet sich das Layout nach dem sichtbaren Teil im Fenster.
+      const fensterB = durchlauf === 5 ? 360 : 1280;
+      const sichtW = f.box!.w > fensterB ? Math.min(f.box!.l + f.box!.w, fensterB) - Math.max(f.box!.l, 0) : f.box!.w;
+      expect(layout, id).toBe(sichtW >= f.box!.h * 2.5 ? 'banner' : f.box!.h >= sichtW * 1.6 ? 'hoch' : 'rechteck');
+      if (f.box!.w > fensterB) {
+        expect(f.titelBox!.l + f.titelBox!.w, `${id}: Ueberschrift im Fenster`).toBeLessThanOrEqual(fensterB + 1);
+        if (f.knopfBox) expect(f.knopfBox.l + f.knopfBox.w, `${id}: Knopf im Fenster`).toBeLessThanOrEqual(fensterB + 1);
+      }
       // Etikett: sichtbar, mindestens 11 px, nicht abgeschnitten, nicht klickbar, ganz in der Flaeche
       const b = f.badge!;
       expect(b.schrift, `${id}: Etikett Schrift`).toBeGreaterThanOrEqual(11);
@@ -454,6 +462,40 @@ test('Plattform-Werbung: Logo, Knopftext und Link passen zusammen; Etikett sicht
   }
   expect([...layouts].sort()).toEqual(['banner', 'hoch', 'rechteck']);
   expect(plattformen.size, `Plattformen gesehen: ${[...plattformen].join(', ')}`).toBeGreaterThanOrEqual(4);
+});
+
+test('Knopf vergroessert sich beim Hover, aber nicht im Ruhig-Modus und nicht bei prefers-reduced-motion', async () => {
+  await setzeEinstellungen({ ausnahmen: [], pause: false, ruhig: false, kontrolle: KONTROLLE });
+  const s = await context.newPage();
+  await s.setViewportSize({ width: 1280, height: 900 });
+  await s.goto(formateSeite);
+  await warteAuf(s, ['f-300']);
+  await abwarten(600);
+  await s.evaluate(() => document.getElementById('f-300')!.scrollIntoView({ block: 'center' }));
+  await abwarten(600);
+  // Faktor des Knopfes unter der Maus: Maus auf die Mitte des Knopfes, Uebergang abwarten
+  const faktor = async () => {
+    const f = (await standVon(s))!.flaechen.find((x) => x.id === 'f-300')!;
+    const k = f.knopfBox!;
+    await s.mouse.move(2, 2);
+    await abwarten(400);
+    await s.mouse.move(k.l + k.w / 2, k.t + k.h / 2);
+    await abwarten(500);
+    const t = (await standVon(s))!.flaechen.find((x) => x.id === 'f-300')!.knopfTransform;
+    return t === 'none' ? 1 : Number(t.match(/matrix\(([^,]+),/)?.[1] ?? 1);
+  };
+  expect(await faktor(), 'normal: Knopf wird groesser').toBeGreaterThan(1.02);
+  await setzeEinstellungen({ ruhig: true });
+  await abwarten(600);
+  expect(await faktor(), 'Ruhig-Modus: keine Vergroesserung').toBe(1);
+  await setzeEinstellungen({ ruhig: false });
+  await abwarten(600);
+  expect(await faktor(), 'Ruhig-Modus aus: wieder groesser').toBeGreaterThan(1.02);
+  await s.emulateMedia({ reducedMotion: 'reduce' });
+  await abwarten(600);
+  expect(await faktor(), 'prefers-reduced-motion: keine Vergroesserung').toBe(1);
+  await s.close();
+  await setzeEinstellungen({ ruhig: false });
 });
 
 test('Scrollen, Groessenwechsel und Transformation: hoechstens 2 px Versatz', async () => {

@@ -1,6 +1,9 @@
 // Familiennamen der Schriften in fremden Seiten (Phase 8b, Lesung S2/R Nr. 1): je Content-Script einmal zufaellig gewaehlt, damit eine Seite
 // sie nicht mit eigenen @font-face-Regeln gleichen Namens ueberschreiben kann. Erweiterungsseiten nutzen die festen Namen aus tokens.css.
 const ZUFALL = Math.random().toString(36).slice(2, 8);
+// Session 16 (Lesung Nr. 3): Elementnamen eigener Hosts mit Bindestrich bekommen denselben Zufall. Mit einem festen Namen koennte eine Seite
+// ihn vorab per customElements.define belegen und ueber attachInternals() an die geschlossene Wurzel kommen.
+export const HOST_ZUFALL = ZUFALL;
 
 export const SEITEN_ROUNDED = `VEIL Rounded ${ZUFALL}`;
 export const SEITEN_TEXT = `VEIL Text ${ZUFALL}`;

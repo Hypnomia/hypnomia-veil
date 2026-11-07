@@ -12,6 +12,11 @@ import { STUFEN_WAHL, type StufeWahl } from '../einstellungen';
 import type { AntwortFehler, AntwortPackBild, NachrichtErkennerPackBild } from '../nachrichten';
 import { ANTWORT_MAX_MS } from '../schleier/konstanten';
 import { vergissWecken, wecke } from '../schleier/pruefung';
+import { FARBEN, WERTE } from '../oberflaeche/design/werte';
+import { SEITEN_TEXT } from '../oberflaeche/design/familie';
+import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { spiralAuge } from '../oberflaeche/design/motive';
+import { eigeneWurzel } from '../schleier/eigene';
 
 // Testhaken nur im Testbau: ohne Schalter faellt das Attribut samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN_S: boolean = import.meta.env.WXT_TESTHAKEN === '1';
@@ -21,7 +26,15 @@ const ATTR_GELADEN = TESTHAKEN_S ? 'data-veil-standbild-geladen' : '';
 const LAGE_TAKT_MS = 400;
 const Z_DECKEL = 9999; // hoechster z-index des Hosts: nie ueber Dialoge und Leisten der Seite ausserhalb des Players (K2, zweite Lesung)
 const SCHLUESSEL_MAX = 512;
-const GRUND_STIL = '.b{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;border:0;background-size:cover;background-position:center;background-repeat:no-repeat}';
+// Session 16 (UX 8b Nr. 20): kleines Etikett mit Spiral-Auge oben links, damit das Standbild als Mias Deckel erkennbar ist und sagt, dass erst
+// das Quiz kommt. Kein Knopf: der Host laesst alle Klicks zum Player der Seite durch (Abspielen oeffnet den Riegel mit "Pause Mia").
+export const ETIKETT_TEXT = 'Mia’s cover. Press play and answer first.';
+const GRUND_STIL =
+  '.b{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;border:0;background-size:cover;background-position:center;background-repeat:no-repeat}' +
+  // Huelle mit container-type (am Host selbst setzt `all: initial` es zurueck, Lesung Nr. 1): unter 240 px Breite kein Etikett.
+  '.h{position:absolute;inset:0;container-type:size;pointer-events:none}' +
+  `.e{position:absolute;left:10px;top:10px;display:flex;align-items:center;gap:6px;max-width:calc(100% - 20px);box-sizing:border-box;padding:4px 10px 4px 4px;border-radius:${WERTE['r-voll']};background:${WERTE['glas-kante']};color:${FARBEN['rosa-800']};font:800 12px/1.3 '${SEITEN_TEXT}',system-ui,-apple-system,'Segoe UI',sans-serif;box-shadow:${WERTE['schatten-klein']};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
+  '.e svg{flex:none}@container (max-width:239px){.e{display:none}}';
 
 interface Flaeche {
   host: HTMLElement;
@@ -58,6 +71,21 @@ export function standbildSchluessel(href: string, basis: string): string {
 // Hosts eine neue Bewertung, die ihn wieder verschiebt).
 const hosts = new WeakSet<Node>();
 export const istStandbildHost = (n: Node): boolean => hosts.has(n);
+// Session 16 (Live-Lauf): stehende Hosts zum Nachsehen per Punkt. Der Host hat `pointer-events: none` und fehlt darum in elementsFromPoint;
+// Freilegen fragt hier, ob ein Standbild den Punkt deckt (dann kein "Reveal" auf Mias Deckel). Schwache Verweise, abgehaengte fallen heraus.
+const stehende = new Set<WeakRef<HTMLElement>>();
+export function standbildDecktPunkt(x: number, y: number): boolean {
+  for (const ref of stehende) {
+    const h = ref.deref();
+    if (!h || !h.isConnected) {
+      if (!h) stehende.delete(ref);
+      continue;
+    }
+    const r = h.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+  }
+  return false;
+}
 
 export class Standbild {
   private readonly flaechen = new Map<HTMLVideoElement, Flaeche>();
@@ -177,6 +205,8 @@ export class Standbild {
   private baue(v: HTMLVideoElement, deckt: Element): Flaeche {
     const host = document.createElement('div');
     hosts.add(host);
+    for (const ref of stehende) if (!ref.deref()?.isConnected) stehende.delete(ref); // Lesung Nr. 4: kein Wachsen auf langen Seiten
+    stehende.add(new WeakRef(host));
     const s = host.style;
     for (const [n, w] of [
       ['all', 'initial'],
@@ -195,7 +225,7 @@ export class Standbild {
       ['top', '0'],
     ] as const) s.setProperty(n, w, 'important');
     if (ATTR_STANDBILD) host.setAttribute(ATTR_STANDBILD, 'wartet');
-    const wurzel = host.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(host);
     // Das Bild ist ein Hintergrund aus dem Stylesheet der Wurzel, kein img und kein style-Attribut: Versteck-Regel und Schleier (die auch in
     // Shadow Roots wirken und img sowie Inline-Hintergruende nie als eigen erkennen) fassen es so nicht an.
     const bild = document.createElement('div');
@@ -212,7 +242,14 @@ export class Standbild {
       stil.textContent = GRUND_STIL;
       wurzel.append(stil);
     }
-    wurzel.append(bild);
+    const etikett = document.createElement('div');
+    etikett.className = 'e';
+    etikett.append(spiralAuge(20), document.createTextNode(ETIKETT_TEXT));
+    void ladeSeitenSchriften();
+    const huelle = document.createElement('div');
+    huelle.className = 'h';
+    huelle.append(etikett);
+    wurzel.append(bild, huelle);
     const f: Flaeche = { host, bild, blatt, stil, beob: null, stand: '', generation: this.naechsteGeneration++, deckt, zuletztZ: Number.NaN };
     try {
       f.beob = new ResizeObserver(() => this.lege(v, f));

@@ -7,6 +7,7 @@ import { SpiralenZeichner, type Bildstand } from './zeichne';
 import { HOST_MARKE } from './testspur';
 import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
+import { eigeneWurzel } from '../schleier/eigene';
 
 export const WARN_TEXT = 'Before my spiral and flash words: not for you if you have photosensitive epilepsy or are prone to seizures.';
 export const WARN_OK = 'I understand';
@@ -59,7 +60,7 @@ export class LeerlaufAnsicht {
     const host = document.createElement('div');
     host.setAttribute('popover', 'manual');
     if (HOST_MARKE) host.setAttribute(HOST_MARKE, '');
-    this.wurzel = host.attachShadow({ mode: 'closed' });
+    this.wurzel = eigeneWurzel(host);
     void ladeSeitenSchriften();
     const stil = el('style');
     stil.textContent = CSS;

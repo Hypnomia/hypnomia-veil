@@ -262,8 +262,8 @@ try {
   const vp = await driver.executeScript('return { w: innerWidth, h: innerHeight }');
   console.log(`firefox Z2: Hinweis Host ${JSON.stringify(a.host)}, Fenster ${vp.w}x${vp.h}`);
   pruefe(Math.abs(a.host.x + a.host.w / 2 - vp.w / 2) < 4 && a.host.y + a.host.h > vp.h - 60 && a.host.w < vp.w, 'Hinweis: unten mittig, kleine Karte');
-  const aufbau = await driver.executeScript(`const h = document.documentElement.lastElementChild; return { tag: h.tagName.toLowerCase(), shadow: !!h.shadowRoot, imBody: !!document.body.querySelector('mia-hinweis'), text: document.body.textContent.includes('Not now') };`);
-  pruefe(aufbau.tag === 'mia-hinweis' && !aufbau.shadow && !aufbau.imBody && !aufbau.text, 'Hinweis: Host am Ende von html, geschlossene Shadow Root, nichts im Seiten-DOM');
+  const aufbau = await driver.executeScript(`const h = document.documentElement.lastElementChild; return { tag: h.tagName.toLowerCase(), shadow: !!h.shadowRoot, imBody: [...document.body.querySelectorAll('*')].some((e) => e.localName.startsWith('mia-hinweis')), text: document.body.textContent.includes('Not now') };`);
+  pruefe(/^mia-hinweis-[a-z0-9]+$/.test(aufbau.tag) && !aufbau.shadow && !aufbau.imBody && !aufbau.text, 'Hinweis: Host am Ende von html, geschlossene Shadow Root, nichts im Seiten-DOM');
   pruefe((await besuchsHandles()).length === 0, 'waehrend des Hinweises noch kein Tab');
   a = await warteEnde();
   console.log(`firefox Z2: Hinweisdauer ${a.dauerMs} ms, gesamt ${Date.now() - t0} ms, Ergebnis ${a.ergebnis}, Adresse ${a.url}`);

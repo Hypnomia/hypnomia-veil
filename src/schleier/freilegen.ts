@@ -42,6 +42,8 @@ const RUECKFALL_F: Partial<Record<SatzGruppe, string>> = {
 };
 
 import { SEITEN_TEXT } from '../oberflaeche/design/familie';
+import { eigeneWurzel } from './eigene';
+import { standbildDecktPunkt } from '../player/standbild';
 const CSS = `
 :host { all: initial; }
 .flaeche { position: fixed; inset: 0; pointer-events: none; }
@@ -260,7 +262,7 @@ export class Freilegen {
   private baueHost(): void {
     if (this.host?.isConnected) return;
     const host = document.createElement('div');
-    const wurzel = host.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(host);
     const stil = document.createElement('style');
     stil.textContent = CSS;
     const flaeche = document.createElement('div');
@@ -297,6 +299,8 @@ export class Freilegen {
   // Der Knopfpunkt muss zur Flaeche gehoeren: liegt dort etwas anderes obenauf (klebender Kopf, Karussell, deckende Ebene), kommt kein Knopf.
   // Ein Vorfahre als Treffer gilt (Bild mit pointer-events: none), denn der Punkt liegt schon innerhalb aller Beschneidungen der Vorfahren.
   private oben(el: Element, x: number, y: number, voll: Rechteck): boolean {
+    // Session 16 (Live-Lauf): Mias Standbild deckt das Bild (Poster unter dem Player): kein Knopf, Freilegen zeigte darunter nur ihren Deckel.
+    if (standbildDecktPunkt(x, y)) return false;
     try {
       const wurzel = el.getRootNode() as Document | ShadowRoot;
       const liste = (typeof wurzel.elementsFromPoint === 'function' ? wurzel : document).elementsFromPoint(x, y);

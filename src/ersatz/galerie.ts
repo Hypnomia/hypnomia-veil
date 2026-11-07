@@ -12,6 +12,7 @@ import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { augenpaar } from '../oberflaeche/design/motive';
 import { logoSvg, type LogoName } from '../oberflaeche/design/logos';
+import { eigeneWurzel } from '../schleier/eigene';
 
 // Marke am Host nur im Testbau (im Release-Bau faellt der Name weg); die Regel in style.css braucht sie nicht.
 export const HOST_MARKE: string = TESTHAKEN ? 'data-veil-ersatz-host' : '';
@@ -115,7 +116,7 @@ export class Galerie {
     const host = document.createElement('div');
     host.setAttribute('popover', 'manual');
     if (TESTHAKEN) host.setAttribute(HOST_MARKE, '');
-    const wurzel = host.attachShadow({ mode: 'closed' });
+    const wurzel = eigeneWurzel(host);
     this.wurzel = wurzel;
     const stil = el('style');
     stil.textContent = CSS;
