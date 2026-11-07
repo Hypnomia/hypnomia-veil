@@ -2,13 +2,28 @@
 // Beide Tests laufen auch dann, wenn einer rot ist. Am Ende steht eine Zusammenfassung mit Millisekunden.
 // Zusaetzlich baut der Lauf ohne Testhaken (Release-Pruefung) und sucht in allen JS-Dateien beider Bauten nach den Spuren der Testhaken.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { SPUREN_IM_TESTBAU, suche, TESTHAKEN_SPUREN } from './testhaken-spuren.mjs';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 // Testbauten (mit Testhaken) landen in einem eigenen Ordner, nie unter den Release-Namen in .output.
 const TESTBAU = { WXT_TESTHAKEN: '1', VEIL_AUSGABE: process.env.VEIL_AUSGABE ?? '.output-test' };
+// Playwright-Chromium fuer die Chromium-Tests: kommt nicht mehr aus postinstall (Reviewer sollen es nicht laden), sondern aus `npm run test:setup`.
+if (process.env.VEIL_NUR_RELEASEPRUEFUNG !== '1') {
+  const { chromium } = await import('@playwright/test');
+  let pfad = '';
+  try {
+    pfad = chromium.executablePath();
+  } catch {
+    // Fehlermeldung unten
+  }
+  if (!pfad || !existsSync(pfad)) {
+    console.error('TEST-LAUF ABGEBROCHEN: Playwright-Chromium fehlt. Einmal `npm run test:setup` ausfuehren (laedt es), dann `npm test` erneut.');
+    process.exit(1);
+  }
+}
 // Bau ohne Testhaken fuer die Release-Pruefung: der Schalter ist leer (nicht "1"), der Ordner gehoert nur dieser Pruefung.
 const RELEASEBAU = { WXT_TESTHAKEN: '', VEIL_AUSGABE: '.output-release-pruefung' };
 // Kern-Bilder der Testbaue (Phase 7, Auftrag I3): synthetische Bilder in einem Ordner ausserhalb des Repos statt der echten aus `../02 Assets Mia/kern/`,
@@ -19,22 +34,7 @@ if (!process.env.VEIL_KERN && process.env.VEIL_NUR_RELEASEPRUEFUNG !== '1') {
   TESTBAU.VEIL_KERN = await baueKernTest(mkdtempSync(path.join(tmpdir(), 'veil-kern-test-')), 3);
 }
 TESTBAU.VEIL_KERN_PFLICHT = '1';
-// Spuren der Testhaken: das, was der Testhaken in Seiten und Erweiterung schreibt oder abhoert. Im Release-Bau darf nichts davon stehen.
-//   veil-test             CustomEvent, ueber das Tests Einstellungen setzen und den Erkenner abfragen
-//   veil-freigabe         Seitenparameter "Freigabe sperren"
-//   data-veil-erkenner    Antwort des Erkenner-Status im Testhaken
-//   data-veil-status      Status-Attribut am Wurzelelement
-//   data-veil-ms          Zeitstempel je Element
-//   hypnomiaVeil, data-hypnomia-veil   Lebenszeichen-Attribut der Hallo-Tests (dataset.hypnomiaVeil)
-//   veilHello             Lebenszeichen der Hallo-Tests in storage.local (Hintergrund, nur im Testbau)
-//   videoVerzoegerungMs   Testhaken: kuenstlich verzoegerte Video-Antwort (veil-test)
-//   steigerungUhrVor, veil-steigerung-takt   Testhaken der Steigerung (Uhr vorstellen, kurzer Melde-Takt)
-//   veil-erwachsen        Testdomain veil-erwachsen.test fuer Erwachsenenseiten (src/adapter/liste.ts, Phase 4)
-//   (videoZeiten und die anderen Schluessel des Status-Objekts stehen als Namen auch im Release-Bau, werden dort aber nie geschrieben:
-//   das Schreiben haengt an testhakenAktiv(). Gesucht wird darum nach dem Attributnamen data-veil-status, nicht nach den Schluesseln.)
-const TESTHAKEN_SPUREN = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'data-hypnomia-veil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze', 'veil-erwachsen', 'data-veil-riegel', 'steigerungUhrVor', 'veil-steigerung-takt', 'data-veil-freilegen', 'data-veil-ersatz-abbild', 'data-veil-ersatz-host', 'data-veil-blitz', 'data-veil-spirale', 'data-veil-werbung', 'veil-werbung.test', 'data-veil-tabtitel', 'veil-besuch', 'data-veil-meldung', 'veil-version-test', 'data-veil-ledger', 'veil-einstieg-test', 'data-veil-ton'];
-// Diese Spuren schreibt der Testbau wirklich; die Gegenprobe verlangt sie dort (data-hypnomia-veil kommt nur als dataset-Name vor).
-const SPUREN_IM_TESTBAU = ['veil-test', 'veil-freigabe', 'data-veil-erkenner', 'data-veil-status', 'data-veil-ms', 'hypnomiaVeil', 'veilHello', 'videoVerzoegerungMs', 'warteschlangeHalt', 'pruefVerzoegerungMs', 'data-veil-grenze', 'veil-erwachsen', 'data-veil-riegel', 'steigerungUhrVor', 'veil-steigerung-takt', 'data-veil-freilegen', 'data-veil-ersatz-abbild', 'data-veil-ersatz-host', 'data-veil-blitz', 'data-veil-spirale', 'data-veil-werbung', 'veil-werbung.test', 'data-veil-tabtitel', 'veil-besuch', 'data-veil-meldung', 'veil-version-test', 'data-veil-ledger', 'veil-einstieg-test', 'data-veil-ton'];
+// Spuren der Testhaken und ihre Suche stehen in scripts/testhaken-spuren.mjs (gemeinsam mit scripts/release/firefox.mjs).
 
 // Fuehrt ein npm-Skript aus, reicht die Ausgabe durch und liefert Exit-Code sowie Text.
 function lauf(skript, umgebung = {}) {
@@ -101,36 +101,6 @@ for (const schritt of ['build', 'build:firefox']) {
     console.error(`\nTEST-LAUF ABGEBROCHEN: Release-Bau "${schritt}" ist fehlgeschlagen (Exit ${code}).`);
     process.exit(code);
   }
-}
-
-// Durchsucht werden JS, HTML, CSS und das Manifest.
-const DURCHSUCHT = /\.(m?js|cjs|html|css)$/;
-const istJs = (name) => /\.(m?js|cjs)$/.test(name);
-
-// Alle durchsuchten Dateien unter einem Ordner (rekursiv).
-function dateien(ordner) {
-  const liste = [];
-  for (const name of readdirSync(ordner)) {
-    const voll = path.join(ordner, name);
-    if (statSync(voll).isDirectory()) liste.push(...dateien(voll));
-    else if (DURCHSUCHT.test(name) || name === 'manifest.json') liste.push(voll);
-  }
-  return liste;
-}
-
-// Dateiname ohne Inhalts-Hash des Baus (chunks/popup-BJjSF3cq.js -> chunks/popup.js): zwei Baue vergleichen sich ueber die Namen.
-const ohneHash = (rel) => rel.replace(/-[A-Za-z0-9_-]{8}(\.[a-z]+)$/, '$1');
-
-// Zaehlt je Spur die Dateien eines Baus, in denen sie steht.
-function suche(ordner) {
-  const alle = dateien(ordner);
-  const treffer = Object.fromEntries(TESTHAKEN_SPUREN.map((m) => [m, []]));
-  for (const datei of alle) {
-    const text = readFileSync(datei, 'utf8');
-    for (const muster of TESTHAKEN_SPUREN) if (text.includes(muster)) treffer[muster].push(datei);
-  }
-  const js = alle.filter((d) => istJs(d)).map((d) => ohneHash(path.relative(ordner, d))).sort();
-  return { dateien: alle.length, js, treffer };
 }
 
 // Release-Pruefung: im Bau ohne Testhaken darf keine Spur stehen. Der Release-Bau muss dieselbe JS-Dateiliste haben wie der Testbau (und nicht leer

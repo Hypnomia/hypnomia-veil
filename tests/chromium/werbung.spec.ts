@@ -165,6 +165,13 @@ async function rotAnteilMitte(s: Page, id: string): Promise<number> {
   return rot;
 }
 
+
+async function rotAnteilBereich(s: Page, clip: { x: number; y: number; width: number; height: number }): Promise<number> {
+  const { data, info } = await sharp(await s.screenshot({ clip })).raw().toBuffer({ resolveWithObject: true });
+  let n = 0;
+  for (let i = 0; i < data.length; i += info.channels) if (data[i]! > 170 && data[i + 1]! < 90 && data[i + 2]! < 100) n++;
+  return n / (info.width * info.height);
+}
 const rechteck = (s: Page, id: string) =>
   s.evaluate((i) => {
     const b = document.getElementById(i)!.getBoundingClientRect();
@@ -627,6 +634,99 @@ test('Lage: Karussell beschneidet, Kopfleiste und Dialog liegen darueber, Ausble
   expect(await s.evaluate(() => getComputedStyle(document.getElementById('a-aus')!).visibility), 'Original, das die Seite selbst versteckt hat, bleibt versteckt').toBe('hidden');
   expect(await s.evaluate(() => document.getElementById('a-wachs')!.hasAttribute('style')), 'kein leeres style-Attribut zurueck').toBe(false);
   await setzeEinstellungen({ pause: false });
+  await s.close();
+});
+
+test('K3: Mias Werbung liegt nie ueber fremden Dialogen (body fest, Huelle, modales dialog), Skin und Rollsperre stoeren nicht', async () => {
+  test.setTimeout(150_000);
+  const s = await context.newPage();
+  await s.setViewportSize({ width: 1280, height: 720 });
+  await s.goto(`http://127.0.0.1:${port}/werbung-dialog.html`);
+  const ALLE = ['a-oben', 'a-neben', 'a-eigen'];
+  await warteAuf(s, ALLE);
+  // Oberstes Element an einem Punkt
+  const oben = (x: number, y: number, sel: string) =>
+    s.evaluate(([px, py, q]) => {
+      const e = document.elementsFromPoint(px as number, py as number)[0]!;
+      return { id: e.id, imDialog: !!e.closest(q as string) };
+    }, [x, y, sel] as const);
+  // Jede sichtbare Mia-Flaeche: Kennzeichnung sichtbar und zuoberst (oberstes Element ist ein Host ohne Kennung, kein Seitenelement)
+  const kennzeichnungOben = async (ids: string[]) => {
+    const st = (await standVon(s))!;
+    for (const id of ids) {
+      const f = st.flaechen.find((x) => x.id === id)!;
+      expect(f.sichtbar, `${id} sichtbar`).toBe(true);
+      expect(f.kennzeichnung.length).toBeGreaterThan(0);
+      const t = await s.evaluate(([x, y]) => {
+        const e = document.elementsFromPoint(x as number, y as number)[0]!;
+        return { id: e.id, tag: e.tagName, eltern: e.parentElement?.tagName ?? '' };
+      }, [f.badge!.l + f.badge!.w / 2, f.badge!.t + f.badge!.h / 2] as const);
+      expect(t.id, `Kennzeichnung von ${id} liegt zuoberst`).toBe('');
+      expect(['BODY', 'HTML']).toContain(t.eltern);
+    }
+  };
+  await abwarten(600);
+  await kennzeichnungOben(ALLE);
+  // (a) fester Dialog, z-index 2147483647, die Seite sperrt das Rollen mit body fixed (chip.de)
+  await s.evaluate(() => (window as any).oeffneCookie(true));
+  await abwarten(1500);
+  const r = await rechteck(s, 'a-oben');
+  const pkt = { x: r.left + r.width / 2, y: r.top + 100 };
+  const t1 = await oben(pkt.x, pkt.y, '#cookie');
+  console.log(`werbung K3: fester Dialog, oberstes Element ${JSON.stringify(t1)}`);
+  expect(t1.imDialog, 'Cookie-Dialog liegt ueber Mias Werbung').toBe(true);
+  expect(await rotAnteilBereich(s, { x: Math.round(pkt.x - 100), y: Math.round(pkt.y - 40), width: 200, height: 80 }), 'kein Rot im Dialogbereich').toBeLessThan(0.02);
+  // Flaechen unter dem Dialog (auch unter seinem dimmenden Hintergrund) sind ganz weg; jede noch sichtbare hat ihre Kennzeichnung zuoberst
+  // (zweite Lesung K3, Fund 1: nie ein gedimmtes Bild ohne sichtbare Kennzeichnung).
+  const nochDa = await flaechenIds(s);
+  expect(nochDa, 'Flaeche unter dem Dialog verborgen').not.toContain('a-oben');
+  await kennzeichnungOben(nochDa);
+  await s.evaluate(() => (window as any).oeffneCookie(false));
+  await expect.poll(async () => (await flaechenIds(s)).sort(), { timeout: 4000 }).toEqual([...ALLE].sort());
+  expect(await sichtbarOriginal(s, 'a-oben')).toBe(false);
+  await kennzeichnungOben(ALLE);
+  // (b) Dialog mit Hintergrund ueber das ganze Fenster in einer Huelle: Mias Flaechen ganz weg, nach dem Schliessen wieder da
+  await s.evaluate(() => (window as any).oeffneDrin(true));
+  await expect.poll(async () => (await flaechenIds(s)).length, { timeout: 4000 }).toBe(0);
+  const r2 = await rechteck(s, 'a-oben');
+  expect((await oben(400, Math.max(100, r2.top + 100), '#drin-dialog')).imDialog, 'Dialog in Huelle liegt ueber Mias Werbung').toBe(true);
+  expect(await sichtbarOriginal(s, 'a-oben'), 'Original bleibt versteckt').toBe(false);
+  await abwarten(1200); // lange genug fuer mehrere Pruefungen: kein Flackern
+  expect((await flaechenIds(s)).length).toBe(0);
+  await s.evaluate(() => (window as any).oeffneDrin(false));
+  await expect.poll(async () => (await flaechenIds(s)).sort(), { timeout: 4000 }).toEqual([...ALLE].sort());
+  await kennzeichnungOben(ALLE);
+  // (c) modales dialog (oberste Ebene)
+  await s.evaluate(() => (window as any).oeffneModal(true));
+  await abwarten(1000);
+  const dr = await rechteck(s, 'modal-dialog');
+  expect((await oben(dr.left + dr.width / 2, dr.top + dr.height / 2, '#modal-dialog')).imDialog, 'modales dialog liegt ueber Mias Werbung').toBe(true);
+  await s.evaluate(() => (window as any).oeffneModal(false));
+  await abwarten(600);
+  // (d) fester Hintergrund mit z-index -1 (Skin): Mia bleibt unveraendert
+  await s.evaluate(() => (window as any).zeigeSkin(true));
+  await abwarten(1200);
+  expect((await flaechenIds(s)).sort()).toEqual([...ALLE].sort());
+  await kennzeichnungOben(ALLE);
+  await s.evaluate(() => (window as any).zeigeSkin(false));
+  // (e) Rollsperre mit negativem top: gerollte Seite, Flaechen bleiben am Platz und sichtbar
+  await s.evaluate(() => scrollTo(0, 400));
+  await abwarten(800);
+  const vorher = (await flaechenIds(s)).sort();
+  expect(vorher.length).toBeGreaterThanOrEqual(2);
+  await s.evaluate(() => (window as any).rollSperre(true));
+  await abwarten(1500);
+  expect(await s.evaluate(() => getComputedStyle(document.body).top)).toBe('-400px');
+  expect((await flaechenIds(s)).sort(), 'Flaechen verschwinden waehrend der Rollsperre nicht').toEqual(vorher);
+  expect(await maxVersatz(s)).toBeLessThanOrEqual(2);
+  // ganz im Fenster liegende Flaechen sind nicht beschnitten (Dokument-Rechteck stimmt auch bei negativem top)
+  for (const f of (await standVon(s))!.flaechen.filter((x) => x.sichtbar && x.voll && x.voll.t >= 0 && x.voll.t + x.voll.h <= 720)) {
+    expect(Math.abs(f.box!.h - f.voll!.h), `${f.id} nicht beschnitten`).toBeLessThanOrEqual(1);
+  }
+  await s.evaluate(() => (window as any).rollSperre(false));
+  await abwarten(1200);
+  expect((await flaechenIds(s)).sort()).toEqual(vorher);
+  expect(await maxVersatz(s)).toBeLessThanOrEqual(2);
   await s.close();
 });
 

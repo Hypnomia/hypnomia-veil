@@ -46,6 +46,7 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 - `node scripts/annotate/server.mjs`: Markierwerkzeug fuer die Soll-Zonen (http://127.0.0.1:5188)
 - `npm run build`: Chrome-Build; `npm run build:firefox`: Firefox-Build (beide ohne Testhaken, `prebuild` kopiert die WASM-Laufzeit nach `public/ort/`)
 - `npm run zip`, `npm run zip:firefox`: Pakete fuer Release (landen in `.output/`, nie im Repo)
+- `node scripts/release/firefox.mjs --kanal unlisted|amo [--nachbau] [--signieren]` (auch `npm run release:firefox -- ...`): Release-Bau ohne Testhaken nach `.output-release-<kanal>`, Suche nach Testhaken-Spuren, `web-ext lint`, Quellcode-Paket `hypnomia-veil-<version>-sources-<kanal>.zip` mit `BUILD.md`, `--nachbau` baut es in `$TMPDIR` nach und vergleicht per SHA-256; `--signieren` (nur unlisted) und `--updates <xpi-adresse>` nur auf Einzelanweisung. Schalter fuer den Bau: `VEIL_KANAL`, `VEIL_BAUDATUM`, `VEIL_CHIBI`, `VEIL_KERN`. `postinstall` ist nur `wxt prepare`; den Playwright-Chromium fuer die Tests laedt einmalig `npm run test:setup`. Update-Test-Erweiterung fuer Android: `node tests/android/update-test/erzeuge.mjs <version>` (nach `.output-updatetest/`)
 - `./scripts/leak-check.sh --all`: Leck-Sperre ueber das ganze Repo
 - `VEIL_SKIP_TESTS=1 git commit ...`: nur fuer reine Doku-Commits erlaubt
 

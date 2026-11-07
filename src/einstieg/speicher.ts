@@ -1,5 +1,6 @@
 // Einstieg (Auftrag E): Ablage `einstieg` in storage.local. Aenderungen laufen nacheinander, damit zwei schnelle Schritte sich nicht
 // ueberschreiben. Gemeinsam fuer Willkommensseite, Popup und Hintergrund.
+import { fensterNachVorn } from '../fenster';
 import { EINSTIEG_SCHLUESSEL, WILLKOMMEN_PFAD, ladeEinstieg, vervollstaendigeEinstieg, type EinstiegStand } from './vertrag';
 
 let kette: Promise<unknown> = Promise.resolve();
@@ -57,7 +58,7 @@ export async function zeigeWillkommen(anker = ''): Promise<number | undefined> {
     if (tabId !== null) {
       try {
         const tab = await browser.tabs.update(tabId, { active: true });
-        if (tab?.windowId !== undefined) await browser.windows.update(tab.windowId, { focused: true });
+        await fensterNachVorn(tab?.windowId);
         return tabId;
       } catch {
         // Tab war schon weg: neu oeffnen

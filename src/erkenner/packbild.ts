@@ -19,7 +19,7 @@ import {
   type AntwortPackBild,
   type NachrichtErkennerPackBild,
 } from '../nachrichten';
-import { horchePackGeaendert, leseDatei, leseMeta } from '../pack/db';
+import { horchePackGeaendert, leseDatei, leseMeta, mitLesePlatz } from '../pack/db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from '../pack/format';
 import { hashe } from '../pack/patches';
 import { waehleVorschauNamen } from '../pack/wahl';
@@ -41,6 +41,8 @@ let ungueltig = true;
 let horcht = false;
 let leseLauf: Promise<PackMeta | null> | null = null;
 const fertig = new Map<string, AntwortPackBild>();
+// Laufende Verkleinerungen je Lauf, Art, Kantenlaenge und Datei (gleichzeitige Anfragen teilen sie).
+const laufend = new Map<string, Promise<{ dataUrl: string; breite: number; hoehe: number } | null>>();
 // Werbebilder haben einen eigenen Speicher: sie verdraengen keine Vorschau-Eintraege.
 const fertigWerbung = new Map<string, AntwortPackBild>();
 // Zaehlt jeden Wechsel des Packs (und jede Meldung darueber): ein Lauf, der mit Blob oder Namen des alten Packs begann, legt nichts mehr ab.
@@ -162,9 +164,21 @@ async function ausPack(
     const gemerkt = speicher.get(zwischen);
     if (gemerkt) return gemerkt;
     try {
-      const datei = await leseDatei(name);
-      if (!datei || !datei.typ.startsWith('image/')) continue;
-      const k = await verkleinere(datei.blob, datei.typ, maxSeite, mitAlpha);
+      // Gleichzeitige Anfragen fuer dieselbe Datei und Kantenlaenge teilen eine laufende Arbeit (Schluessel mit Lauf, damit ein
+      // ersetztes Pack nie ein altes Ergebnis teilt); insgesamt hoechstens 4 Lesungen gleichzeitig (mitLesePlatz).
+      const laufSchluessel = `${lauf}|${mitAlpha ? 'c' : 'v'}|${maxSeite}|${name}`;
+      let arbeit = laufend.get(laufSchluessel);
+      if (!arbeit) {
+        arbeit = mitLesePlatz(async () => {
+          const datei = await leseDatei(name);
+          if (!datei || !datei.typ.startsWith('image/')) return null;
+          return verkleinere(datei.blob, datei.typ, maxSeite, mitAlpha);
+        }).finally(() => {
+          laufend.delete(laufSchluessel);
+        });
+        laufend.set(laufSchluessel, arbeit);
+      }
+      const k = await arbeit;
       if (!k) continue;
       const antwort: AntwortPackBild = { ok: true, dataUrl: k.dataUrl, breite: k.breite, hoehe: k.hoehe, name };
       merke(zwischen, antwort, lauf, speicher);

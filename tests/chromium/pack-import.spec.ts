@@ -525,7 +525,14 @@ test('Wurf und Doppelklick waehrend eines laufenden Imports: Satz "busy", Abbrec
       const w = window as any;
       w.__ab = 0;
       const o = Blob.prototype.arrayBuffer;
+      // Gezaehlt wird nur der Import selbst: beim ersten Wechsel des Schluessels `pack` (Import fertig) hoert das Zaehlen auf. Danach liest die
+      // Seite selbst (Begruessungs-Chibi ueber leseDatei, das die Bytes bei offener Verbindung kopiert) und wuerde sonst mitgezaehlt.
+      let zaehlt = true;
+      (window as any).chrome.storage.onChanged.addListener((a: Record<string, unknown>) => {
+        if ('pack' in a) zaehlt = false;
+      });
       Blob.prototype.arrayBuffer = async function () {
+        if (!zaehlt) return o.call(this);
         w.__ab++;
         await new Promise((r) => setTimeout(r, 150));
         return o.call(this);

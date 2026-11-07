@@ -106,6 +106,21 @@
           if (opt.abspielen) v.play().catch(function () {});
           return v;
         };
+        // Poster-Ebene des Players (wie video.js oder die Huelle bei Pornhub): ein eigenes Element mit z-index ueber dem Video, im Player.
+        window.posterEbene = function () {
+          var p = document.getElementById('player');
+          p.style.position = 'relative';
+          var e = document.createElement('div');
+          e.id = 'poster-ebene';
+          e.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;z-index:7;background:#e0a;';
+          p.appendChild(e);
+          return e;
+        };
+        // Ein Klick aufs Video spielt es (wie ein Player ohne Bedienelemente).
+        window.klickSpielt = function (id) {
+          var v = window.findeVideo(id);
+          v.addEventListener('click', function () { v.play().catch(function () {}); });
+        };
         window.neueQuelle = function () { return URL.createObjectURL(filmBlob); };
         // Adresse, die keine blob:-Adresse ist (data:, jedes n eine andere), fuer den Wechsel auf ein anderes Video.
         window.datenQuelle = function (n) { return gespeichert.replace(';base64,', ';x=' + n + ';base64,'); };

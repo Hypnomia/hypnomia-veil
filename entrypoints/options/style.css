@@ -680,10 +680,18 @@ section:empty {
   font-weight: 650;
 }
 /* N6: der Pause-Knopf der Leiste erscheint erst, wenn der grosse Knopf oben aus dem Bild ist (grund.ts setzt hidden). */
-/* N7: Ziehen und Ablegen gibt es nur mit Maus oder Stift, auf Touch-Geraeten entfaellt der Satz. */
-@media not (pointer: fine) {
+/* N7: der Ablage-Satz steht nur mit feinem Zeiger und Hover, also mit Maus. Firefox Android meldet `pointer: fine`, aber `hover: none`. */
+@media not ((pointer: fine) and (hover: hover)) {
   #ablage-text {
     display: none;
+  }
+}
+/* Auftrag F: der Datei-Knopf ist ohne Maus (gleiche Bedingung wie der Ablage-Satz) oder auf schmalen Schirmen mindestens 44 px hoch;
+   Desktop mit Maus ueber 480 px bleibt unveraendert. */
+@media (max-width: 480px), not ((pointer: fine) and (hover: hover)) {
+  #datei {
+    min-height: 44px;
+    box-sizing: border-box;
   }
 }
 /* N8: gesperrtes "even when clothed" sieht auch gesperrt aus. */

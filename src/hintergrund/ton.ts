@@ -3,7 +3,7 @@
 // Limit, einer kaputten Datei oder einem Fehler lautet die Antwort `dataUrl: null` (nie ein Fehler). Die Datei liest der Hintergrund aus
 // IndexedDB (src/pack/db.ts); das Content-Script hat dort keinen Zugriff. Kein Netz.
 import type { AntwortPackTon, NachrichtHintergrundPackTon } from '../nachrichten';
-import { leseDatei, leseMeta } from '../pack/db';
+import { leseDateiBytes, leseMeta } from '../pack/db';
 import { MAX_TON_BYTES, tonNameAusDatei } from '../pack/format';
 import { TON_NAMEN, type TonName } from '../ton/vertrag';
 
@@ -26,9 +26,10 @@ async function lade(name: TonName): Promise<string | null> {
   let ergebnis: string | null = null;
   try {
     const eintrag = meta.dateien.find((d) => d.rolle === 'ton' && tonNameAusDatei(d.name) === name);
-    const datei = eintrag ? await leseDatei(eintrag.name) : null;
-    if (datei && datei.blob.size > 0 && datei.blob.size <= MAX_TON_BYTES) {
-      ergebnis = `data:${datei.typ};base64,${alsBase64(new Uint8Array(await datei.blob.arrayBuffer()))}`;
+    // Die Grenze gilt schon beim Lesen (zu grosse Dateien werden nicht kopiert); die Bytes kommen bei offener Verbindung (siehe kopiereBlob).
+    const datei = eintrag ? await leseDateiBytes(eintrag.name, MAX_TON_BYTES) : null;
+    if (datei && datei.bytes.byteLength > 0) {
+      ergebnis = `data:${datei.typ};base64,${alsBase64(datei.bytes)}`;
     }
   } catch {
     // Voruebergehender Lesefehler: nichts zwischenspeichern, der naechste Aufruf liest neu.

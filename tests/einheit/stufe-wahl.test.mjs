@@ -122,7 +122,7 @@ test('Zwischenspeicher-Schluessel traegt die Klasse und laesst sich wieder trenn
 
 test('Pack-Pruefung liest die Masse jedes Bildes; das Dummy-Pack mit Stufen-Satz besteht sie', async () => {
   const dummy = await baueDummyPack({ vorschauSatz: 'stufen' });
-  const p = await pruefePack(quelleAusBytes(dummy.bytes), '0.7.0');
+  const p = await pruefePack(quelleAusBytes(dummy.bytes), '0.8.0');
   for (const x of DUMMY_STUFEN_BILDER) {
     const m = p.masse[`vorschau/stufe-${x.schluessel}.webp`];
     assert.deepEqual(m, { breite: x.breite, hoehe: x.hoehe }, x.schluessel);
@@ -131,7 +131,7 @@ test('Pack-Pruefung liest die Masse jedes Bildes; das Dummy-Pack mit Stufen-Satz
   }
   assert.equal(dummy.vorschau, DUMMY_STUFEN_BILDER.length);
   // Standard-Dummy: vier Querbilder, zwei Tease und zwei Hot (die Standardstufe zeigt alle vier)
-  const std = await pruefePack(quelleAusBytes((await baueDummyPack()).bytes), '0.7.0');
+  const std = await pruefePack(quelleAusBytes((await baueDummyPack()).bytes), '0.8.0');
   const vs = std.manifest.dateien.filter((d) => d.rolle === 'vorschau');
   assert.equal(vs.length, 4);
   assert.deepEqual(vs.map((d) => d.stufe), ['tease', 'hot', 'tease', 'hot']);

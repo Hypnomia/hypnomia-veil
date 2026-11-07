@@ -93,6 +93,14 @@ export const DUMMY_STUFEN_BILDER = [
   { schluessel: 'hot-quadratisch', stufe: 'hot', breite: 400, hoehe: 400, farben: [[130, 130, 130], [0, 200, 80]] },
 ];
 
+// Grosses, kaum komprimierbares Bild (Rauschen, PNG) von etwa 1 bis 2 MB: Regressionstest K1 (Blob-Verweise unter Last, Session 14).
+// Rein synthetisch; das Rauschen kommt aus dem Zufallsgenerator des Systems.
+async function dummyGrossesBild(breite = 800, hoehe = 800) {
+  const { default: sharp } = await import('sharp');
+  const { randomBytes } = await import('node:crypto');
+  return new Uint8Array(await sharp(randomBytes(breite * hoehe * 3), { raw: { width: breite, height: hoehe, channels: 3 } }).png({ compressionLevel: 1 }).toBuffer());
+}
+
 // Chibi-Platzhalter mit Transparenz: ein farbiger Kreis auf durchsichtigem Grund (Tests pruefen, dass die Ecken durchsichtig bleiben).
 async function dummyChibi(farbe, seite = 256) {
   const { default: sharp } = await import('sharp');
@@ -143,7 +151,7 @@ export const DUMMY_FARBEN_WARM = [
 ];
 
 // Baut das Dummy-Pack im Speicher. Liefert die Bytes und die verwendeten Farben (Tests pruefen Pixel dagegen).
-// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`, `opts.vorschauSatz: 'stufen'`: Vorschau-Bilder je Stufe und Format (DUMMY_STUFEN_BILDER) statt der vier Standard-Bilder.
+// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`, `opts.grosseVorschau: n`: n grosse Vorschau-Bilder (1 bis 2 MB) statt der vier Standard-Bilder, `opts.vorschauSatz: 'stufen'`: Vorschau-Bilder je Stufe und Format (DUMMY_STUFEN_BILDER) statt der vier Standard-Bilder.
 export async function baueDummyPack(opts = {}) {
   const paare = opts.farben ?? DUMMY_FARBEN;
   const dateien = [{ name: 'lizenz.txt', typ: 'text/plain', daten: new TextEncoder().encode(lizenzTextDummy()), rolle: 'lizenz' }];
@@ -160,17 +168,23 @@ export async function baueDummyPack(opts = {}) {
   // Phase 4 (PHASE-4-BAUPLAN Abschnitt 8 Punkt 11): Vorschau-Bilder, Chibis, Quiz-Bank und Saetze. `opts.ohnePhase4` baut ein Pack
   // wie vor 0.4.0 (nur Patches), fuer Tests "Pack ohne die neuen Freischaltungen".
   const phase4 = !opts.ohnePhase4;
+  if (opts.grosseVorschau > 0 && opts.vorschauSatz === 'stufen') throw new Error('grosseVorschau und vorschauSatz stufen schliessen sich aus');
+  const grosse = phase4 && opts.grosseVorschau > 0;
   if (phase4) {
     if (opts.vorschauSatz === 'stufen') {
       for (const x of DUMMY_STUFEN_BILDER) {
         dateien.push({ name: `vorschau/stufe-${x.schluessel}.webp`, typ: 'image/webp', daten: await dummyBild(x.farben[0], x.farben[1], x.breite, x.hoehe), rolle: 'vorschau', stufe: x.stufe });
       }
-    } else {
+    } else if (!(opts.grosseVorschau > 0)) {
       // Standard seit Phase 7: zwei Bilder Tease, zwei Hot (alle quer), damit die Standardstufe `hot` sie zeigt.
       for (let i = 0; i < DUMMY_VORSCHAU_FARBEN.length; i++) {
         const [a, b] = DUMMY_VORSCHAU_FARBEN[i];
         dateien.push({ name: `vorschau/dummy-${i + 1}.webp`, typ: 'image/webp', daten: await dummyBild(a, b, 640, 360), rolle: 'vorschau', stufe: i % 2 === 0 ? 'tease' : 'hot' });
       }
+    }
+    // `opts.grosseVorschau`: Anzahl grosser Vorschau-Bilder (je 1 bis 2 MB, Stufe hot, quadratisch) statt der vier Standard-Bilder, fuer Lasttests.
+    for (let i = 0; i < (opts.grosseVorschau ?? 0); i++) {
+      dateien.push({ name: `vorschau/gross-${i + 1}.png`, typ: 'image/png', daten: await dummyGrossesBild(800, 800), rolle: 'vorschau', stufe: 'hot' });
     }
     for (let i = 0; i < DUMMY_CHIBI_POSEN.length; i++) {
       dateien.push({ name: `chibi/${DUMMY_CHIBI_POSEN[i]}.webp`, typ: 'image/webp', daten: await dummyChibi(DUMMY_VORSCHAU_FARBEN[i][1]), rolle: 'chibi' });
@@ -223,8 +237,8 @@ export async function baueDummyPack(opts = {}) {
     bytes,
     farben: paare.flat(),
     bilder: paare.length,
-    vorschauFarben: phase4 ? (opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.flatMap((x) => x.farben) : DUMMY_VORSCHAU_FARBEN).flat() : [],
-    vorschau: phase4 ? (opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.length : DUMMY_VORSCHAU_FARBEN.length) : 0,
+    vorschauFarben: !phase4 || grosse ? [] : (opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.flatMap((x) => x.farben) : DUMMY_VORSCHAU_FARBEN).flat(),
+    vorschau: !phase4 ? 0 : grosse ? opts.grosseVorschau : opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.length : DUMMY_VORSCHAU_FARBEN.length,
     chibis: phase4 ? DUMMY_CHIBI_POSEN.length : 0,
     werbung: phase4 ? DUMMY_WERBUNG.length : 0,
   };

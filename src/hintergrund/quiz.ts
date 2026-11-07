@@ -3,7 +3,7 @@
 // mit src/quiz/vertrag.ts und antwortet nur mit Freischaltung (`erwachsen:quiz` oder `quiz:freilegen` fuer quiz, `erwachsen:titel` oder
 // eine Quiz-Freischaltung fuer texte); sonst `daten: null`. Kein Pack, kaputte Datei oder Fehler: `daten: null` (nie ein Fehler).
 import type { AntwortPackDaten, NachrichtHintergrundPackDaten } from '../nachrichten';
-import { leseDatei, leseMeta, leseNamenMitRolle } from '../pack/db';
+import { leseDateiBytes, leseMeta, leseNamenMitRolle } from '../pack/db';
 import type { Freischaltung } from '../pack/vertrag';
 import { pruefeQuizBank, pruefeTexte, type QuizBank, type Texte } from '../quiz/vertrag';
 
@@ -26,9 +26,10 @@ async function lade(rolle: 'quiz' | 'texte'): Promise<QuizBank | Texte | null> {
   let ergebnis: QuizBank | Texte | null = null;
   try {
     const name = (await leseNamenMitRolle(rolle))[0];
-    const datei = name ? await leseDatei(name) : null;
-    if (datei && datei.blob.size <= MAX_BYTES) {
-      const roh = JSON.parse(await datei.blob.text()) as unknown;
+    // Grenze schon beim Lesen, Bytes bei offener Verbindung (siehe kopiereBlob in db.ts).
+    const datei = name ? await leseDateiBytes(name, MAX_BYTES) : null;
+    if (datei) {
+      const roh = JSON.parse(new TextDecoder().decode(datei.bytes)) as unknown;
       ergebnis = rolle === 'quiz' ? pruefeQuizBank(roh) : pruefeTexte(roh);
     }
   } catch {

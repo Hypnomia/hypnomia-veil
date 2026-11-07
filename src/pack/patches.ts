@@ -8,7 +8,7 @@
 // Fehlt etwas, liefert `waehlePatch` null (der Erkenner zeichnet dann Mosaik).
 
 import { PACK_STORE_DATEIEN, type PackDateiGespeichert } from './vertrag';
-import { anfrage, horchePackGeaendert, leseStandAus, oeffneDb, type PackStand } from './db';
+import { anfrage, horchePackGeaendert, kopiereBlob, MAX_LESE_BYTES, leseStandAus, mitLesePlatz, oeffneDb, type PackStand } from './db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from './format';
 import { Zwischenspeicher, type Leihe } from './leihe';
 import { hashe } from './hash';
@@ -96,7 +96,9 @@ async function aktualisiere(packStand?: number): Promise<boolean> {
         letzteLese = performance.now();
       } catch (e) {
         ungueltig = true;
-        db?.close();
+        // Nicht von aussen schliessen, solange eine Dekodierung laeuft (sie liest ihre Bytes ueber diese Verbindung); die alte Verbindung
+        // wird dann nur vergessen und schliesst mit ihrem Besitzer.
+        if (dekodierend === 0) db?.close();
         db = null;
         throw e;
       }
@@ -108,14 +110,44 @@ async function aktualisiere(packStand?: number): Promise<boolean> {
   return namen.length > 0;
 }
 
+// Laufende Dekodierungen je Datei: gleichzeitige Anfragen warten auf dieselbe Arbeit und leihen danach das fertige Bild aus dem Zwischenspeicher.
+const laufend = new Map<string, Promise<unknown>>();
+// Anzahl laufender Dekodierungen: solange eine laeuft, schliesst der Fehlerpfad von `aktualisiere` die Verbindung nicht von aussen.
+let dekodierend = 0;
+
 async function dekodiere(name: string): Promise<Leihe<ImageBitmap> | null> {
   const gemerkt = dekodiert.hole(name);
   if (gemerkt) return gemerkt;
+  const schluessel = `${generation}|${name}`;
+  const andere = laufend.get(schluessel);
+  if (andere) {
+    await andere.catch(() => {});
+    return dekodiert.hole(name);
+  }
+  const arbeit = mitLesePlatz(async () => {
+    dekodierend++;
+    try {
+      return await dekodiereNeu(name);
+    } finally {
+      dekodierend--;
+    }
+  }).finally(() => {
+    laufend.delete(schluessel);
+  });
+  laufend.set(schluessel, arbeit);
+  return arbeit;
+}
+
+async function dekodiereNeu(name: string): Promise<Leihe<ImageBitmap> | null> {
   const meineGeneration = generation;
   const datei = (await anfrage((await holeDb()).transaction(PACK_STORE_DATEIEN, 'readonly').objectStore(PACK_STORE_DATEIEN).get(name))) as
     | PackDateiGespeichert
     | undefined;
-  if (!datei) return null;
+  if (!datei || datei.blob.size > MAX_LESE_BYTES) return null;
+  // Den Blob sofort in den Speicher kopieren, bevor geschnitten und dekodiert wird (Grund: kopiereBlob in db.ts, Bad blob references in
+  // Chrome). Die Verbindung kann auch von aussen enden (`versionchange` bei einem Datenbank-Upgrade, Fehlerpfad von `aktualisiere`);
+  // ein Ersetzen oder Entfernen des Packs schliesst sie nicht.
+  datei.blob = await kopiereBlob(datei.blob, datei.typ);
   // Masse aus dem Dateikopf, damit nie ein riesiges Bild voll dekodiert wird (derselbe Kopfbereich wie beim Import).
   const masse = leseBildmasse(datei.typ, new Uint8Array(await datei.blob.slice(0, BILDKOPF_BYTES).arrayBuffer()));
   if (!masse || masse.breite > MAX_BILD_SEITE || masse.hoehe > MAX_BILD_SEITE) return null;

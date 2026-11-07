@@ -21,6 +21,7 @@ import { pruefeQuizBank, type QuizBank } from '../quiz/vertrag';
 import { zeigeRiegel, type RiegelErgebnis } from '../riegel/riegel';
 import { AdressBeobachter } from '../schleier/adresse';
 import type { KontextLeicht } from '../schleier/schleier';
+import { istStandbildHost, Standbild } from './standbild';
 import { istGeloest, quelleVon, quellSchluessel, vollbildBetrifft, waehleGroessten, willSpielen } from './logik';
 
 interface Sperre {
@@ -57,6 +58,7 @@ export function startePlayer(ctx: KontextLeicht): void {
   // "Kein Quiz moeglich" (zu wenige zulaessige Fragen, Daten fehlen): der Player bleibt aus, bis sich Pack oder Ruhig-Modus aendern.
   let keinQuiz = false;
   let quizStand: Promise<boolean> | null = null;
+  const standbild = new Standbild({ lebt });
   const gesperrt = new Map<HTMLVideoElement, Sperre>();
   const geloest = new WeakMap<HTMLVideoElement, string>();
   // Wollte spielen, als es noch keine Quelle gab: beim Laden der Quelle zaehlt das.
@@ -221,6 +223,90 @@ export function startePlayer(ctx: KontextLeicht): void {
     }
   }
 
+  // Standbild (Auftrag K2): jedes noch nicht geloeste Hauptvideo einer Erwachsenenseite mit Pack (Freischaltung wie der Vorschau-Tausch) liegt
+  // unter einem Mia-Bild, bis das Quiz geloest ist. Pause, Ausnahme, kein Quiz moeglich: kein Standbild, das Video bleibt wie bisher.
+  // Kandidaten: die Quiz-Ziele, dazu Adapter-Treffer ohne Quelle (preload none, Quelle kommt erst beim Abspielen) und, wenn nichts passt, das
+  // groesste Video mit Poster. Ihre Flaeche ist die des Ankers (Adapter-Selektor, samt Poster-Ebenen der Seite), sonst die des Videos.
+  const standbildVideos = new Set<HTMLVideoElement>();
+  const pipMerk = new WeakMap<HTMLVideoElement, boolean>();
+  function standbildKandidaten(ziele: ReadonlySet<HTMLVideoElement>): Set<HTMLVideoElement> {
+    const kand = new Set<HTMLVideoElement>(ziele);
+    const alle = alleVideos().filter((v) => !ausgeschlossen(v));
+    const sel = adapterFuer(erwachsenStatus().liste).player ?? [];
+    let treffer = false;
+    for (const v of alle) {
+      if (quelle(v) !== '' || !(groesse(v).breite > 0)) continue;
+      if (
+        sel.some((x) => {
+          try {
+            return v.matches(x) || !!v.closest(x);
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        kand.add(v);
+        treffer = true;
+      }
+    }
+    if (!kand.size && !treffer) {
+      const gross = waehleGroessten(alle.filter((v) => v.poster !== '').map((v) => ({ el: v, ...groesse(v) })));
+      if (gross) kand.add(gross);
+    }
+    return kand;
+  }
+  // Bild-in-Bild: ein Video unter dem Standbild darf nicht in ein eigenes Fenster gehen (dort laege das echte Bild offen). Der alte Wert kommt
+  // zurueck, sobald das Video kein Standbild mehr hat.
+  function sperrePip(v: HTMLVideoElement, an: boolean): void {
+    try {
+      if (an) {
+        if (!pipMerk.has(v)) pipMerk.set(v, v.disablePictureInPicture);
+        v.disablePictureInPicture = true;
+        if (document.pictureInPictureElement === v) void document.exitPictureInPicture().catch(() => {});
+      } else if (pipMerk.has(v)) {
+        v.disablePictureInPicture = pipMerk.get(v)!;
+        pipMerk.delete(v);
+      }
+    } catch {
+      // nicht steuerbar
+    }
+  }
+  function pflegeStandbild(ziele?: ReadonlySet<HTMLVideoElement>): void {
+    if (!lebt()) return;
+    const soll = new Map<HTMLVideoElement, Element>();
+    if (einst && einst.erwachsen.an && aktiv() && erwachsenStatus().liste !== null && istFreigeschaltet(pack, 'erwachsen:vorschau')) {
+      // Ein Anker bekommt nur ein Standbild (zwei Videos im selben Player: das erste zaehlt), sonst kaempften zwei Hosts um dieselbe Flaeche.
+      const belegt = new Set<Element>();
+      for (const v of standbildKandidaten(ziele ?? bestimmeZiele(true))) {
+        if (!ungeloest(v) || !v.isConnected) continue;
+        const anker = ankerFuer(v);
+        if (anker !== v) {
+          if (belegt.has(anker)) continue;
+          belegt.add(anker);
+        }
+        soll.set(v, anker);
+      }
+    }
+    if (soll.size) standbild.setze(soll, einst!.erwachsen.stufe, pack?.importiert ?? 0);
+    else standbild.alleWeg();
+    // Sperren (Bild-in-Bild, Vollbild) nur fuer Videos, die wirklich einen Host haben: ohne Bild (gescheitert, Groesse 0, Anker belegt) gilt
+    // "wie heute" (K2, zweite Lesung, Fund 5).
+    for (const v of [...standbildVideos]) if (!standbild.hat(v)) {
+      standbildVideos.delete(v);
+      sperrePip(v, false);
+    }
+    for (const v of soll.keys()) if (standbild.hat(v)) {
+      standbildVideos.add(v);
+      sperrePip(v, true);
+    }
+  }
+  // Alles weg (Pause, Ausnahme, Abbau): Bild-in-Bild-Sperren zuruecknehmen und das Standbild entfernen.
+  function standbildWeg(): void {
+    for (const v of [...standbildVideos]) sperrePip(v, false);
+    standbildVideos.clear();
+    standbild.alleWeg();
+  }
+
   // ---------- Sperren ----------
   function schalteStumm(v: HTMLVideoElement, info: Sperre): void {
     try {
@@ -344,6 +430,7 @@ export function startePlayer(ctx: KontextLeicht): void {
       }
       geloest.set(v, info.quelle);
       entsperre(v, true);
+      pflegeStandbild();
       // Weitere gesperrte Videos bekommen jetzt ihren Riegel.
       for (const [w, i] of [...gesperrt]) {
         i.zuletzt = -Infinity;
@@ -351,6 +438,7 @@ export function startePlayer(ctx: KontextLeicht): void {
       }
     } else if (erg === 'pause') {
       gebeAlleFrei(true); // die lokale Pause meldet der Riegel selbst (src/pause-lokal.ts)
+      standbildWeg();
     } else {
       if (!aktiv()) {
         entsperre(v, true);
@@ -366,6 +454,10 @@ export function startePlayer(ctx: KontextLeicht): void {
     }
   }
 
+  // Videos ohne Flaeche (Breite 0, display none, noch nicht eingepasst), die spaeter wachsen: ein ResizeObserver meldet es, dann wird neu bewertet.
+  const groessenBeob: ResizeObserver | null = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (lebt() && aktiv()) plane(); }) : null;
+  let groessenMerk = new WeakSet<HTMLVideoElement>();
+
   // Sucht Videos, die spielen wollen, und sperrt sie. Prueft zugleich, ob Gesperrte noch Ziel und noch im Dokument sind.
   function durchsuche(): void {
     const haltefest = !adressWechsel;
@@ -378,6 +470,15 @@ export function startePlayer(ctx: KontextLeicht): void {
       }
     }
     for (const w of lebendeWurzeln()) verbindeWurzel(w);
+    for (const v of alleVideos()) {
+      if (groessenMerk.has(v) || groesse(v).breite > 0) continue;
+      groessenMerk.add(v);
+      try {
+        groessenBeob?.observe(v);
+      } catch {
+        // Element weg
+      }
+    }
     // Erst die neuen Ziele sperren, dann pruefen, wer kein Ziel mehr ist (das Rueckfall-Video faellt erst, wenn der Treffer gesperrt ist).
     for (const v of bestimmeZiele(haltefest)) {
       if (gesperrt.has(v) || !ungeloest(v) || quelle(v) === '' || !willSpielen(v)) continue;
@@ -390,6 +491,7 @@ export function startePlayer(ctx: KontextLeicht): void {
       // Ein Adapter-Treffer verdraengt das Rueckfall-Video: Ton zurueck, aber kein Selbststart. Sonst wie bisher (Video laeuft weiter).
       else if (!ziele.has(v)) entsperre(v, !nurTreffer);
     }
+    pflegeStandbild(ziele);
   }
 
   function plane(): void {
@@ -407,6 +509,7 @@ export function startePlayer(ctx: KontextLeicht): void {
   function beiPlay(e: Event): void {
     const v = alsVideo(e);
     if (!v || !lebt()) return;
+    if (aktiv()) plane(); // Groesse oder Poster koennen sich geaendert haben: Standbild neu bewerten
     if (quelle(v) === '') {
       wollteMerk.add(v);
       return;
@@ -425,6 +528,7 @@ export function startePlayer(ctx: KontextLeicht): void {
   function beiQuelle(e: Event): void {
     const v = alsVideo(e);
     if (!v || !lebt() || !aktiv()) return;
+    plane();
     const wollte = wollteMerk.has(v) || v.autoplay;
     if (quelle(v) === '') return;
     wollteMerk.delete(v);
@@ -456,6 +560,8 @@ export function startePlayer(ctx: KontextLeicht): void {
 
   function beiVollbild(): void {
     for (const v of gesperrt.keys()) verlasseVollbild(v);
+    // Auch Videos unter dem Standbild: im Vollbild laege das echte Bild offen (das Standbild ist ein Geschwister und dort nicht zu sehen).
+    for (const v of standbildVideos) verlasseVollbild(v);
   }
 
   const medienHorcher: Array<[string, (e: Event) => void]> = [
@@ -474,9 +580,9 @@ export function startePlayer(ctx: KontextLeicht): void {
         if (n === 'VIDEO' || n === 'SOURCE') video = true;
         continue;
       }
-      if (m.removedNodes.length && gesperrt.size) video = true;
+      if (m.removedNodes.length && gesperrt.size && [...m.removedNodes].some((n) => !istStandbildHost(n))) video = true;
       for (const n of m.addedNodes) {
-        if (n.nodeType !== 1) continue;
+        if (n.nodeType !== 1 || istStandbildHost(n)) continue;
         if (n.nodeName === 'VIDEO' || (n as Element).querySelector('video')) video = true;
         // Offene Shadow Roots, die der Haken nicht meldet (deklarative Wurzeln aus <template shadowrootmode>).
         if (sammleOffene(n as Element)) video = true;
@@ -484,7 +590,7 @@ export function startePlayer(ctx: KontextLeicht): void {
     }
     if (video) plane();
   }
-  const MO_OPTIONEN: MutationObserverInit = { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'autoplay'] };
+  const MO_OPTIONEN: MutationObserverInit = { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'autoplay', 'poster'] };
   const beobachter = new MutationObserver(beiMutation);
 
   // ---------- Verbinden und Trennen (nur solange aktiv) ----------
@@ -553,6 +659,8 @@ export function startePlayer(ctx: KontextLeicht): void {
     document.removeEventListener('DOMContentLoaded', nachlesen);
     window.removeEventListener('load', nachlesen);
     beobachter.disconnect();
+    groessenBeob?.disconnect();
+    groessenMerk = new WeakSet();
     for (const [w, mo] of wurzelBeobachter) {
       for (const [typ, fn] of medienHorcher) w.removeEventListener(typ, fn, true);
       mo.disconnect();
@@ -648,9 +756,11 @@ export function startePlayer(ctx: KontextLeicht): void {
       if (nurStrengVorbei()) {
         // Neue Videos sind frei (die Horcher pruefen `aktiv()`), das offene Quiz endet von selbst.
         for (const [v, i] of [...gesperrt]) if (!i.laeuft) entsperre(v, true);
+        standbildWeg();
         return;
       }
       gebeAlleFrei(true);
+      standbildWeg();
       trenne();
       return;
     }
@@ -674,7 +784,10 @@ export function startePlayer(ctx: KontextLeicht): void {
   };
   browser.storage.onChanged.addListener(packHorcher);
   const abStatus = beiErwachsenStatus(() => bewerte());
-  const abLokal = beiLokalerPause(() => gebeAlleFrei(true));
+  const abLokal = beiLokalerPause(() => {
+    gebeAlleFrei(true);
+    standbildWeg();
+  });
 
   void Promise.all([ladeEinstellungen().catch(() => null), ladePackKurz().catch(() => null)]).then(([e, p]) => {
     if (!lebt()) return;
@@ -687,6 +800,7 @@ export function startePlayer(ctx: KontextLeicht): void {
     abgebaut = true;
     // Ohne Fortsetzen: ein Video, das nur wegen uns stand, startet nicht von selbst (womoeglich mit Ton).
     gebeAlleFrei(false);
+    standbildWeg();
     trenne();
     document.removeEventListener('veil-wurzel', beiWurzelHinweis, true);
     ersatzBeobachter.disconnect();

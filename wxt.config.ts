@@ -1,7 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'wxt';
 import { manifestMuster, musterAusListe } from './scripts/ausnahmen-muster.mjs';
+import { baudatumAusUmgebung, geckoEinstellungen, kanalAusUmgebung } from './scripts/release/kanal.mjs';
 import { pruefeWebpDateien } from './scripts/webp-pruefung.mjs';
 
 const paket = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
@@ -34,16 +36,22 @@ function standardAusnahmenManifest(): string[] {
 
 // Demo-Chibis (Entscheidung 102, src/chibi.ts): suesse SFW-Chibis aus `../02 Assets Mia/chibi/<pose>.webp` kommen beim Bau nach
 // `chibi/` in die Erweiterung, nie ins Repo (CLAUDE.md Regel 3). Fehlt der Ordner, faellt die Oberflaeche auf Text zurueck; der Bau warnt.
+// `VEIL_CHIBI=<ordner>` waehlt einen anderen Quellordner (wie VEIL_KERN; das Quellcode-Paket fuer Mozilla bringt seine Bilder als extern/chibi mit).
 // Nur Dateien mit bekannter Pose (Liste wie CHIBI_POSEN in src/chibi.ts).
 const CHIBI_POSEN_BAU = ['schild', 'sprechblase', 'arme', 'nein', 'zwinkern', 'jubeln', 'schmollen', 'spirale', 'thron'];
 function demoChibis(): { absoluteSrc: string; relativeDest: string }[] {
-  const ordner = fileURLToPath(new URL('../02 Assets Mia/chibi/', import.meta.url));
+  const ordner = process.env.VEIL_CHIBI
+    ? `${path.resolve(process.env.VEIL_CHIBI)}/`
+    : fileURLToPath(new URL('../02 Assets Mia/chibi/', import.meta.url));
   if (!existsSync(ordner)) {
+    // Ein ausdruecklich gesetzter Ordner (VEIL_CHIBI) muss da sein, sonst entstuende still ein Bau ohne Chibis.
+    if (process.env.VEIL_CHIBI) throw new Error('Demo-Chibis: VEIL_CHIBI zeigt auf einen Ordner, den es nicht gibt');
     console.warn('Demo-Chibis: Ordner 02 Assets Mia/chibi fehlt, die Erweiterung zeigt Text statt Chibis.');
     return [];
   }
   return readdirSync(ordner)
     .filter((d) => d.endsWith('.webp') && CHIBI_POSEN_BAU.includes(d.slice(0, -5)))
+    .sort()
     .map((d) => ({ absoluteSrc: `${ordner}${d}`, relativeDest: `chibi/${d}` }));
 }
 
@@ -52,7 +60,7 @@ function demoChibis(): { absoluteSrc: string; relativeDest: string }[] {
 // (Tests mit synthetischen Bildern ausserhalb des Repos).
 function kernBilder(): { absoluteSrc: string; relativeDest: string }[] {
   const ordner = process.env.VEIL_KERN
-    ? `${process.env.VEIL_KERN.replace(/\/+$/, '')}/`
+    ? `${path.resolve(process.env.VEIL_KERN)}/`
     : fileURLToPath(new URL('../02 Assets Mia/kern/', import.meta.url));
   if (!existsSync(ordner)) {
     console.warn('Kern-Bilder: Ordner 02 Assets Mia/kern fehlt, die Seiten zeigen keine Kern-Bilder.');
@@ -102,18 +110,38 @@ export default defineConfig({
   // Quellcode-Zip fuer Mozilla: Spike-, Test- und Werkzeugdateien gehoeren nicht hinein,
   // nur das, was zum Nachbauen der Erweiterung noetig ist.
   zip: {
-    excludeSources: ['spike/**', 'tests/**', 'scripts/annotate/**', 'scripts/make-icons.mjs', '*.log'],
+    excludeSources: [
+      'spike/**',
+      'tests/**',
+      'test-results/**',
+      'scripts/annotate/**',
+      'scripts/make-icons.mjs',
+      'scripts/messung/**',
+      'scripts/claude-hooks/**',
+      'scripts/hooks/**',
+      'scripts/leak-check.sh',
+      'scripts/test-all.mjs',
+      'scripts/testhaken-spuren.mjs',
+      'scripts/pack/**',
+      'scripts/release/firefox.mjs',
+      'scripts/release/signieren.mjs',
+      'scripts/release/signieren.d.mts',
+      'scripts/release/updates.mjs',
+      'public/ort/**',
+      'playwright.config.ts',
+      'CLAUDE.md',
+      '*.log',
+    ],
   },
   // onnxruntime-web: die Variante ohne eingebettetes WASM nehmen. Die Standardvariante buendelt die 15 MB grosse WASM-Datei
   // ein zweites Mal als Asset ins Paket; so liegt sie nur einmal unter ort/ (scripts/kopiere-laufzeit.mjs), die Adresse setzt der Erkenner.
   vite: () => ({
     // Testhaken-Schalter als Konstante, damit der Testhaken-Code im Release-Bundle sicher wegfaellt (nicht nur zur Laufzeit falsch ist).
-    // VEIL_BAUDATUM (Session 11, Auftrag V): Baudatum JJJJ-MM-TT fuer die Versionsanzeige.
+    // VEIL_BAUDATUM (Session 11, Auftrag V): Baudatum JJJJ-MM-TT fuer die Versionsanzeige; per Umgebung festlegbar, damit ein Nachbau
+    // dieselben Bytes ergibt (Session 14, Auftrag R; ungueltig bricht ab).
     define: {
       'import.meta.env.WXT_TESTHAKEN': JSON.stringify(process.env.WXT_TESTHAKEN ?? ''),
-      'import.meta.env.VEIL_BAUDATUM': JSON.stringify(
-        ((d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)(new Date()),
-      ),
+      'import.meta.env.VEIL_BAUDATUM': JSON.stringify(baudatumAusUmgebung(process.env)),
     },
     resolve: {
       alias: [
@@ -124,58 +152,49 @@ export default defineConfig({
       ],
     },
   }),
-  manifest: ({ browser }) => ({
-    name: 'HYPNOMIA VEIL',
-    version: paket.version,
-    description:
-      'Mia takes over your browser. A veil over every image, a censor over what she decides you do not get to see.',
-    // storage: Einstellungen. offscreen (Chrome): Erkenner als unsichtbare Nebenseite. declarativeNetRequest (Chrome) bzw.
-    // webRequest + webRequestBlocking (Firefox): Referer fuer das Nachladen fremder Bilder (Entscheidung 59).
-    permissions: [
-      'storage',
-      // unlimitedStorage: das Mia Pack liegt in IndexedDB und ist groesser als die Grenze von storage.local (Entscheidung 25).
-      'unlimitedStorage',
-      // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
-      ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen']),
-      // Referer-Sitzungsregeln (Umleitung entfaellt seit Session 8, Entscheidung 107; keine web_accessible_resources). WithHostAccess zeigt in Chrome und Firefox keine eigene
-      // Installationswarnung (Firefox: nur `declarativeNetRequest` hat den Text "Block content on any page").
-      'declarativeNetRequestWithHostAccess',
-      // idle (Phase 5, Auftrag L): Leerlauf der Person fuer die Leerlauf-Spirale, ohne Ereignis-Horcher auf jeder Seite; ohne
-      // Installationswarnung in Chrome und Firefox.
-      'idle',
-    ],
-    // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
-    host_permissions: ['<all_urls>'],
-    // onnxruntime-web braucht WebAssembly in Erweiterungsseiten (Entscheidung 58).
-    content_security_policy: {
-      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
-    },
-    // Pause per Tastenkuerzel (Entscheidung 17, Desktop). Android kennt keine Kuerzel, dort bleibt das Menue.
-    commands: {
-      'pause-umschalten': {
-        suggested_key: { default: 'Alt+Shift+M' },
-        description: 'Pause or resume Mia',
+  manifest: ({ browser }) => {
+    // Unbekannter Kanal bricht jeden Bau ab, nicht nur den fuer Firefox.
+    const kanal = kanalAusUmgebung(process.env);
+    return {
+      name: 'HYPNOMIA VEIL',
+      version: paket.version,
+      description:
+        'Mia takes over your browser. A veil over every image, a censor over what she decides you do not get to see.',
+      // storage: Einstellungen. offscreen (Chrome): Erkenner als unsichtbare Nebenseite. declarativeNetRequest (Chrome) bzw.
+      // webRequest + webRequestBlocking (Firefox): Referer fuer das Nachladen fremder Bilder (Entscheidung 59).
+      permissions: [
+        'storage',
+        // unlimitedStorage: das Mia Pack liegt in IndexedDB und ist groesser als die Grenze von storage.local (Entscheidung 25).
+        'unlimitedStorage',
+        // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
+        ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen']),
+        // Referer-Sitzungsregeln (Umleitung entfaellt seit Session 8, Entscheidung 107; keine web_accessible_resources). WithHostAccess zeigt in Chrome und Firefox keine eigene
+        // Installationswarnung (Firefox: nur `declarativeNetRequest` hat den Text "Block content on any page").
+        'declarativeNetRequestWithHostAccess',
+        // idle (Phase 5, Auftrag L): Leerlauf der Person fuer die Leerlauf-Spirale, ohne Ereignis-Horcher auf jeder Seite; ohne
+        // Installationswarnung in Chrome und Firefox.
+        'idle',
+      ],
+      // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
+      host_permissions: ['<all_urls>'],
+      // onnxruntime-web braucht WebAssembly in Erweiterungsseiten (Entscheidung 58).
+      content_security_policy: {
+        extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
       },
-    },
-    // Chrome: fester key, damit die ID stabil bleibt. Firefox kennt das Feld nicht.
-    ...(browser === 'firefox' ? {} : { key: ladeChromeKey() }),
-    // Firefox: Add-on-ID, Mindestversion, Pflichtangabe zur Datenerhebung, Update-Adresse.
-    // update_url gehoert bei Firefox nach gecko (dort und nur dort wird sie gelesen).
-    // data_collection_permissions: ab Firefox 140 (Android 142) unterstuetzt, bei Firefox 128 nur ignoriert.
-    // Beim ersten AMO-Upload die Linter-Warnung dazu pruefen.
-    ...(browser === 'firefox'
-      ? {
-          browser_specific_settings: {
-            gecko: {
-              id: 'veil@hypnomia',
-              strict_min_version: '128.0',
-              update_url:
-                'https://raw.githubusercontent.com/Hypnomia/hypnomia-veil/main/updates.json',
-              data_collection_permissions: { required: ['none'] },
-            },
-            gecko_android: { strict_min_version: '128.0' },
-          },
-        }
-      : {}),
-  }),
+      // Pause per Tastenkuerzel (Entscheidung 17, Desktop). Android kennt keine Kuerzel, dort bleibt das Menue.
+      commands: {
+        'pause-umschalten': {
+          suggested_key: { default: 'Alt+Shift+M' },
+          description: 'Pause or resume Mia',
+        },
+      },
+      // Chrome: fester key, damit die ID stabil bleibt. Firefox kennt das Feld nicht.
+      ...(browser === 'firefox' ? {} : { key: ladeChromeKey() }),
+      // Firefox: Add-on-ID, Mindestversion, Pflichtangabe zur Datenerhebung, Update-Adresse. Der Kanal (VEIL_KANAL, scripts/release/kanal.mjs)
+      // entscheidet ueber update_url: unlisted (Standard) hat sie, amo nicht (AMO-Linter lehnt sie ab). Unbekannter Kanal bricht den Bau ab.
+      // update_url gehoert bei Firefox nach gecko (dort und nur dort wird sie gelesen).
+      // data_collection_permissions: ab Firefox 140 (Android 142) unterstuetzt, bei Firefox 128 nur ignoriert.
+      ...(browser === 'firefox' ? { browser_specific_settings: geckoEinstellungen(kanal) } : {}),
+    };
+  },
 });

@@ -438,6 +438,93 @@ try {
   console.log(`firefox W: Ereignisse der Seite auf der Flaeche: ${JSON.stringify(ev)}`);
   pruefe(ev.gesamt === 0, 'Ereignisse auf Mias Flaeche erreichen die Seite nicht');
 
+  // 7d. K3: Mias Werbung nie ueber fremdem Dialog (body fest, Huelle mit Hintergrund ueber das Fenster, modales dialog), Skin, Rollsperre
+  await driver.get(`http://127.0.0.1:${port}/werbung-dialog.html`);
+  const ALLE_D = ['a-oben', 'a-neben', 'a-eigen'];
+  await bisIds('Dialog-Seite Flaechen', ALLE_D);
+  const obenAn = (x, y, sel) =>
+    driver.executeScript((px, py, q) => { const e = document.elementsFromPoint(px, py)[0]; return { id: e.id, imDialog: !!e.closest(q) }; }, x, y, sel);
+  const rotBereich = async (x, y, b, h) => {
+    const fenster = await driver.executeScript(() => ({ b: innerWidth, h: innerHeight }));
+    const png = Buffer.from(await driver.takeScreenshot(), 'base64');
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    const sx = info.width / fenster.b;
+    const sy = info.height / fenster.h;
+    let rot = 0;
+    let n = 0;
+    for (let yy = Math.round(y * sy); yy < Math.round((y + h) * sy); yy++)
+      for (let xx = Math.round(x * sx); xx < Math.round((x + b) * sx); xx++) {
+        const i = (yy * info.width + xx) * info.channels;
+        n++;
+        if (data[i] > 170 && data[i + 1] < 90 && data[i + 2] < 100) rot++;
+      }
+    return n ? rot / n : 0;
+  };
+  const gleich = async (erwartet) => JSON.stringify(await sichtIds()) === JSON.stringify([...erwartet].sort());
+  // Kennzeichnung jeder sichtbaren Flaeche sichtbar und zuoberst
+  const kennzeichnungOben = async (ids) => {
+    const st = await attrStand();
+    for (const id of ids) {
+      const f = st.flaechen.find((x) => x.id === id);
+      const t = f && f.badge ? await driver.executeScript((x, y) => { const e = document.elementsFromPoint(x, y)[0]; return { id: e.id, eltern: e.parentElement ? e.parentElement.tagName : '' }; }, f.badge.l + f.badge.w / 2, f.badge.t + f.badge.h / 2) : null;
+      pruefe(!!f && f.sichtbar && f.kennzeichnung.length > 0 && !!t && t.id === '' && (t.eltern === 'BODY' || t.eltern === 'HTML'), `K3: Kennzeichnung von ${id} sichtbar und zuoberst (${JSON.stringify(t)})`);
+    }
+  };
+  await warte(600);
+  await kennzeichnungOben(ALLE_D);
+  // (a) fester Dialog, body fest
+  await driver.executeScript(() => window.oeffneCookie(true));
+  await warte(1500);
+  const ro = await rechteck('a-oben');
+  const t1 = await obenAn(ro.left + ro.width / 2, ro.top + 100, '#cookie');
+  pruefe(t1.imDialog, `K3: fester Cookie-Dialog liegt ueber Mias Werbung (oben: ${JSON.stringify(t1)})`);
+  pruefe((await rotBereich(Math.round(ro.left + ro.width / 2 - 100), Math.round(ro.top + 60), 200, 80)) < 0.02, 'K3: kein Rot im Dialogbereich');
+  // Zweite Lesung K3, Fund 1: Flaechen unter dem Dialog (auch unter seinem dimmenden Hintergrund) sind ganz weg, jede noch sichtbare hat
+  // ihre Kennzeichnung zuoberst.
+  const nochDa = await sichtIds();
+  pruefe(!nochDa.includes('a-oben'), 'K3: Flaeche unter dem Dialog ganz verborgen');
+  await kennzeichnungOben(nochDa);
+  // Nach dem Schliessen kommen alle zurueck (unten geprueft).
+  await driver.executeScript(() => window.oeffneCookie(false));
+  await bis('Flaechen nach dem Cookie-Dialog zurueck', async () => await gleich(ALLE_D), 4000);
+  pruefe(!(await originalSichtbar('a-oben')), 'K3: nach dem Schliessen wieder Mias Werbung');
+  await kennzeichnungOben(ALLE_D);
+  // (b) Huelle: alle Flaechen weg, nach dem Schliessen wieder da
+  await driver.executeScript(() => window.oeffneDrin(true));
+  await bis('Huelle-Dialog verbirgt alle Flaechen', async () => (await sichtIds()).length === 0, 4000);
+  await warte(1200);
+  pruefe((await sichtIds()).length === 0 && !(await originalSichtbar('a-oben')), 'K3: Flaechen bleiben verborgen, Original versteckt');
+  await driver.executeScript(() => window.oeffneDrin(false));
+  await bis('Flaechen nach dem Schliessen zurueck', () => gleich(ALLE_D), 4000);
+  await kennzeichnungOben(ALLE_D);
+  // (c) modales dialog
+  await driver.executeScript(() => window.oeffneModal(true));
+  await warte(1000);
+  const dr = await rechteck('modal-dialog');
+  const t3 = await obenAn(dr.left + dr.width / 2, dr.top + dr.height / 2, '#modal-dialog');
+  pruefe(t3.imDialog, `K3: modales dialog liegt ueber Mias Werbung (oben: ${JSON.stringify(t3)})`);
+  await driver.executeScript(() => window.oeffneModal(false));
+  await warte(600);
+  // (d) Skin mit z-index -1
+  await driver.executeScript(() => window.zeigeSkin(true));
+  await warte(1200);
+  pruefe(await gleich(ALLE_D), 'K3: fester Hintergrund mit z-index -1 laesst Mia unveraendert');
+  await driver.executeScript(() => window.zeigeSkin(false));
+  // (e) Rollsperre mit negativem top
+  await driver.executeScript(() => scrollTo(0, 400));
+  await warte(800);
+  const vorRoll = await sichtIds();
+  await driver.executeScript(() => window.rollSperre(true));
+  await warte(1500);
+  pruefe(JSON.stringify(await sichtIds()) === JSON.stringify(vorRoll) && vorRoll.length >= 2, `K3: Flaechen bleiben waehrend der Rollsperre (${vorRoll.join(',')})`);
+  pruefe((await maxVersatz()) <= 2, 'K3: Versatz unter der Rollsperre hoechstens 2 px');
+  for (const f of (await attrStand()).flaechen.filter((x) => x.sichtbar && x.voll && x.voll.t >= 0 && x.voll.t + x.voll.h <= 700)) {
+    pruefe(Math.abs(f.box.h - f.voll.h) <= 1, `K3: ${f.id} unter der Rollsperre nicht beschnitten`);
+  }
+  await driver.executeScript(() => window.rollSperre(false));
+  await warte(1200);
+  pruefe(JSON.stringify(await sichtIds()) === JSON.stringify(vorRoll), 'K3: nach der Rollsperre unveraendert');
+
   // 8. Erwachsenenseite: nur nach Groesse
   await driver.get(erwachsenSeite);
   await bisIds('Erwachsenenseite', ['e-flaeche', 'e-kopf']);

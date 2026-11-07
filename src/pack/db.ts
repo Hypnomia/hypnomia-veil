@@ -119,12 +119,66 @@ export function leseStandAus(db: IDBDatabase): Promise<PackStand | null> {
   });
 }
 
-export async function leseDatei(name: string): Promise<PackDateiGespeichert | null> {
+// Hoechstens so viele Pack-Bilder gleichzeitig lesen und dekodieren: jede Lesung haelt die Bytes der Datei (bis MAX_LESE_BYTES) im Speicher,
+// viele gleichzeitige Anfragen (80 Kacheln auf einer Seite) wuerden sonst eine Speicherspitze erzeugen.
+const MAX_GLEICHZEITIG = 4;
+let aktiv = 0;
+const wartende: Array<() => void> = [];
+// Zeitgrenze je Lesung: haengt eine Lesung (z. B. `indexedDB.open` ohne Antwort), gibt sie ihren Platz nach dieser Zeit frei und meldet
+// einen Fehler; sonst waeren nach vier solchen Faellen alle Pack-Bilder und Patches fuer die ganze Laufzeit blockiert (zweite Lesung K1).
+const LESE_FRIST_MS = 15_000;
+
+export async function mitLesePlatz<T>(arbeit: () => Promise<T>): Promise<T> {
+  if (aktiv >= MAX_GLEICHZEITIG) await new Promise<void>((ok) => wartende.push(ok));
+  else aktiv++;
+  let frist: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      arbeit(),
+      new Promise<never>((_, nein) => {
+        frist = setTimeout(() => nein(new Error('Pack-Lesung: Zeitgrenze')), LESE_FRIST_MS);
+      }),
+    ]);
+  } finally {
+    if (frist !== undefined) clearTimeout(frist);
+    const naechster = wartende.shift();
+    if (naechster) naechster(); // der Platz geht direkt weiter, `aktiv` bleibt gleich
+    else aktiv--;
+  }
+}
+
+// Obergrenze fuer eine Datei, die in den Speicher kopiert wird (Bilder). Groessere Dateien gibt `leseDatei` als nicht lesbar (null) zurueck.
+export const MAX_LESE_BYTES = 32 * 1024 * 1024;
+
+// Kopiert einen aus IndexedDB gelesenen Blob in den Speicher. MUSS bei noch offener Verbindung geschehen: ein Blob aus IndexedDB ist nur
+// ein Verweis auf die Datei der Datenbank. Wird die Verbindung geschlossen, bevor der Blob geschnitten (`slice`), dekodiert
+// (`createImageBitmap`) oder gelesen wird, kann der Verweis unter Last ins Leere zeigen; Chrome beendet dann den Erweiterungsprozess
+// ("Bad blob references in BlobRegistry::Register", Live-Lauf Session 13). Die Kopie hat keinen Bezug mehr zur Datenbank.
+export async function kopiereBlob(blob: Blob, typ: string): Promise<Blob> {
+  return new Blob([await blob.arrayBuffer()], { type: blob.type || typ });
+}
+
+// Liest die Bytes einer Datei bei offener Verbindung. Ist die Datei groesser als `maxBytes`, kommt null zurueck, ohne etwas zu kopieren
+// (die Groesse steht schon im Blob-Verweis).
+async function leseRoh(name: string, maxBytes: number): Promise<{ d: PackDateiGespeichert; bytes: ArrayBuffer } | null> {
   return mitDb(async (db) => {
     const tx = db.transaction(PACK_STORE_DATEIEN, 'readonly');
     const d = (await anfrage(tx.objectStore(PACK_STORE_DATEIEN).get(name))) as PackDateiGespeichert | undefined;
-    return d ?? null;
+    if (!d || d.blob.size > maxBytes) return null;
+    // Erst kopieren, dann (im `finally` von mitDb) schliessen. Siehe kopiereBlob.
+    return { d, bytes: await d.blob.arrayBuffer() };
   });
+}
+
+export async function leseDatei(name: string, maxBytes: number = MAX_LESE_BYTES): Promise<PackDateiGespeichert | null> {
+  const r = await leseRoh(name, maxBytes);
+  return r ? { ...r.d, blob: new Blob([r.bytes], { type: r.d.blob.type || r.d.typ }) } : null;
+}
+
+// Wie leseDatei, liefert aber die Bytes selbst (kein zweites Kopieren fuer Aufrufer, die ohnehin Bytes oder Text brauchen: Ton, Quiz).
+export async function leseDateiBytes(name: string, maxBytes: number): Promise<{ typ: string; bytes: Uint8Array } | null> {
+  const r = await leseRoh(name, maxBytes);
+  return r ? { typ: r.d.typ, bytes: new Uint8Array(r.bytes) } : null;
 }
 
 // Namen aller Dateien einer Rolle aus dem Meta (sortiert, stabil fuer die Wahl je Quelle). Phase 4: Vorschau, Chibi, Quiz, Texte.

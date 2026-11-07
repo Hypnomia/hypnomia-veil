@@ -51,6 +51,9 @@ const BEWERTE_TEIL = 250;
 const MAX_BEOBACHTET = 200;
 const TEXTE_FRIST_MS = 3000;
 const TAKT_MS = 500;
+const DIALOG_ABSTAND_MS = 250; // Suche nach fremden Dialogen hoechstens so oft (auch beim Rollen)
+const DIALOG_Z_MIN = 1000; // feste Elemente ab diesem z-index gelten als Dialog oder Overlay der Seite
+const DIALOG_WAEHLER = 'dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]';
 const ECKEN_ABSTAND_MS = 120; // Pruefung der Ecken der Kennzeichnung hoechstens so oft
 const ATTRIBUT_PAUSE_MS = 400; // dasselbe unbekannte Element wird nach einer Attributaenderung hoechstens so oft gemessen
 const MAX_URLS = 16;
@@ -98,6 +101,8 @@ interface Flaeche {
   seit: number; // performance.now(), als die Flaeche erkannt wurde
   bildMs: number | null;
   geladen: boolean;
+  zugedeckt: boolean; // ein fremder Dialog der Seite liegt ueber der Flaeche: sie bleibt ganz verborgen, bis er weg ist
+  ohneKennzeichnungBis: number; // keine freie Stelle fuer die Kennzeichnung: bis zu diesem Zeitpunkt (performance.now) ganz verborgen
   aufraeumen: Array<() => void>; // Horcher in Rahmen dieser Flaeche
 }
 
@@ -153,6 +158,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
   let letzterLauf = -Infinity;
   let posRaf = 0;
   let letzteEcken = -Infinity;
+  let letzteDialoge = -Infinity;
   let takt: ReturnType<typeof setInterval> | null = null;
   let hoerer = false;
   const urlNachName = new Map<string, string>();
@@ -861,6 +867,8 @@ export function starteWerbung(ctx: KontextLeicht): void {
       seit: performance.now(),
       bildMs: null,
       geladen: false,
+      zugedeckt: false,
+      ohneKennzeichnungBis: 0,
       aufraeumen: [],
     };
     flaechen.set(el, f);
@@ -931,8 +939,33 @@ export function starteWerbung(ctx: KontextLeicht): void {
       stil.textContent = SCHATTEN_STIL;
       wurzel.append(stil);
     }
-    if (host.parentNode !== de || de.lastElementChild !== host) de.append(host);
+    // Elternknoten: Bildet `body` selbst eine Stapelebene (Seite sperrt das Rollen mit `position: fixed`, `isolation`, Deckkraft), liegen
+    // ALLE seine Kinder, auch ein fester Dialog mit z-index 2147483647, in dieser Ebene. Ein Host als Kind von `html` malt dann ueber dem
+    // ganzen Body und damit ueber dem Dialog der Seite (chip.de, Sourcepoint). In dem Fall wird der Host letztes Kind von `body`: dann gilt
+    // sein z-index 0 innerhalb derselben Ebene, und Dialoge mit positivem z-index liegen darueber.
+    const ziel = bodyBildetEbene() ? (document.body as HTMLElement) : de;
+    // In `html` bleibt er letztes Kind (wie bisher). In `body` wird er nur eingehaengt, wenn er dort fehlt: staendiges Anhaengen ans Ende
+    // wuerde die Beobachter der Seite am Body wecken.
+    if (ziel === de ? host.parentNode !== ziel || ziel.lastElementChild !== host : host.parentNode !== ziel) ziel.append(host);
     return true;
+  }
+
+  // Bildet `body` eine Stapelebene, ohne den Bezugsrahmen fester Nachfahren zu aendern (transform, filter, perspective, contain, will-change
+  // taugen nicht: darin waere `position: fixed` nicht mehr auf das Fenster bezogen)?
+  function bodyBildetEbene(): boolean {
+    const b = document.body;
+    if (!b) return false;
+    try {
+      const cs = getComputedStyle(b);
+      if (cs.transform !== 'none' || cs.filter !== 'none' || cs.perspective !== 'none' || cs.willChange !== 'auto' || (cs.contain !== 'none' && cs.contain !== '')) return false;
+      if ((cs as CSSStyleDeclaration & { backdropFilter?: string }).backdropFilter && (cs as CSSStyleDeclaration & { backdropFilter?: string }).backdropFilter !== 'none') return false;
+      if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+      if (cs.position !== 'static' && cs.zIndex !== 'auto') return true;
+      if (cs.isolation === 'isolate' || parseFloat(cs.opacity) < 1 || cs.mixBlendMode !== 'normal') return true;
+    } catch {
+      // Stil nicht lesbar
+    }
+    return false;
   }
 
   // Clip-Vorfahren, ausgeblendete Vorfahren und fixierte Vorfahren neu bestimmen.
@@ -1112,13 +1145,29 @@ export function starteWerbung(ctx: KontextLeicht): void {
     const h = host;
     const mitUi = [...flaechen.values()].filter((f) => f.ui);
     if (!h || mitUi.length === 0) return;
+    // Zuerst lesen: Umzug html <-> body (die Seite sperrt das Rollen erst jetzt) und fremde Dialoge, gedrosselt.
+    const jetztDialog = performance.now();
+    if (sofortEcken || jetztDialog - letzteDialoge >= DIALOG_ABSTAND_MS) {
+      letzteDialoge = jetztDialog;
+      sichereHost();
+      pruefeDialoge();
+    }
     // Lesen, dann schreiben.
     const de = document.documentElement;
     const vb = de.clientWidth;
     const vh = de.clientHeight;
     const basis = h.getBoundingClientRect();
     // Das Dokument: Mias Flaechen werden darauf begrenzt, damit der Scrollbereich nie waechst.
+    // Liegt der Host in `body` und die Seite sperrt das Rollen (`body { position: fixed; top: -Npx }`), ist der Bezugspunkt des Hosts der
+    // verschobene Body: das Dokument ist dann der Body selbst, nicht die Hoehe des Fensters ab dem Host.
     const dok: Rk = { l: basis.left, t: basis.top, r: basis.left + Math.max(de.scrollWidth, vb), b: basis.top + Math.max(de.scrollHeight, vh) };
+    if (h.parentNode === document.body && document.body) {
+      const bq = document.body.getBoundingClientRect();
+      dok.l = Math.min(dok.l, bq.left);
+      dok.t = Math.min(dok.t, bq.top);
+      dok.r = Math.max(dok.r, bq.right);
+      dok.b = Math.max(dok.b, bq.bottom);
+    }
     const fenster: Rk = { l: 0, t: 0, r: vb, b: vh };
     const lese = mitUi.map((f) => ({
       r: f.el.getBoundingClientRect(),
@@ -1163,7 +1212,9 @@ export function starteWerbung(ctx: KontextLeicht): void {
       ui.bild.style.width = `${r.width}px`;
       ui.bild.style.height = `${r.height}px`;
       ui.badge.classList.toggle('klein', r.height < 60);
-      if (f.geladen) sichtbar.push({ f, sicht });
+      // Nie ein Bild ohne Kennzeichnung: unter einem fremden Dialog oder ohne freie Stelle fuer die Kennzeichnung ganz verborgen.
+      if (f.zugedeckt || performance.now() < f.ohneKennzeichnungBis) ui.knoten.style.display = 'none';
+      if (f.geladen && ui.knoten.style.display !== 'none') sichtbar.push({ f, sicht });
     });
     // Kennzeichnung: in eine Ecke legen, an der Mias Flaeche wirklich oben liegt (nicht unter einer fixierten Leiste), gebuendelt und gedrosselt.
     const jetzt = performance.now();
@@ -1174,8 +1225,101 @@ export function starteWerbung(ctx: KontextLeicht): void {
     if (geaendert || TESTHAKEN) schreibeTest();
   }
 
+  // Fremde Dialoge der Seite ueber Mias Flaechen. Der Host kann nur ein Kind von html oder body sein und nicht in eine tiefere Stapelebene
+  // der Seite (Huelle mit eigenem z-index): dort malt er ueber einem Dialog, der in der Seite ueber der Werbung liegt. Liegt so ein Dialog
+  // ueber einer Flaeche, bleibt sie GANZ verborgen (das Original bleibt versteckt), bis er weg ist. Nie ein Teilbild ohne Kennzeichnung.
+  // Kandidaten billig: dialog[open], role=dialog und alertdialog, aria-modal, dazu feste Kinder von body und html mit z-index ab 1000, jeweils
+  // auch in offenen Shadow Roots direkter Kinder von body und html (nicht tiefer). Je Durchlauf einmal geholt; ohne Kandidaten keine Messung.
+  interface DialogKandidat {
+    el: Element; // zum Abgleich mit elementsFromPoint (bei Shadow Root: der Besitzer, den die Liste liefert)
+    rect: DOMRect;
+  }
+  function holeDialoge(): DialogKandidat[] {
+    const aus: DialogKandidat[] = [];
+    const de = document.documentElement;
+    const fensterFlaeche = Math.max(1, de.clientWidth * de.clientHeight);
+    const nimm = (e: Element, hit: Element, nurGross = false): void => {
+      if (e === host || (e.parentElement === de && e !== document.body)) return; // eigene Hosts der Module (Kinder von html)
+      const cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility !== 'visible' || cs.pointerEvents === 'none' && !e.matches(DIALOG_WAEHLER)) return;
+      if (Number(cs.opacity) === 0) return; // ausgeblendete Modals (Ein- und Ausblenden) zaehlen nicht
+      const q = e.getBoundingClientRect();
+      if (q.width < 2 || q.height < 2) return;
+      // Feste Elemente ohne Dialog-Rolle erst ab 15 % der Fensterflaeche: schmale Kopf- und Fussleisten sollen Mia nicht beim Rollen verstecken.
+      if (nurGross && (q.width * q.height) / fensterFlaeche < 0.15) return;
+      aus.push({ el: hit, rect: q });
+    };
+    try {
+      for (const e of document.querySelectorAll(DIALOG_WAEHLER)) nimm(e, e);
+      const body = document.body;
+      if (body && body) {
+        // Bei sehr vielen Kindern nur die letzten 300 (Overlays haengen Seiten meist ans Ende).
+        const kinder = [...body.children].slice(-300);
+        for (const k of kinder) {
+          if (k === host) continue;
+          const cs = getComputedStyle(k);
+          if (cs.position === 'fixed' && cs.zIndex !== 'auto' && Number(cs.zIndex) >= DIALOG_Z_MIN) nimm(k, k, true);
+          const sr = k.shadowRoot;
+          if (sr) {
+            for (const e of sr.querySelectorAll(DIALOG_WAEHLER)) nimm(e, k);
+            for (const e of sr.children) {
+              const c2 = getComputedStyle(e);
+              if (c2.position === 'fixed' && c2.zIndex !== 'auto' && Number(c2.zIndex) >= DIALOG_Z_MIN) nimm(e, k, true);
+            }
+          }
+        }
+      }
+    } catch {
+      return aus;
+    }
+    return aus;
+  }
+
+  // Lesevorgang: setzt `zugedeckt` je Flaeche. Liegt Mias Host im Malreihenfolge-Stapel am Mittelpunkt des Schnitts vor dem Dialog (kleinerer
+  // Index in elementsFromPoint), malt Mia ueber dem Dialog. Ist die Flaeche schon verborgen, steht der Host nicht mehr in der Liste: dann
+  // gilt, dass der Dialog dort noch zuoberst liegt (der Stand der letzten Pruefung), sonst flackerte sie oder kaeme nie zurueck.
+  function pruefeDialoge(): void {
+    const h = host;
+    if (!h) return;
+    const dialoge = holeDialoge();
+    const de = document.documentElement;
+    const fenster: Rk = { l: 0, t: 0, r: de.clientWidth, b: de.clientHeight };
+    for (const f of flaechen.values()) {
+      if (!f.ui) {
+        f.zugedeckt = false;
+        continue;
+      }
+      if (!f.geladen) continue; // Stand behalten: nach einem Formatwechsel nicht kurz ueber dem Dialog erscheinen
+      let zu = false;
+      if (dialoge.length > 0) {
+        const q = f.el.getBoundingClientRect();
+        const rf = schnitt({ l: q.left, t: q.top, r: q.right, b: q.bottom }, fenster);
+        if (!leer(rf)) {
+          for (const d of dialoge) {
+            if (d.el.contains(f.el) || f.el.contains(d.el)) continue;
+            const sch = schnitt(rf, { l: d.rect.left, t: d.rect.top, r: d.rect.right, b: d.rect.bottom });
+            if (leer(sch)) continue;
+            let liste: Element[];
+            try {
+              liste = document.elementsFromPoint((sch.l + sch.r) / 2, (sch.t + sch.b) / 2);
+            } catch {
+              continue;
+            }
+            const di = liste.findIndex((e) => e === d.el || d.el.contains(e));
+            if (di < 0) continue; // der Dialog trifft dort nichts (durchsichtig fuer Zeiger) oder liegt unter etwas anderem
+            // Getroffen: Mia verbirgt sich, egal ob ihr Host ueber dem Dialog laege (Stapelebene) oder gedimmt darunter (Kennzeichnung
+            // waere unter der Dialogbox). Zweite Lesung K3, Fund 1 (Orchestrator).
+            zu = true;
+            break;
+          }
+        }
+      }
+      f.zugedeckt = zu;
+    }
+  }
+
   // Legt die Kennzeichnung in die erste Ecke des sichtbaren Teils (im Fenster), an der Mias Flaeche zuoberst liegt: oben rechts, oben links,
-  // unten rechts, unten links. Liegt keine Ecke frei, an den oberen Rand des ersten unverdeckten Streifens. Nie abgeschnitten (nur umgebrochen).
+  // unten rechts, unten links. Liegt keine Ecke frei, an den oberen Rand des ersten unverdeckten Streifens; gibt es keinen, wird die Flaeche fuer 1 s verborgen. Nie abgeschnitten (nur umgebrochen).
   function platziereBadge(f: Flaeche, sicht: Rk, fenster: Rk): void {
     const ui = f.ui;
     const h = host;
@@ -1214,7 +1358,14 @@ export function starteWerbung(ctx: KontextLeicht): void {
         }
       }
     }
-    const w = wahl ?? ecken[0]!;
+    if (!wahl) {
+      // Keine freie Stelle: lieber ganz weg als ein Bild ohne Kennzeichnung (Mozilla). Nach 1 s neuer Versuch.
+      f.ohneKennzeichnungBis = performance.now() + 1000;
+      ui.knoten.style.display = 'none';
+      return;
+    }
+    f.ohneKennzeichnungBis = 0;
+    const w = wahl;
     ui.badge.style.left = `${Math.max(0, w.l - sicht.l)}px`;
     ui.badge.style.top = `${Math.max(0, w.t - sicht.t)}px`;
   }

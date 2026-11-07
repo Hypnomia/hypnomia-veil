@@ -7,6 +7,7 @@
 import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import links from '../../data/links.json' with { type: 'json' };
 import { BESUCH_PLAN_SCHLUESSEL, BESUCH_ZULETZT_SCHLUESSEL, besuchAblehnung, neuerBesuchPlan } from '../besuche/plan';
+import { fensterLage, nebenTabEigenschaften } from '../fenster';
 import { SPEICHER_SCHLUESSEL, ladeEinstellungen, vervollstaendige } from '../einstellungen';
 import type { AntwortBesuch, NachrichtHintergrundBesuch, NachrichtHintergrundBesuchTest } from '../nachrichten';
 import { istFreigeschaltet, ladePackKurz } from '../pack/vertrag';
@@ -50,13 +51,14 @@ async function arbeite(_n: NachrichtHintergrundBesuch, absender?: Absender): Pro
   if (typeof tabId === 'number') {
     try {
       tab = await browser.tabs.get(tabId);
-      if (typeof tab.windowId === 'number') {
-        const f = await browser.windows.get(tab.windowId);
-        fensterFokus = f.focused === true;
-        vollbild = f.state === 'fullscreen';
-      }
     } catch {
       tab = null;
+    }
+    // Fenster-Lage getrennt vom Tab: ein Fehler beim Fenster verwirft den Tab nicht (Android hat kein `browser.windows`, siehe fenster.ts).
+    if (tab && typeof tab.windowId === 'number') {
+      const lage = await fensterLage(tab.windowId);
+      fensterFokus = lage.fokus;
+      vollbild = lage.vollbild;
     }
   }
   let ausnahme = false;
@@ -92,13 +94,9 @@ async function arbeite(_n: NachrichtHintergrundBesuch, absender?: Absender): Pro
   // Zuerst merken, danach oeffnen: geht das Oeffnen schief, kommt der alte Stand zurueck (kein Besuch verloren, keiner doppelt).
   await browser.storage.local.set({ [BESUCH_ZULETZT_SCHLUESSEL]: jetzt });
   try {
-    const neu = await browser.tabs.create({
-      url: TESTBAU ? TEST_ADRESSE : url,
-      active: true,
-      windowId: tab!.windowId,
-      ...(typeof tab!.index === 'number' ? { index: tab!.index + 1 } : {}),
-      openerTabId: tabId,
-    });
+    const neu = await browser.tabs.create(
+      nebenTabEigenschaften(TESTBAU ? TEST_ADRESSE : url, { tabId, windowId: tab!.windowId, index: tab!.index }),
+    );
     return { ok: true, url, tabId: typeof neu.id === 'number' ? neu.id : null };
   } catch (fehler) {
     try {

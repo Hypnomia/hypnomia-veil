@@ -1,5 +1,6 @@
 // Popup: Statuszeile, Pause, Schwelle ("Mia's mood"), Stil, Strict, Zonen und Ausnahme fuer den aktuellen Host.
 // Alle Einstellungen laufen ueber src/einstellungen.ts (storage.local); der Schleier reagiert ueber storage.onChanged.
+import { fensterNachVorn } from '../../src/fenster';
 import liste from '../../data/ausnahmen-standard.json';
 import { musterAusListe, passtAusnahme, zerlegeMuster } from '../../scripts/ausnahmen-muster.mjs';
 import {
@@ -295,7 +296,7 @@ async function oeffneOptionen(anker: string): Promise<void> {
     const da = offene[0];
     if (da?.id !== undefined) {
       await browser.tabs.update(da.id, { url: adresse, active: true });
-      if (da.windowId !== undefined) await browser.windows.update(da.windowId, { focused: true }).catch(() => undefined);
+      await fensterNachVorn(da.windowId);
     } else {
       await browser.tabs.create({ url: adresse });
     }
