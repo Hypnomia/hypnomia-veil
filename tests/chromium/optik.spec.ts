@@ -17,6 +17,8 @@ let profil = '';
 let context: BrowserContext;
 let id = '';
 const url = (seite: string) => `chrome-extension://${id}/${seite}`;
+// Nacht N2: Grenze gegen Rueckschritte bei 360 x 780 (vorher 5,36 Bildschirme).
+const GRENZE_360 = 5;
 const FERTIG = { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } };
 
 test.describe.configure({ mode: 'serial' });
@@ -127,6 +129,23 @@ test('Einstellungsseite bei 360 px: oben und ganz unten, Ziele 44 px', async () 
   await s.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await s.waitForTimeout(300);
   pruefe('einstellungen aufgeklappt unten', await miss(s));
+  await s.close();
+});
+
+// Nacht N2: Hoehe der Einstellungsseite ohne Pack bei 360 x 780 (mit der Pack-Karte und ihren Kern-Bildern). Das Messziel "hoechstens 3
+// Bildschirme" gilt bei 1280 (einstellungen-ordnung.spec.ts); hier steht die Zahl im Log und eine Grenze gegen Rueckschritte.
+test('Einstellungsseite ohne Pack bei 360 px: Hoehe in Bildschirmen', async () => {
+  const s = await context.newPage();
+  await s.goto(url('options.html'));
+  await s.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
+  await s.reload();
+  await s.waitForFunction(() => document.body.getAttribute('data-veil-ordnung') === 'bereit');
+  await expect(s.locator('#kern-streifen'), 'Kern-Bilder im Testbau noetig (../02 Assets Mia/kern)').toBeVisible({ timeout: 5000 });
+  await s.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('#kern-bilder img')].every((i) => i.complete && i.naturalWidth > 0));
+  const hoehe = await s.evaluate(() => document.documentElement.scrollHeight);
+  const stand = await s.evaluate(() => Math.ceil(document.getElementById('stand')!.getBoundingClientRect().height));
+  console.log(`optik einstellungen 360: ohne Pack ${hoehe} px = ${(hoehe / 780).toFixed(2)} Bildschirme zu 780 px, davon Pack-Karte ${stand} px`);
+  expect(hoehe / 780, 'Einstellungsseite ohne Pack bei 360 px').toBeLessThanOrEqual(GRENZE_360);
   await s.close();
 });
 

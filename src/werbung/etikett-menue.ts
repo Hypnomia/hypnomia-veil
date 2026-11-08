@@ -7,6 +7,7 @@
 import { aendereEinstellungen } from '../einstellungen';
 import type { NachrichtHintergrundPause } from '../nachrichten';
 import { meldeLokalePause } from '../pause-lokal';
+import { TESTHAKEN } from '../schleier/konstanten';
 
 export const ETIKETT_TEXTE = {
   verbergen: 'Hide my ads on this site',
@@ -70,6 +71,9 @@ export class EtikettMenue {
       this.punkte.set(aktion, b);
     }
     this.menue = m;
+    // Nur Testbau: die Testspur zeigt, wo der Fokus in der geschlossenen Wurzel liegt (von aussen ist nur der Host fokussiert). Den Eintritt
+    // schreibt schon der Schutz in werbung.ts (focusin zaehlt dort zu den Tasten und erreicht die Wurzel nie); hier fehlt nur das Verlassen.
+    if (TESTHAKEN) opt.wurzel.addEventListener('focusout', () => setTimeout(() => opt.beiAenderung(), 0));
   }
 
   // Der Knopf fuer das Etikett einer Flaeche. Text bleibt der Satz der Flaeche.
@@ -154,8 +158,22 @@ export class EtikettMenue {
   }
 
   // Abbild fuer die Testspur.
-  abbild(): { offen: boolean; nr: number; punkte: Array<{ aktion: string; text: string; x: number; y: number; w: number; h: number }> } {
+  abbild(): {
+    offen: boolean;
+    nr: number;
+    punkte: Array<{ aktion: string; text: string; x: number; y: number; w: number; h: number }>;
+    fokus: { art: 'etikett' | 'punkt' | 'anderes'; aktion: string; x: number; y: number; w: number; h: number } | null;
+  } {
+    // Fokus in der Wurzel: Etikett, Menuepunkt (mit Aktion) oder etwas anderes (Mias Link), jeweils mit Rechteck.
+    const a = this.opt.wurzel.activeElement;
+    let fokus: ReturnType<EtikettMenue['abbild']>['fokus'] = null;
+    if (a instanceof HTMLElement) {
+      const r = a.getBoundingClientRect();
+      const art = this.istKnopf(a) ? 'etikett' : a.closest('.m button') ? 'punkt' : 'anderes';
+      fokus = { art, aktion: a.dataset.aktion ?? '', x: r.left, y: r.top, w: r.width, h: r.height };
+    }
     return {
+      fokus,
       offen: this.offen(),
       nr: this.besitzerNr,
       punkte: this.offen()
@@ -249,7 +267,9 @@ export class EtikettMenue {
         return true;
       }
       if (t.key === 'Tab') {
-        this.schliesse(false);
+        // Pruefer N2 Fund 6: der Fokus geht zuerst zurueck aufs Etikett, die Standardaktion von Tab wandert dann von dort weiter (sonst
+        // begann sie am Anfang der Seite, weil der fokussierte Punkt mit dem Menue verschwindet).
+        this.schliesse(true);
         return true;
       }
       return !!(punkt || knopf);

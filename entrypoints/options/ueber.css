@@ -44,7 +44,53 @@
 }
 /* Phase 9 (Fund 22): das Interview steht ganz unten, abgesetzt, weil man es selten braucht. */
 #ueber .ue-interview {
-  margin-top: 16px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--linie);
+}
+/* Nacht N2 (Messziel Fund 4): Version und "Check now" in einer Zeile, leerer Stand ohne Platz, Rest zugeklappt unter "More". */
+#ueber #ue-version-zeile {
+  margin: 0;
+}
+/* Leerer Stand ohne Abstand, bleibt aber gerendert (Live-Bereich). */
+#ueber .ue-stand:empty {
+  margin: 0;
+}
+#ueber .ue-zeile {
+  margin-bottom: 8px;
+}
+#ueber .ue-mehr > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--v-rosa-800);
+  font-weight: 800;
+  cursor: pointer;
+}
+#ueber .ue-mehr > summary:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+#ueber .ue-mehr[open] > summary {
+  margin-bottom: 4px;
+}
+/* Das Interview: Satz und Knopf in einer Zeile, solange Platz ist. */
+#ueber .ue-interview:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+#ueber .ue-interview p {
+  flex: 1 1 16em;
+  margin: 0;
+}
+#ueber .ue-mehr > summary::after {
+  content: '▸' / '';
+  margin-left: 8px;
+}
+#ueber .ue-mehr[open] > summary::after {
+  content: '▾' / '';
 }

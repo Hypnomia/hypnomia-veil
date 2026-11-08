@@ -4,16 +4,19 @@
    jeder andere Wert des Attributs (leer, fremd) haelt das Element weiter versteckt, und ein neues Element verliert fremde Werte ohnehin. Freigegeben, zensiert und verdeckt setzen keine
    Deckkraft mehr: es gilt, was die Seite selbst festlegt (eine Seite, die Bilder absichtlich unsichtbar haelt, bleibt unsichtbar).
    Pause und Ausnahme (html[data-veil-seite="aus"]) schalten das Verstecken und den Blur ab, ohne selbst eine Deckkraft zu setzen.
-   Die Ausnahme steht als :not(html[...] *): in einer Shadow Root gibt es kein html, die Bedingung ist dort immer wahr (dort schaltet
+   Die Ausnahme steht als :not(:root[...] *): :root statt html, weil in einem eigenstaendigen SVG-Dokument (oben im Tab, iframe, object) das
+   Wurzelelement svg ist (Nacht 18, N1). In einer Shadow Root trifft :root nie, die Bedingung ist dort immer wahr (dort schaltet
    shadow.ts den ganzen Stil ueber media ab).
    Inline-Hintergruende: [style*="background"][style*="url("] trifft auch die Kurzform `background: url(...)`; ` i` macht den
    Vergleich unabhaengig von der Schreibweise. Dieselbe Auswahl steht als HG_SELEKTOR in src/schleier/konstanten.ts.
    Spezifitaet: :is() nimmt die Spezifitaet seines staerksten Arguments (die Auswahl fuer Inline-Hintergruende, zwei Attribute),
    :not() die seines staerksten Arguments: die Versteck-Regel schlaegt damit auch Seitenregeln mit !important und hoher Spezifitaet
-   fast immer, jede Seitenregel ohne !important sowieso. */
-:is(img, video, canvas, [style*="background" i][style*="url(" i]):not([data-veil="frei"], [data-veil="zensiert"], [data-veil="verdeckt"], html[data-veil-seite="aus"] *) { opacity: 0 !important; }
+   fast immer, jede Seitenregel ohne !important sowieso.
+   svg image: Bild in Inline-SVG (<svg><image href|xlink:href>), der Schleier prueft es wie ein img (Art svgbild). Nur unter svg, damit ein
+   HTML-Element namens image (createElement, nie beurteilt) nicht getroffen wird; ein HTML-<image> im Text macht der Parser ohnehin zu img. */
+:is(img, video, canvas, svg image, [style*="background" i][style*="url(" i]):not([data-veil="frei"], [data-veil="zensiert"], [data-veil="verdeckt"], :root[data-veil-seite="aus"] *) { opacity: 0 !important; }
 /* Verdeckt: Blur, ausser bei Klassen-Hintergrund und grossen Containern (data-veil-hg): dort wurde nur der Hintergrund entfernt, kein Blur ueber Text und Inhalt. */
-[data-veil="verdeckt"][data-veil]:not([data-veil-hg], html[data-veil-seite="aus"] *) { filter: blur(40px) !important; }
+[data-veil="verdeckt"][data-veil]:not([data-veil-hg], :root[data-veil-seite="aus"] *) { filter: blur(40px) !important; }
 html[data-veil-strict]:not([data-veil-seite]) { opacity: 0 !important; }
 /* Lebenszeichen der Erweiterung: diese Manifest-CSS verschwindet, wenn die Erweiterung entfernt oder abgeschaltet wird. Der Haken fuer Shadow Roots in der
    Seitenwelt (entrypoints/wurzel-haken.content.ts) liest die Eigenschaft und wird ohne sie wirkungslos. */

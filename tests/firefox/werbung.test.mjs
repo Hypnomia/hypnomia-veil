@@ -234,6 +234,8 @@ try {
   const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   optionen.setPreference('network.dns.localDomains', HOSTS.join(','));
+  // Nacht N2: Tab erreicht auch Knoepfe (macOS-Firefox fokussiert sonst nur Textfelder, wie bei abgeschalteter Tastatursteuerung des Systems).
+  optionen.setPreference('accessibility.tabfocus', 7);
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
@@ -637,6 +639,96 @@ try {
   pruefe((await kontrolleLesen()).pause === true, 'Pause Mia im Menue schreibt pause');
   await setzeEinstellungen({ pause: false, kontrolle: KONTROLLE });
   console.log('firefox W: Etikett-Menue geprueft (oeffnen, Escape, daneben, klein, Hide, Turn off, Pause)');
+
+  // 8d. Nacht N2: das Etikett-Menue ganz mit der Tastatur (Fokus aus der Testspur `menue.fokus`, die Wurzel ist geschlossen)
+  const taste = async (k) => {
+    await driver.actions().sendKeys(k).perform();
+    await warte(80);
+  };
+  const etikettMitFokus = async () => {
+    const st = await attrStand();
+    const fo = st?.menue?.fokus;
+    if (!st || !fo || fo.art !== 'etikett') return null;
+    const f = st.flaechen.find((x) => x.badge && Math.abs(x.badge.l - fo.x) < 1.5 && Math.abs(x.badge.t - fo.y) < 1.5);
+    return f?.id ?? '?';
+  };
+  const punktMitFokus = async () => {
+    const fo = (await attrStand())?.menue?.fokus;
+    return fo && fo.art === 'punkt' ? fo.aktion : null;
+  };
+  const tabBis = async (id) => {
+    for (let i = 1; i <= 120; i++) {
+      await taste(Key.TAB);
+      if ((await etikettMitFokus()) === id) return i;
+    }
+    throw new Error(`Etikett ${id} per Tab nicht erreicht`);
+  };
+  await setzeEinstellungen({ pause: false, kontrolle: { ...KONTROLLE, werbungGefragt: false } });
+  await driver.get(nachrichten);
+  await bisIds('Tastatur: Werbung da', ERWARTET);
+  const tabs = await tabBis('a-rahmen');
+  await taste(Key.ENTER);
+  await bis('Enter oeffnet', async () => (await menueStand())?.offen === true, 5000);
+  await bis('Fokus auf dem ersten Punkt', async () => (await punktMitFokus()) === 'verbergen', 5000);
+  const wege = [];
+  for (const [k, soll] of [
+    [Key.ARROW_DOWN, 'ausschalten'],
+    [Key.ARROW_DOWN, 'pause'],
+    [Key.ARROW_DOWN, 'verbergen'],
+    [Key.ARROW_UP, 'pause'],
+    [Key.HOME, 'verbergen'],
+    [Key.END, 'pause'],
+  ]) {
+    await taste(k);
+    await bis(`Pfeil/Home/End nach ${soll}`, async () => (await punktMitFokus()) === soll, 5000);
+    wege.push(soll);
+  }
+  await taste(Key.ESCAPE);
+  await bis('Escape schliesst', async () => (await menueStand())?.offen === false, 5000);
+  await bis('Fokus zurueck am Etikett', async () => (await etikettMitFokus()) === 'a-rahmen', 5000);
+  await taste(Key.SPACE);
+  await bis('Leertaste oeffnet', async () => (await menueStand())?.offen === true && (await punktMitFokus()) === 'verbergen', 5000);
+  await taste(Key.ESCAPE);
+  await bis('Fokus zurueck nach Leertaste', async () => (await etikettMitFokus()) === 'a-rahmen', 5000);
+  pruefe((await kontrolleLesen()).kontrolle.werbung === true, `Tastatur: Etikett nach ${tabs} Tabs, Enter, Pfeile (${wege.join(', ')}), Escape und Leertaste loesen nichts aus`);
+  // Pruefer N2 Fund 6: Tab aus dem offenen Menue geht vom Etikett aus weiter (Vergleich mit Tab vom geschlossenen Etikett)
+  const wohin = async () => {
+    const fo = (await attrStand())?.menue?.fokus ?? null;
+    const seite = await driver.executeScript('const a = document.activeElement; return a ? a.tagName + "#" + a.id : "";');
+    return JSON.stringify({ seite, art: fo?.art ?? null, x: Math.round(fo?.x ?? -1), y: Math.round(fo?.y ?? -1) });
+  };
+  const zurueck = async () => {
+    await driver.actions().keyDown(Key.SHIFT).sendKeys(Key.TAB).keyUp(Key.SHIFT).perform();
+    await bis('Shift+Tab zurueck aufs Etikett', async () => (await etikettMitFokus()) === 'a-rahmen', 5000);
+  };
+  await taste(Key.TAB);
+  await warte(150);
+  const ohneMenue = await wohin();
+  await zurueck();
+  await taste(Key.ENTER);
+  await bis('Enter oeffnet (Tab-Probe)', async () => (await menueStand())?.offen === true, 5000);
+  await taste(Key.TAB);
+  await bis('Tab schliesst', async () => (await menueStand())?.offen === false, 5000);
+  await warte(150);
+  const mitMenue = await wohin();
+  pruefe(mitMenue === ohneMenue, `Tastatur: Tab aus dem offenen Menue geht vom Etikett aus weiter (${mitMenue}, ohne Menue ${ohneMenue})`);
+  await zurueck();
+  await tabBis('a-anzeige');
+  await taste(Key.ENTER);
+  await bis('kleines Menue offen', async () => (await menueStand())?.offen === true && (await punktMitFokus()) === 'ausschalten', 5000);
+  pruefe(JSON.stringify((await menueStand()).punkte.map((x) => x.aktion)) === JSON.stringify(['ausschalten']), 'Tastatur: unter 80 px nur ein Punkt');
+  let bleibt = true;
+  for (const k of [Key.ARROW_DOWN, Key.ARROW_UP, Key.END, Key.HOME]) {
+    await taste(k);
+    bleibt = bleibt && (await punktMitFokus()) === 'ausschalten';
+  }
+  pruefe(bleibt, 'Tastatur: Pfeile bleiben auf dem einzigen sichtbaren Punkt');
+  await taste(Key.ENTER);
+  await bisLeer('Enter auf "Turn my ads off": Flaechen weg');
+  kl = (await kontrolleLesen()).kontrolle;
+  pruefe(kl.werbung === false && kl.werbungGefragt === true, 'Tastatur: Enter auf einem Punkt loest aus (werbung false)');
+  await setzeEinstellungen({ pause: false, kontrolle: KONTROLLE });
+  console.log('firefox W: Etikett-Menue mit der Tastatur geprueft');
 
   // 9. Pack entfernt
   await driver.get(nachrichten);

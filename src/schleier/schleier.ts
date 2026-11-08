@@ -31,12 +31,13 @@ import {
   setzeZensurWieder,
   stelleWiederHer,
   starteBildTausch,
+  starteSvgTausch,
   verdeckeNurHintergrund,
   vergiss as vergissElement,
   zeigeOriginal,
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
-import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
 import { SteigerungMelder } from './steigerung-melder';
 import { setzeUrteilMelder, setzeZensiertMelder } from './anwenden';
 import { setzeZonenAnpassung } from './pruefung';
@@ -94,6 +95,8 @@ import { istSchleifenUmlauf, VideoTakt, type VideoErgebnis, type VideoUrteil } f
 import { inhaltAusTreffern, zaehltFuerInhalt } from '../adapter/inhalt';
 import { Vorschau } from './vorschau';
 import { TonDeckel } from './ton-deckel';
+import { AnzeigenRahmen } from './anzeigen-rahmen';
+import { istLokalePause } from '../pause-lokal';
 import { adapterFuer, istHoverVideo } from '../adapter';
 import { istAnzeige } from '../adapter/anzeige';
 import { erwachsenStatus } from '../adapter/status';
@@ -102,6 +105,7 @@ import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
 import { melde } from '../ereignisse';
 import { istEigeneWurzel } from './eigene';
+import { animationenIn, animationsZiel, hrefAnimiert, istSvgBild, svgAdresse, svgSignatur, wirdBereit, zeichnetNichts, zeigtBaldFassung } from './svg-bild';
 
 export interface KontextLeicht {
   readonly isValid: boolean;
@@ -300,6 +304,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
   video.beiErgebnis = (el) => spiegel.pruefeNachbarn(el);
 
   // Vorschau-Tausch und Erkennen am Inhalt (Auftrag E, vorschau.ts): die Steuerung bleibt hier, die Klasse bekommt ihre Zugriffe als Rueckrufe.
+  // Live-Lauf 18 C: Werberahmen auf Erwachsenenseiten als Ganzes ausblenden (nur im Vorschau-Tausch, nie in der Pause).
+  const anzeigenRahmen = new AnzeigenRahmen();
   const vorschau = new Vorschau({
     lebt,
     aktiv: () => aktiv && lebt(),
@@ -533,7 +539,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       z.timer = planeNeuenVersuch(el, z, zweiterVersuchMs);
     } else {
       // Zweiter Versuch gescheitert: endgueltig verdeckt (blur).
-      if (z.tauschLaeuft || z.bildOriginal || z.hgOriginal) stelleWiederHer(el, z);
+      if (z.tauschLaeuft || z.bildOriginal || z.hgOriginal || z.svgOriginal) stelleWiederHer(el, z);
       urteilVerdeckt(el, z);
     }
     status.plane();
@@ -582,6 +588,47 @@ export function starteSchleier(ctx: KontextLeicht): void {
     setzeHintergrund(el, z, wert);
     setzeUrteil(el, z, 'zensiert', status.seitStart());
     nachUrteil();
+  }
+
+  // Bild in Inline-SVG: die zensierte Fassung als href. Anders als beim img wird nicht auf das load des Elements gewartet: Chromium feuert es fuer
+  // SVG-Bilder nicht, solange das Dokument noch laedt, und danach auch nicht nachtraeglich; Firefox meldete load bzw. decode() teils fuer die alte
+  // Anfrage (gemessen Nacht 18, N1). Stattdessen: Fassung vorab laden und dekodieren, href setzen, dann an den Pixeln bestaetigen, dass das Element
+  // die Fassung zeichnet (zeigtBaldFassung, svg-bild.ts). Erst dann faellt das Urteil; bis dahin bleibt es verborgen (tauschLaeuft haelt bewerte
+  // fern). Laedt die Fassung nicht oder bestaetigt sie sich nicht binnen TAUSCH_MAX_MS: Original zurueck und verdeckt.
+  function urteilZensiertSvg(el: Element, z: Zustand, bild: string): void {
+    z.eingereiht = false;
+    z.tauschLaeuft = true;
+    const generation = z.generation;
+    const gilt = () => lebt() && aktiv && z.generation === generation && z.tauschLaeuft;
+    void (async () => {
+      const fassung = await ladeFassung(bild);
+      if (!gilt()) return;
+      if (!fassung) {
+        z.tauschLaeuft = false;
+        return urteilVerdeckt(el, z);
+      }
+      starteSvgTausch(el, z, bild);
+      const gezeigt = await zeigtBaldFassung(el as SVGImageElement, fassung, TAUSCH_MAX_MS);
+      if (!gilt()) return;
+      if (!gezeigt) {
+        stelleWiederHer(el, z);
+        return urteilVerdeckt(el, z);
+      }
+      z.tauschLaeuft = false;
+      setzeUrteil(el, z, 'zensiert', status.seitStart());
+      nachUrteil();
+    })();
+  }
+
+  async function ladeFassung(url: string): Promise<HTMLImageElement | null> {
+    const bild = await ladeBild(url);
+    if (!bild) return null;
+    try {
+      await bild.decode();
+    } catch {
+      // geladen reicht
+    }
+    return bild;
   }
 
   // ---------- Entdecken und Bewerten ----------
@@ -637,9 +684,31 @@ export function starteSchleier(ctx: KontextLeicht): void {
         return bewerteVideo(el as HTMLVideoElement, z);
       case 'canvas':
         return bewerteCanvas(el as HTMLCanvasElement, z);
+      case 'svgbild':
+        return bewerteSvgBild(el as SVGImageElement, z);
       default:
         return bewerteHintergrund(el, z);
     }
+  }
+
+  // Bild in Inline-SVG (svg-bild.ts): die Quelle steht im Attribut, geprueft wird sofort (Url-Weg oder Canvas-Weg wie beim Inline-Hintergrund),
+  // ohne auf das load des Elements zu warten. Ohne Quelle zeigt es nichts.
+  function bewerteSvgBild(el: SVGImageElement, z: Zustand): void {
+    z.signatur = svgSignatur(el);
+    // Quelle per SMIL animiert (svg-bild.ts): nie frei, sofort verdeckt.
+    if (hrefAnimiert(el)) return urteilVerdeckt(el, z);
+    const adresse = svgAdresse(el);
+    if (!adresse) return urteilFrei(el, z);
+    if (istKlein(el)) return urteilFrei(el, z);
+    z.adresse = adresse;
+    z.pruefAdresse = adresse;
+    const treffer = speicher.hole(schluesselFuer(adresse));
+    if (treffer) {
+      if (!treffer.flaechen.length) return urteilFrei(el, z);
+      if (treffer.bild) return urteilZensiertSvg(el, z, treffer.bild);
+      return urteilVerdeckt(el, z);
+    }
+    reihe(el, z);
   }
 
   function bewerteBild(el: HTMLImageElement, z: Zustand): void {
@@ -727,6 +796,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
     z.signatur = z.art === 'klasse' ? null : wert;
     if (z.eigen && wert === z.eigen) return urteilFrei(el, z);
     if (vorschau.versuche(el, z)) return; // Erwachsenenseite: Vorschaubild gegen ein Pack-Bild tauschen, ohne Pruefung
+    // Live-Lauf 18 C (MITTEL 3 und 4): Stylesheet-Hintergrund in einer Anzeige auf einer Erwachsenenseite (xHamster-Promoband, Cam-Kachel) wird
+    // ohne Pruefung ganz ausgeblendet (nur der Hintergrund, der Text bleibt), Entscheidung 193.
+    if (z.art === 'klasse' && vorschau.tauscht && istAnzeige(el, location.href)) return urteilVerdeckt(el, z);
     const ebenen = zerlegeEbenen(wert).filter((e) => pruefbareAdresse(e));
     if (!ebenen.length) return urteilFrei(el, z);
     if (istKlein(el)) return urteilFrei(el, z);
@@ -810,6 +882,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
         case 'canvas':
           ergebnis = await pruefeCanvas(el as HTMLCanvasElement, z);
           break;
+        case 'svgbild':
+          ergebnis = await pruefeSvgBild(el as SVGImageElement, z);
+          break;
         default:
           ergebnis = await pruefeHintergrund(el, z);
       }
@@ -847,6 +922,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       case 'fehler':
         return urteilFehler(el, z, e.endgueltig === true);
       case 'zensiert':
+        if (z.art === 'svgbild') return urteilZensiertSvg(el, z, e.bild);
         return urteilZensiertBild(el as HTMLImageElement, z, e.bild);
       case 'zensiertHg':
         return urteilZensiertHg(el as HTMLElement, z, e.wert);
@@ -1099,6 +1175,39 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return geaendert ? { art: 'zensiertHg', wert: neu.join(', ') } : { art: 'frei' };
   }
 
+  // Bild in Inline-SVG: wie eine Hintergrund-Ebene (gleicher Ursprung, data: und blob: ueber das Canvas, sonst der Url-Weg). Eine blob:-Adresse,
+  // die die Seite widerrufen hat, ist nicht mehr abrufbar: dann die Pixel des Elements selbst. Ist gar nichts lesbar, wird es nie blind frei
+  // (verdeckt). Andere Schemata (file:, about: ...) prueft der Erkenner nicht: verdeckt.
+  async function pruefeSvgBild(el: SVGImageElement, z: Zustand): Promise<Ergebnis> {
+    const adresse = svgAdresse(el);
+    z.adresse = adresse;
+    z.pruefAdresse = adresse;
+    z.inhalt = null;
+    if (!adresse) return { art: 'frei' };
+    // Inzwischen animiert (zum Beispiel vor einem zweiten Versuch eingefuegt): nie frei.
+    if (hrefAnimiert(el)) return { art: 'verdeckt' };
+    if (!/^(https?|data|blob):/i.test(adresse)) return { art: 'fehler', endgueltig: true };
+    if (netzgrenzeSperrt(adresse)) return { art: 'fehler', endgueltig: true };
+    const antwort = await frageNach(adresse, async () => (await hintergrundQuelleBauen(adresse)) ?? (await svgElementLesen(el, adresse)));
+    if (!antwort) return { art: 'fehler' };
+    if (!antwort.ok) return fehlerErgebnis(antwort);
+    if (!antwort.flaechen.length) return { art: 'frei' };
+    return antwort.bild ? { art: 'zensiert', bild: antwort.bild } : { art: 'verdeckt' };
+  }
+
+  // Pixel des Elements selbst (data:, blob: nicht mehr abrufbar, etwa sofort widerrufen): erst wenn das Element bereit ist, und nie aus einem
+  // Element, das nichts zeichnet (sonst wuerde eine leere Leinwand als harmlos frei). Nicht lesbar ist hier endgueltig (eine widerrufene Adresse
+  // wird nie wieder abrufbar): sofort verdeckt, ohne zweiten Versuch.
+  async function svgElementLesen(el: SVGImageElement, adresse: string): Promise<QuelleMitMass | BauFehler> {
+    const nichtLesbar: BauFehler = { fehler: 'SVG-Bild nicht lesbar', endgueltig: true };
+    if (!pixelLesenErlaubt(adresse)) return nichtLesbar;
+    if (!(await wirdBereit(el, TAUSCH_MAX_MS))) return nichtLesbar;
+    if (zeichnetNichts(el)) return nichtLesbar;
+    const r = el.getBoundingClientRect();
+    const px = lesePixel(el, Math.round(r.width), Math.round(r.height));
+    return px ? { quelle: { art: 'daten', dataUrl: px.dataUrl }, breite: px.breite, hoehe: px.hoehe } : nichtLesbar;
+  }
+
   // ---------- Startphase und Strict ----------
 
   // Zwei Beobachter (vorrang.ts): der erste meldet den Sichtbereich, der zweite den Bereich zwei Bildschirmhoehen darum (Vorrang "nah").
@@ -1237,6 +1346,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
       else if (e.type === 'error') scheitereTausch(el, z);
       return;
     }
+    // Bild in Inline-SVG: die Quelle steht im Attribut, geprueft und getauscht wird ohne load (urteilZensiertSvg).
+    if (z.art === 'svgbild') return;
     if (!aktiv) return;
     // Freigelegt: das erste load nach dem Zurueckstellen des Originals gehoert zum geprueften Original, wenn die Adresse dieselbe ist.
     // Eine andere Adresse (entfernte source, media oder sizes gewechselt) ist ein anderes Bild: neu pruefen.
@@ -1293,12 +1404,29 @@ export function starteSchleier(ctx: KontextLeicht): void {
     bewerte(el, z);
   }
 
+  // SMIL-Animation auf href eines bekannten SVG-Bildes (svg-bild.ts): das Bild neu bewerten, dann wird es verdeckt.
+  function pruefeAnimationsZiel(a: Element): void {
+    if (!aktiv) return;
+    const ziel = animationsZiel(a);
+    const z = ziel && istSvgBild(ziel) ? zustaende.get(ziel) : undefined;
+    if (ziel && z && z.urteil !== 'verdeckt') neuePruefung(ziel, z, false);
+  }
+
+  // Beginn oder Wiederholung einer Animation: faengt auch, was kein beobachtetes Attribut verraet (xlink:href an der Animation, beginElement()).
+  function beiAnimation(e: Event): void {
+    if (abgebaut || !aktiv) return;
+    if (e.target instanceof Element) pruefeAnimationsZiel(e.target);
+  }
+
   const MEDIEN_EREIGNISSE = ['load', 'error', 'loadeddata', 'loadstart', 'emptied', 'seeking', 'seeked'] as const;
+  const ANIMATIONS_EREIGNISSE = ['beginEvent', 'repeatEvent'] as const;
   function hoereAb(ziel: Document | ShadowRoot): void {
     for (const name of MEDIEN_EREIGNISSE) ziel.addEventListener(name, beiMedienEreignis, true);
+    for (const name of ANIMATIONS_EREIGNISSE) ziel.addEventListener(name, beiAnimation, true);
   }
   function hoereAuf(ziel: Document | ShadowRoot): void {
     for (const name of MEDIEN_EREIGNISSE) ziel.removeEventListener(name, beiMedienEreignis, true);
+    for (const name of ANIMATIONS_EREIGNISSE) ziel.removeEventListener(name, beiAnimation, true);
   }
 
   // Die Seite hat die Quelle geaendert: neu beurteilen. Das Element wird sofort wieder verdeckt (data-veil weg).
@@ -1343,11 +1471,33 @@ export function starteSchleier(ctx: KontextLeicht): void {
         if (img instanceof HTMLImageElement && zi && bildSignatur(img) !== zi.signatur) neuePruefung(img, zi, true);
       }
       if (aktiv && geladen) klassen.planeKnoten(knoten);
+      // Eine spaeter eingefuegte SMIL-Animation auf href eines schon bekannten SVG-Bildes (beurteilt, wartend oder vor dem zweiten Versuch): neu
+      // bewerten (dann verdeckt).
+      if (aktiv) for (const a of animationenIn(knoten)) pruefeAnimationsZiel(a);
     },
     geaendert: (el, attribut) => {
       if (!aktiv) return;
       if (attribut === 'class') {
         if (geladen) klassen.planeElement(el);
+        return;
+      }
+      // SMIL: eine Animation wird umgelenkt (href) oder bekommt einen anderen Attributnamen; ein SVG-Bild bekommt die id, auf die eine Animation zielt.
+      if (attribut === 'attributeName' || (attribut === 'href' && !istSvgBild(el))) return pruefeAnimationsZiel(el);
+      if (attribut === 'id') {
+        const z = istSvgBild(el) ? zustaende.get(el) : undefined;
+        if (z && z.urteil !== 'verdeckt' && hrefAnimiert(el as SVGImageElement)) neuePruefung(el, z, false);
+        return;
+      }
+      // Bild in Inline-SVG: href oder xlink:href (eigener Beobachter je Element, beobachter.ts). Eigene Aenderungen (Tausch) haben dieselbe Signatur.
+      if (attribut === 'href') {
+        if (!istSvgBild(el)) return;
+        const z = zustaende.get(el);
+        if (!z) {
+          entdecke(el, 'svgbild');
+          return;
+        }
+        if (svgSignatur(el) === z.signatur) return;
+        neuePruefung(el, z, false);
         return;
       }
       if (attribut === 'style') {
@@ -1635,6 +1785,10 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (abgebaut) return;
     einstellungen = neu;
     vorschau.aktualisiere(neu, packKurz); // vor dem Pruefstand: Liste, Schalter und Pack gehoeren dazu
+    // Mias eigene Werbung (eingeschaltet, mit Freischaltung) uebernimmt die Werbeflaechen selbst: dann blendet der Schleier keine Rahmen aus.
+    // Wie in werbung.ts: Schalter an, Freischaltung da und diese Seite nicht in "Sites without my ads" (Runde 11, Nr. 10).
+    const miasWerbung = neu.kontrolle.werbung && istFreigeschaltet(packKurz, 'kontrolle:werbung') && !passtAusnahme(adresseFuerAusnahmen(), neu.kontrolle.werbungAus);
+    anzeigenRahmen.aktualisiere(vorschau.tauscht && !miasWerbung && !istAusFuer(neu) && !istLokalePause(neu));
     steigerung.aktualisiere(neu, packKurz, istAusFuer(neu)); // ebenso: die wirksame Stufe haengt an Pack und Pause; auf Ausnahmen keine Meldung
     freilegen.aktualisiere(neu, packKurz, istAusFuer(neu)); // Pack und Pause wirken sofort
     beobachteAdressen(neu);
@@ -1829,6 +1983,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     }
     if (TESTHAKEN) document.removeEventListener('veil-test', beiTestEreignis);
     vorschau.raeumeAuf();
+    anzeigenRahmen.abbau();
     window.removeEventListener('load', beiLoad);
     entferneWurzelStile();
     status.raeumeAuf();

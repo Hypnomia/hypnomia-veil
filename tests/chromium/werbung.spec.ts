@@ -1176,6 +1176,133 @@ test('Menue: "Pause Mia" pausiert alles; auf einer Flaeche unter 80 px gibt es n
   await s.close();
 });
 
+// Nacht N2 (UEBERGABE-17 Rest 6): das Etikett-Menue ganz mit der Tastatur. Die Wurzel ist geschlossen; wo der Fokus liegt, schreibt das Menue im
+// Testbau als `menue.fokus` (Art, Aktion, Rechteck) in die Testspur.
+interface FokusStand {
+  art: 'etikett' | 'punkt' | 'anderes';
+  aktion: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+const spurVon = (s: Page) =>
+  s.evaluate(() => {
+    const a = document.documentElement.getAttribute('data-veil-werbung');
+    return a ? JSON.parse(a) : null;
+  }) as Promise<{ menue: (MenueStand & { fokus: FokusStand | null }) | null; flaechen: Array<{ id: string; badge?: { l: number; t: number; w: number; h: number } }> } | null>;
+// Id der Flaeche, deren Etikett den Fokus hat (null: Fokus nicht auf einem Etikett).
+async function etikettMitFokus(s: Page): Promise<string | null> {
+  const st = await spurVon(s);
+  const fo = st?.menue?.fokus;
+  if (!st || !fo || fo.art !== 'etikett') return null;
+  const f = st.flaechen.find((x) => x.badge && Math.abs(x.badge.l - fo.x) < 1.5 && Math.abs(x.badge.t - fo.y) < 1.5);
+  return f?.id ?? '?';
+}
+const punktMitFokus = async (s: Page): Promise<string | null> => {
+  const fo = (await spurVon(s))?.menue?.fokus;
+  return fo && fo.art === 'punkt' ? fo.aktion : null;
+};
+// Tab, bis das Etikett der Flaeche `id` den Fokus hat.
+async function tabBis(s: Page, id: string): Promise<number> {
+  for (let i = 1; i <= 120; i++) {
+    await s.keyboard.press('Tab');
+    await abwarten(60);
+    if ((await etikettMitFokus(s)) === id) return i;
+  }
+  throw new Error(`Etikett ${id} per Tab nicht erreicht`);
+}
+
+test('Tastatur: Etikett per Tab erreichbar, Enter und Leertaste oeffnen, Pfeile nur ueber sichtbare Punkte, Escape gibt den Fokus zurueck, Enter auf einem Punkt loest aus', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungGefragt: false } });
+  const s = await context.newPage();
+  try {
+    await s.goto(nachrichten);
+    await warteAuf(s, ERWARTET);
+    const schritte = await tabBis(s, 'a-rahmen');
+    console.log(`werbung: Etikett von a-rahmen nach ${schritte} Tabs erreicht`);
+    await s.evaluate(() => {
+      (window as any).__tasten = 0;
+      window.addEventListener('keydown', () => (window as any).__tasten++, true);
+    });
+    // Enter oeffnet, der Fokus liegt auf dem ersten Punkt
+    await s.keyboard.press('Enter');
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(true);
+    expect((await menueVon(s))!.punkte.map((p) => p.aktion)).toEqual(['verbergen', 'ausschalten', 'pause']);
+    await expect.poll(() => punktMitFokus(s), { timeout: 3000 }).toBe('verbergen');
+    // Pfeile wandern im Kreis, Home und End springen an die Enden
+    for (const [taste, soll] of [
+      ['ArrowDown', 'ausschalten'],
+      ['ArrowDown', 'pause'],
+      ['ArrowDown', 'verbergen'],
+      ['ArrowUp', 'pause'],
+      ['Home', 'verbergen'],
+      ['End', 'pause'],
+    ] as const) {
+      await s.keyboard.press(taste);
+      await expect.poll(() => punktMitFokus(s), { timeout: 3000, message: `${taste} -> ${soll}` }).toBe(soll);
+    }
+    // Escape schliesst und gibt den Fokus an dasselbe Etikett zurueck
+    await s.keyboard.press('Escape');
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+    await expect.poll(() => etikettMitFokus(s), { timeout: 3000 }).toBe('a-rahmen');
+    // Leertaste oeffnet ebenso
+    await s.keyboard.press('Space');
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(true);
+    await expect.poll(() => punktMitFokus(s), { timeout: 3000 }).toBe('verbergen');
+    await s.keyboard.press('Escape');
+    await expect.poll(() => etikettMitFokus(s), { timeout: 3000 }).toBe('a-rahmen');
+    expect(await s.evaluate(() => (window as any).__tasten), 'die Seite sah keine Taste auf Mias Flaeche').toBe(0);
+    expect((await kontrolleSpeicher()).kontrolle.werbung, 'nichts ausgeloest').toBe(true);
+    // Pruefer N2 Fund 6: Tab bei offenem Menue schliesst es und geht vom Etikett aus weiter, nicht vom Anfang der Seite. Vergleich: wohin Tab vom
+    // geschlossenen Etikett fuehrt.
+    const wohin = async () => {
+      const fo = (await spurVon(s))?.menue?.fokus ?? null;
+      const seite = await s.evaluate(() => {
+        const a = document.activeElement;
+        return a ? `${a.tagName}#${a.id}` : '';
+      });
+      return JSON.stringify({ seite, art: fo?.art ?? null, x: Math.round(fo?.x ?? -1), y: Math.round(fo?.y ?? -1) });
+    };
+    await s.keyboard.press('Tab');
+    await abwarten(150);
+    const ohneMenue = await wohin();
+    await s.keyboard.press('Shift+Tab');
+    await expect.poll(() => etikettMitFokus(s), { timeout: 3000 }).toBe('a-rahmen');
+    await s.keyboard.press('Enter');
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(true);
+    await s.keyboard.press('Tab');
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+    await abwarten(150);
+    expect(await wohin(), 'Tab aus dem offenen Menue geht vom Etikett aus weiter').toBe(ohneMenue);
+    console.log(`werbung: Tab nach dem Etikett von a-rahmen fuehrt zu ${ohneMenue}`);
+    await s.keyboard.press('Shift+Tab');
+    await expect.poll(() => etikettMitFokus(s), { timeout: 3000 }).toBe('a-rahmen');
+
+    // Flaeche unter 80 px: nur "Turn my ads off" ist sichtbar, die Pfeile bleiben auf ihm
+    await tabBis(s, 'a-anzeige');
+    await s.keyboard.press('Enter');
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(true);
+    expect((await menueVon(s))!.punkte.map((p) => p.aktion)).toEqual(['ausschalten']);
+    await expect.poll(() => punktMitFokus(s), { timeout: 3000 }).toBe('ausschalten');
+    for (const taste of ['ArrowDown', 'ArrowUp', 'End', 'Home']) {
+      await s.keyboard.press(taste);
+      await abwarten(100);
+      expect(await punktMitFokus(s), `${taste} bleibt auf dem einzigen sichtbaren Punkt`).toBe('ausschalten');
+    }
+    // Enter auf dem Punkt loest aus: Werbung aus, Originale zurueck
+    await s.keyboard.press('Enter');
+    await warteLeer(s);
+    for (const id of ERWARTET) expect(await sichtbarOriginal(s, id), id).toBe(true);
+    const k = (await kontrolleSpeicher()).kontrolle;
+    expect(k.werbung, 'Enter auf "Turn my ads off"').toBe(false);
+    expect(k.werbungGefragt).toBe(true);
+  } finally {
+    await setzeEinstellungen({ pause: false, kontrolle: KONTROLLE });
+    await s.close();
+  }
+});
+
 test('ohne Pack nach dem Entfernen: nichts mehr getauscht', async () => {
   const s = await context.newPage();
   await s.goto(nachrichten);

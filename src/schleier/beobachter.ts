@@ -1,12 +1,15 @@
-// Beobachter: sammelt img, video, canvas und Elemente mit Inline-Hintergrundbild in Dokument und allen Shadow Roots,
+// Beobachter: sammelt img, video, canvas, Bilder in Inline-SVG (image) und Elemente mit Inline-Hintergrundbild in Dokument und allen Shadow Roots,
 // beim Start und bei jeder Mutation. Entdeckt Shadow Roots (auch geschlossene) und legt die Schleier-CSS hinein.
 
 import { HG_SELEKTOR, TESTHAKEN, type Art } from './konstanten';
 import { sichereStil, versorgeWurzel, wurzelVon } from './shadow';
 import { eigeneSperreImTestAus, istEigeneWurzel } from './eigene';
+import { istSvgBild } from './svg-bild';
 
-const KANDIDAT = `img, video, canvas, ${HG_SELEKTOR}`;
-const ATTRIBUTE = ['src', 'srcset', 'style', 'class'];
+// svg image: Bilder in Inline-SVG (dieselbe Auswahl wie die Versteck-Regel in style.css); melde prueft den Namensraum noch einmal.
+const KANDIDAT = `img, video, canvas, svg image, ${HG_SELEKTOR}`;
+// href, attributeName, id: SMIL-Animationen, die spaeter auf ein Bild in Inline-SVG umgelenkt werden oder dessen id treffen (svg-bild.ts).
+const ATTRIBUTE = ['src', 'srcset', 'style', 'class', 'href', 'attributeName', 'id'];
 // Elemente, die nie eine Shadow Root tragen oder fuer die sich die Suche nicht lohnt.
 const KEIN_HOST = new Set(['img', 'script', 'style', 'link', 'meta', 'br', 'hr', 'source', 'track', 'title', 'head', 'wbr']);
 const FRAME_BUDGET_MS = 3;
@@ -37,6 +40,8 @@ function artVon(el: Element): Exclude<Art, 'klasse'> {
       return 'video';
     case 'canvas':
       return 'canvas';
+    case 'image':
+      return 'svgbild';
     default:
       return 'hintergrund';
   }
@@ -51,6 +56,9 @@ export class Beobachter {
   private rafId = 0;
   private laeuft = false;
   private fensterBis = Number.POSITIVE_INFINITY;
+  // Bilder in Inline-SVG: ein eigener Beobachter je Element ohne attributeFilter. Ein attributeFilter meldet Attribute mit Namensraum nie
+  // (DOM-Standard), xlink:href per setAttributeNS bliebe sonst ungesehen. Gemeldet wird jede Aenderung von href, gleich in welchem Namensraum.
+  private readonly svgBeobachter = new MutationObserver((liste) => this.beiSvgMutation(liste));
 
   constructor(private readonly ruf: BeobachterRueckrufe) {}
 
@@ -70,6 +78,8 @@ export class Beobachter {
       mo.disconnect();
     }
     this.beobachter.clear();
+    this.svgBeobachter.takeRecords();
+    this.svgBeobachter.disconnect();
     this.kandidaten = [];
     this.bekannt = new WeakSet();
     if (this.rafId) cancelAnimationFrame(this.rafId);
@@ -133,14 +143,31 @@ export class Beobachter {
     if (entfernt) this.ruf.entfernt();
   }
 
+  private beiSvgMutation(liste: MutationRecord[]): void {
+    if (!this.laeuft) return;
+    const gesehen = new Set<Element>();
+    for (const m of liste) if (m.attributeName === 'href' && m.target instanceof Element) gesehen.add(m.target);
+    for (const el of gesehen) this.ruf.geaendert(el, 'href');
+  }
+
+  // Kandidat melden; ein Bild in Inline-SVG bekommt dabei seinen Attribut-Beobachter (mehrfaches observe desselben Elements ist unschaedlich).
+  private melde(el: Element): void {
+    const art = artVon(el);
+    if (art === 'svgbild') {
+      if (!istSvgBild(el)) return;
+      this.svgBeobachter.observe(el, { attributes: true });
+    }
+    this.ruf.gefunden(el, art);
+  }
+
   // Alle Kandidaten und moeglichen Shadow-Hosts unterhalb einer Wurzel (Dokument oder Shadow Root).
   private scanne(wurzel: ParentNode): void {
-    for (const el of wurzel.querySelectorAll(KANDIDAT)) this.ruf.gefunden(el, artVon(el));
+    for (const el of wurzel.querySelectorAll(KANDIDAT)) this.melde(el);
     for (const el of wurzel.querySelectorAll('*')) this.pruefeHost(el);
   }
 
   private scanneKnoten(knoten: Element): void {
-    if (knoten.matches(KANDIDAT)) this.ruf.gefunden(knoten, artVon(knoten));
+    if (knoten.matches(KANDIDAT)) this.melde(knoten);
     this.pruefeHost(knoten);
     this.scanne(knoten);
   }

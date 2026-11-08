@@ -27,6 +27,7 @@ function link(text: string, ziel: string): HTMLAnchorElement {
 // Saetze (Entwuerfe, Texter liest gegen).
 export const UEBER_TEXTE = {
   titel: 'About and help',
+  mehr: 'More from me: pausing, help pages',
   hilfeAlle: 'All help pages',
   hilfeThemen: [
     ['Pin me to the toolbar', 'pin'],
@@ -94,7 +95,9 @@ if (abschnitt) {
   const netz = neu('p', '', 'hinweis');
   netz.id = 'ue-netz';
   netz.hidden = true;
-  zeile.append(knopf);
+  // Nacht N2 (Messziel Fund 4): Version und "Check now" in einer Zeile.
+  zeileVersion.id = 'ue-version-zeile';
+  zeile.append(zeileVersion, knopf);
 
   const linkListe = neu('ul', undefined, 'ue-links');
   linkListe.id = 'ue-links';
@@ -119,8 +122,15 @@ if (abschnitt) {
     hilfeListe.append(li);
   }
 
+  // Nacht N2 (Messziel Fund 4): Pause-Satz und Hilfe-Themen zugeklappt unter "More"; derselbe Pause-Satz steht kurz in der Fusszeile, "Help" in der Leiste.
+  const mehr = neu('details', undefined, 'ue-mehr');
+  mehr.id = 'ue-mehr';
+  const mehrTitel = neu('summary', UEBER_TEXTE.mehr);
+  mehrTitel.id = 'ue-mehr-titel';
+  mehr.append(mehrTitel, pause, hilfeListe);
+
   // Das Interview (#abschnitt-interview, index.html) bleibt als letztes Kind stehen; grund-pack.ts blendet es nach dem Einstieg ein.
-  abschnitt.prepend(titel, zeileVersion, stand, anleitung, zeile, netz, linkListe, pause, hilfeListe);
+  abschnitt.prepend(titel, zeile, stand, anleitung, netz, linkListe, mehr);
 
   // Firefox 128 kennt runtime.requestUpdateCheck nicht: dann gibt es keinen Knopf, nur den Status-Satz.
   const kannPruefen = !import.meta.env.FIREFOX || typeof (browser.runtime as unknown as { requestUpdateCheck?: unknown }).requestUpdateCheck === 'function';

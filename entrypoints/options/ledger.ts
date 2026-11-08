@@ -102,7 +102,8 @@ if (abschnitt) {
   meldung.setAttribute('role', 'status');
   meldung.setAttribute('aria-live', 'polite');
 
-  abschnitt.replaceChildren(titel, einleitung, seit, liste, mehr, stufeZeile, loeschen, frage, meldung);
+  // Nacht N2: "More counts ..." steht direkt vor dem Knopf, damit beide ab 481 px in einer Zeile stehen koennen (ledger.css).
+  abschnitt.replaceChildren(titel, einleitung, seit, liste, stufeZeile, mehr, loeschen, frage, meldung);
 
   // ---------- Anzeige ----------
   let pack: PackKurz | null = null;

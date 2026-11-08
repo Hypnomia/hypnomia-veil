@@ -178,8 +178,22 @@ export default defineConfig({
       // Alle Seiten: der Schleier muss auf jeder Seite Bilder und Videos verdecken und fremde Bilder nachladen koennen.
       host_permissions: ['<all_urls>'],
       // onnxruntime-web braucht WebAssembly in Erweiterungsseiten (Entscheidung 58).
+      // Sicherheitspruefung Phase 9 Fund N1: alles Uebrige nur aus der Erweiterung selbst (default-src). connect-src erlaubt http und https,
+      // weil der Erkenner fremde Bilder in einer Erweiterungsseite nachlaedt (Chrome Offscreen-Dokument, Firefox Hintergrund; Entscheidung 59),
+      // dazu data: und blob: (Daten-Adressen in Blobs wandeln). Bilder und Ton der Seiten kommen aus der Erweiterung, als data: oder blob:
+      // (Pack aus IndexedDB). Inline-Stile bleiben erlaubt (style-Attribute der Oberflaeche), Skripte nie inline.
       content_security_policy: {
-        extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+        extension_pages: [
+          "default-src 'self'",
+          "script-src 'self' 'wasm-unsafe-eval'",
+          "object-src 'self'",
+          "connect-src 'self' data: blob: http: https:",
+          "img-src 'self' data: blob:",
+          "media-src 'self' data: blob:",
+          "font-src 'self'",
+          "style-src 'self' 'unsafe-inline'",
+          "base-uri 'self'",
+        ].join('; ') + ';',
       },
       // Pause per Tastenkuerzel (Entscheidung 17, Desktop). Android kennt keine Kuerzel, dort bleibt das Menue.
       commands: {

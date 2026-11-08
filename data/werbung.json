@@ -51,7 +51,8 @@
     "33across.com",
     "adcolony.com",
     "advertising.com",
-    "gumgum.com"
+    "gumgum.com",
+    "adtng.com"
   ],
   "iframeNamen": [
     "^google_ads_(iframe|frame)(?:[_\\-/].*)?$",

@@ -163,16 +163,39 @@ test('Fund 4: die Pack-Karte steht ohne Pack nach Covering, mit Pack nach Sound;
   }
 });
 
-test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280 x 800', async () => {
-  const seite = await frischeSeite(1280, 800);
+// Nacht N2 (UEBERGABE-17 Rest 6): die Pack-Karte zaehlt mit. Ein Bildschirm bei 1280 sind 900 px wie in der Messung der UX-Pruefung Phase 9
+// (Abschnitt "Messwerte": "5,1 Bildschirme zu 900 px"), aus der das Messziel stammt; die Zahl zu 800 px steht im Log und hat eine eigene Grenze
+// gegen Rueckschritte (vorher 3,97).
+const SCHIRM_1280 = 900;
+const GRENZE_800 = 3.4;
+test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280, mit der Pack-Karte', async () => {
+  const seite = await frischeSeite(1280, SCHIRM_1280);
   try {
+    // Erst messen, wenn die Kern-Bilder der Pack-Karte stehen (sie kommen spaeter als der Status).
+    await expect(seite.locator('#kern-streifen'), 'Kern-Bilder im Testbau noetig (../02 Assets Mia/kern)').toBeVisible({ timeout: 5000 });
+    await seite.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('#kern-bilder img')].every((i) => i.complete && i.naturalWidth > 0));
     const hoehe = await seite.evaluate(() => document.documentElement.scrollHeight);
-    const schirme = hoehe / 800;
-    // Die Pack-Karte (Paket C) hat ihre eigene Hoehe: gemessen wird die Seite ohne sie, die Gesamtzahl steht im Log.
+    // Frische Seite ohne Einstieg, also mit der Sperre "Meet me first" (laengster Fall).
     const stand = await seite.evaluate(() => Math.ceil(document.getElementById('stand')!.getBoundingClientRect().height));
-    const ohneStand = (hoehe - stand) / 800;
-    console.log(`einstellungen-ordnung: ohne Pack ${hoehe} px = ${schirme.toFixed(2)} Bildschirme bei 1280 x 800, davon Pack-Karte ${stand} px, ohne sie ${ohneStand.toFixed(2)}`);
-    expect(ohneStand).toBeLessThanOrEqual(3);
+    console.log(
+      `einstellungen-ordnung: ohne Pack ${hoehe} px = ${(hoehe / SCHIRM_1280).toFixed(2)} Bildschirme zu ${SCHIRM_1280} px, ${(hoehe / 800).toFixed(2)} zu 800 px bei 1280 Breite, davon Pack-Karte ${stand} px`,
+    );
+    expect(hoehe / SCHIRM_1280, 'mit Sperre, Bildschirme zu 900 px').toBeLessThanOrEqual(3);
+    expect(hoehe / 800, 'mit Sperre, Bildschirme zu 800 px (Rueckschritt-Grenze)').toBeLessThanOrEqual(GRENZE_800);
+    // Nach dem Einstieg (ohne Sperre) ebenso.
+    await schreibe(seite, { einstieg: EINSTIEG_FERTIG });
+    await expect(seite.locator('#pack-sperre')).toBeHidden();
+    const nachEinstieg = await seite.evaluate(() => document.documentElement.scrollHeight);
+    console.log(`einstellungen-ordnung: ohne Pack nach dem Einstieg ${nachEinstieg} px = ${(nachEinstieg / SCHIRM_1280).toFixed(2)} Bildschirme zu ${SCHIRM_1280} px, ${(nachEinstieg / 800).toFixed(2)} zu 800 px`);
+    expect(nachEinstieg / SCHIRM_1280).toBeLessThanOrEqual(3);
+    // Pruefer N2 Fund 8: ab 600 px steht der grosse Pause-Knopf rechts neben dem Status, in denselben Zeilen.
+    const lage = await seite.evaluate(() => {
+      const p = document.getElementById('pause')!.getBoundingClientRect();
+      const st = document.getElementById('status')!.getBoundingClientRect();
+      return { pLinks: p.left, stRechts: st.right, pOben: p.top, pUnten: p.bottom, stOben: st.top, stUnten: st.bottom };
+    });
+    expect(lage.pLinks, 'Pause rechts vom Status').toBeGreaterThan(lage.stRechts);
+    expect(lage.pOben < lage.stUnten && lage.pUnten > lage.stOben, `Pause in der Zeile des Status ${JSON.stringify(lage)}`).toBe(true);
     await schreibe(seite, { pack: packMit(['kontrolle:blitz', 'ton', 'erwachsen:vorschau']) });
     await expect(seite.locator('.zu-knopf:visible')).toHaveCount(0);
     const mit = await seite.evaluate(() => document.documentElement.scrollHeight);

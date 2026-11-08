@@ -51,3 +51,34 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Nacht N2 (Messziel Fund 4): ohne Pack stehen "More counts come with the Mia Pack." und "Clear my ledger" ab 481 px in einer Zeile. */
+@media (min-width: 481px) {
+  #ledger {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 16px;
+    align-items: center;
+  }
+
+  #ledger > * {
+    grid-column: 1 / -1;
+  }
+
+  #ledger > #ledger-mehr:not([hidden]) {
+    grid-column: 1;
+    margin: 0;
+  }
+
+  #ledger > #ledger-loeschen {
+    justify-self: start;
+  }
+
+  #ledger > #ledger-mehr:not([hidden]) + #ledger-loeschen {
+    grid-column: 2;
+  }
+}
+
+#ledger .ledger-liste {
+  margin-bottom: 8px;
+}

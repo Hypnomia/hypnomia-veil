@@ -3,6 +3,7 @@
 import { ATTR_MS, ATTR_NUR_HG, ATTR_URTEIL, TESTHAKEN, type Urteil } from './konstanten';
 import { freigabeGesperrt, testhakenAktiv } from './status';
 import type { BildOriginal, Zustand } from './zustand';
+import { svgSignatur } from './svg-bild';
 
 // Kennzeichen eines eingesetzten Vorschau-Bildes (Pack-Bild statt Seitenbild), neben data-veil="zensiert".
 export const ATTR_ERSETZT = 'data-veil-ersetzt';
@@ -164,6 +165,28 @@ export function setzeBildSofortNeu(el: HTMLImageElement, z: Zustand, bild: strin
   z.signatur = bildSignatur(el);
 }
 
+// ---------- Bild in Inline-SVG tauschen (svg-bild.ts) ----------
+
+// Setzt die zensierte Fassung als href (hat Vorrang vor xlink:href, das unberuehrt bleibt). Der Aufrufer hat die Fassung vorab geladen und
+// dekodiert (schleier.ts, urteilZensiertSvg) und setzt das Urteil gleich danach.
+export function starteSvgTausch(el: Element, z: Zustand, bild: string): void {
+  if (!z.svgOriginal) {
+    const href = el.getAttribute('href');
+    z.svgOriginal = { href: eigenesSrc(href) ? null : href };
+  }
+  merkeEigene(bild);
+  z.eigen = bild;
+  el.setAttribute('href', bild);
+  z.signatur = svgSignatur(el);
+}
+
+// Original-href zurueck (null: Attribut weg, dann gilt wieder xlink:href der Seite).
+function setzeSvgOriginal(el: Element, z: Zustand): void {
+  if (!z.svgOriginal) return;
+  setzeAttribut(el, 'href', z.svgOriginal.href);
+  z.signatur = svgSignatur(el);
+}
+
 // ---------- Hintergrund tauschen ----------
 
 // neuerWert: vollstaendiger background-image-Wert (Ebenen mit zensierten Bildern ersetzt; `none` entfernt den Hintergrund ganz).
@@ -217,9 +240,11 @@ export function stelleWiederHer(el: Element, z: Zustand): void {
     else if (z.hgOriginal.wert) el.style.setProperty('background-image', z.hgOriginal.wert, z.hgOriginal.prio);
     else el.style.removeProperty('background-image');
   }
+  setzeSvgOriginal(el, z);
   stelleErsetztWiederHer(el, z);
   z.bildOriginal = null;
   z.hgOriginal = null;
+  z.svgOriginal = null;
   z.eigen = null;
   z.tauschLaeuft = false;
 }
@@ -246,6 +271,7 @@ export function zeigeOriginal(el: Element, z: Zustand): void {
     else el.style.removeProperty('background-image');
     z.signatur = hintergrundWert(el);
   }
+  setzeSvgOriginal(el, z);
 }
 
 // Gegenstueck: die gemerkte zensierte Fassung (z.eigen) wieder einsetzen. Ein Bild muss danach erst laden (tauschLaeuft setzt der Aufrufer).
@@ -263,6 +289,11 @@ export function setzeZensurWieder(el: Element, z: Zustand): boolean {
     z.signatur = bildSignatur(el);
     return true;
   }
+  if (z.svgOriginal) {
+    el.setAttribute('href', z.eigen);
+    z.signatur = svgSignatur(el);
+    return true;
+  }
   if (el instanceof HTMLElement && z.hgOriginal) {
     el.style.setProperty('background-image', z.eigen, 'important');
     z.eigen = el.style.getPropertyValue('background-image');
@@ -277,9 +308,13 @@ export function setzeZensurWieder(el: Element, z: Zustand): boolean {
 export function vergiss(el: Element, z: Zustand, restore: boolean): void {
   if (restore) stelleWiederHer(el, z);
   else {
+    // Bild in Inline-SVG: hat die Seite nur xlink:href geaendert, stuende die eigene Fassung als href noch da und verdeckte die neue Quelle
+    // (href hat Vorrang). Eine noch eigene href geht deshalb auf das Original zurueck; eine von der Seite neu gesetzte bleibt.
+    if (z.svgOriginal && eigenesSrc(el.getAttribute('href'))) setzeAttribut(el, 'href', z.svgOriginal.href);
     stelleErsetztWiederHer(el, z);
     z.bildOriginal = null;
     z.hgOriginal = null;
+    z.svgOriginal = null;
     z.eigen = null;
     z.tauschLaeuft = false;
   }

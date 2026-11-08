@@ -18,8 +18,9 @@ export const ATTR_STATUS = TESTHAKEN ? 'data-veil-status' : '';
 export const HG_SELEKTOR = '[style*="background" i][style*="url(" i]';
 
 export type Urteil = 'frei' | 'zensiert' | 'verdeckt';
-// bild: img; video; canvas; hintergrund: Inline-background-image (hide-first per CSS); klasse: Hintergrund aus einem Stylesheet (nach load).
-export type Art = 'bild' | 'video' | 'canvas' | 'hintergrund' | 'klasse';
+// bild: img; video; canvas; hintergrund: Inline-background-image (hide-first per CSS); klasse: Hintergrund aus einem Stylesheet (nach load);
+// svgbild: Bild in Inline-SVG (<svg><image href|xlink:href>, hide-first per CSS, svg-bild.ts).
+export type Art = 'bild' | 'video' | 'canvas' | 'hintergrund' | 'klasse' | 'svgbild';
 
 export const MIN_KANTE = 32; // Elemente unter 32 x 32 werden sofort freigegeben
 // Vorrang in der Warteschlange (src/schleier/vorrang.ts): kleine Elemente (laengste dargestellte Seite unter diesem Wert) kommen nach den

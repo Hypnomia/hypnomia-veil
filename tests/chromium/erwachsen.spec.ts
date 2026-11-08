@@ -279,6 +279,18 @@ for (const ort of SEITEN) {
     if (ort.name === 'pornhub') {
       // Entscheidung 193: Anzeigen-Bilder (Native-Ad-Kachel, Kachel mit Aufschrift) werden wie Vorschaubilder ganz gegen Pack-Bilder getauscht.
       for (const id of ['anzeige-bild', 'anzeige-bild2']) await expect.poll(async () => istPackBild((await stand(s, [id]))[0]!), { timeout: 15_000 }).toBe(true);
+      // Live-Lauf 18 C: Live-Cam-Kachel und Promo-Band sind Anzeigen; Werberahmen werden ausgeblendet, ein normaler Rahmen nicht
+      for (const id of ['anzeige-cam', 'anzeige-promo']) await expect.poll(async () => istPackBild((await stand(s, [id]))[0]!), { timeout: 15_000 }).toBe(true);
+      const rahmen = () => s.evaluate(() => ['anzeige-rahmen', 'anzeige-rahmen2', 'normal-rahmen', 'anzeige-srcdoc', 'eigener-rahmen'].map((i) => getComputedStyle(document.getElementById(i)!).visibility));
+      await expect.poll(rahmen, { timeout: 10_000 }).toEqual(['hidden', 'hidden', 'visible', 'hidden', 'visible']);
+      // Stylesheet-Hintergruende in Anzeigen: ganz ausgeblendet (kein Bild mehr sichtbar)
+      const hg = () => s.evaluate(() => ['anzeige-promo-hg', 'anzeige-cam-hg'].map((i) => getComputedStyle(document.getElementById(i)!).backgroundImage.includes('/synthetisch/')));
+      await expect.poll(hg, { timeout: 15_000 }).toEqual([false, false]);
+      // Pause gibt die Werberahmen sofort zurueck, danach wieder ausgeblendet
+      await setzeEinstellungen({ pause: true });
+      await expect.poll(rahmen, { timeout: 5000 }).toEqual(['visible', 'visible', 'visible', 'visible', 'visible']);
+      await setzeEinstellungen({ pause: false });
+      await expect.poll(rahmen, { timeout: 10_000 }).toEqual(['hidden', 'hidden', 'visible', 'hidden', 'visible']);
       // Die Anzeige hat erst nach gut 1 s eine Quelle (Aufnahme in der Seite); danach haette ein Schleier ohne die Regel sie geprueft.
       await expect.poll(() => s.evaluate(() => (document.getElementById('anzeige-video') as HTMLVideoElement).readyState >= 2), { timeout: 10_000 }).toBe(true);
       await abwarten(2500);

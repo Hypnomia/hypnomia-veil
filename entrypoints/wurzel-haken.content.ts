@@ -29,10 +29,21 @@ export default defineContentScript({
     const proto = Element.prototype;
     const original = proto.attachShadow;
     if (typeof original !== 'function') return;
-    // Schutz gegen doppeltes Einrichten (Skript zweimal eingespritzt): das Kennzeichen steht am Prototyp, unsichtbar fuer Aufzaehlungen.
-    const KENNZEICHEN = Symbol.for('hypnomia-veil.wurzel-haken');
-    if (Object.prototype.hasOwnProperty.call(proto, KENNZEICHEN)) return;
-    Object.defineProperty(proto, KENNZEICHEN, { value: true });
+    // Schutz gegen doppeltes Einrichten (Skript zweimal eingespritzt, etwa nach einem Update in Firefox): das Kennzeichen steht am Prototyp,
+    // unsichtbar fuer Aufzaehlungen. Sicherheitspruefung Phase 9 Fund A3: kein Symbol.for mit Namen (jede Seite konnte es ueber das globale
+    // Register abfragen), sondern ein Symbol ohne Beschreibung und ohne Register. Ein zweites Einspritzen erkennt es an der Form des
+    // Eintrags (eigenes Symbol ohne Beschreibung, Wert true, weder schreib- noch aenderbar). Ganz unerkennbar ist der Haken damit nicht
+    // (umgehaengtes attachShadow, Lebenszeichen, Attribute gehoeren zur Funktion), nur nicht mehr per Name.
+    const istKennzeichen = (s: symbol): boolean => {
+      if (s.description !== undefined) return false;
+      const d = Object.getOwnPropertyDescriptor(proto, s);
+      return !!d && d.value === true && d.writable === false && d.enumerable === false && d.configurable === false;
+    };
+    // Ein Haken aus Version 0.9.0 und frueher (offene Tabs ueber ein Update hinweg) trug das alte Kennzeichen; das Nachsehen legt nichts an
+    // und kein Eintrag entsteht am Prototyp. Entfernbar, sobald keine Installation mehr von 0.9.0 aus aktualisiert (ab Version 1.0).
+    const ALT = Symbol.for('hypnomia-veil.wurzel-haken');
+    if (Object.prototype.hasOwnProperty.call(proto, ALT) || Object.getOwnPropertySymbols(proto).some(istKennzeichen)) return;
+    Object.defineProperty(proto, Symbol(), { value: true });
 
     // Eigene Verweise auf die Browserfunktionen, damit spaetere Aenderungen durch die Seite den Haken nicht stoeren.
     const erzeuge = Document.prototype.createElement;
@@ -54,7 +65,7 @@ export default defineContentScript({
     // Dieselbe Regel wie in entrypoints/content/style.css (Versteck-Regel, nur ohne Urteil und ohne die Ausnahme fuer html[data-veil-seite], die es in
     // Wurzeln nicht gibt); ein Einheitstest vergleicht beide. Der Schleier ersetzt den Text beim Uebernehmen durch die ganze Datei.
     const REGEL =
-      ':is(img, video, canvas, [style*="background" i][style*="url(" i]):not([data-veil="frei"], [data-veil="zensiert"], [data-veil="verdeckt"]) { opacity: 0 !important; }';
+      ':is(img, video, canvas, svg image, [style*="background" i][style*="url(" i]):not([data-veil="frei"], [data-veil="zensiert"], [data-veil="verdeckt"]) { opacity: 0 !important; }';
     const MARKE_HAKEN = 'data-veil-haken';
     const MARKE_EIGEN = 'data-veil-eigen';
     const MAX_WIEDER_JE_S = 20;

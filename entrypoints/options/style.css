@@ -1334,3 +1334,75 @@ header {
   padding-top: 16px;
   padding-bottom: 16px;
 }
+
+/* Nacht N2 (Messziel Fund 4 mit der Pack-Karte): zugeklappte Karten ab 481 px mit Satz und "Set them now" in einer Zeile. */
+@media (min-width: 481px) {
+  section[data-zu='1'] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 16px;
+    align-items: center;
+  }
+
+  section[data-zu='1'] > * {
+    grid-column: 1 / -1;
+  }
+
+  section[data-zu='1'] > .zu-satz {
+    grid-column: 1;
+    margin: 0;
+  }
+
+  section[data-zu='1'] > .zu-knopf {
+    grid-column: 2;
+    align-self: center;
+  }
+}
+
+/* Nacht N2 (Messziel Fund 4 mit der Pack-Karte): etwas dichter, Fingerziele bleiben. */
+main,
+.gruppe {
+  gap: 12px;
+}
+
+main {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+section {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+h2 {
+  margin-bottom: 6px;
+}
+
+/* Ab 600 px steht der grosse Pause-Knopf rechts neben dem Status statt darunter; er bleibt gross und oben. Voraussetzung: im Kopf stehen
+   genau h1, .unter, #status, #status-ausnahmen und #pause in dieser Reihenfolge (index.html); einstellungen-ordnung.spec.ts prueft die Lage. */
+@media (min-width: 600px) {
+  header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 18px;
+    align-items: center;
+  }
+
+  header > * {
+    grid-column: 1 / -1;
+  }
+
+  header > #status,
+  header > #status-ausnahmen {
+    grid-column: 1;
+  }
+
+  header > #pause {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+    width: auto;
+    margin-top: 6px;
+    padding: 0 26px 0 14px;
+  }
+}

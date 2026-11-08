@@ -227,3 +227,59 @@
 .pack-hilfe {
   margin-top: 14px;
 }
+
+/* ---------- Nacht N2: Messziel Fund 4 mit der Pack-Karte (hoechstens 3 Bildschirme bei 1280 x 800 ohne Pack) ---------- */
+/* Ein leerer Meldungs-Absatz nimmt keinen Platz, bleibt aber gerendert (Live-Bereich, wie #kon-werbung-aus-meldung in style.css). */
+#meldung:empty {
+  min-height: 0;
+  margin: 0;
+}
+
+#kern-bilder img {
+  max-height: 104px;
+}
+
+/* Dateiwahl in einer Zeile: Knopf, Dateiname und der Satz zum Ablegen umbrechen erst, wenn der Platz fehlt. */
+.datei-details.ohne {
+  margin: 8px 0 0;
+}
+
+#ablage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+}
+
+#ablage .pack-wahl,
+#ablage #datei-name {
+  margin: 0;
+}
+
+#ablage #datei-name,
+#ablage #ablage-text {
+  flex: 1 1 14em;
+}
+
+/* Sperre "Meet me first": Satz und Knopf in einer Zeile, solange Platz ist. */
+#pack-sperre:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+#pack-sperre p {
+  flex: 1 1 16em;
+  margin: 0;
+}
+
+.pack-hilfe {
+  margin: 10px 0 0;
+}
+
+#pack-ohne .trenner {
+  margin-top: 12px;
+}

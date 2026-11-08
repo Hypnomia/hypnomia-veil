@@ -1,5 +1,8 @@
 // Firefox-Test Session 17 (Sicherheitspruefung Phase 9, Fund A1): eigene Bildabrufe der Erweiterung tragen keinen Origin-Kopf mit der
 // moz-extension-Kennung. Eigener Server zeichnet die Koepfe auf; Gegenprobe: cors-Abruf aus einer Seite traegt Origin.
+// Paket N3 Session 18 (Restpunkte derselben Pruefung): A4 Referer-Regel nie fuer die Hosts des Versions-Checks und nur bis zum Ablauf der
+// Haltezeit; A3 Wurzel-Haken nicht per Symbol.for abfragbar, zweites Einspritzen richtet nichts doppelt ein; N1 CSP der Erweiterungsseiten
+// mit default-src, Seiten laden Bilder und Schriften, ein fremdes Bild wird blockiert.
 import { createServer } from 'node:http';
 import sharp from 'sharp';
 import { Builder, By } from 'selenium-webdriver';
@@ -13,9 +16,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 setTimeout(() => {
-  console.error('firefox: Zeitlimit von 150 s ueberschritten');
+  console.error('firefox: Zeitlimit von 240 s ueberschritten');
   process.exit(1);
-}, 150_000).unref();
+}, 240_000).unref();
 
 process.env.SE_AVOID_STATS = 'true';
 
@@ -123,6 +126,8 @@ const server = createServer((req, res) => {
     return res.end(png);
   }
   res.writeHead(200, { 'content-type': 'text/html' });
+  const mit = /^\/mitbild-([a-z0-9]+)/.exec(req.url ?? '');
+  if (mit) return res.end(`<!doctype html><title>Bild</title><img id="b" width="400" height="400" src="http://localhost:${server.address().port}/bild-${mit[1]}.png">`);
   if ((req.url ?? '').startsWith('/mitbild')) return res.end(`<!doctype html><title>Bild</title><img id="b" width="400" height="400" src="http://localhost:${server.address().port}/bild-erkenner.png">`);
   res.end('<!doctype html><title>leer</title>');
 });
@@ -155,6 +160,96 @@ try {
   console.log(`firefox: Abruf des Erkenners origin=${abruf?.kopf.origin ?? '(keiner)'} referer=${abruf?.kopf.referer ?? '(keiner)'} sec-fetch-site=${abruf?.kopf['sec-fetch-site'] ?? '-'}`);
   pruefe(!/extension:\/\//.test(abruf?.kopf.origin ?? ''), 'kein Origin mit moz-extension-Kennung');
   pruefe(abruf?.kopf.origin === undefined, 'gar kein Origin-Kopf');
+
+  // ---------- A3: Wurzel-Haken ohne Symbol.for-Kennzeichen ----------
+  await driver.get(`http://127.0.0.1:${port}/seite-haken`);
+  const hakenBefund = async () =>
+    JSON.parse(
+      await driver.executeScript(`
+        const s = document.createElement('script');
+        s.textContent = "document.documentElement.setAttribute('data-n3', JSON.stringify({ perFor: Symbol.for('hypnomia-veil.wurzel-haken') in Element.prototype, namen: Object.getOwnPropertySymbols(Element.prototype).map((x) => String(x.description)), haken: !/native code/.test(Function.prototype.toString.call(Element.prototype.attachShadow)) }))";
+        document.documentElement.append(s);
+        s.remove();
+        return document.documentElement.getAttribute('data-n3');`),
+    );
+  const haken = await hakenBefund();
+  console.log(`firefox: n3 Haken ${JSON.stringify(haken)}`);
+  pruefe(haken.haken === true, 'A3: Haken laeuft in der Seitenwelt');
+  pruefe(haken.perFor === false, 'A3: Seite findet den Haken nicht ueber Symbol.for');
+  pruefe(!haken.namen.some((n) => /veil|hypnomia|haken/i.test(n)), 'A3: kein Symbol mit Namen der Erweiterung am Element.prototype');
+  const hakenDatei = readFileSync(path.join(ausgabe, 'firefox-mv3', 'content-scripts', 'wurzel-haken.js'), 'utf8');
+  const stile = await driver.executeAsyncScript(
+    `const fertig = arguments[arguments.length - 1];
+     const s = document.createElement('script');
+     s.textContent = arguments[0] + ";\\n const h = document.createElement('div'); document.body.append(h); window.__n3w = h.attachShadow({ mode: 'open' });";
+     document.documentElement.append(s);
+     setTimeout(() => fertig(document.querySelector('body > div:last-child').shadowRoot.querySelectorAll('style[data-veil-haken], style[data-veil-eigen]').length), 300);`,
+    hakenDatei,
+  );
+  pruefe(stile === 1, `A3: zweites Einspritzen, genau ein Stil in der neuen Wurzel (${stile})`);
+
+  // ---------- A4: Referer-Regeln ----------
+  await oeffne('hilfe.html');
+  const sende = (n) => imSeitenkontext(`return await api.runtime.sendMessage(args[0]);`, n);
+  for (const host of ['raw.githubusercontent.com', 'githubusercontent.com', 'github.com']) {
+    const a = await sende({ ziel: 'hintergrund', typ: 'referer', host, referer: 'https://seite-b.example/' });
+    pruefe(a?.ok === false, `A4: keine Referer-Regel fuer ${host} (${JSON.stringify(a)})`);
+  }
+  await imSeitenkontext(`await api.storage.local.set({ testRefererDauer: 8000 }); return true;`);
+  const gesetzt = await sende({ ziel: 'hintergrund', typ: 'referer', host: `localhost:${port}`, referer: 'http://seite-c.example/' });
+  const t0 = Date.now();
+  pruefe(gesetzt?.ok === true, `A4: Referer-Regel fuer localhost gesetzt (${JSON.stringify(gesetzt)})`);
+  const erkennerAbruf = (name) => koepfe.find((k) => k.pfad.startsWith(`/bild-${name}`) && k.kopf['sec-fetch-dest'] !== 'image');
+  await driver.get(`http://127.0.0.1:${port}/mitbild-cfrisch`);
+  await bis('Erkenner holt cfrisch', async () => !!erkennerAbruf('cfrisch'), 20_000).catch(() => {});
+  console.log(`firefox: n3 innerhalb der Haltezeit (${Date.now() - t0} ms) referer=${erkennerAbruf('cfrisch')?.kopf.referer ?? '(keiner)'}`);
+  pruefe(erkennerAbruf('cfrisch')?.kopf.referer === 'http://seite-c.example/', 'A4: innerhalb der Haltezeit traegt der Abruf den Referer');
+  await warte(Math.max(0, 8600 - (Date.now() - t0)));
+  await driver.get(`http://127.0.0.1:${port}/mitbild-cspaet`);
+  await bis('Erkenner holt cspaet', async () => !!erkennerAbruf('cspaet'), 20_000).catch(() => {});
+  console.log(`firefox: n3 nach Ablauf referer=${erkennerAbruf('cspaet')?.kopf.referer ?? '(keiner)'}`);
+  pruefe(!!erkennerAbruf('cspaet'), 'A4: Erkenner hat das spaete Bild geholt');
+  pruefe(erkennerAbruf('cspaet')?.kopf.referer !== 'http://seite-c.example/', 'A4: nach der Haltezeit kein Referer aus der alten Regel');
+  // Der Schleier hat das Bild beurteilt (Erkenner im Hintergrund unter der CSP: Abruf, Dekodieren, Modell).
+  const urteil = await bis('Urteil am Bild', async () => driver.executeScript(`const b = document.getElementById('b'); const u = b && b.getAttribute('data-veil'); return u === 'frei' || u === 'zensiert' ? u : null;`), 20_000).catch(() => null);
+  pruefe(!!urteil, `N1: Bild beurteilt (${urteil})`);
+  await oeffne('hilfe.html');
+  await imSeitenkontext(`await api.storage.local.remove('testRefererDauer'); return true;`);
+
+  // ---------- N1: CSP der Erweiterungsseiten ----------
+  const csp = await imSeitenkontext(`return api.runtime.getManifest().content_security_policy.extension_pages;`);
+  console.log(`firefox: n3 CSP ${csp}`);
+  pruefe(/(^|;)\s*default-src 'self'\s*(;|$)/.test(csp ?? ''), "N1: default-src 'self'");
+  pruefe(/(^|;)\s*script-src 'self' 'wasm-unsafe-eval'\s*(;|$)/.test(csp ?? ''), 'N1: script-src unveraendert');
+  pruefe(/(^|;)\s*img-src 'self' data: blob:\s*(;|$)/.test(csp ?? ''), 'N1: img-src nur Erweiterung, data:, blob:');
+  for (const name of ['popup.html', 'options.html', 'willkommen.html', 'hilfe.html']) {
+    await oeffne(name);
+    await warte(1500);
+    const stand = await driver.executeAsyncScript(
+      `const fertig = arguments[arguments.length - 1];
+       document.fonts.ready.then(() => fertig({
+         bilder: [...document.images].filter((b) => b.currentSrc && b.complete && b.naturalWidth === 0).map((b) => b.currentSrc.slice(0, 80)),
+         schriften: [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family),
+         text: (document.body ? document.body.innerText : '').trim().length,
+       }));`,
+    );
+    console.log(`firefox: n3 ${name} ${JSON.stringify(stand)}`);
+    pruefe(stand.bilder.length === 0 && stand.schriften.length === 0 && stand.text > 0, `N1: ${name} laedt Bilder, Schriften, Text`);
+  }
+  // Gegenprobe des Detektors: ein fremdes Bild in einer Erweiterungsseite wird blockiert (Verletzungs-Ereignis, Server sieht nichts).
+  await oeffne('popup.html');
+  const probe = await driver.executeAsyncScript(
+    `const fertig = arguments[arguments.length - 1];
+     let n = 0;
+     document.addEventListener('securitypolicyviolation', () => n++);
+     const b = document.createElement('img');
+     b.src = arguments[0];
+     document.body.append(b);
+     setTimeout(() => fertig({ n, breite: b.naturalWidth }), 1500);`,
+    `http://127.0.0.1:${port}/bild-csp-probe.png`,
+  );
+  console.log(`firefox: n3 CSP-Probe ${JSON.stringify(probe)}`);
+  pruefe(probe.breite === 0 && !koepfe.some((k) => k.pfad.startsWith('/bild-csp-probe')), 'N1: fremdes Bild in einer Erweiterungsseite blockiert');
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);
   code = 1;

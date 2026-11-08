@@ -9,6 +9,35 @@ export const ANZEIGE_TIEFE = 5;
 const AUFSCHRIFT_TIEFE = 3; // die Aufschrift steht in der Kachel, nicht weit oben (sonst zaehlte ein Menuepunkt "Ads" fuer die ganze Seite)
 const KINDER_MAX = 12;
 const NATIVE = /(^|[-_])native[-_]?(widget|ad|ads|banner|block|unit)([-_]|$)/;
+// Live-Lauf 18 C: Promo-Baender der Seiten (xHamster `promoMessagePinned`) und Kacheln, die auf Cam- und Dating-Seiten fuehren, sind auf
+// Erwachsenenseiten Anzeigen, auch ohne Werbe-Netz (MITTEL 3 und 4).
+const PROMO = /^promo/;
+const WERBE_ZIELE = [
+  'xhamsterlive.com',
+  'stripchat.com',
+  'chaturbate.com',
+  'bongacams.com',
+  'livejasmin.com',
+  'cam4.com',
+  'camsoda.com',
+  'myfreecams.com',
+  'flirt4free.com',
+  'imlive.com',
+  'streamate.com',
+  'jerkmate.com',
+  'adultfriendfinder.com',
+  'fling.com',
+  'xlovecam.com',
+];
+function istWerbeZiel(href: string | null, basis?: string): boolean {
+  if (!href) return false;
+  try {
+    const h = new URL(href, basis).hostname.toLowerCase();
+    return WERBE_ZIELE.some((z) => h === z || h.endsWith(`.${z}`));
+  } catch {
+    return false;
+  }
+}
 
 function elternUeberSchatten(n: Element): Element | null {
   if (n.parentElement) return n.parentElement;
@@ -46,7 +75,10 @@ function linktNachDraussen(el: Element, basis?: string): boolean {
   return false;
 }
 
-export function istAnzeige(el: Element, basis?: string): boolean {
+// nurKennung: nur Werbe-Kennungen, Native-Ad-Kaesten und Werbe-Links, ohne "promo" und ohne Aufschrift (fuer Rahmen: ein Anmelde- oder
+// Kommentar-Rahmen in einem "promo"-Bereich darf nie verschwinden, Pruefung Runde 10, Nr. 4).
+export function istAnzeige(el: Element, basis?: string, opt?: { nurKennung?: boolean }): boolean {
+  const nurKennung = opt?.nurKennung === true;
   // Eine Aufschrift ("Ad", "Anzeige") zaehlt nur, wenn das Bild nach draussen verlinkt (Pruefung Runde 8, Nr. 6: sonst traf ein Menuepunkt "Ads"
   // neben dem Logo).
   const draussen = linktNachDraussen(el, basis);
@@ -55,9 +87,9 @@ export function istAnzeige(el: Element, basis?: string): boolean {
     if (n === document.body || n === document.documentElement) return false;
     if (hatKennung(n.getAttribute('class'), n.getAttribute('id'), (a) => n!.hasAttribute(a))) return true;
     const klassen = (n.getAttribute('class') ?? '').toLowerCase();
-    if (klassen && klassen.split(/\s+/).some((t) => NATIVE.test(t))) return true;
-    if (n.tagName === 'A' && istWerbeAdresse(n.getAttribute('href'), basis)) return true;
-    if (draussen && tiefe > 0 && tiefe <= AUFSCHRIFT_TIEFE && hatAufschrift(n)) return true;
+    if (klassen && klassen.split(/\s+/).some((t) => NATIVE.test(t) || (!nurKennung && PROMO.test(t)))) return true;
+    if (n.tagName === 'A' && (istWerbeAdresse(n.getAttribute('href'), basis) || istWerbeZiel(n.getAttribute('href'), basis))) return true;
+    if (!nurKennung && draussen && tiefe > 0 && tiefe <= AUFSCHRIFT_TIEFE && hatAufschrift(n)) return true;
   }
   return false;
 }

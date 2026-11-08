@@ -35,6 +35,12 @@ export interface ErsetztInfo {
   stile: Array<{ name: string; wert: string; prio: string }>;
 }
 
+// Bild in Inline-SVG (svg-bild.ts): Wert des Attributs href vor dem Tausch (null = war nicht gesetzt). Der Tausch setzt nur href (hat Vorrang vor
+// xlink:href), xlink:href bleibt unberuehrt.
+export interface SvgOriginal {
+  href: string | null;
+}
+
 export interface Zustand {
   art: Art;
   // Wird bei jedem Zuruecksetzen erhoeht: Antworten zu einer aelteren Generation werden verworfen (Rennen bei schnell wechselnder src).
@@ -59,6 +65,7 @@ export interface Zustand {
   tauschLaeuft: boolean;
   bildOriginal: BildOriginal | null;
   hgOriginal: HintergrundOriginal | null;
+  svgOriginal: SvgOriginal | null;
   // Das Bild hat ein error-Ereignis gemeldet (kaputtes Bild: freigeben). Ohne Ereignis gilt "fertig, aber ohne Groesse" als Bild ohne Eigengroesse (SVG).
   fehlerGesehen: boolean;
   // Video ohne Daten (preload none oder metadata) wurde nach load vorlaeufig unscharf gezeigt: beim ersten loadeddata wird neu geprueft.
@@ -110,6 +117,7 @@ export function neuerZustand(art: Art): Zustand {
     tauschLaeuft: false,
     bildOriginal: null,
     hgOriginal: null,
+    svgOriginal: null,
     fehlerGesehen: false,
     vorlaeufig: false,
     sichtMeldung: false,

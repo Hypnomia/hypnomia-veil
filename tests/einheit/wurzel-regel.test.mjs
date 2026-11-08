@@ -8,7 +8,7 @@ const hier = new URL('.', import.meta.url);
 const css = readFileSync(new URL('../../entrypoints/content/style.css', hier), 'utf8');
 const haken = readFileSync(new URL('../../entrypoints/wurzel-haken.content.ts', hier), 'utf8');
 
-const AUSNAHME = ', html[data-veil-seite="aus"] *';
+const AUSNAHME = ', :root[data-veil-seite="aus"] *';
 
 // Die erste Regel mit opacity: 0 in style.css (ohne Kommentare).
 function dokumentRegel() {

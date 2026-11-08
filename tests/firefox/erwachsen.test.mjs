@@ -212,6 +212,17 @@ async function wirdOrtGetauscht(ort) {
     pruefe(anz.veil === null && anz.opacity === '0', `pornhub: Anzeigen-Video nie gezeigt (${JSON.stringify(anz)})`);
     // Entscheidung 193: Anzeigen-Bilder ganz getauscht, Anzeigen-Video mit Ton versteckt und stumm
     for (const id of ['anzeige-bild', 'anzeige-bild2']) await bis(`pornhub: ${id} getauscht`, async () => istPackBild((await stand([id]))[0]), 15_000);
+    // Live-Lauf 18 C: Live-Cam-Kachel und Promo-Band getauscht, Werberahmen ausgeblendet, normaler Rahmen sichtbar
+    for (const id of ['anzeige-cam', 'anzeige-promo']) await bis(`pornhub: ${id} getauscht`, async () => istPackBild((await stand([id]))[0]), 15_000);
+    const rahmen = () => driver.executeScript(() => ['anzeige-rahmen', 'anzeige-rahmen2', 'normal-rahmen', 'anzeige-srcdoc', 'eigener-rahmen'].map((i) => getComputedStyle(document.getElementById(i)).visibility).join(','));
+    await bis('pornhub: Werberahmen ausgeblendet', async () => (await rahmen()) === 'hidden,hidden,visible,hidden,visible', 10_000);
+    const hg = () => driver.executeScript(() => ['anzeige-promo-hg', 'anzeige-cam-hg'].map((i) => getComputedStyle(document.getElementById(i)).backgroundImage.includes('/synthetisch/')).join(','));
+    await bis('pornhub: Anzeigen-Hintergruende ausgeblendet', async () => (await hg()) === 'false,false', 15_000);
+    // Pause gibt die Rahmen sofort zurueck
+    await setzeEinstellungen({ pause: true });
+    await bis('pornhub: Pause gibt Rahmen zurueck', async () => (await rahmen()) === 'visible,visible,visible,visible,visible', 5000);
+    await setzeEinstellungen({ pause: false });
+    await bis('pornhub: Rahmen wieder ausgeblendet', async () => (await rahmen()) === 'hidden,hidden,visible,hidden,visible', 10_000);
     const tonAnz = (await stand(['anzeige-ton-video']))[0];
     pruefe(tonAnz.veil === null && tonAnz.opacity === '0', `pornhub: Anzeigen-Video mit Ton nie gezeigt (${JSON.stringify(tonAnz)})`);
     // Firefox blockt Abspielen mit Ton ohne Klick: das Video laedt dann gar nicht. Pruefgroesse ist darum "kein Ton hoerbar" (angehalten oder stumm).

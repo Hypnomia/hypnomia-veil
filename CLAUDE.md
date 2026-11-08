@@ -69,6 +69,7 @@ Ablauf je Auftrag: Bauer, dann Messer, dann Pruefer, Nachbesserung durch Bauer, 
 
 ## Technik (aus ENTSCHEIDUNGEN.md, dort gilt die Langfassung)
 - Manifest V3, WXT als Geruest (ein Code, zwei Manifeste, Firefox-Build inklusive). Fester `key` im Chrome-Manifest (privater Schluessel in `../.lokal/`, nie im Repo). `browser_specific_settings.gecko.id` fuer Firefox.
-- Erkennung im Browser mit onnxruntime-web, kein Netzverkehr ausser Bild-Nachladen der aktuellen Seite und Versions-Check.
+- Erkennung im Browser mit onnxruntime-web, kein Netzverkehr ausser Bild-Nachladen der aktuellen Seite und Versions-Check (nur Chrome). Sichtbar und nur auf Handlung oder mit Hinweis: Werbe-Klicks und Pflicht-Besuche oeffnen einen Tab mit einem Marken-Link (nur `https://` aus `data/links.json`, Entscheidung 22).
+- Referer fuer das Nachladen (Sicherheitspruefung Phase 9 Fund A4, `src/hintergrund/referer.ts`): Regel je genauem Host (keine Unterdomains), haelt 10 Minuten ab dem letzten Setzen, nie fuer die Hosts des Versions-Checks. CSP der Erweiterungsseiten mit `default-src 'self'` (Fund N1, `wxt.config.ts`); `connect-src` bleibt bei `http:` und `https:`, weil der Erkenner fremde Bilder in Erweiterungsseiten nachlaedt (Offscreen-Dokument, Firefox-Hintergrund).
 - Pack-Speicher: IndexedDB mit `unlimitedStorage`.
 - Hide-first: erst verstecken, dann pruefen, dann freigeben.

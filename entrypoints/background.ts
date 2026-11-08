@@ -23,26 +23,15 @@ import { bearbeiteSchrift } from '../src/hintergrund/schrift';
 import { bearbeiteHilfe } from '../src/hintergrund/hilfe';
 import { bearbeiteGruss, raeumeAltenGrussMerker } from '../src/hintergrund/gruss';
 import { starteSymbol } from '../src/hintergrund/symbol';
+import {
+  REFERER_DAUER_MS,
+  erzeugeRefererChrome,
+  erzeugeRefererFirefox,
+  type DnrKlein,
+  type SitzungKlein,
+} from '../src/hintergrund/referer';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
-// Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
-const MAX_REFERER_REGELN = 50;
-// Regel-IDs der Referer-Regeln beginnen hier; neue IDs zaehlen hoch, die kleinste ID ist die aelteste Regel.
-const REGEL_ID_START = 1000;
-const ERLAUBTE_ARTEN = ['image', 'xmlhttprequest', 'media', 'other'] as const;
-
-// Nur ein Host-Name, nie Pfade oder Ports in den Regeln; ein Referer muss eine http(s)-Adresse sein.
-function saubereReferer(host: string, referer: string): { hostname: string; referer: string } | null {
-  try {
-    const hostname = new URL(`https://${host}`).hostname;
-    const r = new URL(referer);
-    if (!hostname || (r.protocol !== 'http:' && r.protocol !== 'https:')) return null;
-    return { hostname, referer: r.href };
-  } catch {
-    return null;
-  }
-}
-
 // Absender einer Nachricht: nur das, was wir lesen (Adresse des Tabs, falls die Nachricht aus einem Tab kommt).
 interface AbsenderMitTab {
   tab?: { id?: number; url?: string };
@@ -112,75 +101,25 @@ function stelleOffscreenSicher(): Promise<void> {
   return lauf;
 }
 
-// Eine Sitzungsregel je Host: alte Regel dieses Hosts ersetzen, bei mehr als MAX_REFERER_REGELN die aelteste entfernen.
-async function schreibeRefererRegel(sauber: { hostname: string; referer: string }): Promise<void> {
-  const dnr = browser.declarativeNetRequest;
-  const vorhandene = (await dnr.getSessionRules()).filter((r) => r.id >= REGEL_ID_START && r.id < REGEL_ID_START + 1_000_000);
-  const entfernen = vorhandene
-    .filter((r) => r.condition.requestDomains?.includes(sauber.hostname))
-    .map((r) => r.id);
-  const uebrig = vorhandene.filter((r) => !entfernen.includes(r.id)).sort((a, b) => a.id - b.id);
-  // Platz schaffen: nach dem Hinzufuegen darf es hoechstens MAX_REFERER_REGELN geben.
-  while (uebrig.length >= MAX_REFERER_REGELN) {
-    const aelteste = uebrig.shift();
-    if (aelteste) entfernen.push(aelteste.id);
+// Referer-Regeln (Sicherheitspruefung Phase 9 Fund A4): genauer Host, Haltezeit, nie die Hosts des Versions-Checks (src/hintergrund/referer.ts).
+// Testbau: storage.local `testRefererDauer` (ms) verkuerzt die Haltezeit, damit Tests den Ablauf sehen.
+async function refererDauer(): Promise<number> {
+  if (import.meta.env.WXT_TESTHAKEN === '1') {
+    const v = (await browser.storage.local.get('testRefererDauer')).testRefererDauer;
+    if (typeof v === 'number' && v > 0) return Math.min(v, REFERER_DAUER_MS);
   }
-  const neueId = Math.max(REGEL_ID_START - 1, ...vorhandene.map((r) => r.id)) + 1;
-  await dnr.updateSessionRules({
-    removeRuleIds: entfernen,
-    addRules: [
-      {
-        id: neueId,
-        priority: 1,
-        action: {
-          type: 'modifyHeaders',
-          requestHeaders: [{ header: 'referer', operation: 'set', value: sauber.referer }],
-        },
-        condition: {
-          // Nur eigene Abrufe der Erweiterung (kein Tab), nur dieser Host.
-          tabIds: [browser.tabs.TAB_ID_NONE],
-          requestDomains: [sauber.hostname],
-          resourceTypes: [...ERLAUBTE_ARTEN],
-        },
-      },
-    ],
-  });
+  return REFERER_DAUER_MS;
 }
 
-// Parallele Anfragen lesen sonst dieselben Regeln und rechnen dieselbe neue ID aus: Aenderungen laufen nacheinander.
-// Scheitert eine, wird einmal neu gelesen und wiederholt (die Regeln koennen sich zwischenzeitlich geaendert haben).
-let refererKette: Promise<unknown> = Promise.resolve();
-
-function setzeRefererChrome(host: string, referer: string): Promise<boolean> {
-  const sauber = saubereReferer(host, referer);
-  if (!sauber) return Promise.resolve(false);
-  const lauf = refererKette.then(async () => {
-    try {
-      await schreibeRefererRegel(sauber);
-    } catch {
-      await schreibeRefererRegel(sauber);
-    }
-    return true;
-  });
-  refererKette = lauf.catch(() => {});
-  return lauf;
-}
-
-// ---------- Firefox: Referer per webRequest ----------
-const refererFirefox = new Map<string, string>();
-
-function setzeRefererFirefox(host: string, referer: string): boolean {
-  const sauber = saubereReferer(host, referer);
-  if (!sauber) return false;
-  refererFirefox.delete(sauber.hostname);
-  refererFirefox.set(sauber.hostname, sauber.referer);
-  while (refererFirefox.size > MAX_REFERER_REGELN) {
-    const aeltester = refererFirefox.keys().next().value;
-    if (aeltester === undefined) break;
-    refererFirefox.delete(aeltester);
-  }
-  return true;
-}
+const refererChrome = import.meta.env.FIREFOX
+  ? null
+  : erzeugeRefererChrome({
+      dnr: browser.declarativeNetRequest as unknown as DnrKlein,
+      sitzung: browser.storage.session as unknown as SitzungKlein,
+      tabIdNone: browser.tabs.TAB_ID_NONE,
+      dauer: refererDauer,
+    });
+const refererFirefox = import.meta.env.FIREFOX ? erzeugeRefererFirefox({ dauer: refererDauer }) : null;
 
 export default defineBackground(() => {
   // Lesung 17 R2-4: Begruessungs-Merker aus 0.9.0 in storage.local (Liste besuchter Erwachsenenseiten) loeschen; er lebt jetzt in storage.session.
@@ -188,7 +127,7 @@ export default defineBackground(() => {
   // Firefox: Erkenner im selben Kontext. Dynamischer Import, im Chrome-Build entfaellt der Zweig samt ORT.
   const erkenner = import.meta.env.FIREFOX
     ? import('../src/erkenner').then((m) => {
-        m.starteErkenner({ setzeReferer: async (host, referer) => void setzeRefererFirefox(host, referer) });
+        m.starteErkenner({ setzeReferer: async (host, referer) => void (await refererFirefox?.setze(host, referer)) });
         return m;
       })
     : null;
@@ -204,7 +143,7 @@ export default defineBackground(() => {
         } catch {
           return {};
         }
-        const referer = refererFirefox.get(hostname);
+        const referer = refererFirefox?.fuer(hostname) ?? null;
         if (!referer) return {};
         const kopf = (details.requestHeaders ?? []).filter((h) => h.name.toLowerCase() !== 'referer');
         kopf.push({ name: 'Referer', value: referer });
@@ -229,6 +168,8 @@ export default defineBackground(() => {
   // Session 8 (Entscheidung 107): keine Umleitung mehr; eine Regel aus Version 0.4.0 wird beim Start entfernt.
   // Firefox hatte die Regel nie und hat seit Session 17 kein declarativeNetRequest-Recht mehr.
   if (!import.meta.env.FIREFOX) raeumeUmleitungAuf();
+  // Fund A4: abgelaufene Referer-Regeln beim Aufwachen des Service Workers entfernen (die Uhr laeuft im Schlaf nicht).
+  void refererChrome?.raeume().catch(() => {});
   starteErsatzStumm();
   starteLeerlauf();
   starteMeldungen();
@@ -252,7 +193,7 @@ export default defineBackground(() => {
         if (import.meta.env.CHROME) await stelleOffscreenSicher();
         return { ok: true };
       case 'referer': {
-        const gesetzt = import.meta.env.FIREFOX ? setzeRefererFirefox(n.host, n.referer) : await setzeRefererChrome(n.host, n.referer);
+        const gesetzt = (await (refererFirefox ?? refererChrome)?.setze(n.host, n.referer)) ?? false;
         return gesetzt ? { ok: true } : { ok: false, fehler: 'ungueltiger Host oder Referer' };
       }
       case 'pause':

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="400" height="220">
+  <!-- Eigenstaendiges SVG-Dokument (oben im Tab, in iframe oder object) mit Bildern: Nacht 18, Paket N1. Testbilder vom Testserver.
+       Waechter wie in svg-inline.html: __svgAufblitzen = ohne Urteil sichtbar, __svgVerborgen = ohne Urteil verborgen (Beleg, dass versteckt wurde). -->
+  <script><![CDATA[
+    window.__svgAufblitzen = 0;
+    window.__svgVerborgen = 0;
+    (function schritt() {
+      setTimeout(function () {
+        var wurzel = document.documentElement;
+        if (wurzel.getAttribute('data-veil-seite') === 'aus') return;
+        var bilder = document.querySelectorAll('image');
+        for (var i = 0; i < bilder.length; i++) {
+          if (bilder[i].getAttribute('data-veil') !== null) continue;
+          if (getComputedStyle(bilder[i]).opacity === '0') window.__svgVerborgen++;
+          else window.__svgAufblitzen++;
+        }
+      }, 0);
+      requestAnimationFrame(schritt);
+    })();
+  ]]></script>
+  <image id="d-href" x="0" y="0" width="200" height="200" href="/testbild/nsfw/IMG_0260.jpg" />
+  <image id="d-sfw" x="200" y="0" width="200" height="200" xlink:href="/synthetisch/3.png" />
+</svg>

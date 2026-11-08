@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Inline-SVG SMIL-Umgehungen</title>
+    <style>
+      body { margin: 0; padding: 8px; }
+      .reihe { display: flex; flex-wrap: wrap; gap: 8px; }
+      svg { display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- SMIL-Umgehungen nach dem Urteil (Nacht 18, Paket N1, Pruefer Runde 2). Alle drei Bilder sind zuerst harmlos (synthetisch) und werden frei;
+         danach loest der Test aus (window.umgehe(art)):
+           umlenken: eine von Anfang an vorhandene Animation (begin="indefinite", zielt ins Leere) wird per href auf das Bild umgelenkt und gestartet,
+           spaet:    eine Animation wird als Kind des Bildes eingefuegt,
+           id:       eine vorhandene Animation zielt auf "#i-id", das Bild bekommt diese id erst spaeter.
+         Jede wechselt die Quelle auf ein Testbild mit Treffer: das Bild darf danach nie frei sein. -->
+    <div class="reihe">
+      <svg width="200" height="200">
+        <image id="i-umlenken" width="200" height="200" href="/synthetisch/8.png" />
+        <set id="umlenker" attributeName="href" to="/testbild/nsfw/IMG_0260.jpg" begin="indefinite" fill="freeze" href="#nichts" />
+      </svg>
+      <svg width="200" height="200"><image id="i-spaet" width="200" height="200" href="/synthetisch/9.png" /></svg>
+      <svg width="200" height="200">
+        <image class="ohne-id" width="200" height="200" href="/synthetisch/10.png" />
+        <set attributeName="href" to="/testbild/nsfw/IMG_0260.jpg" begin="0s" fill="freeze" href="#i-id" />
+      </svg>
+    </div>
+    <script>
+      window.umgehe = function (art) {
+        var SVG = 'http://www.w3.org/2000/svg';
+        if (art === 'umlenken') {
+          var u = document.getElementById('umlenker');
+          u.setAttribute('href', '#i-umlenken');
+          u.beginElement();
+        } else if (art === 'spaet') {
+          var s = document.createElementNS(SVG, 'set');
+          s.setAttribute('attributeName', 'href');
+          s.setAttribute('to', '/testbild/nsfw/IMG_0260.jpg');
+          s.setAttribute('begin', '0s');
+          s.setAttribute('fill', 'freeze');
+          document.getElementById('i-spaet').appendChild(s);
+        } else if (art === 'id') {
+          document.querySelector('.ohne-id').id = 'i-id';
+        }
+      };
+    </script>
+  </body>
+</html>
