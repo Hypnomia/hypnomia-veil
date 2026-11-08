@@ -49,3 +49,181 @@
   border-color: var(--fehler);
   font-weight: 600;
 }
+
+/* ---------- Session 17, Paket C: Karte "Mia Pack" ---------- */
+#stand [hidden] {
+  display: none !important;
+}
+
+#stand h2:focus,
+#stand h3:focus,
+#werbung-frage-titel:focus {
+  outline: 3px solid var(--fokus);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+/* Kaufblock (Fund 1): Preis und zwei Pillenknoepfe mit Logo. */
+.kauf-knoepfe {
+  align-items: stretch;
+}
+
+.kauf-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 18px 0 10px;
+  border: 1px solid var(--v-rosa-200);
+  border-radius: var(--v-r-voll);
+  background: var(--v-glas-stark);
+  color: var(--v-rosa-800);
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: var(--v-schatten-klein);
+}
+
+.kauf-knopf:hover {
+  background: var(--v-weiss);
+}
+
+.kauf-knopf svg {
+  flex: none;
+}
+
+#kauf-preis {
+  font-weight: 700;
+}
+
+.trenner {
+  margin-top: 20px;
+}
+
+/* Eigene Dateiwahl (Fund 6): das Feld ist nur unsichtbar, nicht verschwunden. */
+.pack-wahl {
+  position: relative;
+  display: inline-block;
+  margin: 0 0 6px;
+}
+
+.pack-wahl input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pack-wahl-knopf {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--v-r-voll);
+  background: var(--v-verlauf-akzent);
+  color: var(--v-weiss);
+  font-weight: 800;
+  box-shadow: var(--v-schatten-knopf);
+}
+
+.pack-wahl:has(input:focus-visible) .pack-wahl-knopf {
+  outline: 3px solid var(--fokus);
+  outline-offset: 3px;
+}
+
+.pack-wahl:has(input:disabled) {
+  opacity: 0.55;
+}
+
+.pack-wahl:has(input:disabled) input {
+  cursor: default;
+}
+
+#datei-name {
+  display: block;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+
+/* "Update or replace the pack" zugeklappt. */
+.datei-details {
+  margin: 12px 0;
+}
+
+.datei-details > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--v-rosa-800);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.datei-details.ohne > summary {
+  display: none;
+}
+
+/* Entfernen ganz unten und abgesetzt. */
+.entfernen {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--linie);
+}
+
+#pack-bildreihe-zeile {
+  margin: 12px 0;
+}
+
+#pack-bildreihe-text {
+  margin: 8px 0 0;
+}
+
+/* "Set me up" */
+.einrichten {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--v-weiss);
+  border-radius: var(--v-r-m);
+  background: var(--pastell);
+  box-shadow: var(--v-schatten-klein);
+}
+
+.einrichten h3 {
+  margin-top: 0;
+}
+
+.einrichten .frage {
+  background: var(--v-weiss);
+}
+
+.einrichten h4 {
+  margin: 14px 0 6px;
+  font-size: 15px;
+}
+
+#einrichten select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 40px;
+  padding: 6px 34px 6px 12px;
+  border: 1.5px solid var(--v-rand);
+  border-radius: var(--v-r-s);
+  background: var(--v-weiss) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a2759' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 12px center / 12px 8px no-repeat;
+  color: var(--v-text);
+  font: 700 16px var(--v-schrift-text);
+}
+
+#einrichten .regel {
+  align-items: center;
+}
+
+#einrichten .knoepfe {
+  margin-top: 14px;
+}
+
+.pack-hilfe {
+  margin-top: 14px;
+}

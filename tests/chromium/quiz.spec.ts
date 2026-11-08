@@ -212,6 +212,50 @@ test('Pack importieren (Quiz-Bank und Saetze kommen aus IndexedDB)', async () =>
   }
 });
 
+test('Erster Riegel je Installation erklaert sich (Zeile mit Link zur Hilfe), danach nur das "?" in der Fusszeile; beide fuehren zur Hilfe-Seite', async () => {
+  const hilfe = `chrome-extension://${erweiterungsId}/hilfe.html#quiz`;
+  const s = await frischeSeite();
+  try {
+    await oeffne(s, { frage: 'test-w1' });
+    const a = await bis(s, (x) => x.offen && x.zustand === 'frage');
+    expect(a.erklaerung).toBe('First time? On adult sites I quiz you before videos and reveals. Pause Mia, top right, always lets you out. How my quiz works');
+    expect(a.hilfeHref).toBe(hilfe);
+    expect(a.hilfe.w, '? mindestens 24 breit').toBeGreaterThanOrEqual(24);
+    expect(a.hilfe.h, '? mindestens 24 hoch').toBeGreaterThanOrEqual(24);
+    // Zeile liegt in der Karte und unter der Frage
+    expect(a.erklaerungBox.y).toBeGreaterThan(a.antworten[0].y);
+    expect(a.erklaerungBox.x + a.erklaerungBox.w).toBeLessThanOrEqual(a.karte.x + a.karte.w + 1);
+    expect(a.pause.y, 'Pause bleibt oben').toBeLessThan(a.karte.y + 80);
+    // Der Link in der Zeile oeffnet die Hilfe in einem neuen Tab
+    const [neu] = await Promise.all([context.waitForEvent('page', { timeout: 10_000 }), s.evaluate(() => 0).then(() => clickErklaerung(s, a))]);
+    await neu.waitForLoadState('domcontentloaded').catch(() => undefined);
+    console.log(`chromium quiz: Hilfe-Link der Zeile oeffnet ${neu.url()}`);
+    expect(neu.url()).toBe(hilfe);
+    await neu.close();
+  } finally {
+    await s.close();
+  }
+  // Zweiter Riegel: keine Zeile mehr, das "?" bleibt und fuehrt ebenfalls zur Hilfe
+  const t = await frischeSeite();
+  try {
+    await oeffne(t, { frage: 'test-w1' });
+    const b = await bis(t, (x) => x.offen && x.zustand === 'frage');
+    expect(b.erklaerung).toBeNull();
+    expect(b.hilfeHref).toBe(hilfe);
+    const [neu] = await Promise.all([context.waitForEvent('page', { timeout: 10_000 }), t.mouse.click(b.hilfe.x + b.hilfe.w / 2, b.hilfe.y + b.hilfe.h / 2)]);
+    await neu.waitForLoadState('domcontentloaded').catch(() => undefined);
+    expect(neu.url()).toBe(hilfe);
+    await neu.close();
+  } finally {
+    await t.close();
+  }
+});
+
+async function clickErklaerung(s: Page, a: any): Promise<void> {
+  // Der Link "How my quiz works" steht am Ende der Zeile.
+  await s.mouse.click(a.erklaerungLink.x + a.erklaerungLink.w / 2, a.erklaerungLink.y + a.erklaerungLink.h / 2);
+}
+
 test('Riegel oeffnet: geschlossene Shadow Root, Pause-Knopf sichtbar, Fokus im Riegel, Chibi-Platz mit Pose', async () => {
   const s = await frischeSeite();
   try {

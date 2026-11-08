@@ -21,8 +21,8 @@ interface PackBau {
 const bauModul = '../../scripts/pack/baue-pack.mjs';
 const ladeBau = async (): Promise<PackBau> => (await import(bauModul)) as PackBau;
 
-interface Wort { text: string; an: number; aus: number | null }
-interface Abbild { nr: number; laeuft: boolean; woerter: Wort[]; abbruch?: string | null; abgelehnt?: string }
+interface Wort { text: string; an: number; aus: number | null; schrift?: boolean }
+interface Abbild { nr: number; laeuft: boolean; woerter: Wort[]; abbruch?: string | null; abgelehnt?: string; schriftWarten?: { ms: number; bereit: boolean } | null }
 
 test.describe.configure({ mode: 'serial' });
 
@@ -219,6 +219,12 @@ test('Einzelwort: erscheint in der Mitte, etwa 300 ms, dann weg; Pixel bestaetig
   expect(ende.woerter).toHaveLength(1);
   const w = ende.woerter[0]!;
   expect(DUMMY_WOERTER).toContain(w.text);
+  // Session 17 (Testluecke UEBERGABE-16 Punkt 4): das erste Wort einer frischen Seite erscheint erst mit geladener runder Schrift, oder nach
+  // der Zeitgrenze von 300 ms (Rueckfall Systemschrift). Kam die Schrift rechtzeitig, ist sie beim ersten Wort auch wirklich geladen.
+  console.log(`Einzelwort: Schrift ${w.schrift ? 'geladen' : 'nicht geladen'} beim ersten Wort, gewartet ${JSON.stringify(ende.schriftWarten)}`);
+  expect(ende.schriftWarten).toBeTruthy();
+  if (ende.schriftWarten!.bereit) expect(w.schrift).toBe(true);
+  else expect(ende.schriftWarten!.ms).toBeGreaterThanOrEqual(290);
   const dauer = w.aus! - w.an;
   console.log(`Einzelwort: Sichtdauer ${dauer.toFixed(0)} ms (Abbild)`);
   expect(dauer).toBeGreaterThanOrEqual(280);

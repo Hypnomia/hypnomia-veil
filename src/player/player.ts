@@ -22,7 +22,7 @@ import { zeigeRiegel, type RiegelErgebnis } from '../riegel/riegel';
 import { AdressBeobachter } from '../schleier/adresse';
 import type { KontextLeicht } from '../schleier/schleier';
 import { istStandbildHost, Standbild } from './standbild';
-import { istGeloest, quelleVon, quellSchluessel, vollbildBetrifft, waehleGroessten, willSpielen } from './logik';
+import { istGesteFuer, istGeloest, istListenPfad, quelleVon, quellSchluessel, vollbildBetrifft, waehleGroessten, willSpielen, type Geste } from './logik';
 
 interface Sperre {
   warStumm: boolean; // Ton-Zustand vor der Sperre (folgt Aenderungen, die nicht von uns kommen)
@@ -32,6 +32,7 @@ interface Sperre {
   quelle: string; // Quelle beim Start des Riegels
   zuletzt: number; // Zeitpunkt des letzten Riegelversuchs (Drosselung)
   erwarte: boolean; // wir haben gerade selbst stumm geschaltet: die naechste volumechange-Meldung kommt von uns
+  wartet: boolean; // Autoplay ohne Geste auf einer Listenseite: gesperrt, aber noch kein Riegel (kommt bei Geste oder auf einer Videoseite)
 }
 
 const ATTR_ERSATZ = 'data-veil-ersatz'; // Galerie des Komplett-Ersatzes (src/ersatz/ersatz.ts)
@@ -47,6 +48,8 @@ function adresseFuerAusnahmen(): { hostname: string; pathname: string } {
     return { hostname: '', pathname: '/' };
   }
 }
+// Siehe istListenPfad (logik.ts): Startseite, Suche, Kategorien. Dort loest ein Autoplay ohne Geste keinen Riegel aus.
+const istListenSeite = (): boolean => istListenPfad(adresseFuerAusnahmen().pathname);
 
 export function startePlayer(ctx: KontextLeicht): void {
   let abgebaut = false;
@@ -274,7 +277,8 @@ export function startePlayer(ctx: KontextLeicht): void {
   function pflegeStandbild(ziele?: ReadonlySet<HTMLVideoElement>): void {
     if (!lebt()) return;
     const soll = new Map<HTMLVideoElement, Element>();
-    if (einst && einst.erwachsen.an && aktiv() && erwachsenStatus().liste !== null && istFreigeschaltet(pack, 'erwachsen:vorschau')) {
+    const bildErlaubt = !!pack && istFreigeschaltet(pack, 'erwachsen:vorschau');
+    if (einst && einst.erwachsen.an && aktiv() && erwachsenStatus().liste !== null && (bildErlaubt || [...gesperrt.values()].some((i) => i.wartet))) {
       // Ein Anker bekommt nur ein Standbild (zwei Videos im selben Player: das erste zaehlt), sonst kaempften zwei Hosts um dieselbe Flaeche.
       const belegt = new Set<Element>();
       for (const v of standbildKandidaten(ziele ?? bestimmeZiele(true))) {
@@ -287,7 +291,11 @@ export function startePlayer(ctx: KontextLeicht): void {
         soll.set(v, anker);
       }
     }
-    if (soll.size) standbild.setze(soll, einst!.erwachsen.stufe, pack?.importiert ?? 0);
+    // Wartende Videos (Listenseite, noch keine Geste) behalten ihren Deckel auch ohne Bild: dunkel mit Etikett, wie ein Standbild ohne Foto.
+    const deckel = new Set<HTMLVideoElement>();
+    for (const v of soll.keys()) if (gesperrt.get(v)?.wartet) deckel.add(v);
+    if (!bildErlaubt) for (const v of [...soll.keys()]) if (!deckel.has(v)) soll.delete(v);
+    if (soll.size) standbild.setze(soll, einst!.erwachsen.stufe, pack?.importiert ?? 0, deckel, bildErlaubt);
     else standbild.alleWeg();
     // Sperren (Bild-in-Bild, Vollbild) nur fuer Videos, die wirklich einen Host haben: ohne Bild (gescheitert, Groesse 0, Anker belegt) gilt
     // "wie heute" (K2, zweite Lesung, Fund 5).
@@ -322,7 +330,7 @@ export function startePlayer(ctx: KontextLeicht): void {
   function sperre(v: HTMLVideoElement, wollte: boolean): Sperre {
     let info = gesperrt.get(v);
     if (!info) {
-      info = { warStumm: v.muted, wollte: false, laeuft: false, abbruch: null, quelle: quelle(v), zuletzt: -Infinity, erwarte: false };
+      info = { warStumm: v.muted, wollte: false, laeuft: false, abbruch: null, quelle: quelle(v), zuletzt: -Infinity, erwarte: false, wartet: false };
       gesperrt.set(v, info);
     }
     if (wollte) info.wollte = true;
@@ -404,8 +412,54 @@ export function startePlayer(ctx: KontextLeicht): void {
     keinQuiz = false;
   }
 
+  // Echte Gesten der Person (Zeigen, Tippen, Taste): nur vertrauenswuerdige Ereignisse, die Seite kann sie nicht erzeugen.
+  let geste: Geste | null = null;
+  function beiGeste(e: Event): void {
+    if (!e.isTrusted) return;
+    let x = 0;
+    let y = 0;
+    let taste = e.type === 'keydown';
+    const t = (e as TouchEvent).touches?.[0];
+    if (t) {
+      x = t.clientX;
+      y = t.clientY;
+    } else if (typeof (e as MouseEvent).clientX === 'number') {
+      x = (e as MouseEvent).clientX;
+      y = (e as MouseEvent).clientY;
+      if (e.type === 'click' && (e as MouseEvent).detail === 0) taste = true; // Enter oder Leertaste auf einem Knopf
+    }
+    geste = { t: performance.now(), taste, x, y };
+  }
+  const GESTEN = ['pointerdown', 'touchstart', 'keydown', 'click'];
+  // Fund 6: die Horcher stehen von Anfang an (document_start) als Capture auf window, vor den Skripten der Seite, und nicht erst bei `verbinde`:
+  // ein Capture-Horcher der Seite auf window, der Zeiger oder Tasten stoppt (verbreitet in Playern), liefe sonst davor, und es gaebe nie eine Geste.
+  // Sie merken nur den Zeitpunkt echter Gesten und kosten sonst nichts.
+  for (const g of GESTEN) window.addEventListener(g, beiGeste, true);
+  function hatGeste(v: HTMLVideoElement): boolean {
+    if (!geste) return false;
+    const flaechen = [];
+    try {
+      for (const el of new Set<Element>([v, ankerFuer(v)])) {
+        const r = el.getBoundingClientRect();
+        flaechen.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      }
+    } catch {
+      // Element weg
+    }
+    return istGesteFuer(geste, performance.now(), flaechen);
+  }
+
   async function starteRiegel(v: HTMLVideoElement, info: Sperre): Promise<void> {
     if (info.laeuft) return;
+    // Listenseite: nur eine echte Geste der Person oeffnet den Riegel. Ein Autoplay bleibt angehalten und verdeckt (Standbild), ohne Riegel.
+    if (istListenSeite() && !hatGeste(v)) {
+      const neu = !info.wartet;
+      info.wartet = true;
+      // Ein wartendes Video hat keinen Riegel: sein Standbild (oder, wenn das fehlt, ein schlichter dunkler Deckel) verdeckt es (Fund 8).
+      if (neu) pflegeStandbild();
+      return;
+    }
+    info.wartet = false;
     const jetzt = performance.now();
     if (jetzt - info.zuletzt < RIEGEL_ABSTAND_MS) return;
     info.zuletzt = jetzt;
@@ -484,6 +538,8 @@ export function startePlayer(ctx: KontextLeicht): void {
       if (gesperrt.has(v) || !ungeloest(v) || quelle(v) === '' || !willSpielen(v)) continue;
       void starteRiegel(v, sperre(v, true));
     }
+    // Gesperrte, die auf eine Videoseite gewartet haben (Einzelseiten-App: Adresswechsel ohne Neuladen): jetzt bekommen sie den Riegel.
+    if (!istListenSeite()) for (const [v, i] of [...gesperrt]) if (i.wartet && !i.laeuft) void starteRiegel(v, i);
     const ziele = bestimmeZiele(haltefest);
     const nurTreffer = trefferBereit;
     for (const v of [...gesperrt.keys()]) {
@@ -802,6 +858,7 @@ export function startePlayer(ctx: KontextLeicht): void {
     gebeAlleFrei(false);
     standbildWeg();
     trenne();
+    for (const g of GESTEN) window.removeEventListener(g, beiGeste, true);
     document.removeEventListener('veil-wurzel', beiWurzelHinweis, true);
     ersatzBeobachter.disconnect();
     adresse.stopp();

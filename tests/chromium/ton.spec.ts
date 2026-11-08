@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TON_TEXTE } from '../../src/ton/texte';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -163,6 +164,9 @@ test('Einstellungsseite ohne Pack: Abschnitt Sound, Hinweis, Probe ruht, Regler 
   const s = await extSeite();
   try {
     await expect(s.locator('#ton-titel')).toHaveText(TON_TEXTE.titel);
+    // Phase 9 (Fund 4): ohne Pack ist Sound zugeklappt; "Set them now" klappt auf.
+    await expect(s.locator('#ton-zu-knopf')).toBeVisible();
+    await oeffneZugeklapptes(s);
     await expect(s.locator('#ton')).toHaveAttribute('aria-labelledby', 'ton-titel');
     await expect(s.locator('#ton-an')).not.toBeChecked();
     await expect(s.locator('#ton-lautstaerke')).toHaveValue('60');

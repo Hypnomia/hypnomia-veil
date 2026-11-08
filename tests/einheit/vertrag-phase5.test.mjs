@@ -21,7 +21,7 @@ import { baueDummyPack, DUMMY_WERBUNG } from '../../scripts/pack/baue-pack.mjs';
 import { DUMMY_TEXTE } from '../../scripts/pack/dummy-inhalte.mjs';
 import { readFileSync } from 'node:fs';
 
-const VERSION = '0.8.2';
+const VERSION = '0.9.0';
 const kodiere = (t) => new TextEncoder().encode(t);
 const LIZENZ = { name: 'lizenz.txt', typ: 'text/plain', daten: kodiere('Lizenz'), rolle: 'lizenz' };
 const kopf = (freischaltungen) => ({ id: 't', version: '1.0.0', titel: 'T', erstellt: 'x', mindestVeil: VERSION, freischaltungen });
@@ -103,13 +103,24 @@ test('Satz-Gruppen: Blitzwoerter kurz, Werbe-Kennzeichnung nur mit Mia', () => {
 
 test('Einstellungen kontrolle: Standard und Begrenzung', () => {
   // Session 10 ergaenzt tabtitel, cursor, meldungen, besuche, zeiten (vertrag-session10.test.mjs).
-  const neu = { tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] };
-  assert.deepEqual(STANDARD.kontrolle, { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, ...neu });
+  // Session 17 (Entscheidung 179): Werbung ab Werk aus, `werbungGefragt` merkt die einmalige Frage.
+  // Session 17 (Fund 13): `werbungAus` ist die Liste der Hosts, auf denen nur die Werbung ausbleibt.
+  const neu = { werbungGefragt: false, werbungAus: [], tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] };
+  assert.deepEqual(STANDARD.kontrolle, { werbung: false, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, ...neu });
   assert.deepEqual(vervollstaendige({}).kontrolle, STANDARD.kontrolle);
   const k = vervollstaendige({ kontrolle: { werbung: false, blitz: 'dauernd', leerlauf: 'ja', leerlaufMinuten: 0.2 } }).kontrolle;
   assert.deepEqual(k, { werbung: false, blitz: 'selten', leerlauf: true, leerlaufMinuten: 1, ...neu });
   assert.equal(vervollstaendige({ kontrolle: { leerlaufMinuten: 999 } }).kontrolle.leerlaufMinuten, 60);
   assert.equal(vervollstaendige({ kontrolle: { blitz: 'oft', leerlaufMinuten: 7.4 } }).kontrolle.leerlaufMinuten, 7);
+  // Ein gespeichertes Ja bleibt, eine kaputte Antwort zaehlt als nicht gefragt.
+  assert.deepEqual(
+    [vervollstaendige({ kontrolle: { werbung: true, werbungGefragt: true } }).kontrolle.werbung, vervollstaendige({ kontrolle: { werbungGefragt: 'ja' } }).kontrolle.werbungGefragt],
+    [true, false],
+  );
+  // werbungAus: kleingeschrieben, bereinigt, ohne Doppelte; kaputte Werte werden zur leeren Liste
+  assert.deepEqual(vervollstaendige({ kontrolle: { werbungAus: [' Example.COM ', 'example.com', 7, '', 'a.test'] } }).kontrolle.werbungAus, ['example.com', 'a.test']);
+  assert.deepEqual(vervollstaendige({ kontrolle: { werbungAus: 'example.com' } }).kontrolle.werbungAus, []);
+  assert.deepEqual(vervollstaendige({}).kontrolle.werbungAus, []);
 });
 
 test('Wortplan: 185 ms Abstand, hoechstens 12 Woerter, hoechstens 2500 ms', () => {

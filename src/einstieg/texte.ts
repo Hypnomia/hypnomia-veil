@@ -14,6 +14,11 @@ export const TEXT = {
     'Some of my tricks flash words or spin a spiral across your screen. I never go past 3 full-screen changes per second, and Calm mode slows my spiral and turns flash words off. Limits aren’t a guarantee, though. If any of this could harm you, stop here and remove me.',
   warnungEntfernen: 'Want out? Removing me is easy:',
   warnungOk: 'I understand',
+  // Fund 8: Calm mode gleich auf der Warnseite anbieten.
+  warnungRuhig: 'Calm mode on, then continue',
+  // Fund 19: Etappen unter der Bahn, die aktuelle ist fett.
+  etappen: { warnung: 'Safety', alter: 'Age', einwilligung: 'Consent', interview: 'Questions' },
+  etappenAria: 'Steps',
 
   alterTitel: 'Adults only',
   alterFrage: 'I’m strictly for grown-ups. Are you 18 or older, and is adult content legal where you are?',
@@ -48,7 +53,7 @@ export const TEXT = {
   // Fund 4: je Seite ein Satz, was das Pack hier zeigt, und ein Link zum Pack-Abschnitt der Einstellungen.
   ohnePack4: 'Set these now. Once the Mia Pack is in, my own pictures replace the thumbnails and my quiz gets its questions.',
   ohnePack5: 'Set these now. Once the Mia Pack is in, my flash words get their words, my spiral and my pointer show up, and my sounds can play.',
-  packLink: 'Add the Mia Pack',
+  packLink: 'Get the Mia Pack',
 
   i1Titel: 'How suspicious am I?',
   i1Text: 'When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.',
@@ -76,6 +81,7 @@ export const TEXT = {
   stilBlur: 'Blur',
   stilPatch: 'Mia patch',
   stilPatchGesperrt: 'Mia patch unlocks with the Mia Pack.',
+  // Fund 8: Calm mode steht ohne Pack auf Interview-Seite 3.
   ruhigTitel: 'Calm mode',
   ruhigText: 'slower spiral, no moving or flashing words',
 
@@ -105,12 +111,28 @@ export const TEXT = {
   // Fund 3: was ab Werk schon an ist und nicht abgefragt wird.
   // Fund 3: nennt nur, was gerade wirklich an ist.
   auchAnNamen: { werbung: 'my ads', tabtitel: 'my tab titles', meldungen: 'my little notes' },
-  auchAn: (namen: readonly string[]) => `Also on: ${namen.join(', ')}. Change them in the settings.`,
+  // Fund 21: eigener Absatz, der Link fuehrt zu den Einstellungen.
+  auchAn: (namen: readonly string[]) => `Also on: ${namen.join(', ')}.`,
+  auchAnLink: 'Change them in the settings',
 
   endeTitel: 'That’s everything.',
   endeText: 'I’m already on watch. The Mia Pack is what makes you properly mine, and all of this waits in the settings.',
   endeTextMitPack: 'I’m already on watch. Your Mia Pack is in, so I’m properly in charge. All of this waits in the settings.',
-  endePack: 'Add the Mia Pack',
+  endePack: 'Get the Mia Pack',
   endeEinstellungen: 'All settings',
   endeSchliessen: 'Close',
+  endeHilfe: 'Help and guides',
+  // Fund 3: Checkliste zum Abschluss, je Browser erkannt.
+  endeListeAria: 'Three things to know',
+  endePinTitel: 'Pin me.',
+  endePinChrome: 'Click the puzzle piece next to the address bar, then the pin next to HYPNOMIA VEIL. In Edge it may be an eye.',
+  endePinFirefox: 'Click the puzzle piece in the toolbar, then the gear next to HYPNOMIA VEIL, and choose Pin to Toolbar.',
+  endePinTitelAndroid: 'Find me.',
+  endePinAndroid: 'Firefox menu (three dots), Extensions, HYPNOMIA VEIL.',
+  endePinLink: 'More on pinning',
+  endePauseTitel: 'Pause any time.',
+  endePauseNurPopup: 'Pause Mia, at the top of my popup.',
+  endePauseKuerzel: (kuerzel: string) => `Pause Mia in my popup, or ${kuerzel}.`,
+  endeVersuchTitel: 'Try me.',
+  endeVersuch: 'Open any page with pictures and watch me veil them.',
 } as const;

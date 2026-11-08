@@ -6,7 +6,7 @@ import type { PackVergleich } from '../../src/pack/ersetzen.ts';
 export const NICHTS_GESPEICHERT = ' Nothing was stored.';
 
 export const TEXT_EINSTIEG_ZUERST = 'Meet me first, then bring the pack. Nothing was stored. Use the button above.';
-export const TEXT_MEHRERE_DATEIEN = 'One file at a time, please. Nothing was read and nothing was stored. Drop just the one pack file.';
+export const TEXT_MEHRERE_DATEIEN = 'One file at a time. Nothing was read and nothing was stored. Drop just the one pack file.';
 export const TEXT_KEINE_DATEI = 'That wasn’t a file I can read, so nothing happened. Drop a single .miapack file, or use the button.';
 export const TEXT_ORDNER = 'That’s a folder, and I only take a single pack file. Nothing was read and nothing was stored. Drop the .miapack file itself.';
 export const TEXT_BESCHAEFTIGT = 'Hold on, I’m still busy with the last one. Nothing was changed.';
@@ -115,3 +115,33 @@ export const textFortschrittSpeichern = (fertig: number, gesamt: number): string
 export const textPatchBilder = (n: number): string => `${n} patch ${n === 1 ? 'picture' : 'pictures'}`;
 export const textLizenzKopf = (titel: string, version: string, bilder: number, groesse: number): string =>
   `${titel}, version ${version}, ${textPatchBilder(bilder)}, ${megabyte(groesse)}. Everything checked out.`;
+
+// ---------- Session 17, Paket C: Karte "Mia Pack" (Entwuerfe, der Texter liest gegen) ----------
+export const TEXT_KARTE_TITEL = 'Mia Pack';
+export const TEXT_NEU_EINLEITUNG =
+  'The Mia Pack holds my pictures, sounds and words, and it unlocks the rest of me. I check it here and keep it on this device only. It never leaves your browser.';
+export const TEXT_KERN = 'This is me dressed for the office. The Mia Pack is me off duty.';
+export const TEXT_KAUF_TITEL = 'Get the Mia Pack';
+export const TEXT_KAUF_PREIS = '€9.99, paid once, and later versions are free for you. Or included in my Hypnotic Pet tier, €10 a month.';
+export const TEXT_KAUF_PATREON = 'Get it on Patreon';
+export const TEXT_KAUF_SUBSCRIBESTAR = 'Get it on SubscribeStar';
+export const TEXT_KAUF_TRENNER = 'Already have the file?';
+export const TEXT_KNOPF_DATEI = 'Choose the pack file';
+export const TEXT_DATEI_KEINE = 'No file chosen yet';
+export const TEXT_KARTE_ERSETZEN = 'Update or replace the pack';
+export const TEXT_KARTE_HILFE = 'How the pack works';
+export const TEXT_BILDREIHE = 'A few of my pictures from your pack.';
+
+// "Set me up" und die Frage nach der Werbung
+export const TEXT_EINRICHTEN_TITEL = 'Set me up';
+export const TEXT_EINRICHTEN_TEXT = 'Now that I’m in, tell me how far to go. Each answer saves right away, and you can change it later under Adult sites and Mia’s control.';
+export const TEXT_EINRICHTEN_FERTIG = 'Done';
+export const TEXT_EINRICHTEN_SPAETER = 'Skip';
+export const TEXT_EINRICHTEN_SPAETER_HINWEIS = 'Skip keeps my defaults for anything you haven’t set. You can change it all later.';
+export const TEXT_EINRICHTEN_WARNUNG = 'Flash words and my spiral move across your screen. Not for you if you have photosensitive epilepsy or are prone to seizures. Leave both off, or turn on Calm mode under Mia’s control.';
+export const TEXT_EINRICHTEN_WARNUNG_OK = 'I understand';
+export const TEXT_WERBUNG_TITEL = 'Show my ads?';
+export const TEXT_WERBUNG_TEXT =
+  'I can swap the ad spaces on other sites for my own little posters, always labeled “Mia’s ad” and linking only to my pages. Nothing about you leaves your browser. Change it any time in my settings, under Mia’s control.';
+export const TEXT_WERBUNG_JA = 'Yes, show them';
+export const TEXT_WERBUNG_NEIN = 'No ads';

@@ -4,7 +4,8 @@
 // vor der Seite, ein Satz da) und antwortet `{ gezeigt }`. Es gibt keinen Takt auf der Seite: nur den Nachrichten-Horcher, einen fruehen
 // passiven Schutz-Horcher (ab document_start), der ohne stehende Meldung sofort zurueckkehrt und nur Ereignisse AUF der Meldung versteckt
 // (Bewegung, Rad und Beruehrung ausserhalb gehen immer an die Seite), und, solange eine Meldung steht, einen kurzen Zeitgeber (200 ms).
-import { beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../einstellungen';
+import { aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../einstellungen';
+import { seiteFuer } from '../adapter/liste';
 import type { ChibiPose } from '../chibi';
 import { andereVorDerSeite, beiBelegtWechsel, istOberstesFenster, kontrolleErlaubt, meldeBelegt, ruhigGewuenscht } from '../kontrolle/gemeinsam';
 import { MELDUNG_SICHT_MS } from '../kontrolle/grenzen';
@@ -22,10 +23,20 @@ import { PACK_SPEICHER_SCHLUESSEL, kurzAusRoh, ladePackKurz, type PackKurz } fro
 import { beiLokalerPause, meldeLokalePause } from '../pause-lokal';
 import { fuelleSatz, pruefeTexte } from '../quiz/vertrag';
 import { TESTHAKEN } from '../schleier/konstanten';
+import { grussSchonGezeigt, merkeGruss } from './gruss-merker';
 import type { KontextLeicht } from '../schleier/schleier';
 import { MeldungAnsicht } from './ansicht';
 import { GRUPPE_JE_ANLASS, POSE_JE_ANLASS, waehleSatz } from './logik';
 import { schreibeAbbild, schreibeAntwort, testMeldung } from './testspur';
+import { WENIGER_SCHLUESSEL, beiAblauf, beiSchliessen, fragtJetzt, nachFrage, vervollstaendigeWeniger, type WenigerStand } from './weniger';
+
+// Begruessung auf Erwachsenenseiten (Wunsch der Inhaberin, Session 17): ein Anlass nur der Seite, nicht des Hintergrunds.
+type Anlass = MeldungAnlass | 'gruss';
+const GRUSS_GRUPPE = 'begruessung';
+const GRUSS_POSE: ChibiPose = 'jubeln';
+const GRUSS_VERZOEGERUNG_MS = 2500;
+// Testmarke in der Adresse: nur im Testbau, im Release-Bau bleibt weder der Name noch die Pruefung stehen.
+const GRUSS_TESTMARKE: string = TESTHAKEN ? 'veil-gruss' : '';
 
 const LADE_FRIST_MS = 5000;
 const CHIBI_FRIST_MS = 1200;
@@ -49,8 +60,9 @@ export function starteMeldungen(ctx: KontextLeicht): void {
   let aktuelleEinstellungen: Einstellungen | null = null;
   let aktuellesPack: PackKurz | null = null;
   let texteGeladen: { schluessel: string; gruppen: Record<string, string[]> } | null = null;
-  const letzterSatz = new Map<MeldungAnlass, string>();
-  let anlassSteht: MeldungAnlass | null = null;
+  const letzterSatz = new Map<Anlass, string>();
+  let anlassSteht: Anlass | null = null;
+  let wenigerSteht = false;
   let gezeigtZaehler = 0;
   let entscheidungen = 0;
   let ergebnis = '';
@@ -80,6 +92,8 @@ export function starteMeldungen(ctx: KontextLeicht): void {
       deckkraft: ansicht ? ansicht.deckkraft() : null,
       host: ansicht ? ansicht.rect() : null,
       schliessen: ansicht ? ansicht.schliessenRect() : null,
+      weniger: ansicht ? ansicht.wenigerRect() : null,
+      wenigerFrage: wenigerSteht,
       fokusImHost: ansicht ? document.activeElement === ansicht.host : false,
       sichtbarSeit,
       offeneHoerer,
@@ -103,6 +117,24 @@ export function starteMeldungen(ctx: KontextLeicht): void {
     }
   }
 
+  // ---------- "Fewer notes?" (Fund 25) ----------
+  let wenigerKette: Promise<unknown> = Promise.resolve();
+  function aendereWeniger(f: (s: WenigerStand) => WenigerStand): Promise<void> {
+    const schritt = wenigerKette.then(async () => {
+      const alt = vervollstaendigeWeniger((await browser.storage.local.get(WENIGER_SCHLUESSEL))[WENIGER_SCHLUESSEL]);
+      await browser.storage.local.set({ [WENIGER_SCHLUESSEL]: f(alt) });
+    });
+    wenigerKette = schritt.catch(() => undefined);
+    return schritt.catch(() => undefined);
+  }
+  async function leseWeniger(): Promise<WenigerStand> {
+    try {
+      return vervollstaendigeWeniger((await browser.storage.local.get(WENIGER_SCHLUESSEL))[WENIGER_SCHLUESSEL]);
+    } catch {
+      return vervollstaendigeWeniger(null);
+    }
+  }
+
   // ---------- Ende ----------
   function beende(grund: string): void {
     const a = ansicht;
@@ -113,6 +145,10 @@ export function starteMeldungen(ctx: KontextLeicht): void {
     if (wache) clearInterval(wache);
     wache = null;
     a.entferne();
+    wenigerSteht = false;
+    // Fund 25: Schliessen mit dem Kreuz zaehlt, jedes andere Ende (Zeit, Pause, ...) unterbricht die Folge.
+    if (grund === 'schliessen') void aendereWeniger((s) => beiSchliessen(s, Date.now()));
+    else if (grund === 'zeit') void aendereWeniger((s) => beiAblauf(s));
     const liste = aufraeumen;
     aufraeumen = [];
     for (const f of liste) {
@@ -158,6 +194,11 @@ export function starteMeldungen(ctx: KontextLeicht): void {
     if (e.type === 'click') {
       const m = e as MouseEvent;
       if (a.trifftSchliessen(m.clientX, m.clientY)) beende('schliessen');
+      else if (a.trifftWeniger(m.clientX, m.clientY)) {
+        // Die Person will weniger: Meldungen aus. Die Meldung geht mit der Einstellung (pruefeWeiter); sofort schliessen schadet nicht.
+        void aendereEinstellungen((alt) => ({ kontrolle: { ...alt.kontrolle, meldungen: false } })).catch(() => undefined);
+        beende('weniger');
+      }
     }
   }
   const fruehListe: Array<() => void> = [];
@@ -205,7 +246,7 @@ export function starteMeldungen(ctx: KontextLeicht): void {
   }
 
   // ---------- Anzeigen ----------
-  async function zeige(anlass: MeldungAnlass, zahl: number | undefined): Promise<boolean> {
+  async function zeige(anlass: Anlass, zahl: number | undefined): Promise<boolean> {
     const empfangen = performance.now();
     if (!lebt() || ansicht) return false;
     const [e, pack] = await Promise.all([ladeEinstellungen(), ladePackKurz()]);
@@ -222,17 +263,19 @@ export function starteMeldungen(ctx: KontextLeicht): void {
     if (grund) return abgesagt(grund);
     if (anlass === 'zensiert' && (typeof zahl !== 'number' || !Number.isFinite(zahl))) return abgesagt('zahl');
     const gruppen = await holeTexte(pack!);
-    const satzRoh = waehleSatz(gruppen[GRUPPE_JE_ANLASS[anlass]] ?? [], Math.random(), letzterSatz.get(anlass));
+    const satzRoh = waehleSatz(gruppen[anlass === 'gruss' ? GRUSS_GRUPPE : GRUPPE_JE_ANLASS[anlass]] ?? [], Math.random(), letzterSatz.get(anlass));
     if (!satzRoh) return abgesagt('kein-satz');
     const satz = fuelleSatz(satzRoh, { count: zahl });
-    const pose = POSE_JE_ANLASS[anlass] as ChibiPose;
+    const pose = (anlass === 'gruss' ? GRUSS_POSE : POSE_JE_ANLASS[anlass]) as ChibiPose;
+    let fragt = false;
     const bildLauf = ladeChibi(pose);
     const bild = await Promise.race([bildLauf, new Promise<null>((ok) => setTimeout(() => ok(null), CHIBI_FRIST_MS))]);
     // Nach dem Warten Einstellungen und Pack frisch lesen: eine Pause, ein Schalter oder ein Pack-Wechsel in der Zwischenzeit zaehlt.
     try {
-      const [e2, pack2] = await Promise.all([ladeEinstellungen(), ladePackKurz()]);
+      const [e2, pack2, weniger] = await Promise.all([ladeEinstellungen(), ladePackKurz(), leseWeniger()]);
       aktuelleEinstellungen = e2;
       aktuellesPack = pack2;
+      fragt = anlass !== 'gruss' && fragtJetzt(weniger, Date.now());
     } catch {
       return abgesagt('lesen');
     }
@@ -250,6 +293,11 @@ export function starteMeldungen(ctx: KontextLeicht): void {
     abgelaufen = false;
     endeGrund = '';
     meldeBelegt('meldung', true);
+    if (fragt) {
+      a.zeigeWeniger();
+      wenigerSteht = true;
+      void aendereWeniger((s) => nachFrage(s, Date.now()));
+    }
     if (bild) a.setzeBild(bild);
     else void bildLauf.then((u) => lebt() && ansicht === a && u && (a.setzeBild(u), abbild()));
     meldeWachen();
@@ -363,8 +411,28 @@ export function starteMeldungen(ctx: KontextLeicht): void {
     abbild();
   }
 
+  // ---------- Begruessung auf Erwachsenenseiten ----------
+  // Hoechstens einmal je Host in 30 Minuten (Speicher des Skripts und storage.local, nie der Speicher der Seite; src/meldungen/gruss-merker.ts),
+  // nur mit Meldungen an (dieselben Bedingungen wie jede Meldung) und nie, wenn die Galerie des Komplett-Ersatzes ohnehin begruesst. Im Testbau nur mit `veil-gruss` in der Adresse, damit fremde Tests ungestoert bleiben.
+  const grussUhr = setTimeout(() => void gruesse(), GRUSS_VERZOEGERUNG_MS);
+  async function gruesse(): Promise<void> {
+    try {
+      if (!lebt()) return;
+      if (TESTHAKEN && !location.search.includes(GRUSS_TESTMARKE)) return;
+      const host = location.hostname;
+      if (await grussSchonGezeigt(host)) return;
+      const e = await ladeEinstellungen();
+      if (!e.erwachsen.an || e.erwachsen.komplettErsatz || seiteFuer(location.href, e.erwachsen.eigeneSeiten) === null) return;
+      if (!(await zeige('gruss', undefined))) return;
+      await merkeGruss(host);
+    } catch {
+      // keine Begruessung
+    }
+  }
+
   ctx.onInvalidated(() => {
     abgebaut = true;
+    clearTimeout(grussUhr);
     beende('kontext');
     for (const f of fruehListe.splice(0)) f();
     try {

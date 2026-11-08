@@ -120,7 +120,10 @@ export function starteBlitz(ctx: KontextLeicht): void {
     if (g.woerter.length === 0) return 'keine-woerter';
     // Das erste Wort erst zeigen, wenn die Schrift bereit ist (sonst wechselt sie sichtbar von der Systemschrift); hoechstens SCHRIFT_GRENZE_MS,
     // danach Rueckfall Systemschrift. Der Wortplan und die Blitz-Grenzen bleiben unberuehrt: die Wartezeit liegt vor dem Zeigen.
-    await mitZeitgrenze(ladeSeitenSchriften(), SCHRIFT_GRENZE_MS, false);
+    const vorSchrift = performance.now();
+    const bereit = await mitZeitgrenze(ladeSeitenSchriften(), SCHRIFT_GRENZE_MS, false);
+    // Testbau (Session 17, Testluecke UEBERGABE-16 Punkt 4): Wartezeit und Ergebnis fuer das Abbild des naechsten Laufs.
+    if (TESTHAKEN) schriftWarten = { ms: Math.round(performance.now() - vorSchrift), bereit };
     // Waehrend der Awaits kann sich etwas geaendert haben.
     if (epoche !== g.ep) return 'geaendert';
     return augenblickGrund(g.e) ?? g;
@@ -132,8 +135,18 @@ export function starteBlitz(ctx: KontextLeicht): void {
   let wortEl: HTMLElement | null = null;
   let rahmenId = 0;
   let letztesWort: string | null = null;
-  let lauf: { gezeigt: Array<{ text: string; an: number; aus: number | null }>; beenden: (grund: string) => void } | null = null;
+  let lauf: { gezeigt: Array<{ text: string; an: number; aus: number | null; schrift?: boolean }>; beenden: (grund: string) => void } | null = null;
   let nr = 0;
+  // Nur Testbau: wie lange vor dem Lauf auf die Schrift gewartet wurde, und ob sie kam.
+  let schriftWarten: { ms: number; bereit: boolean } | null = null;
+  // Nur Testbau: ist die runde Schrift dieser Seite in document.fonts geladen (fonts.check allein beweist nichts, Lesung S1 Nr. 1)?
+  const schriftGeladen = (): boolean => {
+    try {
+      return [...document.fonts].some((f) => f.family.replace(/["']/g, '') === SEITEN_ROUNDED && f.status === 'loaded');
+    } catch {
+      return false;
+    }
+  };
 
   const abbild = (inhalt: Record<string, unknown>): void => {
     if (!TESTHAKEN || !testhakenAktiv()) return;
@@ -201,7 +214,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
     meldeBelegt('blitz', true);
     melde({ art: 'blitz', woerter: plan.length }); // Session 11: Ledger und Ton (Trigger)
     baueHost();
-    const gezeigt: Array<{ text: string; an: number; aus: number | null }> = [];
+    const gezeigt: Array<{ text: string; an: number; aus: number | null; schrift?: boolean }> = [];
     let naechster = 0;
     let t0: number | null = null;
     let letzterAn = -Infinity;
@@ -212,7 +225,9 @@ export function starteBlitz(ctx: KontextLeicht): void {
     let hartTimer: ReturnType<typeof setTimeout> | null = null;
     const geplant = plan.map((w) => ({ text: w.text, beginnMs: w.beginnMs, dauerMs: w.dauerMs }));
 
-    const schreibe = (laufend: boolean, abbruch?: string): void => abbild({ laeuft: laufend, woerter: gezeigt, plan: geplant, abbruch: abbruch ?? null });
+    const warten = schriftWarten;
+    const schreibe = (laufend: boolean, abbruch?: string): void =>
+      abbild({ laeuft: laufend, woerter: gezeigt, plan: geplant, abbruch: abbruch ?? null, ...(TESTHAKEN ? { schriftWarten: warten } : {}) });
 
     const verberge = (t: number): void => {
       if (!sichtbar) return;
@@ -273,7 +288,7 @@ export function starteBlitz(ctx: KontextLeicht): void {
           wortTimer = setTimeout(() => verberge(performance.now()), Math.max(0, sichtbarBis - performance.now()));
           if (!hartTimer) hartTimer = setTimeout(() => beende(naechster >= geplant.length ? 'fertig' : 'zeit'), SCHWARM_MAX_MS - FRAME_RESERVE_MS);
           if (gezeigt[gezeigt.length - 1]?.aus === null) gezeigt[gezeigt.length - 1]!.aus = t;
-          gezeigt.push({ text: w.text, an: t, aus: null });
+          gezeigt.push(TESTHAKEN ? { text: w.text, an: t, aus: null, schrift: schriftGeladen() } : { text: w.text, an: t, aus: null });
           schreibe(true);
         }
       }

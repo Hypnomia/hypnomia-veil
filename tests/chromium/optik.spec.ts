@@ -7,6 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -84,6 +85,30 @@ test('Popup bei 360 px: kein waagrechtes Scrollen, Pause sichtbar, Schrift gelad
   await s.close();
 });
 
+// Phase 9, Paket A (Fund 2): ohne Aufklappen hoechstens 600 px hoch (Chrome schneidet das Popup dort ab), aufgeklappt kein waagrechtes Scrollen.
+test('Popup bei 360 px mit einer Webseite: ohne Aufklappen hoechstens 600 px, aufgeklappt ohne waagrechtes Scrollen', async () => {
+  const web = await context.newPage();
+  await web.goto(`http://localhost:${process.env.VEIL_FIXTURE_PORT ?? 47173}/hello.html`);
+  const s = await context.newPage();
+  await s.setViewportSize({ width: 360, height: 1400 });
+  await s.goto(url('popup.html'));
+  await s.evaluate((o) => (globalThis as any).chrome.storage.local.set(o), FERTIG);
+  await s.evaluate(() => { localStorage.removeItem('veil-popup-aendern'); return (globalThis as any).chrome.storage.local.remove(['pack', 'einstellungen']); });
+  await web.bringToFront();
+  await s.reload();
+  await expect(s.locator('#diese-seite-name')).toHaveText('localhost');
+  await s.waitForTimeout(400);
+  const hoehe = await s.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height));
+  console.log(`optik popup: Hoehe ohne Aufklappen ${hoehe} px bei 360 px Breite`);
+  expect(hoehe, 'Popup ohne Aufklappen').toBeLessThanOrEqual(600);
+  await s.locator('#aendern').click();
+  await expect(s.locator('#zonen')).toBeVisible();
+  pruefe('popup aufgeklappt', await miss(s), false);
+  await s.evaluate(() => localStorage.removeItem('veil-popup-aendern'));
+  await s.close();
+  await web.close();
+});
+
 test('Einstellungsseite bei 360 px: oben und ganz unten, Ziele 44 px', async () => {
   const s = await context.newPage();
   await s.goto(url('options.html'));
@@ -94,17 +119,33 @@ test('Einstellungsseite bei 360 px: oben und ganz unten, Ziele 44 px', async () 
   await s.waitForTimeout(300);
   await expect(s.locator('#pause-leiste')).toBeVisible();
   pruefe('einstellungen unten', await miss(s));
+  // Phase 9 (Fund 4 und 14): auch alles aufgeklappt, mit den runden Hilfe-Knoepfen, haelt 44 px und kein waagrechtes Scrollen.
+  await oeffneZugeklapptes(s);
+  await s.evaluate(() => window.scrollTo(0, 0));
+  await s.waitForTimeout(300);
+  pruefe('einstellungen aufgeklappt', await miss(s));
+  await s.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await s.waitForTimeout(300);
+  pruefe('einstellungen aufgeklappt unten', await miss(s));
   await s.close();
 });
 
-test('Willkommensseite bei 360 px: fuenf Interview-Seiten, Ziele 44 px', async () => {
+test('Willkommensseite bei 360 px: Interview-Seiten (ohne Pack drei), Abschluss mit Checkliste, Ziele 44 px', async () => {
   const s = await context.newPage();
   await s.goto(url('willkommen.html#interview'));
   await expect(s.locator('#schritt-titel')).toBeVisible();
-  for (let i = 1; i <= 5; i++) {
+  let i = 1;
+  for (;;) {
     await s.waitForTimeout(300);
     pruefe(`willkommen interview ${i}`, await miss(s));
-    if (i < 5) await s.locator('#iv-weiter').click();
+    const letzte = (await s.locator('#iv-weiter').innerText()) === 'Finish';
+    await s.locator('#iv-weiter').click();
+    if (letzte) break;
+    i++;
   }
+  expect(i).toBe(3); // Fund 7: ohne Pack drei Fragen
+  await expect(s.locator('#ende-liste')).toBeVisible();
+  await s.waitForTimeout(300);
+  pruefe('willkommen abschluss', await miss(s));
   await s.close();
 });

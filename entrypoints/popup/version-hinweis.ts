@@ -3,11 +3,14 @@
 // im Hintergrund; nur in Chrome und nur bei neuerer Version erscheint ein Satz mit dem Knopf "How to update" (oeffnet die Einstellungsseite
 // bei #ueber). Firefox und alle Fehler: nichts.
 import type { AntwortVersion } from '../../src/nachrichten';
+import { hilfeAdresse } from '../../src/hilfe/anker';
+import { NEUES_LINK } from './texte';
 
 const platz = document.getElementById('version-hinweis');
 
 if (platz) {
-  document.getElementById('pause')?.after(platz);
+  // Unter den leisen Zeilen der Pause (Kuerzel, Pausenzeile), nie zwischen Knopf und diesen Zeilen; der Knopf bleibt, wo er ist.
+  (document.getElementById('pause-zeile') ?? document.getElementById('pause'))?.after(platz);
   const satz = document.createElement('p');
   satz.className = 'hinweis';
   satz.id = 'version-satz';
@@ -19,7 +22,18 @@ if (platz) {
   knopf.addEventListener('click', () => {
     void browser.tabs.create({ url: (browser.runtime.getURL as (p: string) => string)('/options.html#ueber') }).then(() => window.close());
   });
-  platz.replaceChildren(satz, knopf);
+  // Fund 27: was neu ist, steht in der Hilfe (Anker `updates`), Erweiterungsseite im neuen Tab.
+  const neues = document.createElement('a');
+  neues.id = 'version-neues';
+  neues.className = 'textlink';
+  neues.href = hilfeAdresse('updates');
+  neues.target = '_blank';
+  neues.rel = 'noopener';
+  neues.textContent = NEUES_LINK;
+  const knoepfe = document.createElement('div');
+  knoepfe.className = 'version-knoepfe';
+  knoepfe.append(knopf, neues);
+  platz.replaceChildren(satz, knoepfe);
 
   const zeige = (a: AntwortVersion | undefined) => {
     const neuer = !!a && a.ok === true && a.browser === 'chrome' && a.neuer && !!a.neueste;

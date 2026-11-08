@@ -71,6 +71,8 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
   }, neu);
 }
 async function importierePack(pfad: string = packPfad) {
+  // Das Mia Pack wartet auf den Einstieg (Entscheidung 133): erledigt setzen.
+  await worker.evaluate((e) => (globalThis as any).chrome.storage.local.set({ einstieg: e }), { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'uebersprungen', zeit: 1 });
   const s = await context.newPage();
   try {
     await s.goto(optionsUrl());
@@ -563,6 +565,142 @@ test('Pack entfernt: Sperre weg, Video laeuft', async () => {
     await entfernePack();
     await expect.poll(() => hostDa(s), { timeout: 10_000 }).toBe(false);
     await laeuft(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
+// Listenseite (Live-Lauf 17, MITTEL 2): ein Autoplay ohne Geste loest keinen Riegel aus, ein Klick auf das Video schon.
+const aufListe = (s: Page, pfad: string) => s.evaluate((p) => history.pushState({}, '', p), pfad);
+test('Listenseiten-Faelle: Pack wieder einsetzen', async () => {
+  await importierePack(packPfad);
+  await setzeEinstellungen(EINST);
+});
+async function klickeAufVideo(s: Page, id: string) {
+  const r = await s.evaluate((i) => {
+    const b = (window as any).findeVideo(i).getBoundingClientRect();
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  }, id);
+  await s.mouse.click(r.x, r.y);
+}
+
+test('Listenseite (Suche): Autoplay ohne Geste bleibt angehalten und ohne Riegel; Klick auf das Video oeffnet den Riegel', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/search/mia');
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await s.evaluate(() => (window as any).klickSpielt('haupt'));
+    await s.waitForTimeout(1800);
+    expect(await hostDa(s)).toBe(false);
+    expect((await video(s, 'haupt')).muted).toBe(true);
+    await bleibtStehen(s, 'haupt');
+    await klickeAufVideo(s, 'haupt');
+    await riegelOffen(s);
+    await bleibtStehen(s, 'haupt');
+    await loese(s);
+    await laeuft(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
+test('Listenseite (Startseite): Klick ausserhalb des Videos ist keine Geste fuer das Video, Taste und Klick darauf schon', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/');
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await s.waitForTimeout(600);
+    expect(await hostDa(s)).toBe(false);
+    // Klick weit ausserhalb (Ecke oben links, ausserhalb von Video und Player), danach ein Abspielversuch der Seite
+    await s.mouse.click(1, 1);
+    await s.evaluate(() => (window as any).findeVideo('haupt').play().catch(() => {}));
+    await s.waitForTimeout(1200);
+    expect(await hostDa(s)).toBe(false);
+    await bleibtStehen(s, 'haupt');
+    // Taste, dann Abspielversuch: Geste
+    await s.keyboard.press('Enter');
+    await s.evaluate(() => (window as any).findeVideo('haupt').play().catch(() => {}));
+    await riegelOffen(s);
+  } finally {
+    await s.close();
+  }
+});
+
+test('Listenseite verlassen (Adresswechsel ohne Neuladen auf eine Videoseite): das wartende Autoplay-Video bekommt den Riegel', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/');
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await s.waitForTimeout(1500);
+    expect(await hostDa(s)).toBe(false);
+    await aufListe(s, '/video/12345');
+    await riegelOffen(s);
+    await bleibtStehen(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
+// Fund 6: ein Capture-Horcher der Seite auf window, der Zeiger und Tasten stoppt, nimmt dem Riegel die Geste nicht.
+test('Listenseite: ein Capture-Horcher der Seite auf window, der Zeiger und Klicks stoppt, verhindert die Geste nicht', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/search/mia');
+    await s.evaluate(() => {
+      for (const t of ['pointerdown', 'mousedown', 'click', 'keydown', 'touchstart']) window.addEventListener(t, (e) => e.stopImmediatePropagation(), true);
+    });
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await s.waitForTimeout(800);
+    expect(await hostDa(s)).toBe(false);
+    await klickeAufVideo(s, 'haupt');
+    // Der Klick erreicht den Player der Seite nicht (ihr Horcher stoppt ihn): ihr Abspielversuch folgt wie bei einem Player, der die Geste selbst auswertet.
+    await s.evaluate(() => (window as any).findeVideo('haupt').play().catch(() => {}));
+    await riegelOffen(s);
+    await bleibtStehen(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
+// Fund 7: Videoseiten unter /model, /channels, /pornstar sind keine Listen: Riegel wie bisher, auch ohne Geste.
+test('Videoseite unter /model/<name>/video/<nr> (kein Listenpfad): Autoplay bekommt den Riegel ohne Geste', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/model/mia/video/123');
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await riegelOffen(s);
+    await bleibtStehen(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
+// Fund 8: ein wartendes Video auf einer Listenseite hat keinen Riegel; ohne Vorschau-Bild (hier: Freischaltung `erwachsen:vorschau` fehlt) deckt ein
+// schlichter dunkler Deckel statt des offenen Einzelbilds, wie vor Paket H der Riegel.
+test('Listenseite, wartendes Video ohne Vorschau-Bild: dunkler Deckel liegt auf dem Video und weicht dem Riegel nach der Geste', async () => {
+  await worker.evaluate(async () => {
+    const api = (globalThis as any).chrome;
+    const p = (await api.storage.local.get('pack')).pack;
+    await api.storage.local.set({ pack: { ...p, freischaltungen: p.freischaltungen.filter((f: string) => f !== 'erwachsen:vorschau') } });
+  });
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/search/mia');
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    const deckel = () =>
+      s.evaluate(() => {
+        const h = document.querySelector('[data-veil-standbild]') as HTMLElement | null;
+        if (!h) return null;
+        const v = (window as any).findeVideo('haupt').getBoundingClientRect();
+        const r = h.getBoundingClientRect();
+        return { art: h.getAttribute('data-veil-standbild'), deckt: r.left <= v.left + 1 && r.top <= v.top + 1 && r.right >= v.right - 1 && r.bottom >= v.bottom - 1 };
+      });
+    await expect.poll(deckel, { timeout: 8000 }).toEqual({ art: 'deckel', deckt: true });
+    expect(await hostDa(s)).toBe(false);
+    await bleibtStehen(s, 'haupt');
+    await s.evaluate(() => (window as any).klickSpielt('haupt'));
+    await klickeAufVideo(s, 'haupt');
+    await riegelOffen(s);
   } finally {
     await s.close();
   }

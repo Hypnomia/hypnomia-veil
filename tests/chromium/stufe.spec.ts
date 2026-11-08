@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -146,6 +147,8 @@ test('ohne Pack: der Regler ist gesperrt, ein Satz steht da, die Knoepfe sind ni
   const s = await context.newPage();
   await s.goto(optionsUrl());
   await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
+  // Ohne Pack steht Adult sites zugeklappt ("Set them now"): erst aufklappen, wie die Person.
+  await oeffneZugeklapptes(s);
   await expect(s.locator('#stufe-gesperrt')).toBeVisible();
   await expect(s.locator('#stufe-gesperrt')).toContainText('Mia Pack');
   await expect(s.locator('#stufe-wahl')).toBeHidden();
@@ -176,7 +179,7 @@ test('mit Pack: Regler sichtbar, Standard Hot, Wahl speichert, Zeile in Mias Sti
   await s.goto(optionsUrl());
   await expect(s.locator('#stufe-wahl')).toBeVisible();
   await expect(s.locator('#stufe-gesperrt')).toBeHidden();
-  await expect(s.getByRole('radiogroup', { name: 'How hot do I get?' })).toBeVisible();
+  await expect(s.getByRole('radiogroup', { name: 'How hot do I get?' }).first()).toBeVisible(); // zweiter Regler steht in "Set me up"
   await expect(s.locator('input[name="stufe"][value="hot"]')).toBeChecked();
   // Jeder Knopf traegt seine eigene Zeile in Mias Stimme
   expect(await s.locator('input[name="stufe"] + span small').allTextContents()).toEqual(['I only hint.', 'I show more.', 'Nothing held back.']);
@@ -376,6 +379,8 @@ test('Pack entfernen: der Regler ist wieder gesperrt', async () => {
     await s.locator('#entfernen').click();
     await s.locator('#entfernen-ja').click();
     await expect(s.locator('#stufe-wahl')).toBeHidden({ timeout: 15_000 });
+    // Ohne Pack ist Adult sites zugeklappt: aufklappen, wie die Person.
+    await oeffneZugeklapptes(s);
     await expect(s.locator('#stufe-gesperrt')).toBeVisible();
   } finally {
     await s.close();

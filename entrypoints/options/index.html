@@ -22,30 +22,24 @@
       <div id="leiste">
         <div class="leiste-zeile">
           <nav id="sprung" aria-label="Jump to a section">
-            <a id="chip-interview" href="#abschnitt-interview" hidden>Interview</a>
-            <a href="#abschnitt-stimmung">Mood</a>
-            <a href="#abschnitt-zonen">What I cover</a>
-            <a href="#abschnitt-stil">Style</a>
-            <a href="#abschnitt-ausnahmen">Sites I leave alone</a>
+            <a href="#covering">Covering</a>
+            <a href="#stand">Mia Pack</a>
             <a href="#erwachsen">Adult sites</a>
-            <a href="#abschnitt-ruhig">Calm mode</a>
             <a href="#kontrolle">Mia’s control</a>
             <a href="#ton">Sound</a>
             <a href="#ledger">Ledger</a>
-            <a href="#stand">Mia Pack</a>
-            <a href="#ueber">About</a>
+            <a href="#ueber">About and help</a>
+            <!-- Phase 9 (Fund 22): das Interview wohnt jetzt in "About and help"; der alte Chip bleibt nur als verborgener Anker, weil grund-pack.ts ihn sucht. -->
+            <a id="chip-interview" href="#abschnitt-interview" hidden>Interview</a>
+            <!-- Phase 9 (Fund 14): "Help" in der Leiste statt des Untertitel-Links, oeffnet die Hilfe-Seite in neuem Tab. -->
+            <a id="hilfe-link" class="hilfe-link" href="hilfe.html" target="_blank" rel="noopener">Help</a>
           </nav>
           <button id="pause-leiste" class="klein ruhig" type="button"></button>
         </div>
         <p id="speicher-meldung" class="fehler" role="alert" hidden></p>
       </div>
 
-      <!-- Fund 17: "Redo the interview" direkt unter der Leiste (vor dem Einstieg verborgen, der Chip auch). -->
-      <section id="abschnitt-interview" aria-labelledby="interview-titel" hidden>
-        <h2 id="interview-titel">Your interview</h2>
-        <p class="hinweis">Answer my questions again. Anything you don’t touch stays as it is.</p>
-        <button id="interview-neu" class="klein" type="button">Redo the interview</button>
-      </section>
+      <div id="covering" class="gruppe" role="group" aria-label="Covering">
 
       <section aria-labelledby="stimmung-titel" id="abschnitt-stimmung">
         <div class="regel">
@@ -80,18 +74,34 @@
 
       <section aria-labelledby="ausnahmen-titel" id="abschnitt-ausnahmen">
         <h2 id="ausnahmen-titel">Sites I leave alone</h2>
-        <p class="hinweis">Add a site by its address, like example.com, and I’ll keep my hands off it, subdomains too. <span id="ausnahmen-standard"></span></p>
+        <p class="hinweis">Add a site by its address and I’ll keep my hands off it, subdomains too. <span id="ausnahmen-standard"></span></p>
         <form id="ausnahme-form" class="zeile">
-          <input id="ausnahme-feld" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Site to leave alone" placeholder="example.com" />
-          <button id="ausnahme-add" class="klein" type="submit" aria-label="Add site to leave alone">Add</button>
+          <input id="ausnahme-feld" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Site to leave alone" placeholder="site to leave alone, like mybank.com" />
+          <button id="ausnahme-add" class="klein" type="submit">Leave it alone</button>
         </form>
         <p id="ausnahme-meldung" role="status" aria-live="polite"></p>
         <ul id="ausnahmen-liste" class="liste"></ul>
       </section>
+      </div>
+
+      <!-- Phase 9 (Vertrag mit Paket C): die Pack-Karte baut pack-karte.ts (Paket C) in diesen leeren Abschnitt. Ohne Pack steht er nach "Covering",
+           mit Pack nach "Sound" (main.ts ordnet um). -->
+      <section aria-labelledby="stand-titel" id="stand"></section>
 
       <section aria-labelledby="erw-titel" id="erwachsen">
         <h2 id="erw-titel">Adult sites</h2>
         <p id="erw-pack-hinweis" class="hinweis"></p>
+
+        <h3 id="stufe-titel" class="regel-titel">How hot do I get?</h3>
+        <!-- Anfangs verborgen und gesperrt: grund-erwachsen.ts schaltet frei, sobald das Pack mit erwachsen:vorschau gelesen ist (keine Klickflaeche vorher). -->
+        <div id="stufe-wahl" hidden>
+          <div class="wahl stufen" role="radiogroup" aria-labelledby="stufe-titel">
+            <label><input type="radio" name="stufe" value="tease" disabled /><span><strong>Tease</strong><small>I only hint.</small></span></label>
+            <label><input type="radio" name="stufe" value="hot" disabled /><span><strong>Hot</strong><small>I show more.</small></span></label>
+            <label><input type="radio" name="stufe" value="explicit" disabled /><span><strong>Explicit</strong><small>Nothing held back.</small></span></label>
+          </div>
+        </div>
+        <p id="stufe-gesperrt" class="hinweis" hidden>My pictures decide how hot I get, so this unlocks with the Mia Pack.</p>
 
         <label class="schalter">
           <input id="erw-an" type="checkbox" role="switch" />
@@ -109,27 +119,16 @@
           <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal. Pages I only spot by their content never get thumbnail swaps or my gallery.</small></span>
         </label>
 
-        <h3 id="stufe-titel">How hot do I get?</h3>
-        <!-- Anfangs verborgen und gesperrt: grund-erwachsen.ts schaltet frei, sobald das Pack mit erwachsen:vorschau gelesen ist (keine Klickflaeche vorher). -->
-        <div id="stufe-wahl" hidden>
-          <div class="wahl stufen" role="radiogroup" aria-labelledby="stufe-titel">
-            <label><input type="radio" name="stufe" value="tease" disabled /><span><strong>Tease</strong><small>I only hint.</small></span></label>
-            <label><input type="radio" name="stufe" value="hot" disabled /><span><strong>Hot</strong><small>I show more.</small></span></label>
-            <label><input type="radio" name="stufe" value="explicit" disabled /><span><strong>Explicit</strong><small>Nothing held back.</small></span></label>
-          </div>
-        </div>
-        <p id="stufe-gesperrt" class="hinweis" hidden>My pictures decide how hot I get, so this unlocks with the Mia Pack.</p>
-
         <h3>Your own sites</h3>
-        <p class="hinweis">I already know the big adult sites. Add any other site by its address, like example.com, and I’ll treat it the same.</p>
+        <p class="hinweis">I already know the big adult sites. Add any other site by its address and I’ll treat it the same.</p>
         <form id="seite-form" class="zeile">
-          <input id="seite-feld" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Adult site address" placeholder="example.com" />
-          <button id="seite-add" class="klein" type="submit" aria-label="Add adult site">Add</button>
+          <input id="seite-feld" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Adult site address" placeholder="adult site, like example.com" />
+          <button id="seite-add" class="klein" type="submit">Treat as adult site</button>
         </form>
         <p id="seite-meldung" role="status" aria-live="polite"></p>
         <ul id="seiten-liste" class="liste"></ul>
 
-        <h3>Quiz</h3>
+        <h3 id="quiz-titel">Quiz</h3>
         <div class="regel">
           <label for="verweigern">How often I refuse a right answer</label>
           <output id="verweigern-wert" for="verweigern"></output>
@@ -144,18 +143,16 @@
         <input id="freilegen" type="range" min="3" max="30" step="1" />
       </section>
 
-      <section aria-labelledby="ruhig-titel" id="abschnitt-ruhig">
-        <h2 id="ruhig-titel">Calm mode</h2>
-        <label class="schalter">
+      <!-- Phase 5 (Session 9): Kontrolle. Texte nach Texter und Gegenleser (TEXTE-PHASE-5-SESSION-9.md). -->
+      <section aria-labelledby="kon-titel" id="kontrolle">
+        <h2 id="kon-titel">Mia’s control</h2>
+        <!-- Phase 9 (Fund 8): Calm mode ist der erste Schalter und bleibt auch ohne Pack offen (Sicherheit). -->
+        <label class="schalter" id="ruhig-zeile">
           <input id="ruhig" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
           <span class="text"><strong>Calm mode</strong><small>slower spiral, no moving or flashing words.</small></span>
         </label>
-      </section>
-
-      <!-- Phase 5 (Session 9): Kontrolle. Texte nach Texter und Gegenleser (TEXTE-PHASE-5-SESSION-9.md). -->
-      <section aria-labelledby="kon-titel" id="kontrolle">
-        <h2 id="kon-titel">Mia’s control</h2>
+        <p id="ruhig-system" class="hinweis" hidden>Your system asks for less motion, so Calm mode works either way, switch on or off.</p>
         <p id="kon-pack-hinweis" class="hinweis"></p>
 
         <label class="schalter" id="kon-werbung-zeile">
@@ -230,82 +227,13 @@
            Jeder Abschnitt wird von seinem Modul gefuellt (ton.ts, ledger.ts, ueber.ts); Auftrag S ordnet die Abschnitte, behaelt aber die ids. -->
       <section id="ton" aria-labelledby="ton-titel"></section>
       <section id="ledger" aria-labelledby="ledger-titel"></section>
-      <section aria-labelledby="stand-titel" id="stand">
-        <h2 id="stand-titel">Your Mia Pack</h2>
-        <p id="pack-status" role="status" aria-live="polite"></p>
-        <div id="begruessung" class="mia-zeile" hidden>
-          <img id="begruessung-chibi" class="chibi" alt="" width="96" height="96" hidden />
-          <p id="begruessung-text"></p>
-        </div>
-        <dl id="pack-daten" hidden>
-          <div><dt>Title</dt><dd id="pack-titel"></dd></div>
-          <div><dt>Version</dt><dd id="pack-version"></dd></div>
-          <div><dt>Patch pictures</dt><dd id="pack-bilder"></dd></div>
-          <div><dt>Size</dt><dd id="pack-groesse"></dd></div>
-          <div><dt>Added</dt><dd id="pack-datum"></dd></div>
-        </dl>
-        <!-- Session 12, Auftrag P: Lizenz jederzeit ansehen (pack.ts fuellt den Text aus dem gespeicherten Pack). -->
-        <div id="lizenz-zeile" hidden>
-          <button id="lizenz-zeigen" class="klein ruhig" type="button" aria-expanded="false" aria-controls="lizenz-ansicht">Read the license</button>
-        </div>
-        <div id="lizenz-ansicht" hidden>
-          <pre id="lizenz-ansicht-text" tabindex="0" aria-label="License text of your Mia Pack"></pre>
-        </div>
-        <div id="entfernen-zeile" hidden>
-          <button id="entfernen" class="klein" type="button">Remove Mia Pack</button>
-        </div>
-        <div id="entfernen-frage" class="frage" role="alertdialog" aria-labelledby="entfernen-text" hidden>
-          <p id="entfernen-text">Remove the Mia Pack? My pictures, sounds and words go with it, and if Mia patch is your cover style, it goes back to Mosaic. Your settings stay. You can add it again whenever you like, as long as you keep the pack file.</p>
-          <div class="knoepfe">
-            <button id="entfernen-ja" class="klein" type="button">Remove</button>
-            <button id="entfernen-nein" class="klein ruhig" type="button">Keep it</button>
-          </div>
+      <!-- Phase 9 (Fund 22): ueber.ts setzt Version, Links und Hilfe davor; das Interview (selten gebraucht) steht ganz unten in "About and help". -->
+      <section id="ueber" aria-labelledby="ueber-titel">
+        <div id="abschnitt-interview" class="ue-interview" hidden>
+          <p class="hinweis">Answer my questions again. Anything you don’t touch stays as it is.</p>
+          <button id="interview-neu" class="klein" type="button">Run the interview again</button>
         </div>
       </section>
-
-      <section aria-labelledby="neu-titel" id="neu">
-        <h2 id="neu-titel">Add the Mia Pack</h2>
-        <p>The Mia Pack holds my pictures, sounds and words, and it unlocks the rest of me. I check it here and keep it on this device only. It never leaves your browser.</p>
-        <!-- Phase 7 (Auftrag I3): ohne Pack ein Streifen mit Kern-Bildern (kern-streifen.ts); ohne Kern-Bilder im Bau oder mit Pack bleibt er weg. -->
-        <div id="kern-streifen" hidden>
-          <div id="kern-bilder" class="kern-bilder" hidden></div>
-          <p id="kern-text">This is me dressed for the office. The Mia Pack is me off duty.</p>
-        </div>
-        <div id="pack-sperre" class="warnblock" hidden>
-          <p id="pack-sperre-text">Meet me first, then bring the Mia Pack. It takes a minute.</p>
-          <button id="pack-sperre-knopf" class="klein" type="button">Meet Mia first</button>
-        </div>
-        <!-- Session 12, Auftrag P: Ablage fuer Ziehen und Ablegen (pack.ts), das Dateifeld bleibt der Weg per Tastatur. -->
-        <div id="ablage" class="ablage">
-          <label class="datei" for="datei">
-            <span>Choose a pack file</span>
-            <input id="datei" type="file" accept=".miapack" disabled aria-describedby="pack-sperre-text" />
-          </label>
-          <p id="ablage-text" class="hinweis">Or drop the pack file here.</p>
-        </div>
-
-        <div id="fortschritt-zeile" hidden>
-          <progress id="fortschritt" max="1" value="0" aria-labelledby="fortschritt-text"></progress>
-          <span id="fortschritt-text"></span>
-        </div>
-
-        <div id="lizenz-block" hidden>
-          <h3>Before it goes in</h3>
-          <p id="lizenz-kopf" class="hinweis"></p>
-          <!-- Session 12, Auftrag P: Hinweis beim Ersetzen eines vorhandenen Packs (neuer, gleich, aelter, anderes Pack). -->
-          <p id="ersetzen-hinweis" class="warnblock" hidden></p>
-          <pre id="lizenz-text" tabindex="0" aria-label="License text of the pack"></pre>
-          <p class="hinweis">The pictures are mine. This license says what you may do with them. Accept it to add the pack.</p>
-          <div class="knoepfe">
-            <button id="annehmen" class="gross" type="button">Accept and add</button>
-            <button id="abbrechen" class="klein ruhig" type="button">Not yet</button>
-          </div>
-        </div>
-
-        <p id="meldung" role="status" aria-live="polite"></p>
-      </section>
-
-      <section id="ueber" aria-labelledby="ueber-titel"></section>
 
       <footer>
         <span>Pausing and uninstalling are always allowed.</span>

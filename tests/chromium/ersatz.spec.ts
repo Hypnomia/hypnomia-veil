@@ -58,6 +58,7 @@ interface Abbild {
   links: { text: string; href: string | null; target: string; rel: string }[];
   zeile: string | null;
   pause: { x: number; y: number; w: number; h: number };
+  ruhe: { x: number; y: number; w: number; h: number };
   host: { x: number; y: number; w: number; h: number };
 }
 const abbild = (p: Page): Promise<Abbild | null> =>
@@ -235,6 +236,27 @@ const tabStumm = (adresse: string): Promise<boolean | null> =>
 const tabIdVon = (adresse: string): Promise<number> =>
   ext.evaluate(async (u) => ((await (globalThis as any).chrome.tabs.query({})).find((x: any) => x.url === u)).id, adresse);
 
+// Session 17 (Testluecke UEBERGABE-16 Punkt 4): die zweite Sperre in `entdecke` allein. Der Testbau laesst den Beobachter eigene Wurzeln
+// betreten, wenn die Seitenadresse `veil-eigene-offen` enthaelt; dann muss jeder Versuch an der zweiten Sperre enden (Zaehler steigt).
+// Gegenprobe zum Test davor (dort 0 Versuche, weil schon der Beobachter sperrt).
+test('zweite Sperre: auch wenn der Beobachter eigene Wurzeln betritt, prueft der Schleier Mias Galerie-Bilder nie', async () => {
+  await setze({ pause: false }); // der Test davor endet mit Pause aus der Galerie
+  const seite = await context.newPage();
+  await seite.goto(`${LISTE}?veil-eigene-offen=1`, { waitUntil: 'domcontentloaded' });
+  try {
+    // Ohne die erste Sperre legt der Beobachter seine Versteck-Regel auch in die Galerie-Wurzel (Breiten bleiben 0): nur auf die Galerie selbst
+    // warten. Die zweite Sperre verhindert das Pruefen und Ersetzen der Bilder, nicht diese Regel; darum bleibt die erste Sperre die Hauptsache.
+    await expect.poll(() => abbild(seite), { timeout: 15_000 }).not.toBeNull();
+    await expect
+      .poll(() => seite.evaluate(() => Number(document.documentElement.getAttribute('data-veil-eigene-entdeckt') ?? 0)), { timeout: 8000 })
+      .toBeGreaterThan(0);
+    const n = await seite.evaluate(() => Number(document.documentElement.getAttribute('data-veil-eigene-entdeckt') ?? 0));
+    console.log(`ersatz: zweite Sperre hielt ${n} Versuche auf`);
+  } finally {
+    await seite.close();
+  }
+});
+
 test('Klicks und Tasten in der Galerie erreichen die Seite nie, auch nicht der Klick auf Pause', async () => {
   await setze({ pause: false });
   const seite = await oeffne(LISTE);
@@ -260,6 +282,34 @@ test('Klicks und Tasten in der Galerie erreichen die Seite nie, auch nicht der K
     await seite.close();
   }
   await setze({ pause: false });
+});
+
+test('Leave this site alone: leiser Knopf neben Pause traegt den Host in die Ausnahmen ein und laedt neu; ohne Pause, ohne Galerie danach', async () => {
+  await setze({ pause: false, ausnahmen: [] });
+  const seite = await oeffne(LISTE);
+  try {
+    const a = await warteGalerie(seite);
+    expect(a.ruhe.h, 'Knopf mindestens 44 px hoch').toBeGreaterThanOrEqual(44);
+    expect(a.ruhe.w).toBeGreaterThan(80);
+    // Pause bleibt oben und gleichwertig erreichbar
+    expect(a.pause.y).toBeLessThan(120);
+    const klicks = await zaehlerSeite(seite);
+    expect(klicks).toEqual({});
+    await seite.evaluate(() => ((window as any).__vorher = 1));
+    await seite.mouse.click(a.ruhe.x + a.ruhe.w / 2, a.ruhe.y + a.ruhe.h / 2);
+    await expect
+      .poll(async () => ext.evaluate(async () => ((await (globalThis as any).chrome.storage.local.get('einstellungen')).einstellungen?.ausnahmen ?? []) as string[]), { timeout: 10_000 })
+      .toContain(new URL(LISTE).hostname.replace(/^www\./, ''));
+    // Neu geladen (die Marke von vorher ist weg) und ohne Galerie
+    await expect
+      .poll(async () => seite.evaluate(() => (window as any).__vorher === undefined && !document.documentElement.hasAttribute('data-veil-ersatz') && !document.querySelector('[data-veil-ersatz-host]')).catch(() => false), { timeout: 10_000, intervals: [50] })
+      .toBe(true);
+    // Der Knopf pausiert nicht
+    expect(await ext.evaluate(async () => !!(await (globalThis as any).chrome.storage.local.get('einstellungen')).einstellungen?.pause)).toBe(false);
+  } finally {
+    await seite.close();
+  }
+  await setze({ pause: false, ausnahmen: [] });
 });
 
 test('Dialog, Popover und Vollbild der Seite legen sich nicht ueber die Galerie', async () => {

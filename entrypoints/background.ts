@@ -20,6 +20,8 @@ import { bearbeiteLedger, bearbeiteLedgerLoeschen, notiereLedgerMinute, starteLe
 import { bearbeiteVersion, bearbeiteVersionTest, starteVersion } from '../src/hintergrund/version';
 import { bearbeitePackTon } from '../src/hintergrund/ton';
 import { bearbeiteSchrift } from '../src/hintergrund/schrift';
+import { bearbeiteHilfe } from '../src/hintergrund/hilfe';
+import { starteSymbol } from '../src/hintergrund/symbol';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
 // Hoechstens so viele Referer-Regeln gleichzeitig, die aelteste fliegt raus.
@@ -222,10 +224,13 @@ export default defineBackground(() => {
   // Phase 4: Listener der Handler-Module oben im Skript registrieren (Ereignisseite und Service Worker wachen dafuer auf).
   starteSteigerung();
   // Session 8 (Entscheidung 107): keine Umleitung mehr; eine Regel aus Version 0.4.0 wird beim Start entfernt.
-  raeumeUmleitungAuf();
+  // Firefox hatte die Regel nie und hat seit Session 17 kein declarativeNetRequest-Recht mehr.
+  if (!import.meta.env.FIREFOX) raeumeUmleitungAuf();
   starteErsatzStumm();
   starteLeerlauf();
   starteMeldungen();
+  // Session 17 (UX-Pruefung Phase 9 Fund 9): Pausen-Zeichen am Symbol.
+  starteSymbol();
   starteBesuche();
   starteEinstieg();
   starteLedger();
@@ -303,6 +308,8 @@ export default defineBackground(() => {
         return bearbeitePackTon(n);
       case 'schrift':
         return bearbeiteSchrift(n);
+      case 'hilfe':
+        return bearbeiteHilfe(n, absender);
       default:
         return undefined;
     }

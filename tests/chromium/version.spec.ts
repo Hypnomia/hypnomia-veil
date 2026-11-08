@@ -87,7 +87,7 @@ test('Neuere Version (9.9.9): Hinweis im Popup, Anleitung in vier Schritten, ein
     const ziel = await neu;
     await ziel.waitForLoadState();
     expect(ziel.url()).toBe(`${optionsUrl()}#ueber`);
-    await expect(ziel.locator('#ueber-titel')).toHaveText('About');
+    await expect(ziel.locator('#ueber-titel')).toHaveText('About and help');
     await expect(ziel.locator('#ue-stand')).toContainText('9.9.9');
     await expect(ziel.locator('#ue-anleitung')).toBeVisible();
     await expect(ziel.locator('#ue-anleitung li')).toHaveCount(4);

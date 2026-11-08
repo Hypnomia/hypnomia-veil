@@ -56,8 +56,10 @@ standardZahl.textContent = `My never-touch list keeps ${standardSeiten} sites sa
 
 let gezeichnet = '';
 let aktuellListe: string[] = [];
+let eigeneErwachsenSeiten: string[] = [];
 function zeichne(e: Einstellungen): void {
   aktuellListe = e.ausnahmen;
+  eigeneErwachsenSeiten = e.erwachsen.eigeneSeiten;
   statusAusnahmen.textContent =
     e.ausnahmen.length === 0 ? 'You haven’t asked me to leave a single site alone.' : `${e.ausnahmen.length} ${e.ausnahmen.length === 1 ? 'site' : 'sites'} you asked me to leave alone.`;
   const schluessel = JSON.stringify(e.ausnahmen);
@@ -131,6 +133,13 @@ form.addEventListener('submit', (ereignis) => {
     feld.value = '';
     return;
   }
+  // Phase 9, Fund 11: steht der Host schon in der Liste der eigenen Erwachsenenseiten, wirkte "in Ruhe lassen" gegenteilig zur anderen Zeile: Satz statt stillem Doppel.
+  const hostDerAdresse = zerlegeMuster(muster)?.host ?? muster;
+  if (eigeneErwachsenSeiten.some((h) => hostDerAdresse === h || hostDerAdresse.endsWith(`.${h}`))) {
+    meldung.classList.add('fehler');
+    meldung.textContent = `${hostDerAdresse} is one of your own adult sites. Remove it under Your own sites first, then I can leave it alone.`;
+    return;
+  }
   let schonDa = false;
   aendereEinstellungen((alt) => {
     schonDa = alt.ausnahmen.includes(muster);
@@ -138,7 +147,7 @@ form.addEventListener('submit', (ereignis) => {
   }).then(
     (neu) => {
       meldung.classList.remove('fehler');
-      meldung.textContent = schonDa ? `${muster} is on your list already.` : `Added ${muster}. I’ll leave it alone from now on.`;
+      meldung.textContent = schonDa ? `${muster} is on your list already.` : `${muster}: I keep my hands off it.`;
       feld.value = '';
       zeichne(neu);
     },

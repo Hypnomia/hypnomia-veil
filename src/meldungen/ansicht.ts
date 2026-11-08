@@ -7,6 +7,8 @@ import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { eigeneWurzel } from '../schleier/eigene';
 
 export const SCHLIESSEN_LABEL = 'Close note';
+export const WENIGER_FRAGE = 'Had enough of my notes?';
+export const WENIGER_KNOPF = 'Turn my notes off';
 const BREITE = 360;
 const RAND = 16;
 const EINBLEND_MS = 250;
@@ -30,6 +32,10 @@ ${SEITEN_TOKENS}
 button { flex: none; align-self: center; font: 800 20px/1 var(--v-schrift-text); color: var(--v-rosa-800); background: var(--v-weiss); border: 1px solid var(--v-rand);
   border-radius: 50%; width: 44px; height: 44px; padding: 0; cursor: pointer; box-shadow: var(--v-schatten-klein); }
 button:hover { background: var(--v-rosa-50); }
+.spalte { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.weniger { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 700 13px/1.3 var(--v-schrift-text); color: var(--v-leise); }
+.weniger button { width: auto; height: auto; min-height: 32px; padding: 4px 12px; border-radius: var(--v-r-voll); font: 800 13px/1.2 var(--v-schrift-text); }
+@media (pointer: coarse) { .weniger button { min-height: 44px; } }
 button:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
 `;
 
@@ -39,6 +45,7 @@ export class MeldungAnsicht {
   readonly karte: HTMLDivElement;
   private readonly bild: HTMLImageElement;
   private readonly schliessen: HTMLButtonElement;
+  private wenigerKnopf: HTMLButtonElement | null = null;
   satz = '';
 
   constructor(satz: string, anlass: string, ruhig: boolean) {
@@ -112,6 +119,38 @@ export class MeldungAnsicht {
     }
     if (!ruhig) void this.karte.offsetWidth; // Ausgangszustand (Deckkraft 0) festhalten, damit der Uebergang laeuft
     this.karte.style.opacity = '1';
+  }
+
+  // Fund 25: Zeile "Fewer notes?" mit Knopf unter dem Satz (die Meldung nimmt auch damit nie den Fokus).
+  zeigeWeniger(): void {
+    if (this.wenigerKnopf) return;
+    const text = this.karte.querySelector('.satz');
+    if (!text) return;
+    const spalte = document.createElement('div');
+    spalte.className = 'spalte';
+    text.replaceWith(spalte);
+    const zeile = document.createElement('div');
+    zeile.className = 'weniger';
+    const frage = document.createElement('span');
+    frage.textContent = WENIGER_FRAGE;
+    const knopf = document.createElement('button');
+    knopf.type = 'button';
+    knopf.tabIndex = -1;
+    knopf.textContent = WENIGER_KNOPF;
+    zeile.append(frage, knopf);
+    spalte.append(text, zeile);
+    this.wenigerKnopf = knopf;
+  }
+
+  trifftWeniger(x: number, y: number): boolean {
+    const k = this.wenigerKnopf;
+    if (!k) return false;
+    const b = k.getBoundingClientRect();
+    return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+  }
+
+  wenigerRect(): { x: number; y: number; w: number; h: number } | null {
+    return this.wenigerKnopf ? this.rect(this.wenigerKnopf) : null;
   }
 
   setzeBild(url: string): void {

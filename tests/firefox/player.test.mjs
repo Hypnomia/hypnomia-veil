@@ -166,6 +166,8 @@ async function loese() {
 
 async function importierePack(pfad) {
   await oeffne('options.html');
+  // Das Mia Pack wartet auf den Einstieg (Entscheidung 133): erledigt setzen.
+  await imSeitenkontext(`await api.storage.local.set({ einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'uebersprungen', zeit: 1 } }); return true;`);
   await driver.findElement(By.css('#datei')).sendKeys(pfad);
   await bis('Lizenz', () => driver.findElement(By.css('#lizenz-block')).isDisplayed());
   await driver.findElement(By.css('#annehmen')).click();
@@ -483,6 +485,62 @@ try {
     await bis('Vollbild endet', async () => (await driver.executeScript('return window.vb')) >= 2, 6000);
     pruefe(await driver.executeScript('return document.fullscreenElement === null'), 'Vollbild beendet');
     await riegelOffen();
+  });
+
+  // Listenseite (Live-Lauf 17, MITTEL 2): Autoplay ohne Geste bleibt angehalten und ohne Riegel, eine Geste auf dem Video oeffnet ihn.
+  const aufListe = (pfad) => driver.executeScript('history.pushState({}, "", arguments[0]); return true;', pfad);
+  const videoRechteck = (id) =>
+    driver.executeScript('const b = window.findeVideo(arguments[0]).getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height };', id);
+  await fall('Listenseite (Suche): Autoplay ohne Geste ohne Riegel, Klick auf das Video oeffnet den Riegel', async () => {
+    await oeffneSeite();
+    await aufListe('/search/mia');
+    await neuesVideo({ id: 'haupt', autoplay: true });
+    await driver.executeScript("window.klickSpielt('haupt'); return true;");
+    await warte(1800);
+    pruefe(!(await hostDa()), 'Autoplay ohne Geste: kein Riegel');
+    pruefe((await video('haupt')).muted, 'Autoplay ohne Geste: stumm');
+    await bleibtStehen('haupt', 'Autoplay ohne Geste auf der Liste');
+    await klickeAuf(await videoRechteck('haupt'));
+    await riegelOffen();
+    await bleibtStehen('haupt', 'nach Klick, Riegel offen');
+    await loese();
+    await laeuft('haupt', 'nach dem Loesen');
+  });
+  await fall('Listenseite (Startseite): Klick daneben ist keine Geste; nach Wechsel auf eine Videoseite kommt der Riegel', async () => {
+    await oeffneSeite();
+    await aufListe('/');
+    await neuesVideo({ id: 'haupt', autoplay: true });
+    await warte(600);
+    await driver.actions({ async: true }).move({ x: 1, y: 1, origin: 'viewport' }).click().perform();
+    await driver.executeScript("window.findeVideo('haupt').play().catch(() => {}); return true;");
+    await warte(1500);
+    pruefe(!(await hostDa()), 'Klick daneben: kein Riegel');
+    await bleibtStehen('haupt', 'Klick daneben');
+    await aufListe('/video/12345');
+    await riegelOffen();
+    await bleibtStehen('haupt', 'Videoseite nach Adresswechsel');
+  });
+
+  await fall('Videoseite unter /model/<name>/video/<nr> ist keine Liste: Riegel ohne Geste (Fund 7)', async () => {
+    await oeffneSeite();
+    await aufListe('/model/mia/video/123');
+    await neuesVideo({ id: 'haupt', autoplay: true });
+    await riegelOffen();
+    await bleibtStehen('haupt', 'Videoseite unter /model');
+  });
+  await fall('Listenseite: Capture-Horcher der Seite auf window, der Klicks stoppt, nimmt die Geste nicht (Fund 6)', async () => {
+    await oeffneSeite();
+    await aufListe('/search/mia');
+    await driver.executeScript("for (const t of ['pointerdown', 'mousedown', 'click', 'keydown']) window.addEventListener(t, (e) => e.stopImmediatePropagation(), true); return true;");
+    await neuesVideo({ id: 'haupt', autoplay: true });
+    await warte(800);
+    pruefe(!(await hostDa()), 'ohne Geste kein Riegel');
+    await driver.actions({ async: true }).move({ x: 5, y: 5, origin: 'viewport' }).perform();
+    const r = await driver.executeScript("const b = window.findeVideo('haupt').getBoundingClientRect(); return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };");
+    await driver.actions({ async: true }).move({ x: r.x, y: r.y, origin: 'viewport' }).click().perform();
+    await driver.executeScript("window.findeVideo('haupt').play().catch(() => {}); return true;");
+    await riegelOffen();
+    await bleibtStehen('haupt', 'nach Geste trotz Horcher');
   });
 
   await fall('Pack entfernt: Sperre weg, Video laeuft', async () => {

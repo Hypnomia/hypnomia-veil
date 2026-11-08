@@ -100,6 +100,20 @@ async function bis(beschreibung, fn, frist = 15_000) {
 const eigenschaft = (css, name) => driver.executeScript(`return document.querySelector(arguments[0])[arguments[1]]`, css, name);
 const text = async (css) => (await driver.executeScript(`return document.querySelector(arguments[0]).textContent.trim()`, css));
 
+// Phase 9 (Paket B, Fund 4): ohne Pack sind Adult sites, Mia’s control (bis auf Calm mode) und Sound zugeklappt; wie die Person mit "Set them now" aufklappen.
+const oeffneZu = async () => {
+  const frist = Date.now() + 15_000;
+  for (;;) {
+    try {
+      if (await driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`)) break;
+    } catch {
+      /* Seite laedt noch */
+    }
+    if (Date.now() > frist) throw new Error('Ordnung der Einstellungsseite nicht bereit');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+};
 const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
@@ -122,17 +136,18 @@ try {
   console.log(`firefox: Version ${version}`);
 
   await oeffne('options.html');
+  await oeffneZu();
   await bis('Abschnitt gezeichnet', async () => (await text('#kon-pack-hinweis')).length > 0);
   pruefe((await text('#kon-titel')) === 'Mia’s control', 'Ueberschrift "Mia’s control"');
   pruefe((await text('#kon-pack-hinweis')).includes('Mia Pack'), 'ohne Pack Hinweis nennt das Pack');
-  pruefe((await eigenschaft('#kon-werbung', 'checked')) === true, 'Werbung standardmaessig an');
+  pruefe((await eigenschaft('#kon-werbung', 'checked')) === false, 'Werbung standardmaessig aus (Opt-in, Entscheidung 179)');
   pruefe((await eigenschaft('#kon-blitz', 'value')) === 'selten', 'Blitzwoerter standardmaessig selten');
   pruefe((await eigenschaft('#kon-leerlauf', 'checked')) === true, 'Spirale standardmaessig an');
   pruefe((await eigenschaft('#kon-minuten', 'value')) === '2', 'Spirale nach 2 Minuten');
 
   await klick('#kon-werbung');
-  await bis('werbung aus', async () => (await einst()).kontrolle?.werbung === false);
-  pruefe(true, 'Schalter Werbung schreibt kontrolle.werbung = false');
+  await bis('werbung an', async () => (await einst()).kontrolle?.werbung === true);
+  pruefe((await einst()).kontrolle?.werbungGefragt === true, 'Schalter Werbung schreibt kontrolle.werbung = true und werbungGefragt');
   await waehle('#kon-blitz', 'oft');
   await bis('blitz oft', async () => (await einst()).kontrolle?.blitz === 'oft');
   pruefe(true, 'Auswahl Often schreibt kontrolle.blitz = oft');

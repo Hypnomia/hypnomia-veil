@@ -15,6 +15,7 @@ import type {
 import { hashe, waehlePatch } from '../pack/patches';
 import { geometrieFuer, MODELL_GROESSE, nachverarbeite } from './modell';
 import { blobAusDataUrl, ladeNach, type RefererSetzer } from './nachladen';
+import { dekodiereBild, ersatzBildFuerBewegtesSvg, svgMitBewegung } from './dekodiere';
 import { Schranke } from './schranke';
 import { rendereZensur } from './stile';
 import {
@@ -327,8 +328,10 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
   }
   const tNetz = jetzt();
   let bitmap: ImageBitmap;
+  let bewegtesSvg = false;
   try {
-    bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    bewegtesSvg = await svgMitBewegung(blob);
+    bitmap = bewegtesSvg ? ersatzBildFuerBewegtesSvg({ breite: n.breite, hoehe: n.hoehe }) : await dekodiereBild(blob, { breite: n.breite, hoehe: n.hoehe });
   } catch (err) {
     return fehlerAntwort(id, `Dekodieren: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -348,7 +351,10 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     // Steigerung Stufe 4: ein Treffer einer Frau verdeckt das ganze Bild (eine Flaeche ueber alles), sonst die Zonen wie eingestellt.
     // Aus den rohen 320n-Treffern: kombiniereGesichter ersetzt ein FACE_FEMALE durch die (geschlechtslosen) YuNet-Treffer.
     const frau = n.einstellungen?.ganzVerdecken === true ? rohTreffer.find((t) => t.weiblich) : undefined;
-    const flaechen = frau
+    // Animiertes SVG (Fund 9): nie freigeben, ganzes Bild verdecken.
+    const flaechen = bewegtesSvg
+      ? [{ zone: 'face' as const, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number] }]
+      : frau
       ? [{ zone: frau.zone, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number] }]
       : berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe);
     const tNach = jetzt();

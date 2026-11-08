@@ -148,6 +148,7 @@ function liesZeile(zeile: HTMLElement, alt: StrengeZeit): StrengeZeit {
   return { tage: tage.length ? tage : alt.tage, von: von ?? alt.von, bis: bis ?? alt.bis };
 }
 
+// Phase 9: die Werbe-Frage "Show my ads?" lebt jetzt in der Pack-Karte (Paket C); dieser Schalter bleibt der Weg, sie spaeter zu aendern.
 function zeichnePack(pack: PackKurz | null): void {
   const mit = (
     ['kontrolle:werbung', 'kontrolle:blitz', 'kontrolle:leerlauf', 'kontrolle:tabtitel', 'kontrolle:cursor', 'kontrolle:meldungen', 'kontrolle:zeitplan', 'kontrolle:besuche'] as const
@@ -157,12 +158,12 @@ function zeichnePack(pack: PackKurz | null): void {
     (f) => !istFreigeschaltet(pack, f),
   );
   hinweis.textContent = teilweise
-    ? 'Some of this needs a newer Mia Pack. Add it further down to unlock the rest. Pause Mia stops it all.'
+    ? 'Some of this needs a newer Mia Pack. Add it in the Mia Pack section to unlock the rest. Pause Mia stops it all.'
     : mit
     ? 'I run all of this. You pick how much, and Pause Mia stops it all.'
     : pack
-      ? 'This part needs a newer Mia Pack than yours. Add the newer one further down to unlock it.'
-      : 'These only work with the Mia Pack. Set them now and they’ll be ready.';
+      ? 'This part needs a newer Mia Pack than yours. Add the newer one in the Mia Pack section to unlock it.'
+      : 'Everything below Calm mode needs the Mia Pack. Set it now and it’ll be ready.';
 }
 
 async function zeichneWarnung(): Promise<void> {
@@ -180,7 +181,8 @@ function sp(e: Einstellungen): void {
 }
 werbung.addEventListener('change', () => {
   const wert = werbung.checked;
-  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, werbung: wert } }), sp);
+  // Wer den Schalter selbst bedient, hat geantwortet: die Frage verschwindet.
+  void speichere((alt) => ({ kontrolle: { ...alt.kontrolle, werbung: wert, werbungGefragt: true } }), sp);
 });
 blitz.addEventListener('change', () => {
   const wert = blitz.value as BlitzHaeufigkeit;

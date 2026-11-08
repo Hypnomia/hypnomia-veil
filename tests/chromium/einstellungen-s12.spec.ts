@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { FEHLER_SPEICHERN, datumLang, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { LEDGER_MEHR, LEDGER_MEHR_NEUER, ZAEHLER_NAMEN, stufeWert } from '../../src/ledger/texte';
 import { TON_TEXTE } from '../../src/ton/texte';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -86,6 +87,8 @@ async function frischeSeite(vorher: Record<string, unknown> = {}, breite = 0): P
   if (breite) await seite.setViewportSize({ width: breite, height: 800 });
   await seite.reload();
   await expect(seite.locator('#pack-status')).not.toHaveText('');
+  // Phase 9 (Fund 4): ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt; diese Tests bedienen sie wie die Person nach "Set them now".
+  await oeffneZugeklapptes(seite);
   return seite;
 }
 
@@ -158,8 +161,9 @@ test('Fund 6: Stimmung als Wort, auch als aria-valuetext', async () => {
   const seite = await frischeSeite();
   try {
     await taste(seite, '#stimmung', 'Home');
-    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.1));
-    await expect(seite.locator('#stimmung')).toHaveAttribute('aria-valuetext', stimmungsWort(0.1));
+    // Fund 28 (Phase 9): bei Mias Standard steht "(my default)" dabei.
+    await expect(seite.locator('#stimmung-wert')).toHaveText(`${stimmungsWort(0.1)} (my default)`);
+    await expect(seite.locator('#stimmung')).toHaveAttribute('aria-valuetext', `${stimmungsWort(0.1)} (my default)`);
     const gesehen: string[] = [(await seite.locator('#stimmung-wert').textContent()) ?? ''];
     let ziel = 10;
     for (const n of [3, 4, 4]) {
@@ -271,10 +275,11 @@ test('Fund 14: ein Wort je Ding, keine "skip" oder "exception" im sichtbaren Tex
     const chips = await seite.locator('#sprung a:not([hidden])').allTextContents();
     console.log(`einstellungen-s12: Ueberschriften ${JSON.stringify(h2)}, Chips ${JSON.stringify(chips)}`);
     expect(h2).toContain('Sites I leave alone');
-    expect(h2).toContain('Your Mia Pack');
-    expect(h2).toContain('Add the Mia Pack');
+    // Phase 9 (Fund 5): eine Pack-Karte "Mia Pack" statt zwei Karten.
+    expect(h2).toContain('Mia Pack');
     expect(chips).toContain('Mia Pack');
-    expect(chips).toContain('Sites I leave alone');
+    expect(chips).toContain('Covering');
+    expect(chips).toContain('About and help');
     expect(chips).not.toContain('Pack');
     expect(chips).not.toContain('Left alone');
     expect(sichtbar).not.toContain('your pack');
@@ -323,26 +328,21 @@ test('Fund 16: Strict ist ein Schalter in "What I cover", kein eigener Abschnitt
   }
 });
 
-test('Fund 17: Chip "Interview" und der Abschnitt direkt unter der Leiste, vor dem Einstieg verborgen', async () => {
+test('Fund 22 (Phase 9): das Interview wohnt ganz unten in "About and help", vor dem Einstieg verborgen, kein eigener Chip mehr', async () => {
   const seite = await frischeSeite();
   try {
-    await expect(seite.locator('#chip-interview')).toBeHidden();
     await expect(seite.locator('#abschnitt-interview')).toBeHidden();
     await schreibe(seite, { einstieg: EINSTIEG_FERTIG });
-    await expect(seite.locator('#chip-interview')).toBeVisible();
-    await expect(seite.locator('#chip-interview')).toHaveText('Interview');
     await expect(seite.locator('#abschnitt-interview')).toBeVisible();
-    // direkt nach der Leiste, vor dem ersten Einstellungs-Abschnitt
-    const naechster = await seite.evaluate(() => document.getElementById('leiste')!.nextElementSibling?.id);
-    expect(naechster).toBe('abschnitt-interview');
-    // der Chip springt zum Abschnitt
-    await seite.locator('#chip-interview').click();
-    await expect(seite).toHaveURL(/#abschnitt-interview$/);
-    // Einstieg wieder offen: Chip und Abschnitt verschwinden
-    await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstieg'));
+    await expect(seite.locator('#interview-neu')).toHaveText('Run the interview again');
+    // Der alte Chip bleibt nur als verborgener Anker (grund-pack.ts); die Leiste zeigt ihn nie.
     await expect(seite.locator('#chip-interview')).toBeHidden();
+    // Letztes Kind von "About and help", unter Version, Links und Hilfe.
+    expect(await seite.evaluate(() => document.getElementById('ueber')!.lastElementChild?.id)).toBe('abschnitt-interview');
+    // Einstieg wieder offen: der Knopf verschwindet
+    await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstieg'));
     await expect(seite.locator('#abschnitt-interview')).toBeHidden();
-    console.log('einstellungen-s12: Chip Interview erscheint und verschwindet mit dem Einstieg, Abschnitt direkt unter der Leiste');
+    console.log('einstellungen-s12: Interview-Knopf in About and help erscheint und verschwindet mit dem Einstieg');
   } finally {
     await seite.close();
   }
@@ -466,7 +466,7 @@ test('Fund 26: je Element erscheint der Satz in der Leiste, der Wert springt zur
     await regler('Stimmung', '#stimmung', 'ArrowRight', 2);
     await regler('Verweigern', '#verweigern', 'End', 1);
     await regler('Freilegen', '#freilegen', 'End', 1);
-    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(Number(await wert('#stimmung'))));
+    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(Number(await wert('#stimmung'))) + (Math.round(Number(await wert('#stimmung')) * 100) === 10 ? ' (my default)' : ''));
     // Zonen-Schalter
     const zoneVorher = await seite.locator('#zonen input[data-zone="eyes"]').isChecked();
     await fehlerBei('Zone', () => seite.locator('#zonen label.schalter').filter({ hasText: 'Eyes' }).click(), async () => {
@@ -615,7 +615,7 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     // Lesung Runde 3, Nr. 4: hoechstens zwei Chip-Zeilen (gemessen gegen die Hoehe eines Chips).
     const zeilen = await seite.evaluate(() => {
       const chip = document.querySelector('#sprung a')!.getBoundingClientRect().height;
-      const tops = new Set([...document.querySelectorAll('#sprung a')].map((a) => Math.round(a.getBoundingClientRect().top)));
+      const tops = new Set([...document.querySelectorAll('#sprung a:not(#chip-interview)')].map((a) => Math.round(a.getBoundingClientRect().top)));
       return { chip: Math.round(chip), zeilen: tops.size };
     });
     expect(zeilen.zeilen).toBeLessThanOrEqual(2);

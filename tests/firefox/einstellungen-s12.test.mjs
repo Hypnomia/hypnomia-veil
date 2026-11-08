@@ -104,6 +104,20 @@ async function bis(beschreibung, fn, frist = 15_000) {
 const eigenschaft = (css, name) => driver.executeScript(`return document.querySelector(arguments[0])[arguments[1]]`, css, name);
 const text = async (css) => (await driver.executeScript(`return document.querySelector(arguments[0]).textContent.trim()`, css));
 
+// Phase 9 (Paket B, Fund 4): ohne Pack sind Adult sites, Mia’s control (bis auf Calm mode) und Sound zugeklappt; wie die Person mit "Set them now" aufklappen.
+const oeffneZu = async () => {
+  const frist = Date.now() + 15_000;
+  for (;;) {
+    try {
+      if (await driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`)) break;
+    } catch {
+      /* Seite laedt noch */
+    }
+    if (Date.now() > frist) throw new Error('Ordnung der Einstellungsseite nicht bereit');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+};
 const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
@@ -172,6 +186,7 @@ async function frisch(vorher = {}) {
   if (Object.keys(vorher).length) await setze(vorher);
   await driver.navigate().refresh();
   await bis('Pack-Status', async () => (await text('#pack-status')) !== '');
+  await oeffneZu();
 }
 // Seite in einem 360 px breiten Iframe messen (Firefox-Fenster werden nicht so schmal)
 const imRahmen = (skript) =>
@@ -266,10 +281,10 @@ try {
   await bis('strict an', async () => (await einst()).strict === true);
   await strictKlick();
   await bis('strict aus', async () => (await einst()).strict === false);
-  pruefe((await sichtbar('#chip-interview')) && (await text('#chip-interview')) === 'Interview' && (await driver.executeScript(`return document.getElementById('leiste').nextElementSibling.id`)) === 'abschnitt-interview' && (await sichtbar('#abschnitt-interview')), 'Fund 17: Chip Interview sichtbar, Abschnitt direkt unter der Leiste');
+  pruefe(!(await sichtbar('#chip-interview')) && (await sichtbar('#abschnitt-interview')) && (await text('#interview-neu')) === 'Run the interview again' && (await driver.executeScript(`return document.getElementById('ueber').lastElementChild.id`)) === 'abschnitt-interview', 'Fund 22 (Phase 9): Interview-Knopf als letzter Punkt in About and help, kein eigener Chip');
   await entferne('einstieg');
-  await bis('Interview weg', async () => !(await sichtbar('#chip-interview')) && !(await sichtbar('#abschnitt-interview')));
-  pruefe(true, 'Fund 17: ohne Einstieg Chip und Abschnitt verborgen');
+  await bis('Interview weg', async () => !(await sichtbar('#abschnitt-interview')));
+  pruefe(true, 'Fund 22: ohne Einstieg der Interview-Knopf verborgen');
   await setze({ einstieg: EINSTIEG_FERTIG });
 
   // ---- Fund 14: Woerter ----
@@ -279,7 +294,7 @@ try {
   const h2 = await driver.executeScript(`return [...document.querySelectorAll('h2')].map((e) => e.textContent)`);
   const chips = await driver.executeScript(`return [...document.querySelectorAll('#sprung a:not([hidden])')].map((e) => e.textContent)`);
   pruefe(!/\bskip/.test(sicht) && !/\bexception/.test(sicht) && !sicht.includes('your pack') && !sicht.includes('add a pack'), 'Fund 14: kein "skip", "exception", "your pack", "add a pack" im sichtbaren Text');
-  pruefe(h2.includes('Sites I leave alone') && h2.includes('Your Mia Pack') && h2.includes('Add the Mia Pack') && chips.includes('Mia Pack') && chips.includes('Sites I leave alone') && !chips.includes('Pack') && !chips.includes('Left alone'), 'Fund 14: Ueberschriften und Chips nach dem Woerterbuch');
+  pruefe(h2.includes('Sites I leave alone') && h2.includes('Mia Pack') && chips.includes('Mia Pack') && chips.includes('Covering') && chips.includes('About and help') && !chips.includes('Pack') && !chips.includes('Left alone'), 'Fund 14: Ueberschriften und Chips nach dem Woerterbuch');
   pruefe(stufeWert(3) === 'Level 3 of 4', 'Fund 14: Stufe "Level 3 of 4"');
 
   // ---- Fund 28: Datum ----
@@ -347,7 +362,7 @@ try {
     const vor = await wertVon(css);
     await fehlerBei(name, () => tasten(css, key, n), async () => (await wertVon(css)) === vor);
   }
-  pruefe((await text('#stimmung-wert')) === stimmungsWort(Number(await wertVon('#stimmung'))), 'Fund 26: Stimmungswort passt zum gespeicherten Regler');
+  pruefe((await text('#stimmung-wert')) === stimmungsWort(Number(await wertVon('#stimmung'))) + (Math.round(Number(await wertVon('#stimmung')) * 100) === 10 ? ' (my default)' : ''), 'Fund 26: Stimmungswort passt zum gespeicherten Regler');
   pruefe(((await einst()).strict ?? false) === false && ((await einst()).ruhig ?? false) === false, 'Fund 26: nichts gespeichert');
   pruefe((await wertVon('#seite-feld')) === 'getippt.example' && (await wertVon('#ausnahme-feld')) === 'auch-getippt.example', 'Fund 26: getippter Text in unbeteiligten Feldern bleibt');
   pruefe(true, 'Fund 26: 12 Elemente mit Speicherfehler, je Satz gesehen');
@@ -364,6 +379,7 @@ try {
     einstellungen: { ...(await einst()), ausnahmen: ['kurz.de'], erwachsen: { ...((await einst()).erwachsen ?? {}), eigeneSeiten: ['adult.example'] } },
   });
   const m = await imRahmen(`
+    d.querySelectorAll('.zu-knopf').forEach((k) => k.click());
     d.getElementById('kon-zeit-neu').click();
     setTimeout(() => {
       const h = (sel) => { const l = [...d.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0); return { n: l.length, min: Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) }; };

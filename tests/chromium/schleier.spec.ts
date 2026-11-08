@@ -278,6 +278,9 @@ test('g) Popup: Pause, Regler, Stil, Strict und Zonen schreiben in storage.local
   await popup.click('#pause');
   await expect(popup.locator('#pause')).toHaveText('Pause Mia');
   expect((await lese()).pause).toBe(false);
+  // Phase 9, Paket A: Mood, Zonen und Strict stehen hinter "Change"
+  await popup.click('#aendern');
+  await expect(popup.locator('#zonen')).toBeVisible();
   // Mia's mood: Grenzen 0,10 bis 0,25
   await popup.locator('#stimmung').fill('0.25');
   await expect.poll(async () => (await lese()).schwelle).toBe(0.25);

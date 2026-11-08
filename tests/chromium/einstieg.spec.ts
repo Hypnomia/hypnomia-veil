@@ -24,6 +24,8 @@ const schreibe = (seite: Page, o: Record<string, unknown>) => seite.evaluate((o)
 const entferne = (seite: Page, k: string[]) => seite.evaluate((k) => (globalThis as any).chrome.storage.local.remove(k), k);
 const sende = (seite: Page, n: Record<string, unknown>) =>
   seite.evaluate((n) => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'einstieg-test', ...n }), n);
+// Ein Pack im Speicher (Fund 7: mit Pack beim Einstieg hat das Interview 5 Seiten, ohne 3).
+const PACK_KURZ = { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 };
 const einst = async (s: Page) => (await lies(s, 'einstellungen')) ?? {};
 // Schalter: die Eingabe ist unsichtbar, geklickt wird die Zeile.
 const schalter = (s: Page, feld: string) => s.locator('label.schalter', { has: s.locator(feld) }).click();
@@ -44,6 +46,20 @@ async function oeffneNeu(v: Page): Promise<Page> {
   const w = await neu;
   await w.waitForLoadState('domcontentloaded');
   await expect(w.locator('#schritt-titel')).toBeVisible();
+  return w;
+}
+
+// Interview mit fuenf Seiten, aber ohne Pack danach: das Pack liegt beim Eintritt im Speicher (Fund 7) und wird gleich wieder entfernt,
+// damit die Hinweise "ohne Pack" auf Seite 4 und 5 sichtbar sind.
+async function interviewFuenf(v: Page, breite?: number): Promise<Page> {
+  await schreibe(v, FERTIG);
+  await schreibe(v, { pack: PACK_KURZ });
+  const w = await context.newPage();
+  if (breite) await w.setViewportSize({ width: breite, height: 700 });
+  await w.goto(url('willkommen.html#interview'));
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5));
+  await entferne(v, ['pack']);
   return w;
 }
 
@@ -83,6 +99,7 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   // Die Verwaltungsseite ist hier nicht die Einstellungsseite, damit "All settings" eine neue Seite oeffnet (sonst springt Chrome zur offenen).
   const v = await verwaltung('popup.html');
   await entferne(v, ['einstellungen', 'pack', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);
+  await schreibe(v, { pack: PACK_KURZ }); // mit Pack beim Einstieg: fuenf Seiten
   const w = await oeffneNeu(v);
   // a. Warnung
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'warnung');
@@ -111,8 +128,11 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   messzahl += 3;
   // d1. Stimmung und Strict
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.schrittVon(4, 8));
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5)); // Fund 19
+  await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.interview);
   await expect(w.locator('#iv-zurueck')).toHaveCount(0);
+  await entferne(v, ['pack']); // ab hier wie ohne Pack; die Zahl der Seiten bleibt bei 5
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5));
   await expect(w.locator('#iv-stimmung')).toHaveValue('0.1');
   await w.locator('#iv-stimmung').fill('0.2');
   await expect.poll(async () => (await einst(v)).schwelle).toBe(0.2);
@@ -221,14 +241,13 @@ test('Ueberspringen: interview uebersprungen, Einstellungen unveraendert, Gate u
   await expect(w.locator('#iv-ueberspringen')).toHaveCount(0);
   await w.locator('#einwilligung-ok').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
-  // Erst Antworten geben, dann auf Seite 3 ueberspringen: die gesetzten Einstellungen bleiben, es wird nichts zurueckgesetzt.
+  // Erst Antworten geben, dann auf Seite 2 ueberspringen: die gesetzten Einstellungen bleiben, es wird nichts zurueckgesetzt.
   await w.locator('#iv-stimmung').fill('0.15');
   await expect.poll(async () => (await einst(v)).schwelle).toBe(0.15);
   await schalter(w, '#iv-strict');
   await expect.poll(async () => (await einst(v)).strict).toBe(true);
   await w.locator('#iv-weiter').click();
-  await w.locator('#iv-weiter').click();
-  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-3');
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-2'); // ohne Pack gibt es nur drei Seiten (Fund 7)
   const vorher = await lies(v, 'einstellungen');
   expect(vorher.schwelle).toBe(0.15);
   await w.locator('#iv-ueberspringen').click();
@@ -315,10 +334,9 @@ test('Adresse: #interview springt bei fertigem Einstieg ins Interview, sonst zum
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
   // Neuladen mitten im Interview bleibt auf der Seite
   await w.locator('#iv-weiter').click();
-  await w.locator('#iv-weiter').click();
-  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-3');
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-2');
   await w.reload();
-  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-3');
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-2');
   // Interview erneut aufgerufen und ueberspringen: 'fertig' bleibt 'fertig'
   await w.locator('#iv-ueberspringen').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
@@ -352,13 +370,14 @@ test('Adresse: #interview springt bei fertigem Einstieg ins Interview, sonst zum
 test('360 px: kein waagrechtes Scrollen in keinem Schritt', async () => {
   const v = await verwaltung();
   await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });
-  await entferne(v, ['pack']);
+  await schreibe(v, { pack: PACK_KURZ }); // fuenf Seiten; unten wird das Pack entfernt, damit die Pack-Hinweise mitgemessen werden
   const w = await context.newPage();
   await w.setViewportSize({ width: 360, height: 700 });
   await w.goto(url('willkommen.html#interview'));
   let geprueft = 0;
   for (let i = 1; i <= 5; i++) {
     await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', `interview-${i}`);
+    if (i === 1) await entferne(v, ['pack']);
     const m = await w.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
     expect(m.s, `Seite ${i}`).toBeLessThanOrEqual(m.c);
     geprueft++;
@@ -459,11 +478,12 @@ test('Fund 2 und 18: Einwilligungsseite sagt, was schon laeuft und was bei "Not 
 test('Wiederholen: "Question n of 5", Stimmungswort, Calm mode und Hinweis auf Seite 5, kein Ueberspringen auf Seite 5, Pack-Link auf Seite 4 und 5', async () => {
   const v = await verwaltung();
   await schreibe(v, FERTIG);
-  await entferne(v, ['pack']);
-  await schreibe(v, { einstellungen: { version: 1, schwelle: 0.2 } });
+  await schreibe(v, PACK); // mit Pack beim Eintritt: fuenf Fragen; nach Seite 1 faellt das Pack weg, damit die Pack-Hinweise sichtbar sind
+  await schreibe(v, { einstellungen: { version: 1, schwelle: 0.2, kontrolle: { werbung: true } } }); // Werbung ist ab Werk aus (Opt-in), hier an, damit die Zeile alle drei nennt
   const w = await context.newPage();
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
+  await entferne(v, ['pack']);
   await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5)); // Fund 19
   await expect(w.locator('#fortschritt')).toHaveAttribute('max', '5');
   // Fund 6: Wort statt Zahl
@@ -489,15 +509,18 @@ test('Wiederholen: "Question n of 5", Stimmungswort, Calm mode und Hinweis auf S
   await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(5, 5));
   await expect(w.locator('#iv-ohne-pack')).toContainText(TEXT.ohnePack5);
   const alle = [TEXT.auchAnNamen.werbung, TEXT.auchAnNamen.tabtitel, TEXT.auchAnNamen.meldungen];
-  await expect(w.locator('#iv-auch-an')).toHaveText(TEXT.auchAn(alle)); // Fund 3
+  await expect(w.locator('#iv-auch-an')).toContainText(TEXT.auchAn(alle)); // Fund 3
+  await expect(w.locator('#iv-auch-an-link')).toHaveText(TEXT.auchAnLink); // Fund 21
+  await expect(w.locator('#iv-auch-an-link')).toHaveAttribute('href', `chrome-extension://${id}/options.html#kontrolle`);
+  await expect(w.locator('#iv-auch-an-link')).toHaveAttribute('target', '_blank');
   await expect(w.locator('#iv-ohne-pack')).not.toContainText(TEXT.auchAnNamen.werbung);
   // Die Zeile folgt dem Speicher: ist etwas ausgeschaltet, wird es nicht genannt
   await schreibe(v, { einstellungen: { version: 1, kontrolle: { werbung: false, tabtitel: true, meldungen: false } } });
-  await expect(w.locator('#iv-auch-an')).toHaveText(TEXT.auchAn([TEXT.auchAnNamen.tabtitel]));
+  await expect(w.locator('#iv-auch-an')).toContainText(TEXT.auchAn([TEXT.auchAnNamen.tabtitel]));
   await schreibe(v, { einstellungen: { version: 1, kontrolle: { werbung: false, tabtitel: false, meldungen: false } } });
   await expect(w.locator('#iv-auch-an')).toBeHidden();
-  await schreibe(v, { einstellungen: { version: 1 } });
-  await expect(w.locator('#iv-auch-an')).toHaveText(TEXT.auchAn(alle));
+  await schreibe(v, { einstellungen: { version: 1, kontrolle: { werbung: true } } });
+  await expect(w.locator('#iv-auch-an')).toContainText(TEXT.auchAn(alle));
   await expect(w.locator('#iv-ueberspringen')).toHaveCount(0); // Fund 20
   await expect(w.locator('.ueberspringen')).toHaveCount(0);
   await schalter(w, '#iv-ruhig'); // Fund 23
@@ -523,6 +546,7 @@ test('Abschluss: Satz folgt dem Pack (Fund 21)', async () => {
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
   await expect(w.locator('#ende-text')).toHaveText(TEXT.endeText);
   await expect(w.locator('#ende-pack')).toHaveText(TEXT.endePack);
+  await expect(w.locator('#ende-pack')).toHaveClass(/gross/); // Fund 1: ohne Pack der Hauptknopf
   await schreibe(v, PACK);
   await expect(w.locator('#ende-text')).toHaveText(TEXT.endeTextMitPack);
   await expect(w.locator('#ende-pack')).toBeHidden();
@@ -557,9 +581,7 @@ test('Fund 26: scheitert das Speichern, steht der Fehlersatz da und der Schalter
 
 test('Kontrast (Fund 9 und 10): kleine Knoepfe mindestens 4,5:1, Schalterbahn aus und Feldraender mindestens 3:1', async () => {
   const v = await verwaltung();
-  await schreibe(v, FERTIG);
-  const w = await context.newPage();
-  await w.goto(url('willkommen.html#interview'));
+  const w = await interviewFuenf(v);
   const knopf = await kontrast(w, '#iv-ueberspringen', 'color', 'eigen');
   expect(knopf).toBeGreaterThanOrEqual(4.5);
   await w.locator('#iv-weiter').click(); // Seite 2: Wahlkarten und Schalter
@@ -610,11 +632,7 @@ test('Fund N9: Unterzeile der gewaehlten Karte mindestens 4,5:1 auf dem Kartengr
 
 test('Fund N10: bei 360 px sind Auswahlen, Knoepfe, Schalter, Regler und der Pack-Link mindestens 44 px hoch', async () => {
   const v = await verwaltung();
-  await schreibe(v, FERTIG);
-  await entferne(v, ['pack']);
-  const w = await context.newPage();
-  await w.setViewportSize({ width: 360, height: 700 });
-  await w.goto(url('willkommen.html#interview'));
+  const w = await interviewFuenf(v, 360);
   const hoehen: string[] = [];
   for (let i = 1; i <= 5; i++) {
     await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', `interview-${i}`);
@@ -644,10 +662,7 @@ test('Fund N10: bei 360 px sind Auswahlen, Knoepfe, Schalter, Regler und der Pac
 
 test('Fund N11: Link "Add the Mia Pack" oeffnet einen neuen Tab mit options.html#neu, der Interview-Tab bleibt auf seiner Seite', async () => {
   const v = await verwaltung();
-  await schreibe(v, FERTIG);
-  await entferne(v, ['pack']);
-  const w = await context.newPage();
-  await w.goto(url('willkommen.html#interview'));
+  const w = await interviewFuenf(v);
   for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-4');
   const vorher = context.pages().length;
@@ -672,7 +687,7 @@ test('Fund N12: beim Wiederholen fuehrt "All settings" am Ende im selben Tab zur
   await schreibe(v, FERTIG);
   const w = await context.newPage();
   await w.goto(url('willkommen.html#interview'));
-  for (let i = 0; i < 5; i++) await w.locator('#iv-weiter').click();
+  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
   const vorher = context.pages().length;
   await w.locator('#ende-einstellungen').click();
@@ -680,6 +695,120 @@ test('Fund N12: beim Wiederholen fuehrt "All settings" am Ende im selben Tab zur
   expect(context.pages().length).toBe(vorher);
   console.log(`chromium: einstieg N12 Tabs ${vorher} auf ${context.pages().length}, Ziel ${w.url().split('/').pop()}`);
   messzahl += 2;
+  await w.close();
+  await v.close();
+});
+
+test('Fund 7, 8 und 19: ohne Pack drei Fragen mit Calm mode auf Seite 3, Etappen unter der Bahn, "Calm mode on, then continue" auf der Warnseite', async () => {
+  const v = await verwaltung('popup.html');
+  await entferne(v, ['einstellungen', 'pack', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);
+  const w = await oeffneNeu(v);
+  // Warnseite: zwei gleich starke Knoepfe, Etappen mit der aktuellen fett
+  await expect(w.locator('#warnung-ok')).toHaveClass(/gross/);
+  await expect(w.locator('#warnung-ruhig')).toHaveClass(/gross/);
+  await expect(w.locator('#warnung-ruhig')).toHaveText(TEXT.warnungRuhig);
+  await expect(w.locator('#etappen li')).toHaveText([TEXT.etappen.warnung, TEXT.etappen.alter, TEXT.etappen.einwilligung, TEXT.etappen.interview]);
+  await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.warnung);
+  expect(await w.locator('#etappen li[aria-current="step"]').evaluate((e) => Number(getComputedStyle(e).fontWeight))).toBeGreaterThanOrEqual(700);
+  expect(((await einst(v)) as any).ruhig ?? false).toBe(false);
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.schrittVon(1, 6)); // ohne Pack: 3 Gate-Schritte + 3 Fragen
+  await w.locator('#warnung-ruhig').click();
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'alter');
+  await expect.poll(async () => (await einst(v)).ruhig).toBe(true);
+  expect((await lies(v, 'einstieg')).warnung).toBe(true);
+  expect(await lies(v, 'quizWarnungGesehen')).toBe(true);
+  await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.alter);
+  await w.locator('#alter-ja').click();
+  await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.einwilligung);
+  await w.locator('#einwilligung-ok').click();
+  // drei Fragen
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 3));
+  await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.interview);
+  await expect(w.locator('#iv-ueberspringen')).toBeVisible();
+  await w.locator('#iv-weiter').click();
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(2, 3));
+  await w.locator('#iv-weiter').click();
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(3, 3));
+  await expect(w.locator('#iv-weiter')).toHaveText(TEXT.fertig);
+  await expect(w.locator('#iv-ueberspringen')).toHaveCount(0);
+  // Calm mode steht auf Seite 3 und ist schon an (Warnseite), ausschalten wird gespeichert
+  await expect(w.locator('#iv-ruhig')).toBeChecked();
+  await schalter(w, '#iv-ruhig');
+  await expect.poll(async () => (await einst(v)).ruhig).toBe(false);
+  await schalter(w, '#iv-ruhig');
+  await expect.poll(async () => (await einst(v)).ruhig).toBe(true);
+  await w.locator('#iv-weiter').click();
+  await expect.poll(async () => (await lies(v, 'einstieg')).interview).toBe('fertig');
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
+  messzahl += 8;
+  // Wer mit Pack kommt, bekommt alle fuenf Fragen und Calm mode erst auf Seite 5; "I understand" laesst Calm mode aus
+  await entferne(v, ['einstellungen']);
+  await schreibe(v, { pack: PACK_KURZ });
+  const w2 = await oeffneNeu(v);
+  await w2.locator('#warnung-ok').click();
+  await expect(w2.locator('#schritt')).toHaveAttribute('data-schritt', 'alter');
+  expect(((await einst(v)) as any).ruhig ?? false).toBe(false);
+  await w2.locator('#alter-ja').click();
+  await w2.locator('#einwilligung-ok').click();
+  await expect(w2.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5));
+  await w2.locator('#iv-weiter').click();
+  await w2.locator('#iv-weiter').click();
+  await expect(w2.locator('#iv-ruhig')).toHaveCount(0);
+  messzahl += 3;
+  await entferne(v, ['pack']);
+  for (const p of context.pages()) if (p !== v) await p.close();
+  await v.close();
+});
+
+test('Fund 3: Abschluss zeigt Anheften, Pause mit Kuerzel und Ausprobieren, Hilfe-Link und Pack-Knopf', async () => {
+  const v = await verwaltung();
+  await schreibe(v, FERTIG);
+  await entferne(v, ['pack']);
+  const w = await context.newPage();
+  await w.goto(url('willkommen.html'));
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
+  await expect(w.locator('#ende-liste li')).toHaveCount(3);
+  await expect(w.locator('#ende-pin')).toContainText(TEXT.endePinTitel);
+  await expect(w.locator('#ende-pin')).toContainText(TEXT.endePinChrome); // Chromium: Puzzle-Teil neben der Adressleiste
+  await expect(w.locator('#ende-pin-link')).toHaveAttribute('href', 'hilfe.html#pin');
+  await expect(w.locator('#ende-pin-link')).toHaveAttribute('target', '_blank');
+  await expect(w.locator('#ende-pin-link')).toHaveAttribute('rel', 'noopener');
+  await expect(w.locator('#ende-pause')).toContainText(TEXT.endePauseTitel);
+  // Das Kuerzel kommt aus browser.commands (in Chromium im Testbau gesetzt); steht keines da, bleibt das Popup
+  const kuerzel = await w.evaluate(async () => {
+    const alle = await (globalThis as any).chrome.commands.getAll();
+    return (alle.find((c: any) => c.name === 'pause-umschalten')?.shortcut as string | undefined) ?? '';
+  });
+  await expect(w.locator('#ende-pause')).toContainText(kuerzel ? TEXT.endePauseKuerzel(kuerzel) : TEXT.endePauseNurPopup);
+  await expect(w.locator('#ende-versuch')).toContainText(TEXT.endeVersuch);
+  await expect(w.locator('#ende-hilfe')).toHaveText(TEXT.endeHilfe);
+  await expect(w.locator('#ende-hilfe')).toHaveAttribute('href', 'hilfe.html');
+  await expect(w.locator('#ende-pack')).toHaveText('Get the Mia Pack');
+  messzahl += 9;
+  await w.close();
+  await v.close();
+});
+
+test('Fund 20: bei 360 px ist Mias Bild ein Band von hoechstens 160 px, "I agree" liegt hoch', async () => {
+  const v = await verwaltung();
+  await entferne(v, ['pack']);
+  await sende(v, { zuruecksetzen: true });
+  await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: false, interview: 'offen', zeit: null } });
+  const w = await context.newPage();
+  await w.setViewportSize({ width: 360, height: 700 });
+  await w.goto(url('willkommen.html'));
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'einwilligung');
+  // Das Bild ist im Testbau da, wenn Kern-Bilder gebaut sind; ohne sie bleibt der Platz weg und nichts ist zu messen.
+  const bild = w.locator('#kern-bild');
+  const da = await bild.isVisible().catch(() => false);
+  if (da) {
+    const h = await w.locator('#kern-bild img').evaluate((e) => e.getBoundingClientRect().height);
+    expect(h).toBeLessThanOrEqual(160);
+    messzahl++;
+  }
+  const y = await w.locator('#einwilligung-ok').evaluate((e) => e.getBoundingClientRect().top + window.scrollY);
+  expect(y).toBeLessThan(900);
+  messzahl++;
   await w.close();
   await v.close();
 });

@@ -69,6 +69,11 @@ input { font: inherit; flex: 1; min-width: 0; min-height: 44px; padding: 8px 12p
 .fang { min-height: 44px; width: 100%; display: flex; align-items: center; justify-content: center; border-radius: var(--v-r-voll); border: 1px solid var(--v-glas-kante); background: rgba(255, 255, 255, 0.7); box-shadow: 0 0 0 1px rgba(201, 182, 240, 0.45); padding: 6px 16px; text-align: center; font-weight: 700; color: var(--v-rosa-800); }
 .warnung { margin: 4px 0 10px; }
 .fuss { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; font-size: 12.5px; font-weight: 700; color: var(--v-leise); }
+.erklaerung { flex: none; margin: 8px 0 0; font-size: 13px; font-weight: 700; color: var(--v-leise); }
+.hilfe-link { color: var(--v-rosa-700); font-weight: 800; text-decoration: underline; cursor: pointer; }
+.erklaerung .hilfe-link { display: inline-block; padding: 2px 0; }
+.hilfe-link:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; border-radius: 4px; }
+.fuss .hilfe-link { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: -12px -8px -12px 0; text-decoration: none; font-size: 15px; }
 .ansage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 520px) { .huelle { padding: 0; } .karte { max-width: none; min-height: 100%; border-radius: 0; border-width: 0; } button.pause { min-height: 44px; } }
 @media (pointer: coarse) { button.pause { min-height: 44px; } }

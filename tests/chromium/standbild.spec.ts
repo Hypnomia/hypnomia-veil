@@ -2,6 +2,7 @@
 // gewaehlten Stufe ueber dem Hauptvideo (Host `data-veil-standbild`, nur im Testbau). Seite wie player.spec.ts (tests/fixtures/erwachsen-player.html).
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -497,6 +498,52 @@ test('Strenge Seiten-CSP (style-src ohne unsafe-inline): das Standbild kommt tro
     const a = await standbildBereit(s);
     expect(nahe(a.r, a.vr)).toBe(true);
     expect(await hostOben(s)).toBe(true);
+  } finally {
+    await s.close();
+  }
+});
+
+// Session 17 (Testluecke UEBERGABE-16 Punkt 4, Entscheidung 170): ein zensiertes Poster liegt im Player ueber dem Video, Mias Standbild
+// darueber. Freilegen zeigt dort keinen "Reveal"-Knopf (er wuerde nur Mias Deckel zeigen); dasselbe Bild ausserhalb des Players bekommt
+// ihn (Gegenprobe: Freilegen wirkt auf dieser Seite). Braucht ../05 Testbilder (sonst laut uebersprungen).
+test('kein Reveal auf Mias Standbild, dasselbe Bild daneben bekommt ihn', async () => {
+  const bild = path.join(wurzel, '..', '05 Testbilder', 'nsfw', 'IMG_0260.jpg');
+  test.skip(!existsSync(bild), 'braucht ../05 Testbilder/nsfw/IMG_0260.jpg');
+  test.setTimeout(60_000);
+  await setzeEinstellungen({ ...EINST, erwachsen: { ...EINST.erwachsen, stufe: 'hot' } });
+  const s = await oeffneSeite();
+  try {
+    await neuesVideo(s, { id: 'haupt' });
+    await standbildBereit(s);
+    await s.evaluate(() => {
+      const player = document.getElementById('player')!;
+      player.style.position = 'relative';
+      const poster = document.createElement('img');
+      poster.id = 'poster';
+      poster.src = '/testbild/nsfw/IMG_0260.jpg';
+      poster.style.cssText = 'position:absolute;left:0;top:0;width:640px;height:360px;object-fit:cover;z-index:1';
+      player.append(poster);
+      const daneben = document.createElement('img');
+      daneben.id = 'daneben';
+      daneben.src = '/testbild/nsfw/IMG_0260.jpg';
+      daneben.style.cssText = 'display:block;width:320px;height:480px;margin-top:8px';
+      document.body.prepend(daneben);
+    });
+    // Beide Bilder werden zensiert; der Knopf erscheint nur fuer das Bild daneben.
+    await expect.poll(() => s.evaluate(() => ['poster', 'daneben'].map((id) => document.getElementById(id)?.getAttribute('data-veil'))), { timeout: 20_000 }).toEqual(['zensiert', 'zensiert']);
+    const knoepfe = () =>
+      s.evaluate(() => {
+        const a = document.documentElement.getAttribute('data-veil-freilegen');
+        return (a ? JSON.parse(a).knoepfe : []) as { id: string }[];
+      });
+    await s.mouse.move(100, 100);
+    await expect.poll(async () => (await knoepfe()).map((k) => k.id), { timeout: 10_000 }).toContain('daneben');
+    await s.evaluate(() => document.getElementById('player')!.scrollIntoView({ block: 'center' }));
+    await s.waitForTimeout(800);
+    const ids = (await knoepfe()).map((k) => k.id);
+    console.log(`standbild: Freilegen-Knoepfe ${JSON.stringify(ids)}`);
+    expect(ids).not.toContain('poster');
+    expect(await standbild(s)).not.toBeNull();
   } finally {
     await s.close();
   }

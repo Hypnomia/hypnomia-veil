@@ -155,10 +155,11 @@ try {
   messzahl += 5;
 
   // 3. Ganzer Durchgang
-  await imStand(v, () => imSeitenkontext(`await api.storage.local.remove(['einstellungen', 'pack', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);`));
+  // Fund 7: mit Pack beim Einstieg hat das Interview fuenf Seiten; das Pack faellt nach Seite 1 wieder weg, damit die Hinweise "ohne Pack" sichtbar sind.
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.remove(['einstellungen', 'quizWarnungGesehen', 'spiraleWarnungGesehen']); await api.storage.local.set({ pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 } });`));
   await driver.switchTo().window(w);
   pruefe((await text('#warnung-kern')) === TEXT.warnungKern, 'Warnung zeigt den sachlichen Kern');
-  pruefe((await text('#fortschritt-text')) === TEXT.schrittVon(1, 8), 'Fortschritt Schritt 1 von 8');
+  pruefe((await text('#fortschritt-text')) === TEXT.schrittVon(1, 6), 'Fortschritt Schritt 1 von 6 (die Seite war vor dem Pack offen)');
   await klick('#warnung-ok');
   await bis('warnung gespeichert', async () => (await einstieg()).warnung === true);
   pruefe((await speicher('quizWarnungGesehen')) === true && (await speicher('spiraleWarnungGesehen')) === true, 'Warnung zaehlt als gesehen fuer Quiz und Spirale');
@@ -171,7 +172,11 @@ try {
   await bis('einwilligung gespeichert', async () => (await einstieg()).einwilligung === true);
   pruefe(typeof (await einstieg()).zeit === 'number', 'I agree speichert die Zeit');
   await bisSchritt('interview-1');
-  messzahl += 6;
+  pruefe((await text('#fortschritt-text')) === TEXT.frageVon(1, 5), 'Fund 7 und 19: mit Pack fuenf Fragen, Question 1 of 5');
+  pruefe((await text('#etappen li[aria-current="step"]')) === TEXT.etappen.interview, 'Fund 19: Etappe Questions fett');
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.remove('pack');`));
+  await driver.switchTo().window(w);
+  messzahl += 8;
   // Seite 1
   await setzeRange('#iv-stimmung', 0.2);
   await bis('schwelle', async () => (await einst()).schwelle === 0.2);
@@ -270,15 +275,13 @@ try {
   pruefe(!(await sichtbar('#iv-ueberspringen')), 'bei der Einwilligung kein Ueberspringen');
   await klick('#einwilligung-ok');
   await bisSchritt('interview-1');
-  // Erst Antworten geben, dann auf Seite 3 ueberspringen: gesetzte Einstellungen bleiben, nichts wird zurueckgesetzt
+  // Erst Antworten geben, dann auf Seite 2 ueberspringen (ohne Pack gibt es nur drei Seiten): gesetzte Einstellungen bleiben, nichts wird zurueckgesetzt
   await setzeRange('#iv-stimmung', 0.15);
   await bis('schwelle 0.15', async () => (await einst()).schwelle === 0.15);
   await klick('#iv-strict');
   await bis('strict an', async () => (await einst()).strict === true);
   await klick('#iv-weiter');
   await bisSchritt('interview-2');
-  await klick('#iv-weiter');
-  await bisSchritt('interview-3');
   const vorEinst = JSON.stringify(await speicher('einstellungen'));
   pruefe((await einst()).schwelle === 0.15, 'vor dem Ueberspringen steht die Antwort im Speicher');
   await klick('#iv-ueberspringen');
@@ -389,11 +392,14 @@ try {
   messzahl += 6;
   // Wiederholen: fertiger Einstieg, #interview
   await driver.switchTo().window(v);
-  await imSeitenkontext(`await api.storage.local.set({ einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } }); await api.storage.local.remove(['pack']); await api.storage.local.set({ einstellungen: { version: 1, schwelle: 0.2 } });`);
+  await imSeitenkontext(`await api.storage.local.set({ einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } }); await api.storage.local.set({ pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 } }); await api.storage.local.set({ einstellungen: { version: 1, schwelle: 0.2, kontrolle: { werbung: true } } });`);
   await driver.switchTo().window(h);
   await driver.get(`moz-extension://${uuid}/willkommen.html#interview`);
   await driver.navigate().refresh();
   await bisSchritt('interview-1');
+  await bis('Pack da', async () => (await text('#fortschritt-text')) === TEXT.frageVon(1, 5));
+  await imStand(v, () => imSeitenkontext(`await api.storage.local.remove('pack');`));
+  await driver.switchTo().window(h);
   pruefe((await text('#fortschritt-text')) === TEXT.frageVon(1, 5), 'Fund 19: Wiederholen zaehlt Question 1 of 5');
   pruefe((await text('#iv-stimmung-wert')) === stimmungsWort(0.2), 'Fund 6: Stimmungswort statt Zahl');
   pruefe((await eigenschaft('#iv-stimmung', 'ariaValueText')) === stimmungsWort(0.2) || (await driver.executeScript(`return document.querySelector('#iv-stimmung').getAttribute('aria-valuetext')`)) === stimmungsWort(0.2), 'Fund 6: aria-valuetext');
@@ -443,7 +449,8 @@ try {
   await klick('#iv-weiter');
   await bisSchritt('interview-5');
   pruefe((await text('#fortschritt-text')) === TEXT.frageVon(5, 5), 'Fund 19: Question 5 of 5');
-  pruefe((await text('#iv-auch-an')) === TEXT.auchAn([TEXT.auchAnNamen.werbung, TEXT.auchAnNamen.tabtitel, TEXT.auchAnNamen.meldungen]), 'Fund 3: Zeile zu Werbung, Tab-Titeln, Notizen');
+  pruefe((await text('#iv-auch-an')).startsWith(TEXT.auchAn([TEXT.auchAnNamen.werbung, TEXT.auchAnNamen.tabtitel, TEXT.auchAnNamen.meldungen])), 'Fund 3: Zeile zu Werbung, Tab-Titeln, Notizen');
+  pruefe((await text('#iv-auch-an-link')) === TEXT.auchAnLink && (await eigenschaft('#iv-auch-an-link', 'href')) === `moz-extension://${uuid}/options.html#kontrolle`, 'Fund 21: Link zu den Einstellungen');
   pruefe(!(await sichtbar('#iv-ueberspringen')), 'Fund 20: Seite 5 ohne Ueberspringen');
   await klick('#iv-ruhig');
   await bis('ruhig auf Seite 5', async () => (await einst()).ruhig === true);
@@ -459,11 +466,52 @@ try {
   await driver.get(`moz-extension://${uuid}/willkommen.html`);
   await bisSchritt('ende');
   pruefe((await text('#ende-text')) === TEXT.endeText, 'Fund 21: ohne Pack der Satz zum Pack');
+  // Fund 3: Checkliste im Abschluss, Firefox desktop: Rechtsklick auf mein Symbol; Kuerzel aus browser.commands
+  pruefe((await driver.executeScript(`return document.querySelectorAll('#ende-liste li').length`)) === 3, 'Fund 3: drei Zeilen in der Checkliste');
+  pruefe((await text('#ende-pin')).includes(TEXT.endePinFirefox), 'Fund 3: Firefox-Satz zum Anheften');
+  pruefe((await eigenschaft('#ende-pin-link', 'target')) === '_blank' && (await driver.executeScript(`return document.querySelector('#ende-pin-link').getAttribute('href')`)) === 'hilfe.html#pin', 'Fund 3: Hilfe-Link zum Anheften');
+  const kuerzel = await imSeitenkontext(`const alle = await api.commands.getAll(); return (alle.find((c) => c.name === 'pause-umschalten') || {}).shortcut || '';`);
+  await bis('Fund 3: Pause-Zeile', async () => (await text('#ende-pause')).includes(kuerzel ? TEXT.endePauseKuerzel(kuerzel) : TEXT.endePauseNurPopup));
+  pruefe((await text('#ende-versuch')).includes(TEXT.endeVersuch), 'Fund 3: Try me');
+  pruefe((await text('#ende-pack')) === 'Get the Mia Pack', 'Fund 1: Abschluss bietet Get the Mia Pack');
   await driver.switchTo().window(v);
   await imSeitenkontext(`await api.storage.local.set({ pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 } });`);
   await driver.switchTo().window(h);
   await bis('Satz mit Pack', async () => (await text('#ende-text')) === TEXT.endeTextMitPack);
   messzahl += 2;
+
+  // Fund 7 und 8: ohne Pack drei Fragen, Calm mode auf Seite 3, "Calm mode on, then continue" auf der Warnseite
+  await driver.switchTo().window(v);
+  await imSeitenkontext(`await api.storage.local.remove(['pack', 'einstellungen']);`);
+  await sende({ zuruecksetzen: true });
+  await oeffne('willkommen.html');
+  await bisSchritt('warnung');
+  pruefe((await text('#fortschritt-text')) === TEXT.schrittVon(1, 6), 'Fund 7: ohne Pack Step 1 of 6');
+  pruefe((await text('#warnung-ruhig')) === TEXT.warnungRuhig && (await eigenschaft('#warnung-ruhig', 'className')).includes('gross'), 'Fund 8: zweiter, gleich starker Knopf');
+  pruefe(((await einst()).ruhig ?? false) === false, 'Fund 8: Calm mode vorher aus');
+  await klick('#warnung-ruhig');
+  await bisSchritt('alter');
+  await bis('Calm mode an', async () => (await einst()).ruhig === true);
+  pruefe((await einstieg()).warnung === true && (await speicher('quizWarnungGesehen')) === true, 'Fund 8: Warnung zaehlt als gesehen');
+  pruefe((await text('#etappen li[aria-current="step"]')) === TEXT.etappen.alter, 'Fund 19: Etappe Age');
+  await klick('#alter-ja');
+  await bisSchritt('einwilligung');
+  await klick('#einwilligung-ok');
+  await bisSchritt('interview-1');
+  pruefe((await text('#fortschritt-text')) === TEXT.frageVon(1, 3), 'Fund 7 und 19: Question 1 of 3');
+  await klick('#iv-weiter');
+  await bisSchritt('interview-2');
+  await klick('#iv-weiter');
+  await bisSchritt('interview-3');
+  pruefe((await text('#iv-weiter')) === TEXT.fertig && !(await sichtbar('#iv-ueberspringen')), 'Fund 7: Seite 3 ist die letzte');
+  pruefe((await eigenschaft('#iv-ruhig', 'checked')) === true, 'Fund 8: Calm mode auf Seite 3 steht auf an');
+  await klick('#iv-ruhig');
+  await bis('Calm mode aus', async () => (await einst()).ruhig === false);
+  await klick('#iv-weiter');
+  await bis('interview fertig (3 Seiten)', async () => (await einstieg()).interview === 'fertig');
+  await bisSchritt('ende');
+  messzahl += 9;
+  await driver.close();
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);
   code = 1;

@@ -1,7 +1,10 @@
 // Einstellungsseite: Einstieg der Module und Abschnitt 'Adult sites' (eigene Seiten, Quiz, Calm mode) mit Begruessung.
 // Session 12 (Vertragsschritt): der Pack-Teil liegt jetzt in pack.ts (Auftrag P).
 import { FREILEGEN_MAX_MS, FREILEGEN_MIN_MS, VERWEIGERN_MAX, VERWEIGERN_MIN, aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
+// Phase 9 (Vertrag mit Paket C): die Pack-Karte baut pack-karte.ts beim Import synchron in #stand, darum steht der Import ganz oben.
+import './pack-karte';
 import { hostAus } from '../../src/adapter/liste';
+import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import { hatErwachsenFunktionen, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
@@ -11,6 +14,7 @@ import { speichere } from './grund-speichern';
 import { augenpaar } from '../../src/oberflaeche/design/motive';
 // Phase 5: Abschnitt "Mia’s control" (eigenes Modul).
 import './kontrolle';
+import './werbung-aus';
 // Session 11 (Auftrag S): Grundeinstellungen, Ausnahmen, Einstieg und Pack-Sperre als eigene Module.
 import './grund';
 import './grund-ausnahmen';
@@ -23,6 +27,8 @@ import './ledger';
 import './ueber';
 // Session 12: Mia Pack (Auftrag P).
 import './pack';
+// Phase 9: Gruppen, Hilfe-Knoepfe und Reihenfolge (muss nach den Modulen laufen, die ihre Abschnitte fuellen).
+import './ordnung';
 import { belebeRegler } from '../../src/oberflaeche/design/regler';
 
 belebeRegler(); // Phase 8b: gemeinsamer Regler, Fuellung bis zum Wert auch in Chromium
@@ -58,8 +64,10 @@ freilegen.min = String(FREILEGEN_MIN_MS / 1000);
 freilegen.max = String(FREILEGEN_MAX_MS / 1000);
 
 let gezeichneteListe = '';
+let ausnahmenListe: string[] = [];
 // `erzwingen`: auch Regler mit Fokus auf den gespeicherten Stand setzen (nach einem gescheiterten Speichern, Fund 26).
 function zeichneErwachsen(e: Einstellungen, erzwingen = false): void {
+  ausnahmenListe = e.ausnahmen;
   const schluessel = JSON.stringify(e.erwachsen.eigeneSeiten);
   // Nur neu bauen, wenn sich die Liste aendert (fremde Aenderungen wie Pause aus dem Popup lassen den Fokus in Ruhe).
   if (schluessel !== gezeichneteListe) {
@@ -113,6 +121,12 @@ seiteForm.addEventListener('submit', (ereignis) => {
     seiteMeldung.textContent = 'That doesn’t look like a site address. Try something like example.com.';
     return;
   }
+  // Phase 9, Fund 11: steht der Host schon bei den Seiten, die ich in Ruhe lasse, wirkte die Zeile gegenteilig: Satz statt stillem Doppel.
+  if (ausnahmenListe.some((m) => passtAusnahme(new URL(`https://${host}/`), [m]))) {
+    seiteMeldung.classList.add('fehler');
+    seiteMeldung.textContent = `${host} is on my list of sites I leave alone. Remove it there first, then I can treat it as an adult site.`;
+    return;
+  }
   let schonDa = false;
   aendereEinstellungen((alt) => {
     schonDa = alt.erwachsen.eigeneSeiten.includes(host);
@@ -120,7 +134,7 @@ seiteForm.addEventListener('submit', (ereignis) => {
   }).then(
     () => {
       seiteMeldung.classList.remove('fehler');
-      seiteMeldung.textContent = schonDa ? `${host} is on the list already.` : `Added ${host}. I’ll treat it like the rest.`;
+      seiteMeldung.textContent = schonDa ? `${host} is on the list already.` : `${host}: I treat it like the big adult sites.`;
       seiteFeld.value = '';
     },
     () => {

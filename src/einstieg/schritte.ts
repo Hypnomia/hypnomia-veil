@@ -1,6 +1,6 @@
 // Einstieg (Auftrag E): Schrittfolge der Willkommensseite. Rein, ohne Laufzeit.
 // Reihenfolge wie SUBMERGE: Warnung, 18+, Einwilligung, Interview (INTERVIEW_SEITEN Seiten), Abschluss.
-import { INTERVIEW_SEITEN, einstiegFertig, type EinstiegStand } from './vertrag.ts';
+import { INTERVIEW_SEITEN, INTERVIEW_SEITEN_OHNE_PACK, einstiegFertig, type EinstiegStand } from './vertrag.ts';
 
 export const GATE_SCHRITTE = ['warnung', 'alter', 'einwilligung'] as const;
 export type GateSchritt = (typeof GATE_SCHRITTE)[number];
@@ -13,9 +13,24 @@ export const INTERVIEW_SCHRITTE: readonly InterviewSchritt[] = Array.from(
 );
 export const ALLE_SCHRITTE: readonly Schritt[] = [...GATE_SCHRITTE, ...INTERVIEW_SCHRITTE, 'ende'];
 
-export function naechster(s: Schritt): Schritt {
-  const i = ALLE_SCHRITTE.indexOf(s);
-  return ALLE_SCHRITTE[Math.min(ALLE_SCHRITTE.length - 1, i + 1)] ?? 'ende';
+// Zahl der Interview-Seiten: mit Pack beim Einstieg 5, ohne Pack 3 (UX-Fund 7).
+export function interviewSeiten(mitPack: boolean): number {
+  return mitPack ? INTERVIEW_SEITEN : INTERVIEW_SEITEN_OHNE_PACK;
+}
+
+export function naechster(s: Schritt, seiten: number = INTERVIEW_SEITEN): Schritt {
+  const reihe: readonly Schritt[] = [...GATE_SCHRITTE, ...INTERVIEW_SCHRITTE.slice(0, seiten), 'ende'];
+  const i = reihe.indexOf(s);
+  if (i < 0) return 'ende'; // eine Seite jenseits der Zahl (z. B. gemerkter Schritt 4 bei 3 Seiten)
+  return reihe[Math.min(reihe.length - 1, i + 1)] ?? 'ende';
+}
+
+// Etappen unter der Bahn (UX-Fund 19): Safety, Age, Consent, Questions.
+export const ETAPPEN = ['warnung', 'alter', 'einwilligung', 'interview'] as const;
+export type Etappe = (typeof ETAPPEN)[number];
+export function etappe(s: Schritt): Etappe | null {
+  if (s === 'ende') return null;
+  return istInterview(s) ? 'interview' : (s as GateSchritt);
 }
 
 // Zurueck gibt es nur innerhalb des Interviews (Gate und Einwilligung gehen nicht zurueck, der Abschluss auch nicht).
@@ -42,12 +57,12 @@ export function startSchritt(stand: EinstiegStand, adresse: string): Schritt {
 
 // Fortschritt als "Schritt n von m" ueber Gate und Interview (der Abschluss zaehlt nicht mit). Beim Wiederholen des Interviews
 // (`nurInterview`, UX-Fund 19) zaehlen nur die Interview-Seiten: "Frage 1 von 5".
-export function fortschritt(s: Schritt, nurInterview = false): { nr: number; von: number } {
+export function fortschritt(s: Schritt, nurInterview = false, seiten: number = INTERVIEW_SEITEN): { nr: number; von: number } {
   if (nurInterview) {
     const k = INTERVIEW_SCHRITTE.indexOf(s as InterviewSchritt);
-    return { nr: Math.max(1, k + 1), von: INTERVIEW_SCHRITTE.length };
+    return { nr: Math.max(1, Math.min(k + 1, seiten)), von: seiten };
   }
-  const von = GATE_SCHRITTE.length + INTERVIEW_SCHRITTE.length;
+  const von = GATE_SCHRITTE.length + seiten;
   const i = ALLE_SCHRITTE.indexOf(s);
   return { nr: Math.min(i + 1, von), von };
 }

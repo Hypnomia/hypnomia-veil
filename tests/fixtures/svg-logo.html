@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil SVG-Logo-Testseite</title>
+    <script src="/waechter.js"></script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #kopf { display: flex; gap: 16px; align-items: center; height: 56px; }
+      #kopf img { display: block; }
+      #logo, #logo-viewbox, #logo-data { width: 150px; height: 40px; }
+      #logo-raster { width: 200px; height: 200px; display: block; }
+      #hg { width: 150px; height: 40px; background-repeat: no-repeat; background-size: contain; }
+    </style>
+  </head>
+  <body>
+    <!-- SVG-Logos wie auf den Erwachsenenseiten: vom Bilderserver eines fremden Ursprungs (Parameter svg=<Ursprung>, Standard Port plus 2, ohne
+         CORS), Typ image/svg+xml. Die Seite selbst enthaelt keine Rasterbilder. -->
+    <div id="kopf"></div>
+    <div id="zeile"></div>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var basis = q.get('svg') || 'http://127.0.0.1:' + (Number(location.port) + 1);
+        var kopf = document.getElementById('kopf');
+        function bild(id, src, ziel) {
+          var b = document.createElement('img');
+          b.id = id;
+          b.alt = id;
+          b.src = src;
+          (ziel || kopf).appendChild(b);
+          return b;
+        }
+        // 1: Vektor-Logo mit width/height im Dokument (150 x 40), 2: nur viewBox (keine Eigengroesse), 3: Data-URL.
+        bild('logo', basis + '/logo.svg');
+        bild('logo-viewbox', basis + '/logo-viewbox.svg');
+        bild('logo-data', 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="150" height="40"><rect width="150" height="40" fill="#e91e63"/></svg>'));
+        // 4: Hintergrund-SVG (Inline-Stil).
+        var hg = document.createElement('div');
+        hg.id = 'hg';
+        hg.style.backgroundImage = 'url(' + basis + '/logo.svg)';
+        kopf.appendChild(hg);
+        // 5: SVG mit eingebettetem Rasterbild (Parameter raster=1): muss geprueft werden, nie blind frei.
+        if (q.get('raster')) bild('logo-raster', basis + '/raster.svg', document.getElementById('zeile'));
+        // 7: SVG mit Bewegung oder Skript (Parameter animiert=1): wird nie freigegeben, bleibt verdeckt.
+        if (q.get('animiert')) {
+          bild('logo-smil', basis + '/smil.svg');
+          bild('logo-css', basis + '/css-animiert.svg');
+          bild('logo-skript', basis + '/skript.svg');
+          bild('logo-fo', basis + '/fremdobjekt.svg');
+        }
+        // 6: SVG, das nicht ladbar ist (404): kein Urteil darf ewig offen bleiben.
+        if (q.get('kaputt')) bild('logo-kaputt', basis + '/gibt-es-nicht.svg');
+      })();
+    </script>
+  </body>
+</html>

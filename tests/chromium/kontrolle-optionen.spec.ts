@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -47,14 +48,24 @@ test('Mia’s control: Standardwerte, Schalter, Auswahl und Minuten wirken auf s
     await zuruecksetzen(seite);
     await seite.reload();
     await expect(seite.locator('#kon-titel')).toHaveText('Mia’s control');
+    // Phase 9 (Fund 4): ohne Pack ist die Karte zugeklappt, nur Calm mode bleibt offen; "Set them now" klappt sie auf.
+    await expect(seite.locator('#ruhig')).toBeVisible();
+    await expect(seite.locator('#kon-werbung')).toBeHidden();
+    await expect(seite.locator('#kontrolle-zu-satz')).toBeVisible();
+    await expect(seite.locator('#kontrolle-zu-knopf')).toHaveAttribute('aria-expanded', 'false');
+    await oeffneZugeklapptes(seite);
+    await expect(seite.locator('#kontrolle-zu-knopf')).toBeHidden();
+    await expect(seite.locator('#kon-werbung')).toBeVisible();
     await expect(seite.locator('#kon-pack-hinweis')).toContainText('Mia Pack');
-    await expect(seite.locator('#kon-werbung')).toBeChecked();
+    // Seit 0.9.0 ab Werk aus (Entscheidung 179, Opt-in); die Frage selbst steht in der Pack-Karte (Paket C).
+    await expect(seite.locator('#kon-werbung')).not.toBeChecked();
     await expect(seite.locator('#kon-blitz')).toHaveValue('selten');
     await expect(seite.locator('#kon-leerlauf')).toBeChecked();
     await expect(seite.locator('#kon-minuten')).toHaveValue('2');
 
     await seite.locator('#kon-werbung-zeile').click();
-    await expect.poll(async () => (await lies(seite, 'einstellungen'))?.kontrolle?.werbung).toBe(false);
+    await expect.poll(async () => (await lies(seite, 'einstellungen'))?.kontrolle?.werbung).toBe(true);
+    expect((await lies(seite, 'einstellungen'))?.kontrolle?.werbungGefragt).toBe(true);
     await seite.locator('#kon-blitz').selectOption('oft');
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.kontrolle?.blitz).toBe('oft');
     await seite.locator('#kon-minuten').fill('7');
@@ -101,6 +112,7 @@ test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async ()
     await seite.goto(optionsUrl());
     await zuruecksetzen(seite);
     await seite.reload();
+    await oeffneZugeklapptes(seite);
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await expect(seite.locator('#kon-warnung-text')).toContainText('photosensitive epilepsy');
     // Pack von vor 0.5.0 (ohne kontrolle:*): Hinweis auf einen neueren Import.
@@ -115,6 +127,7 @@ test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async ()
     // Im Quiz bestaetigt reicht ebenso.
     await zuruecksetzen(seite);
     await seite.reload();
+    await oeffneZugeklapptes(seite);
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await schreibe(seite, { quizWarnungGesehen: true });
     await expect(seite.locator('#kon-warnung')).toBeHidden();
@@ -132,6 +145,7 @@ test('Mia’s control Session 10: Tab-Titel, Zeiger, Meldungen, Besuche, strenge
     await seite.goto(optionsUrl());
     await zuruecksetzen(seite);
     await seite.reload();
+    await oeffneZugeklapptes(seite);
     // Standard: Tab-Titel an, Spirale, Meldungen an, Besuche AUS (Entscheidung 125), keine strengen Zeiten.
     await expect(seite.locator('#kon-tabtitel')).toBeChecked();
     await expect(seite.locator('#kon-cursor')).toHaveValue('spirale');
@@ -182,7 +196,7 @@ test('Mia’s control Session 10: Tab-Titel, Zeiger, Meldungen, Besuche, strenge
     await schreibe(seite, { einstellungen: { ...(await lies(seite, 'einstellungen')), kontrolle: { ...(await kontrolle()), zeiten: [] } } });
     await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(0);
     const e = await lies(seite, 'einstellungen');
-    expect(e.kontrolle.werbung).toBe(true);
+    expect(e.kontrolle.werbung).toBe(false);
     expect(e.kontrolle.leerlaufMinuten).toBe(2);
     console.log('Mia’s control Session 10: 5 Schalter und 9 Schritte der strengen Zeiten gespeichert');
   } finally {

@@ -1,8 +1,7 @@
 // Popup: Statuszeile, Pause, Schwelle ("Mia's mood"), Stil, Strict, Zonen und Ausnahme fuer den aktuellen Host.
 // Alle Einstellungen laufen ueber src/einstellungen.ts (storage.local); der Schleier reagiert ueber storage.onChanged.
 import { fensterNachVorn } from '../../src/fenster';
-import liste from '../../data/ausnahmen-standard.json';
-import { musterAusListe, passtAusnahme, zerlegeMuster } from '../../scripts/ausnahmen-muster.mjs';
+import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import {
   BEDECKBARE_ZONEN,
   SCHWELLE_MAX,
@@ -11,8 +10,11 @@ import {
   aendereEinstellungen,
   beiEinstellungsAenderung,
   ladeEinstellungen,
+  STANDARD,
+  STUFEN_WAHL,
   type Einstellungen,
   type Stil,
+  type StufeWahl,
   type Zone,
 } from '../../src/einstellungen';
 import { hebeStufe, istStrengeZeit, naechsterWechselMs } from '../../src/kontrolle/streng';
@@ -28,6 +30,9 @@ import './einstieg-hinweis';
 import './version-hinweis';
 import './ledger-kurz';
 import './design';
+import './werbung-frage';
+import { aufEigenerListe, aufStandardListe, leseSeite, musterFuerSeite, zeichneDieseSeite } from './diese-seite';
+import { hilfeAdresse } from '../../src/hilfe/anker';
 import { belebeRegler } from '../../src/oberflaeche/design/regler';
 
 belebeRegler(); // Phase 8b: gemeinsamer Regler, Fuellung bis zum Wert auch in Chromium
@@ -45,8 +50,6 @@ const ZONEN_NAMEN: Record<Zone, string> = {
   armpits: 'Armpits',
 };
 
-const standardMuster: string[] = musterAusListe(liste);
-
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
   if (!e) throw new Error(`Element ${id} fehlt`);
@@ -60,7 +63,14 @@ const stimmungWert = el<HTMLOutputElement>('stimmung-wert');
 const strict = el<HTMLInputElement>('strict');
 const zonenListe = el<HTMLUListElement>('zonen');
 const ausnahmeKnopf = el<HTMLButtonElement>('ausnahme');
-const ausnahmeHinweis = el<HTMLParagraphElement>('ausnahme-hinweis');
+const pauseZeile = el<HTMLParagraphElement>('pause-zeile');
+const pauseKuerzel = el<HTMLParagraphElement>('pause-kuerzel');
+const abdeckungKurz = el<HTMLParagraphElement>('abdeckung-kurz');
+const aendernKnopf = el<HTMLButtonElement>('aendern');
+const gruppe = el<HTMLDivElement>('abdeckung-gruppe');
+const heiss = el<HTMLDivElement>('heiss');
+const heissFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stufe"]')];
+const gripSatz = el<HTMLParagraphElement>('grip-satz');
 const stilFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stil"]')];
 const packHinweis = el<HTMLParagraphElement>('pack-hinweis');
 const packLink = el<HTMLButtonElement>('pack-link');
@@ -73,6 +83,7 @@ const erwErsatz = el<HTMLInputElement>('erw-ersatz');
 const erwErsatzZeile = el<HTMLLabelElement>('erw-ersatz-zeile');
 const erwInhalt = el<HTMLInputElement>('erw-inhalt');
 const erwSchalter = el<HTMLDivElement>('erwachsen-schalter');
+const erwMehr = el<HTMLElement>('erwachsen-mehr');
 const erwHinweis = el<HTMLParagraphElement>('erwachsen-hinweis');
 const erwPackLink = el<HTMLButtonElement>('erwachsen-pack-link');
 const erwChibi = el<HTMLImageElement>('erwachsen-chibi');
@@ -94,37 +105,19 @@ let aktuell: Einstellungen | null = null;
 let pack: PackKurz | null = null;
 let seite: URL | null = null;
 
-// ---------- Aktueller Tab ----------
-
-async function leseSeite(): Promise<URL | null> {
-  try {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    const url = new URL(tab?.url ?? '');
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
-  } catch {
-    return null;
-  }
-}
-
-// Muster fuer die eigene Ausnahme: der Host ohne fuehrendes "www." (deckt dann auch Subdomains).
-function musterFuerSeite(url: URL): string | null {
-  const muster = url.hostname.toLowerCase().replace(/^www\./, '');
-  return zerlegeMuster(muster) ? muster : null;
-}
-
 // ---------- Anzeige ----------
 
 function statusText(e: Einstellungen): string {
   if (e.pause) return "Paused on every page. I’ll be here when you want me back.";
   if (!seite) return 'Nothing to veil on this page. Everywhere else, I have it covered.';
-  if (passtAusnahme(seite, standardMuster)) return 'This site is on my never-touch list: banks, mail, that sort of thing. Nothing is covered here.';
-  if (passtAusnahme(seite, e.ausnahmen)) return T.STATUS_AUSNAHME;
+  if (aufStandardListe(seite)) return 'This site is on my never-touch list: banks, mail, that sort of thing. Nothing is covered here.';
+  if (aufEigenerListe(seite, e)) return T.STATUS_AUSNAHME;
   return "On watch. I’ll keep the pages quiet for you.";
 }
 
 // UX-Fund 6: ein Wort statt der rohen Zahl, auch als aria-valuetext des Reglers.
 function zeigeStimmung(schwelle: number): void {
-  const wort = stimmungsWort(schwelle);
+  const wort = stimmungsWort(schwelle) + (Math.round(schwelle * 100) === Math.round(STANDARD.schwelle * 100) ? ' (my default)' : '');
   stimmungWert.textContent = wort;
   stimmung.setAttribute('aria-valuetext', wort);
 }
@@ -136,6 +129,9 @@ function zeichne(e: Einstellungen): void {
 
   pauseKnopf.textContent = e.pause ? 'Let Mia back in' : 'Pause Mia';
   pauseKnopf.setAttribute('aria-pressed', String(e.pause));
+  // Fund 17: im Pausenzustand eine Zeile unter dem Knopf, die Karten darunter blasser (main:has im CSS).
+  pauseZeile.textContent = e.pause ? T.PAUSE_ZEILE : '';
+  pauseZeile.hidden = !e.pause;
 
   if (document.activeElement !== stimmung) stimmung.value = e.schwelle.toFixed(2);
   zeigeStimmung(e.schwelle);
@@ -153,7 +149,8 @@ function zeichne(e: Einstellungen): void {
     }
   }
 
-  zeichneAusnahme(e);
+  abdeckungKurz.textContent = T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()));
+  zeichneDieseSeite(e, seite);
   zeichneErwachsen(e);
 }
 
@@ -169,34 +166,8 @@ function zeichneStil(e: Einstellungen): void {
     }
   }
   packHinweis.textContent = frei ? T.PACK_HINWEIS_MIT(pack?.bilder ?? 0) : pack ? T.PACK_HINWEIS_OHNE_PATCH : T.PACK_HINWEIS_OHNE;
-  // Beschriftung und Ziel aus derselben Bedingung: mit Pack "settings" (#stand), ohne Pack "Add" (#neu)
+  // Beschriftung und Ziel aus derselben Bedingung: mit Pack "settings" (#stand), ohne Pack "Get the Mia Pack" (#neu)
   packLink.textContent = pack ? T.PACK_KNOPF_MIT : T.PACK_KNOPF_OHNE;
-}
-
-function zeichneAusnahme(e: Einstellungen): void {
-  const muster = seite ? musterFuerSeite(seite) : null;
-  if (!seite || !muster) {
-    ausnahmeKnopf.textContent = T.AUSNAHME_KNOPF_AN;
-    ausnahmeKnopf.disabled = true;
-    ausnahmeHinweis.textContent = 'Not available on this page.';
-    return;
-  }
-  if (passtAusnahme(seite, standardMuster)) {
-    ausnahmeKnopf.textContent = 'On the never-touch list';
-    ausnahmeKnopf.disabled = true;
-    ausnahmeHinweis.textContent = `${muster} stays untouched. Banks and the like are always safe from me.`;
-    return;
-  }
-  ausnahmeKnopf.disabled = false;
-  if (passtAusnahme(seite, e.ausnahmen)) {
-    ausnahmeKnopf.textContent = T.AUSNAHME_KNOPF_ZURUECK;
-    ausnahmeKnopf.dataset.modus = 'weg';
-    ausnahmeHinweis.textContent = T.AUSNAHME_NACH(muster);
-  } else {
-    ausnahmeKnopf.textContent = T.AUSNAHME_KNOPF_AN;
-    ausnahmeKnopf.dataset.modus = 'hinzu';
-    ausnahmeHinweis.textContent = T.AUSNAHME_VOR(muster);
-  }
 }
 
 // ---------- Adult sites ----------
@@ -209,17 +180,21 @@ function zeichneErwachsen(e: Einstellungen): void {
   const ohnePack = !pack;
   el<HTMLElement>('erwachsen').hidden = !ohnePack && !mitErw && !mitSteigerung;
   erwSchalter.hidden = !mitErw;
+  erwMehr.hidden = !(mitErw && istFreigeschaltet(pack, 'erwachsen:ersatz'));
   // Die Saetze zu Adult-site mode nur mit `erwachsen:vorschau`; sonst bleibt der Hinweis verborgen (ausser ohne Pack).
   erwHinweis.hidden = !ohnePack && !istFreigeschaltet(pack, 'erwachsen:vorschau');
   erwPackLink.hidden = !ohnePack;
   erwAn.checked = e.erwachsen.an;
   erwErsatz.checked = e.erwachsen.komplettErsatz;
   erwInhalt.checked = e.erwachsen.erkennenAmInhalt;
+  // Fund 10: "How hot do I get?" als Dreier-Wahl, nur mit erwachsen:vorschau (wie auf der Einstellungsseite).
+  heiss.hidden = !istFreigeschaltet(pack, 'erwachsen:vorschau');
+  for (const f of heissFelder) f.checked = f.value === e.erwachsen.stufe;
   erwAn.closest('label')!.hidden = !istFreigeschaltet(pack, 'erwachsen:vorschau');
   erwErsatzZeile.hidden = !istFreigeschaltet(pack, 'erwachsen:ersatz');
   steigerungBlock.hidden = !mitSteigerung;
   if (ohnePack) {
-    erwHinweis.textContent = 'These sites need the Mia Pack. Add it and I’ll look after them properly.';
+    erwHinweis.textContent = 'These sites need the Mia Pack. Get it and I’ll look after them properly.';
   } else if (e.pause) {
     erwHinweis.textContent = "Paused, so I’m keeping my hands off these sites too.";
   } else {
@@ -262,6 +237,7 @@ function zeichneStufe(e: Einstellungen): void {
     strengText.textContent = '';
   }
   if (!hat) return;
+  gripSatz.textContent = T.GRIP_SATZ;
   const stufeKlein = STUFE_TEXT(stufe);
   stufeZeile.textContent = stufeKlein.charAt(0).toUpperCase() + stufeKlein.slice(1);
   // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.
@@ -293,8 +269,9 @@ erwInhalt.addEventListener('change', () => {
 // UX-Fund 7: die Pack-Knoepfe oeffnen die Einstellungsseite gleich beim Pack-Abschnitt (#neu ohne Pack, #stand mit Pack).
 // Ist die Einstellungsseite schon offen, wird dieser Tab nach vorn geholt und auf den Anker gesetzt (kein zweiter Tab); ohne neues Recht
 // sieht die Erweiterung die Adressen ihrer eigenen Seiten. Scheitert etwas, faellt es auf openOptionsPage() zurueck.
-async function oeffneOptionen(anker: string): Promise<void> {
-  const basis = (browser.runtime.getURL as (p: string) => string)('/options.html');
+// Session 17: dieselbe Logik fuer die Hilfe-Seite (`seite` = '/hilfe.html').
+async function oeffneOptionen(anker: string, seite = '/options.html'): Promise<void> {
+  const basis = (browser.runtime.getURL as (p: string) => string)(seite);
   const adresse = anker ? `${basis}#${anker}` : basis;
   try {
     const offene = (await browser.tabs.query({})).filter((t) => (t.url ?? '').split('#')[0] === basis);
@@ -307,10 +284,17 @@ async function oeffneOptionen(anker: string): Promise<void> {
     }
     window.close();
   } catch {
-    void browser.runtime.openOptionsPage().then(() => window.close(), () => {});
+    if (seite === '/options.html') void browser.runtime.openOptionsPage().then(() => window.close(), () => {});
   }
 }
 erwPackLink.addEventListener('click', () => void oeffneOptionen('neu'));
+for (const f of heissFelder) {
+  f.addEventListener('change', () => {
+    if (!f.checked || !(STUFEN_WAHL as readonly string[]).includes(f.value)) return;
+    const wert = f.value as StufeWahl;
+    void aendere((alt) => ({ erwachsen: { ...alt.erwachsen, stufe: wert } }));
+  });
+}
 
 async function ladeStand(): Promise<void> {
   const a = await browser.storage.local.get(STEIGERUNG_SCHLUESSEL);
@@ -485,7 +469,55 @@ ausnahmeKnopf.addEventListener('click', () => {
 
 // ---------- Start ----------
 
-el<HTMLSpanElement>('version').textContent = `v${browser.runtime.getManifest().version}`;
+el<HTMLAnchorElement>('version').textContent = `v${browser.runtime.getManifest().version}`;
+
+// Fund 16 und 27: Fuss-Links und "?" an My grip nur ueber die festen Hilfe-Anker (Erweiterungsseite, neuer Tab).
+el<HTMLAnchorElement>('version').href = hilfeAdresse('updates');
+{
+  const versionText = `What’s new in v${browser.runtime.getManifest().version}`;
+  el<HTMLAnchorElement>('version').title = versionText;
+  el<HTMLAnchorElement>('version').setAttribute('aria-label', versionText);
+}
+el<HTMLAnchorElement>('deinstallieren').href = hilfeAdresse('uninstall');
+const gripHilfe = el<HTMLAnchorElement>('grip-hilfe');
+gripHilfe.href = hilfeAdresse('grip');
+gripHilfe.setAttribute('aria-label', T.GRIP_HILFE);
+gripHilfe.title = T.GRIP_HILFE;
+
+// Fund 15: das Kuerzel zur Pause steht leise unter dem Knopf, gelesen aus den Tastenbelegungen des Browsers (eine geaenderte Belegung
+// stimmt dann auch). Leer, wenn es keine Belegung gibt (Android hat keine Kuerzel).
+void (async () => {
+  try {
+    const befehle = await browser.commands.getAll();
+    const kuerzel = befehle.find((b) => b.name === 'pause-umschalten')?.shortcut ?? '';
+    pauseKuerzel.textContent = kuerzel ? T.PAUSE_KUERZEL(kuerzel) : '';
+    pauseKuerzel.hidden = !kuerzel;
+  } catch {
+    pauseKuerzel.hidden = true;
+  }
+})();
+
+// Fund 2: "Change" klappt Mood, Zonen und Strict auf. Der Zustand bleibt in localStorage (nur eine Bequemlichkeit, ohne ihn ist es zu).
+const GRUPPE_SCHLUESSEL = 'veil-popup-aendern';
+function setzeGruppe(offen: boolean, merken: boolean): void {
+  gruppe.hidden = !offen;
+  aendernKnopf.setAttribute('aria-expanded', String(offen));
+  aendernKnopf.textContent = offen ? T.AENDERN_AUF : T.AENDERN_ZU;
+  if (!merken) return;
+  try {
+    localStorage.setItem(GRUPPE_SCHLUESSEL, offen ? '1' : '0');
+  } catch {
+    /* ohne Speicher bleibt es beim Zustand dieser Sitzung */
+  }
+}
+let gemerkt = false;
+try {
+  gemerkt = localStorage.getItem(GRUPPE_SCHLUESSEL) === '1';
+} catch {
+  gemerkt = false;
+}
+setzeGruppe(gemerkt, false);
+aendernKnopf.addEventListener('click', () => setzeGruppe(aendernKnopf.getAttribute('aria-expanded') !== 'true', true));
 
 // Ereignisse eigener, frueherer Schreibvorgaenge koennen nach dem letzten Zeichnen eintreffen und einen alten Stand zeigen: waehrend
 // offener Schreibvorgaenge und kurz danach wird nicht aus dem Ereignis gezeichnet, sondern spaeter aus dem gespeicherten Stand.
@@ -537,3 +569,4 @@ void (async () => {
 
 // Session 11 (Vertrag): Weg zur Einstellungsseite (alle Einstellungen auf einem Bildschirm, Auftrag S).
 document.getElementById('alle-einstellungen')?.addEventListener('click', () => void oeffneOptionen(''));
+document.getElementById('hilfe')?.addEventListener('click', () => void oeffneOptionen('', '/hilfe.html'));

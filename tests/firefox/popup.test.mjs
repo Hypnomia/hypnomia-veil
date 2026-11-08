@@ -106,6 +106,15 @@ async function bis(beschreibung, fn, frist = 15_000) {
   throw new Error(`${beschreibung}: Frist abgelaufen (letzter Wert: ${JSON.stringify(letzter)})`);
 }
 
+// Phase 9, Paket A (Fund 2): Mood, Zonen und Strict stehen hinter "Change"; der Zustand bleibt in localStorage der Erweiterung.
+const oeffneGruppe = async () => {
+  if ((await driver.findElement(By.css('#aendern')).getAttribute('aria-expanded')) !== 'true') await driver.findElement(By.css('#aendern')).click();
+  await bis('Gruppe offen', async () => driver.findElement(By.css('#zonen')).isDisplayed());
+};
+const schliesseGruppe = async () => {
+  if ((await driver.findElement(By.css('#aendern')).getAttribute('aria-expanded')) === 'true') await driver.findElement(By.css('#aendern')).click();
+  await bis('Gruppe zu', async () => !(await driver.findElement(By.css('#zonen')).isDisplayed()));
+};
 const radio = (wert) => `input[name="stil"][value="${wert}"]`;
 const eigenschaft = (css, name) => driver.executeScript(`return document.querySelector(arguments[0])[arguments[1]]`, css, name);
 const text = (css) => driver.findElement(By.css(css)).getText();
@@ -184,12 +193,13 @@ try {
     return { knopf: k(f(knopf, 'color'), f(knopf, 'backgroundColor')), bahn: k(f(document.querySelector('.schalter input:not(:checked) + .regler'), 'backgroundColor'), weiss), rand: k(f(feld, 'borderTopColor'), weiss), randFeld: k(f(feld, 'borderTopColor'), f(feld, 'backgroundColor')), gewRand: k(f(gew, 'borderTopColor'), weiss), gewFuellung: k(f(gew, 'borderTopColor'), f(gew, 'backgroundColor')) };`);
   pruefe(kontraste.knopf >= 4.5 && kontraste.bahn >= 3 && kontraste.rand >= 3 && kontraste.randFeld >= 3 && kontraste.gewRand >= 3 && kontraste.gewFuellung >= 3, `Fund 9/10: ${Object.entries(kontraste).map(([n, v]) => n + ' ' + v.toFixed(2)).join(', ')}`);
   // Fund 6: Stimmungswort mit echten Tasten
+  await oeffneGruppe();
   await driver.findElement(By.css('#stimmung')).sendKeys(Key.END);
   await bis('Stimmung 0.25 gespeichert', async () => Math.abs(((await speicher('einstellungen'))?.schwelle ?? 0) - 0.25) < 1e-6);
   pruefe((await text('#stimmung-wert')) === stimmungsWort(0.25) && (await driver.findElement(By.css('#stimmung')).getAttribute('aria-valuetext')) === stimmungsWort(0.25), `Fund 6: ${await text('#stimmung-wert')}`);
   await driver.findElement(By.css('#stimmung')).sendKeys(Key.HOME);
   await bis('Stimmung 0.10 gespeichert', async () => Math.abs(((await speicher('einstellungen'))?.schwelle ?? 0) - 0.1) < 1e-6);
-  pruefe((await text('#stimmung-wert')) === STIMMUNG_WOERTER[0], 'Fund 6: Home zeigt das erste Wort');
+  pruefe((await text('#stimmung-wert')) === STIMMUNG_WOERTER[0] + ' (my default)', 'Fund 6: Home zeigt das erste Wort');
   // Schnelle Folgeklicks (Pack mit allen Freischaltungen): drei Klicks im selben Augenblick
   await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch', 'erwachsen:vorschau', 'erwachsen:ersatz'], bilder: 3, groesse: 100, importiert: 1 } });`);
   await bis('Erwachsenen-Schalter da', async () => await driver.findElement(By.css('#erw-an')).isDisplayed().catch(() => false) || (await eigenschaft('#erwachsen-schalter', 'hidden')) === false);
@@ -205,6 +215,7 @@ try {
   // Fund 26: Speichern scheitert, Fehlersatz, Schalter springt zurueck (Seitenwelt ueberschreibt set)
   const ueberschrieben = await driver.executeScript(`try { const a = (window.wrappedJSObject && window.wrappedJSObject.browser) || window.browser; a.storage.local.set = () => Promise.reject(new Error('kaputt')); return true; } catch (e) { return String(e); }`);
   if (ueberschrieben === true) {
+    await oeffneGruppe();
     const strictVor = await driver.executeScript(`return document.getElementById('strict').checked`);
     await driver.findElement(By.css('label.schalter:has(#strict)')).click();
     await bis('Fehlersatz', async () => (await text('#fehler')) === FEHLER_SPEICHERN);
@@ -228,7 +239,7 @@ try {
     await warte(800);
     await driver.switchTo().window(popup);
     await bis('Ausnahme-Knopf frei', async () => (await driver.findElement(By.css('#ausnahme')).isEnabled()));
-    const muster = (await text('#ausnahme-hinweis')).match(/^Tap and I’ll leave (\S+) alone/)?.[1] ?? '';
+    const muster = (await text('#ausnahme-hinweis')).match(/^One tap, and I leave (\S+) alone/)?.[1] ?? '';
     pruefe(muster !== '' && (await text('#ausnahme-hinweis')) === T.AUSNAHME_VOR(muster), `Fund 13: vor dem Klick "${await text('#ausnahme-hinweis')}"`);
     await driver.findElement(By.css('#ausnahme')).click();
     await bis('Ausnahme gespeichert', async () => ((await speicher('einstellungen'))?.ausnahmen ?? []).includes(muster));
@@ -238,6 +249,70 @@ try {
     await bis('Ausnahme entfernt', async () => !((await speicher('einstellungen'))?.ausnahmen ?? []).includes(muster));
   } finally {
     web.close();
+  }
+
+  // ---------- Phase 9, Paket A: Popup neu geordnet ----------
+  {
+    const gruppe = await driver.executeScript(`return document.getElementById('aendern').getAttribute('aria-expanded')`);
+    pruefe(gruppe === 'true', 'Fund 2: der geoeffnete Zustand von "Change" blieb im localStorage (nach dem Neuladen noch offen)');
+    await schliesseGruppe();
+    pruefe((await text('#aendern')) === T.AENDERN_ZU && (await driver.findElement(By.css('#aendern')).getAttribute('aria-expanded')) === 'false', 'Fund 2: zu heisst "Change", aria-expanded false');
+    pruefe(!(await driver.findElement(By.css('#stimmung')).isDisplayed()), 'Fund 2: Mood ist zugeklappt');
+    const kurz = await text('#abdeckung-kurz');
+    pruefe(/^I cover: .+\.$/.test(kurz), `Fund 2: Kurzfassung "${kurz}"`);
+    const name = await text('#diese-seite-name');
+    pruefe(name !== '' && (await text('#diese-seite')).includes(name), `Fund 2: This site nennt die Seite (${name})`);
+    // Reihenfolge und Hoehe ohne Aufklappen (Fenster 1280 px breit, das Popup ist hoechstens 360 px breit)
+    const lage = await driver.executeScript(`const y = (i) => Math.round(document.getElementById(i).getBoundingClientRect().top); return { pause: y('pause'), diese: y('diese-seite'), stil: y('stil-karte'), erw: y('erwachsen'), hoehe: Math.ceil(document.body.getBoundingClientRect().height), breite: document.body.getBoundingClientRect().width };`);
+    pruefe(lage.pause < lage.diese && lage.diese < lage.stil && lage.stil < lage.erw, `Fund 2: Reihenfolge Pause ${lage.pause}, This site ${lage.diese}, Cover ${lage.stil}, Adult ${lage.erw}`);
+    pruefe(lage.hoehe <= 600 && lage.breite <= 360, `Fund 2: Hoehe ohne Aufklappen ${lage.hoehe} px bei ${lage.breite} px Breite (hoechstens 600)`);
+    console.log(`firefox: Popup ohne Aufklappen ${lage.hoehe} px hoch, ${lage.breite} px breit`);
+    await oeffneGruppe();
+    pruefe(await driver.findElement(By.css('#zonen')).isDisplayed(), 'Fund 2: "Change" klappt die Zonen auf');
+    await schliesseGruppe();
+
+    // Fund 15: das Kuerzel, wie der Browser es meldet; Fund 17 und 16
+    const kuerzel = await imSeitenkontext(`const b = await api.commands.getAll(); return b.find((x) => x.name === 'pause-umschalten')?.shortcut ?? '';`);
+    pruefe(kuerzel !== '' && (await text('#pause-kuerzel')) === T.PAUSE_KUERZEL(kuerzel), `Fund 15: Kuerzel "${await text('#pause-kuerzel')}" (Browser: ${kuerzel})`);
+    pruefe(!(await driver.findElement(By.css('#pause-zeile')).isDisplayed()), 'Fund 17: ohne Pause keine Pausenzeile');
+    await driver.findElement(By.css('#pause')).click();
+    await bis('Pausenzeile', async () => (await text('#pause-zeile')) === T.PAUSE_ZEILE);
+    const dimm = await bis('Karten blasser', async () => (await driver.executeScript(`return Number(getComputedStyle(document.getElementById('stil-karte')).opacity)`)) < 1 && true);
+    pruefe(dimm === true && Math.abs((await driver.executeScript(`return Number(getComputedStyle(document.getElementById('stil-karte')).opacity)`)) - 0.7) < 0.01, 'Fund 17: im Pausenzustand Pausenzeile und Karten mit Deckkraft 0,7');
+    await driver.findElement(By.css('#pause')).click();
+    await bis('Pause aus', async () => (await speicher('einstellungen'))?.pause === false);
+    await bis('Pausenzeile weg', async () => !(await driver.findElement(By.css('#pause-zeile')).isDisplayed()));
+    const href = (id) => driver.executeScript(`const a = document.getElementById(arguments[0]); return [a.getAttribute('href'), a.getAttribute('target'), a.getAttribute('rel')];`, id);
+    const un = await href('deinstallieren');
+    const ve = await href('version');
+    pruefe(un[0] === 'hilfe.html#uninstall' && un[1] === '_blank' && un[2].includes('noopener'), `Fund 16: "uninstalling" fuehrt zu ${un[0]}`);
+    pruefe(ve[0] === 'hilfe.html#updates' && ve[1] === '_blank' && ve[2].includes('noopener') && /^v\d/.test(await text('#version')), `Fund 16: die Version ist ein Link auf ${ve[0]}`);
+
+    // Fund 12 (Popup), 10 und 1: Pack mit Werbe-Tausch, Vorschau und Steigerung
+    await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch', 'erwachsen:vorschau', 'erwachsen:ersatz', 'zensur:steigerung', 'kontrolle:werbung'], bilder: 3, groesse: 100, importiert: 1 } });`);
+    await bis('Werbe-Frage da', async () => driver.findElement(By.css('#popup-werbung-frage')).isDisplayed());
+    pruefe((await text('#popup-werbung-frage-titel')) === 'Show my ads?' && (await text('#popup-werbung-frage-ja')) === 'Yes, show them' && (await text('#popup-werbung-frage-nein')) === 'No ads', 'Fund 12: Karte mit den Saetzen der Einstellungsseite');
+    const ordnung = await driver.executeScript(`return ['pause', 'popup-werbung-frage', 'diese-seite'].map((i) => document.getElementById(i).getBoundingClientRect().top);`);
+    pruefe(ordnung[0] < ordnung[1] && ordnung[1] < ordnung[2], 'Fund 12: die Karte liegt unter der Pause und ueber This site');
+    await driver.findElement(By.css('#popup-werbung-frage-ja')).click();
+    await bis('Antwort gespeichert', async () => {
+      const k = (await speicher('einstellungen'))?.kontrolle;
+      return k?.werbung === true && k?.werbungGefragt === true;
+    });
+    await bis('Karte weg', async () => !(await driver.findElement(By.css('#popup-werbung-frage')).isDisplayed()));
+    pruefe(true, 'Fund 12: Ja speichert werbung und werbungGefragt, die Karte verschwindet');
+    pruefe((await text('#pack-link')) === T.PACK_KNOPF_MIT && (await driver.executeScript(`return !!document.getElementById('pack-link').closest('footer')`)), 'Fund 1/18: mit Pack steht "Mia Pack settings" im Fuss');
+    await bis('How hot da', async () => driver.findElement(By.css('#heiss')).isDisplayed());
+    await driver.findElement(By.css('#heiss label:has(input[value="tease"])')).click();
+    await bis('Tease gespeichert', async () => (await speicher('einstellungen'))?.erwachsen?.stufe === 'tease');
+    await driver.findElement(By.css('#heiss label:has(input[value="explicit"])')).click();
+    await bis('Explicit gespeichert', async () => (await speicher('einstellungen'))?.erwachsen?.stufe === 'explicit');
+    pruefe(await driver.executeScript(`return document.querySelector('#heiss input[value="explicit"]').checked`), 'Fund 10: How hot wird gespeichert und angezeigt');
+    const gh = await href('grip-hilfe');
+    pruefe(gh[0] === 'hilfe.html#grip' && gh[1] === '_blank' && gh[2].includes('noopener') && (await text('#grip-satz')) === T.GRIP_SATZ, `Fund 10: My grip mit "?" auf ${gh[0]} und dem Satz`);
+    await imSeitenkontext(`await api.storage.local.remove(['pack', 'einstellungen']);`);
+    await bis('ohne Pack wieder', async () => (await text('#pack-link')) === T.PACK_KNOPF_OHNE);
+    pruefe((await text('#erwachsen-pack-link')) === 'Get the Mia Pack', 'Fund 1: ohne Pack heissen beide Knoepfe "Get the Mia Pack"');
   }
 
   // Fund 7 und Nr 8: Pack-Knoepfe fuehren zu #neu und #stand; die offene Einstellungsseite wird wiederverwendet (kein zweiter Tab)

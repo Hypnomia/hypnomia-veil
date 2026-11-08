@@ -134,7 +134,7 @@ try {
   pruefe((await nachricht({ ziel: 'hintergrund', typ: 'version-test', vergiss: true, url: server.adresse('9.9.9.json') })).ok === true, 'Testhaken version-test antwortet ok');
   await driver.navigate().refresh();
   await bis('Abschnitt gezeichnet', async () => (await text('#ue-version')).length > 0);
-  pruefe((await text('#ueber-titel')) === 'About', 'Ueberschrift About');
+  pruefe((await text('#ueber-titel')) === 'About and help', 'Ueberschrift About and help');
   pruefe((await text('#ue-version')) === paketJson.version, `Version ${paketJson.version} steht da`);
   pruefe(/^\d{4}-\d{2}-\d{2}$/.test(await text('#ue-datum')), 'Baudatum steht da (JJJJ-MM-TT)');
   // Gibt es runtime.requestUpdateCheck? Firefox 128: nein (dann kein Knopf, nur der Status-Satz).

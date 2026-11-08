@@ -2,7 +2,7 @@
 // Dunkelgrau oder Weiss), gekennzeichnet, klickbar auf einen Link der Marke; normale Bilder in Werbegroesse bleiben; Pause, Schalter, Ausnahme und
 // fehlendes Pack geben die Originale sofort zurueck. Test-Hosts *.veil-werbung.test und *.veil-erwachsen.test (nur im Testbau); Firefox loest die
 // genauen Hosts ueber network.dns.localDomains auf. Firefox zaehlt nur den sichtbaren Tab als sichtbar: gewartet wird im Tab der Seite.
-import { Builder, By } from 'selenium-webdriver';
+import { Builder, By, Key } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { Command } from 'selenium-webdriver/lib/command.js';
 import { randomUUID } from 'node:crypto';
@@ -260,6 +260,8 @@ try {
 
   // 2. Mit Pack: Tausch, Kennzeichnung, Layout
   await importierePack(packPfad);
+  // Seit 0.9.0 ist die Werbung ab Werk aus (Opt-in): der Test schaltet sie ein.
+  await setzeEinstellungen({ kontrolle: KONTROLLE });
   await driver.get(nachrichten);
   await driver.executeScript(() => {
     window.__spaetSicht = null;
@@ -573,6 +575,68 @@ try {
     pruefe(b.schrift >= 11 && !b.abgeschnitten && !schneidet(f.knopfBox) && !schneidet(f.titelBox), `Hochformat ${id}: Etikett lesbar (${b.schrift}px), nicht ueber Knopf oder Ueberschrift`);
     if (f.knopfBox) pruefe(f.knopfBox.h >= 43.5 && f.knopfBox.l >= f.box.l - 1 && f.knopfBox.l + f.knopfBox.w <= f.box.l + f.box.w + 1, `Hochformat ${id}: Knopf mindestens 44 px und in der Flaeche`);
   }
+
+  // 8c. Session 17 (Fund 13): Etikett als Knopf mit Menue
+  const kontrolleLesen = () => mitOptionen(() => imSeitenkontext(`const e = (await api.storage.local.get('einstellungen')).einstellungen ?? {}; return { kontrolle: e.kontrolle ?? {}, pause: !!e.pause };`));
+  // Nur Punkte, die wirklich zu sehen sind (Rechteck groesser 0), nicht die mit `hidden` und trotzdem display:block (Fund 1).
+  const menueStand = async () => {
+    const m = (await attrStand())?.menue ?? null;
+    return m ? { ...m, punkte: m.punkte.filter((p) => p.w > 0 && p.h > 0) } : null;
+  };
+  const klickAn = async (x, y) => driver.actions().move({ x: Math.round(x), y: Math.round(y), origin: 'viewport' }).click().perform();
+  const oeffneMenue = async (id) => {
+    await driver.executeScript((i) => document.getElementById(i).scrollIntoView({ block: 'center' }), id);
+    await warte(800);
+    const f = (await attrStand()).flaechen.find((x) => x.id === id);
+    await klickAn(f.badge.l + f.badge.w / 2, f.badge.t + f.badge.h / 2);
+    await bis('Menue offen', async () => (await menueStand())?.offen === true);
+    return f;
+  };
+  const klickPunkt = async (aktion) => {
+    const p = (await menueStand()).punkte.find((x) => x.aktion === aktion);
+    await klickAn(p.x + p.w / 2, p.y + p.h / 2);
+  };
+  await driver.get(nachrichten);
+  await bisIds('Menue-Seite', ERWARTET);
+  let mf = await oeffneMenue('a-rahmen');
+  pruefe(mf.badge.w >= 24 && mf.badge.h >= 24, `Etikett mindestens 24 x 24 (${Math.round(mf.badge.w)} x ${Math.round(mf.badge.h)})`);
+  pruefe(JSON.stringify((await menueStand()).punkte.map((x) => x.text)) === JSON.stringify(['Hide my ads on this site', 'Turn my ads off', 'Pause Mia']), 'Menue: drei Punkte in der Reihenfolge');
+  await driver.actions().sendKeys(Key.ESCAPE).perform();
+  await bis('Escape schliesst', async () => (await menueStand())?.offen === false, 5000);
+  mf = await oeffneMenue('a-rahmen');
+  await klickAn(5, 5);
+  await bis('Klick daneben schliesst', async () => (await menueStand())?.offen === false, 5000);
+  mf = await oeffneMenue('a-anzeige');
+  pruefe(JSON.stringify((await menueStand()).punkte.map((x) => x.text)) === JSON.stringify(['Turn my ads off']), `unter 80 px nur "Turn my ads off" (Hoehe ${Math.round(mf.box.h)})`);
+  await driver.actions().sendKeys(Key.ESCAPE).perform();
+  await oeffneMenue('a-rahmen');
+  await klickPunkt('verbergen');
+  await bisLeer('Hide my ads on this site: Flaechen weg');
+  let kl = (await kontrolleLesen()).kontrolle;
+  pruefe(JSON.stringify(kl.werbungAus) === JSON.stringify(['127.0.0.1']) && kl.werbung === true, `werbungAus ${JSON.stringify(kl.werbungAus)}, Schalter bleibt an`);
+  let allesDa = true;
+  for (const id of ERWARTET) allesDa = allesDa && (await originalSichtbar(id));
+  pruefe(allesDa, 'Hide: alle Originale sichtbar');
+  await driver.get(nachrichten);
+  await warte(2500);
+  pruefe((await sichtIds()).length === 0, 'Hide: nach dem Neuladen keine Werbung');
+  await setzeEinstellungen({ kontrolle: { ...KONTROLLE, werbungAus: [] } });
+  await driver.get(nachrichten);
+  await bisIds('Menue: Werbung wieder da', ERWARTET);
+  await oeffneMenue('a-rahmen');
+  await klickPunkt('ausschalten');
+  await bisLeer('Turn my ads off: Flaechen weg');
+  kl = (await kontrolleLesen()).kontrolle;
+  pruefe(kl.werbung === false, 'Turn my ads off schreibt kontrolle.werbung false');
+  await setzeEinstellungen({ kontrolle: KONTROLLE });
+  await driver.get(nachrichten);
+  await bisIds('Menue: Werbung wieder da (2)', ERWARTET);
+  await oeffneMenue('a-rahmen');
+  await klickPunkt('pause');
+  await bisLeer('Pause Mia im Menue: Flaechen weg');
+  pruefe((await kontrolleLesen()).pause === true, 'Pause Mia im Menue schreibt pause');
+  await setzeEinstellungen({ pause: false, kontrolle: KONTROLLE });
+  console.log('firefox W: Etikett-Menue geprueft (oeffnen, Escape, daneben, klein, Hide, Turn off, Pause)');
 
   // 9. Pack entfernt
   await driver.get(nachrichten);

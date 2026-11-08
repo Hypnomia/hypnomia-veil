@@ -5,6 +5,7 @@ import './ueber.css';
 import links from '../../data/links.json';
 import type { AntwortVersion } from '../../src/nachrichten';
 import { RELEASE_URL } from '../../src/version/vertrag';
+import { hilfeAdresse, type HilfeAnker } from '../../src/hilfe/anker';
 
 const abschnitt = document.getElementById('ueber');
 
@@ -25,7 +26,14 @@ function link(text: string, ziel: string): HTMLAnchorElement {
 
 // Saetze (Entwuerfe, Texter liest gegen).
 export const UEBER_TEXTE = {
-  titel: 'About',
+  titel: 'About and help',
+  hilfeAlle: 'All help pages',
+  hilfeThemen: [
+    ['Pin me to the toolbar', 'pin'],
+    ['Pausing me', 'pause'],
+    ['Uninstalling me', 'uninstall'],
+    ['What’s new', 'updates'],
+  ] as const satisfies readonly (readonly [string, HilfeAnker])[],
   aktuell: 'You’re on my newest version.',
   fehler: 'Couldn’t check just now. Try again later.',
   firefox: 'Firefox keeps me up to date by itself.',
@@ -102,7 +110,17 @@ if (abschnitt) {
   const pause = neu('p', UEBER_TEXTE.pause, 'hinweis');
   pause.id = 'ue-pause';
 
-  abschnitt.replaceChildren(titel, zeileVersion, stand, anleitung, zeile, netz, linkListe, pause);
+  // Hilfe-Seite und die Themen, nach denen man hier am ehesten sucht (Anker aus src/hilfe/anker.ts, immer in neuem Tab).
+  const hilfeListe = neu('ul', undefined, 'ue-links');
+  hilfeListe.id = 'ue-hilfe';
+  for (const [text, kurz] of [[UEBER_TEXTE.hilfeAlle, undefined], ...UEBER_TEXTE.hilfeThemen] as const) {
+    const li = neu('li');
+    li.append(link(text, hilfeAdresse(kurz)));
+    hilfeListe.append(li);
+  }
+
+  // Das Interview (#abschnitt-interview, index.html) bleibt als letztes Kind stehen; grund-pack.ts blendet es nach dem Einstieg ein.
+  abschnitt.prepend(titel, zeileVersion, stand, anleitung, zeile, netz, linkListe, pause, hilfeListe);
 
   // Firefox 128 kennt runtime.requestUpdateCheck nicht: dann gibt es keinen Knopf, nur den Status-Satz.
   const kannPruefen = !import.meta.env.FIREFOX || typeof (browser.runtime as unknown as { requestUpdateCheck?: unknown }).requestUpdateCheck === 'function';

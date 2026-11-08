@@ -1,9 +1,9 @@
 // Beobachter: sammelt img, video, canvas und Elemente mit Inline-Hintergrundbild in Dokument und allen Shadow Roots,
 // beim Start und bei jeder Mutation. Entdeckt Shadow Roots (auch geschlossene) und legt die Schleier-CSS hinein.
 
-import { HG_SELEKTOR, type Art } from './konstanten';
+import { HG_SELEKTOR, TESTHAKEN, type Art } from './konstanten';
 import { sichereStil, versorgeWurzel, wurzelVon } from './shadow';
-import { istEigeneWurzel } from './eigene';
+import { eigeneSperreImTestAus, istEigeneWurzel } from './eigene';
 
 const KANDIDAT = `img, video, canvas, ${HG_SELEKTOR}`;
 const ATTRIBUTE = ['src', 'srcset', 'style', 'class'];
@@ -163,7 +163,7 @@ export class Beobachter {
     // Schon beobachtet (das composed-Ereignis des Hakens trifft jede Wurzel auf dem Pfad): nichts weiter zu tun.
     if (this.beobachter.has(wurzel)) return;
     // Eigene Wurzeln der Erweiterung (Galerie, Werbung, Riegel ...) nie betreten: Mias Bilder darin sind keine Seitenbilder.
-    if (istEigeneWurzel(wurzel)) return;
+    if (istEigeneWurzel(wurzel) && !(TESTHAKEN && eigeneSperreImTestAus())) return;
     versorgeWurzel(wurzel, this.ruf.istAus());
     this.ruf.neueWurzel(wurzel);
     this.beobachteWurzel(wurzel);

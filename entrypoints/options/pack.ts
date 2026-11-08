@@ -8,6 +8,7 @@ import { PackSpeicherFehler, PackVorhandenGeaendert, entfernePack, gleicheAb, im
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { einstiegFertig, ladeEinstieg } from '../../src/einstieg/vertrag';
 import { datumLang } from '../../src/oberflaeche/gemeinsam';
+import { fokussiereEinrichten } from './pack-einrichten';
 import {
   KNOPF_ANNEHMEN,
   KNOPF_ANNEHMEN_AELTER,
@@ -33,6 +34,8 @@ import {
   TEXT_ABLAGE,
   TEXT_ABLAGE_UEBER,
   TEXT_BESCHAEFTIGT,
+  TEXT_DATEI_KEINE,
+  TEXT_KARTE_ERSETZEN,
   TEXT_EINSTIEG_ZUERST,
   TEXT_ERSETZT_KURZFASSUNG_OK,
   TEXT_FERTIG,
@@ -79,6 +82,20 @@ const lizenzAnsicht = el<HTMLDivElement>('lizenz-ansicht');
 const lizenzAnsichtText = el<HTMLPreElement>('lizenz-ansicht-text');
 const ablage = el<HTMLDivElement>('ablage');
 const ablageText = el<HTMLParagraphElement>('ablage-text');
+const dateiName = el<HTMLSpanElement>('datei-name');
+const dateiDetails = el<HTMLDetailsElement>('datei-details');
+const dateiSummary = el<HTMLElement>('datei-summary');
+const packOhne = el<HTMLDivElement>('pack-ohne');
+let hatPack: boolean | null = null;
+
+// Fund 6: der Name der gewaehlten Datei steht neben dem eigenen Pillenknopf (das Feld selbst ist nur unsichtbar).
+function zeigeDateiName(datei: File | null): void {
+  dateiName.textContent = datei ? datei.name : TEXT_DATEI_KEINE;
+}
+function leereFeld(): void {
+  dateiFeld.value = '';
+  zeigeDateiName(null);
+}
 
 let gewaehlt: { datei: File; geprueft: GeprueftesPack; fall: PackVergleich } | null = null;
 let beschaeftigt = false;
@@ -130,8 +147,19 @@ lizenzZeigen.addEventListener('click', () => {
   void fuelleLizenzAnsicht();
 });
 
+function zeichneZustand(mit: boolean): void {
+  packOhne.hidden = mit;
+  dateiSummary.hidden = !mit;
+  dateiSummary.textContent = TEXT_KARTE_ERSETZEN;
+  dateiDetails.classList.toggle('ohne', !mit);
+  // Ohne Pack steht die Dateiwahl offen; mit Pack ist sie zugeklappt, bis die Person sie braucht. Nur beim Wechsel umstellen.
+  if (hatPack !== mit) dateiDetails.open = !mit;
+  hatPack = mit;
+}
+
 function zeichneStand(pack: PackKurz | null, verwaist = false): void {
   entfernenFrage.hidden = true;
+  zeichneZustand(!!pack);
   if (!pack) {
     // Verwaist: Bilder liegen noch auf dem Geraet, aber ohne Pack-Eintrag. Entfernbar, damit nichts Unbenutzbares zurueckbleibt.
     packStatus.textContent = verwaist ? STATUS_VERWAIST : STATUS_LEER;
@@ -204,7 +232,7 @@ function vergissAuswahl(): void {
   ersetzenHinweisEl.classList.remove('stark');
   annehmen.textContent = KNOPF_ANNEHMEN;
   fortschrittZeile.hidden = true;
-  dateiFeld.value = '';
+  leereFeld();
 }
 
 // ---------- Datei waehlen und pruefen ----------
@@ -219,6 +247,8 @@ async function pruefeDatei(datei: File): Promise<void> {
   setzeBeschaeftigt(true);
   try {
     vergissAuswahl();
+    zeigeDateiName(datei);
+    dateiDetails.open = true;
     zeigeMeldung('');
     // Das Mia Pack wartet auf den Einstieg (Entscheidung 133): der Speicher entscheidet, nicht nur die Anzeige.
     if (!(await ladeEinstieg().then(einstiegFertig, () => false))) {
@@ -242,7 +272,7 @@ async function pruefeDatei(datei: File): Promise<void> {
     } catch (e) {
       console.warn('Vorhandenes Pack lesen fehlgeschlagen', e);
       fortschrittZeile.hidden = true;
-      dateiFeld.value = '';
+      leereFeld();
       zeigeMeldung(TEXT_VORHANDENES_NICHT_LESBAR, true);
       return;
     }
@@ -261,7 +291,7 @@ async function pruefeDatei(datei: File): Promise<void> {
     fokussiere(lizenzBlock.querySelector<HTMLElement>("h3") ?? lizenzBlock);
   } catch (e) {
     fortschrittZeile.hidden = true;
-    dateiFeld.value = '';
+    leereFeld();
     zeigeMeldung(fehlerText(e), true);
   } finally {
     setzeBeschaeftigt(false);
@@ -373,6 +403,9 @@ annehmen.addEventListener('click', async () => {
             : TEXT_FERTIG_STIL_FEHLT;
       // Ohne Nachsatz kein Leerzeichen am Ende (Fund aus dem Text-Einbau).
       zeigeMeldung(`${TEXT_FERTIG} ${textPatchBilder(kurz.bilder)} added.` + (nachsatz ? ` ${nachsatz}` : ''));
+      // Fund 5 und 12: Dateiwahl wieder zu, Fokus zur Frage "Show my ads?" bzw. zu "Set me up", sonst bleibt er beim Erfolgssatz.
+      dateiDetails.open = false;
+      if (!(await fokussiereEinrichten())) fokussiere(meldung);
     } catch (e) {
       fortschrittZeile.hidden = true;
       console.warn('Pack-Import fehlgeschlagen', e);

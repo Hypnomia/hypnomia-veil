@@ -12,7 +12,11 @@
         <div class="kopfzeile">
           <h1>HYPNOMIA VEIL</h1>
           <!-- UX-Fund 8: der Weg zur Einstellungsseite steht oben (auf Android der wichtigste), nicht erst nach allen Abschnitten. -->
-          <button id="alle-einstellungen" class="klein kopfknopf" type="button">All settings</button>
+          <div class="kopfknoepfe">
+            <!-- Session 17: Hilfe-Seite mit den Anleitungen (offline), als runder Knopf neben "All settings". -->
+            <button id="hilfe" class="klein kopfknopf rund" type="button" aria-label="Help" title="Help">?</button>
+            <button id="alle-einstellungen" class="klein kopfknopf" type="button">All settings</button>
+          </div>
         </div>
         <p id="status" role="status" aria-live="polite"></p>
       </header>
@@ -24,18 +28,33 @@
       <div id="version-hinweis" hidden></div>
 
       <button id="pause" class="gross" type="button"></button>
+      <!-- Phase 9, Paket A (Fund 15 und 17): leise Zeilen unter der Pause. Das Kuerzel steht nur auf Desktop (aus browser.commands), die
+           Pausenzeile nur im Pausenzustand. -->
+      <p id="pause-kuerzel" class="leise" hidden></p>
+      <p id="pause-zeile" class="leise" hidden></p>
 
-      <section aria-labelledby="stimmung-titel">
-        <div class="kopf">
-          <h2 id="stimmung-titel">Mia’s mood</h2>
-          <output id="stimmung-wert" for="stimmung"></output>
+      <!-- Fund 12: Werbe-Frage, solange sie unbeantwortet ist und das Pack den Werbe-Tausch freischaltet (werbung-frage.ts). -->
+      <section id="popup-werbung-frage" class="frage" aria-labelledby="popup-werbung-frage-titel" hidden>
+        <p id="popup-werbung-frage-titel" class="frage-titel"></p>
+        <p id="popup-werbung-frage-text" class="hinweis"></p>
+        <div class="frage-knoepfe">
+          <button id="popup-werbung-frage-ja" class="klein" type="button"></button>
+          <button id="popup-werbung-frage-nein" class="klein ruhig" type="button"></button>
         </div>
-        <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
-        <div class="enden"><span id="ende-links">Very suspicious</span><span id="ende-rechts">Relaxed</span></div>
-        <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
+        <p id="popup-werbung-frage-fehler" class="fehler-klein" role="alert" hidden></p>
       </section>
 
-      <section aria-labelledby="stil-titel">
+      <!-- Fund 2: die Seiten-Aktion steht direkt unter der Pause (diese-seite.ts zeichnet Name, Knopf und Satz). -->
+      <section id="diese-seite" aria-labelledby="diese-seite-titel">
+        <div class="seite-kopf">
+          <h2 id="diese-seite-titel">This site</h2>
+          <strong id="diese-seite-name"></strong>
+        </div>
+        <button id="ausnahme" class="klein" type="button"></button>
+        <p id="ausnahme-hinweis" class="hinweis"></p>
+      </section>
+
+      <section id="stil-karte" aria-labelledby="stil-titel">
         <h2 id="stil-titel">Cover style</h2>
         <div class="wahl" role="radiogroup" aria-labelledby="stil-titel">
           <label><input type="radio" name="stil" value="mosaik" /><span>Mosaic</span></label>
@@ -43,44 +62,71 @@
           <label><input type="radio" name="stil" value="mia-patch" /><span>Mia patch</span></label>
         </div>
         <p id="pack-hinweis" class="hinweis"></p>
-        <button id="pack-link" class="klein" type="button">Mia Pack</button>
+        <!-- Fund 2: Kurzfassung statt zehn Kacheln; "Change" klappt Mood, Zonen und Strict auf (Zustand in localStorage). -->
+        <div class="abdeckung-zeile">
+          <p id="abdeckung-kurz" class="hinweis"></p>
+          <button id="aendern" class="klein textknopf" type="button" aria-expanded="false" aria-controls="abdeckung-gruppe">Change</button>
+        </div>
       </section>
 
-      <section>
-        <label class="schalter">
-          <input id="strict" type="checkbox" role="switch" />
-          <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Strict</strong><small>hide each page until I’ve checked it (a little slower)</small></span>
-        </label>
-      </section>
+      <div id="abdeckung-gruppe" class="gruppe" hidden>
+        <section aria-labelledby="stimmung-titel">
+          <div class="kopf">
+            <h2 id="stimmung-titel">Mia’s mood</h2>
+            <output id="stimmung-wert" for="stimmung"></output>
+          </div>
+          <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
+          <div class="enden"><span id="ende-links">Very suspicious</span><span id="ende-rechts">Relaxed</span></div>
+          <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
+        </section>
 
-      <section aria-labelledby="zonen-titel">
-        <h2 id="zonen-titel">What I cover</h2>
-        <ul id="zonen" class="zonen"></ul>
-        <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
-      </section>
+        <section aria-labelledby="zonen-titel">
+          <h2 id="zonen-titel">What I cover</h2>
+          <ul id="zonen" class="zonen"></ul>
+          <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+        </section>
 
-      <section>
-        <button id="ausnahme" class="klein" type="button"></button>
-        <p id="ausnahme-hinweis" class="hinweis"></p>
-      </section>
+        <section>
+          <label class="schalter">
+            <input id="strict" type="checkbox" role="switch" />
+            <span class="regler" aria-hidden="true"></span>
+            <span class="text"><strong>Strict</strong><small>hide each page until I’ve checked it (a little slower)</small></span>
+          </label>
+        </section>
+
+        <!-- "Full replacement" (mit dem Warnsatz) steht hinter "Change", nur mit der Freischaltung erwachsen:ersatz. -->
+        <section id="erwachsen-mehr" aria-label="Full replacement" hidden>
+          <label class="schalter" id="erw-ersatz-zeile">
+            <input id="erw-ersatz" type="checkbox" role="switch" />
+            <span class="regler" aria-hidden="true"></span>
+            <span class="text"><strong>Full replacement</strong><small>Careful: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.</small></span>
+          </label>
+        </section>
+      </div>
 
       <section id="erwachsen" aria-labelledby="erwachsen-titel">
-        <h2 id="erwachsen-titel">Adult sites</h2>
+        <div class="erw-kopf">
+          <h2 id="erwachsen-titel">Adult sites</h2>
+          <button id="erwachsen-pack-link" class="klein textknopf" type="button">Get the Mia Pack</button>
+        </div>
         <div class="mia-zeile">
           <img id="erwachsen-chibi" class="chibi" alt="" width="64" height="64" hidden />
           <p id="erwachsen-hinweis" class="hinweis"></p>
         </div>
         <div id="erwachsen-schalter">
+          <!-- Fund 10: "How hot do I get?" oben, als Dreier-Wahl wie Cover style (nur mit erwachsen:vorschau). -->
+          <div id="heiss" hidden>
+            <h3 id="heiss-titel">How hot do I get?</h3>
+            <div class="wahl" role="radiogroup" aria-labelledby="heiss-titel">
+              <label><input type="radio" name="stufe" value="tease" /><span>Tease</span></label>
+              <label><input type="radio" name="stufe" value="hot" /><span>Hot</span></label>
+              <label><input type="radio" name="stufe" value="explicit" /><span>Explicit</span></label>
+            </div>
+          </div>
           <label class="schalter">
             <input id="erw-an" type="checkbox" role="switch" />
             <span class="regler" aria-hidden="true"></span>
             <span class="text"><strong>Adult-site mode</strong><small>on the sites I know, I swap the thumbnails for mine</small></span>
-          </label>
-          <label class="schalter" id="erw-ersatz-zeile">
-            <input id="erw-ersatz" type="checkbox" role="switch" />
-            <span class="regler" aria-hidden="true"></span>
-            <span class="text"><strong>Full replacement</strong><small>Careful: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.</small></span>
           </label>
           <label class="schalter">
             <input id="erw-inhalt" type="checkbox" role="switch" />
@@ -88,10 +134,13 @@
             <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal. Pages I only spot by their content never get thumbnail swaps or my gallery.</small></span>
           </label>
         </div>
-        <button id="erwachsen-pack-link" class="klein" type="button">Add the Mia Pack</button>
         <div id="steigerung" hidden>
-          <h3>My grip</h3>
+          <div class="grip-kopf">
+            <h3>My grip</h3>
+            <a id="grip-hilfe" class="hilfe-punkt" target="_blank" rel="noopener" aria-label="What is my grip?" title="What is my grip?">?</a>
+          </div>
           <p id="stufe-zeile" class="stufe"></p>
+          <p id="grip-satz" class="hinweis"></p>
           <p id="stufe-zeit" class="hinweis"></p>
           <p id="stufe-text" class="hinweis"></p>
         </div>
@@ -100,12 +149,11 @@
       <p id="streng-zeile" class="hinweis" hidden></p>
       <p id="streng-text" class="hinweis" hidden></p>
 
-      <!-- Session 11: eine Zeile aus Mia’s Ledger (Auftrag L), Weg zur Einstellungsseite (Vertrag). -->
-      <p id="ledger-kurz" class="hinweis" hidden></p>
-
       <footer>
-        <span id="version"></span>
-        <span>Pausing and uninstalling are always allowed.</span>
+        <button id="pack-link" class="klein textknopf" type="button">Mia Pack</button>
+        <a id="version" target="_blank" rel="noopener"></a>
+        <p id="ledger-kurz" class="hinweis" hidden></p>
+        <span id="fuss-satz">Pausing and <a id="deinstallieren" target="_blank" rel="noopener">uninstalling</a> are always allowed.</span>
       </footer>
     </main>
     <script type="module" src="./main.ts"></script>

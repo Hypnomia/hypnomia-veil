@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -113,6 +114,7 @@ test('Einstellungsseite: eigene Seiten, Verweigern-Anteil, Freilegen-Dauer, Ruhi
   try {
     await seite.goto(optionsUrl());
     await expect(seite.locator('#erw-titel')).toBeVisible();
+    await oeffneZugeklapptes(seite);
     const anVorher = (await lies(seite, 'einstellungen'))?.erwachsen?.an;
     await seite.fill('#seite-feld', 'https://WWW.Example.com/irgendwas');
     await seite.click('#seite-add');

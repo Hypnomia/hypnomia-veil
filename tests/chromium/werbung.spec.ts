@@ -231,6 +231,8 @@ test('ohne Pack aendert sich nichts: Originale sichtbar, Anzeige laeuft, kein Ta
 test('mit Pack: Werbeflaechen getauscht, gekennzeichnet, normale Bilder bleiben, Layout unveraendert', async () => {
   await importierePack(packPfad);
   console.log('werbung: Pack importiert');
+  // Seit 0.9.0 ist die Werbung ab Werk aus (Opt-in): die Tests schalten sie ein.
+  await setzeEinstellungen({ kontrolle: KONTROLLE });
   const s = await context.newPage();
   await s.addInitScript(() => {
     (window as any).__spaetSicht = null;
@@ -936,6 +938,169 @@ test('Erwachsenenseite: spaeter eintreffendes Video oder Vorschau-Zustand nimmt 
   await s.evaluate(() => (window as any).fuegeVideoEin());
   await expect.poll(async () => (await flaechenIds(s)).includes('e-flaeche'), { timeout: 5000 }).toBe(false);
   expect(await sichtbarOriginal(s, 'e-flaeche')).toBe(true);
+  await s.close();
+});
+
+// Session 17 (UX-Pruefung Phase 9 Fund 13): Etikett als Knopf mit Menue.
+interface MenueStand {
+  offen: boolean;
+  nr: number;
+  punkte: Array<{ aktion: string; text: string; x: number; y: number; w: number; h: number }>;
+}
+// Nur Punkte, die wirklich zu sehen sind (Rechteck groesser 0): ein Punkt mit `hidden` und `display:block` aus der Wurzel zaehlt als sichtbar (Fund 1).
+const menueVon = (s: Page | Frame): Promise<MenueStand | null> =>
+  s
+    .evaluate(() => {
+      const a = document.documentElement.getAttribute('data-veil-werbung');
+      return a ? (JSON.parse(a).menue ?? null) : null;
+    })
+    .then((m) => (m ? { ...m, punkte: m.punkte.filter((p: { w: number; h: number }) => p.w > 0 && p.h > 0) } : null));
+const kontrolleSpeicher = () =>
+  worker.evaluate(async () => {
+    const e = (await (globalThis as any).chrome.storage.local.get('einstellungen')).einstellungen ?? {};
+    return { kontrolle: e.kontrolle ?? {}, pause: !!e.pause };
+  });
+async function klickEtikett(s: Page, id: string) {
+  await s.evaluate((i) => document.getElementById(i)!.scrollIntoView({ block: 'center' }), id);
+  await abwarten(700);
+  const f = (await standVon(s))!.flaechen.find((x) => x.id === id)!;
+  expect(f.sichtbar, `${id} sichtbar`).toBe(true);
+  await s.mouse.click(f.badge!.l + f.badge!.w / 2, f.badge!.t + f.badge!.h / 2);
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 5000 }).toBe(true);
+  return f;
+}
+async function klickPunkt(s: Page, aktion: string) {
+  const m = (await menueVon(s))!;
+  const p = m.punkte.find((x) => x.aktion === aktion)!;
+  expect(p, `Menuepunkt ${aktion}`).toBeTruthy();
+  await s.mouse.click(p.x + p.w / 2, p.y + p.h / 2);
+}
+
+test('Etikett ist ein Knopf (mindestens 24 x 24), Klick oeffnet das Menue mit drei Punkten; Escape schliesst; Klick daneben schliesst; die Seite merkt nichts', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
+  const s = await context.newPage();
+  await s.goto(nachrichten);
+  await warteAuf(s, ERWARTET);
+  await s.evaluate(() => {
+    (window as any).__ereignisse = 0;
+    for (const t of ['click', 'pointerdown', 'mousedown', 'keydown'] as const) window.addEventListener(t, () => (window as any).__ereignisse++, true);
+  });
+  const f = await klickEtikett(s, 'a-rahmen');
+  expect(f.badge!.w, 'Etikett mindestens 24 breit').toBeGreaterThanOrEqual(24);
+  expect(f.badge!.h, 'Etikett mindestens 24 hoch').toBeGreaterThanOrEqual(24);
+  const m = (await menueVon(s))!;
+  expect(m.punkte.map((p) => p.text)).toEqual(['Hide my ads on this site', 'Turn my ads off', 'Pause Mia']);
+  for (const p of m.punkte) {
+    expect(p.h, p.text).toBeGreaterThanOrEqual(24);
+    expect(p.x).toBeGreaterThanOrEqual(0);
+    expect(p.x + p.w).toBeLessThanOrEqual(1280);
+  }
+  console.log(`werbung: Etikett ${Math.round(f.badge!.w)} x ${Math.round(f.badge!.h)} px, Menue mit ${m.punkte.length} Punkten`);
+  await s.keyboard.press('Escape');
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+  // wieder auf, dann ein Druck auf die Seite schliesst
+  await s.mouse.click(f.badge!.l + f.badge!.w / 2, f.badge!.t + f.badge!.h / 2);
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(true);
+  await s.mouse.click(5, 5);
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+  await s.evaluate(() => ((window as any).__ereignisse = 0)); // der Druck daneben ist ein Ereignis der Seite, die folgenden Schritte nicht
+  // Pfeiltasten wandern durch die Punkte, Escape gibt den Fokus an das Etikett zurueck (Menue offen: Fokus liegt auf dem ersten Punkt)
+  await s.mouse.click(f.badge!.l + f.badge!.w / 2, f.badge!.t + f.badge!.h / 2);
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(true);
+  await s.keyboard.press('ArrowDown');
+  await s.keyboard.press('ArrowDown');
+  await s.keyboard.press('Escape');
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+  expect(await s.evaluate(() => (window as any).__ereignisse), 'die Seite sah keinen Klick und keine Taste auf Mias Flaeche').toBe(0);
+  // Flaeche bleibt, keine Einstellung hat sich geaendert
+  expect((await flaechenIds(s)).includes('a-rahmen')).toBe(true);
+  expect((await kontrolleSpeicher()).kontrolle.werbung).toBe(true);
+  await s.close();
+});
+
+test('Menue: "Turn my ads off" schreibt kontrolle.werbung false und gibt die Originale sofort zurueck', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungGefragt: false } });
+  const s = await context.newPage();
+  await s.goto(nachrichten);
+  await warteAuf(s, ERWARTET);
+  await klickEtikett(s, 'a-rahmen');
+  await klickPunkt(s, 'ausschalten');
+  await warteLeer(s);
+  for (const id of ERWARTET) expect(await sichtbarOriginal(s, id), id).toBe(true);
+  expect((await kontrolleSpeicher()).kontrolle.werbung).toBe(false);
+  // Fund 2: wer abschaltet, hat geantwortet (sonst fragte das Popup sofort wieder "Show my ads?")
+  expect((await kontrolleSpeicher()).kontrolle.werbungGefragt).toBe(true);
+  await s.close();
+});
+
+test('Menue: "Hide my ads on this site" setzt den Host auf werbungAus; die Seite bleibt danach (auch nach Neuladen) ohne Werbung, andere Einstellungen bleiben', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
+  const s = await context.newPage();
+  await s.goto(nachrichten);
+  await warteAuf(s, ERWARTET);
+  await klickEtikett(s, 'a-ins');
+  await klickPunkt(s, 'verbergen');
+  await warteLeer(s);
+  for (const id of ERWARTET) expect(await sichtbarOriginal(s, id), id).toBe(true);
+  const k = (await kontrolleSpeicher()).kontrolle;
+  expect(k.werbungAus).toEqual(['127.0.0.1']);
+  expect(k.werbung, 'der globale Schalter bleibt an').toBe(true);
+  await s.reload();
+  await abwarten(2500);
+  expect(await flaechenIds(s), 'nach dem Neuladen keine Werbung').toEqual([]);
+  // Eine andere Seite (anderer Host) zeigt weiter Werbung
+  const t = await context.newPage();
+  await t.goto(`http://localhost:${port}/werbung-nachrichten.html?fremd=${portFremd}`);
+  await warteAuf(t, ERWARTET);
+  await t.close();
+  // Liste leeren: die Werbung kommt zurueck
+  await setzeEinstellungen({ kontrolle: { ...KONTROLLE, werbungAus: [] } });
+  await warteAuf(s, ERWARTET);
+  await s.close();
+});
+
+test('Menue in einem eingebetteten Rahmen: "Hide my ads on this site" speichert die Seite des Tabs, nicht den Host des Rahmens', async () => {
+  // Beide Listen leer: die Tab-Adresse ist im Rahmen nicht von vornherein bekannt (Fund 4).
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungAus: [] } });
+  const s = await context.newPage();
+  await s.goto(nachrichten);
+  await warteAuf(s, ERWARTET);
+  const rahmen = s.frames().find((f) => f.url().startsWith(`http://localhost:${portFremd}/`));
+  expect(rahmen, 'Rahmen auf localhost').toBeTruthy();
+  await warteAuf(rahmen!, ['i-ins']);
+  await s.evaluate(() => document.getElementById('n-rahmen2')!.scrollIntoView({ block: 'center' }));
+  await abwarten(700);
+  const versatz = (await (await rahmen!.frameElement()).boundingBox())!;
+  const f = (await standVon(rahmen!))!.flaechen.find((x) => x.id === 'i-ins')!;
+  expect(f.sichtbar && f.badge).toBeTruthy();
+  const b = f.badge!;
+  await s.mouse.click(versatz.x + b.l + b.w / 2, versatz.y + b.t + b.h / 2);
+  await expect.poll(async () => (await menueVon(rahmen!))?.offen, { timeout: 5000 }).toBe(true);
+  const p = (await menueVon(rahmen!))!.punkte.find((x) => x.aktion === 'verbergen');
+  expect(p, 'Punkt Hide my ads on this site').toBeTruthy();
+  await s.mouse.click(versatz.x + p!.x + p!.w / 2, versatz.y + p!.y + p!.h / 2);
+  await expect.poll(async () => (await kontrolleSpeicher()).kontrolle.werbungAus, { timeout: 8000 }).toEqual(['127.0.0.1']);
+  await s.close();
+  await setzeEinstellungen({ kontrolle: { ...KONTROLLE, werbungAus: [] } });
+});
+
+test('Menue: "Pause Mia" pausiert alles; auf einer Flaeche unter 80 px gibt es nur "Turn my ads off"', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
+  const s = await context.newPage();
+  await s.goto(nachrichten);
+  await warteAuf(s, ERWARTET);
+  const klein = await klickEtikett(s, 'a-anzeige');
+  expect(klein.box!.h, 'a-anzeige ist niedrig').toBeLessThan(80);
+  expect((await menueVon(s))!.punkte.map((p) => p.text)).toEqual(['Turn my ads off']);
+  expect(klein.badge!.h).toBeGreaterThanOrEqual(24);
+  await s.keyboard.press('Escape');
+  await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+  await klickEtikett(s, 'a-rahmen');
+  await klickPunkt(s, 'pause');
+  await warteLeer(s);
+  for (const id of ERWARTET) expect(await sichtbarOriginal(s, id), id).toBe(true);
+  await expect.poll(async () => (await kontrolleSpeicher()).pause, { timeout: 5000 }).toBe(true);
+  await setzeEinstellungen({ pause: false });
   await s.close();
 });
 

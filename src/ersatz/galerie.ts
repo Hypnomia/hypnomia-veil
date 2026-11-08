@@ -7,7 +7,8 @@ import { SatzWahl } from '../quiz/saetze';
 import { pruefeTexte } from '../quiz/vertrag';
 import { ANTWORT_MAX_MS, TESTHAKEN } from '../schleier/konstanten';
 import { vergissWecken, wecke } from '../schleier/pruefung';
-import { ladeEinstellungen, type StufeWahl } from '../einstellungen';
+import { zerlegeMuster } from '../../scripts/ausnahmen-muster.mjs';
+import { aendereEinstellungen, ladeEinstellungen, type StufeWahl } from '../einstellungen';
 import { SEITEN_TOKENS } from '../oberflaeche/design/tokens';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { augenpaar } from '../oberflaeche/design/motive';
@@ -29,7 +30,7 @@ ${SEITEN_TOKENS}
   font: 400 15px/1.5 var(--v-schrift-text); }
 * { box-sizing: border-box; }
 main { display: flex; flex-direction: column; gap: 18px; max-width: 980px; margin: 0 auto; padding: 24px 16px 32px; }
-header { display: flex; align-items: center; gap: 10px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 h1 { margin: 0; font: 800 15px/1.2 var(--v-schrift-display); letter-spacing: 0.14em; color: var(--v-rosa-800); }
 h2 { margin: 0 0 6px; font: 800 26px/1.2 var(--v-schrift-display); color: var(--v-text); letter-spacing: -0.01em; }
 h2.klein { font: 800 12px/1.2 var(--v-schrift-text); letter-spacing: 0.1em; text-transform: uppercase; color: var(--v-rosa-700); margin-bottom: 10px; }
@@ -48,6 +49,11 @@ section { padding: 18px; background: rgba(255, 255, 255, 0.7); border: 1px solid
   box-shadow: var(--v-schatten-klein); }
 .knopf:hover, .pause:hover { background: var(--v-rosa-50); }
 header .pause { margin: 0 0 0 auto; white-space: nowrap; flex: none; }
+/* Session 17 (UX Fund 23): leiser zweiter Weg neben Pause, ohne Hervorhebung. */
+.ruhe { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--v-r-voll); background: transparent;
+  color: var(--v-leise); font: 700 13px/1 var(--v-schrift-text); cursor: pointer; white-space: nowrap; flex: none; }
+.ruhe:hover { background: var(--v-rosa-50); color: var(--v-rosa-800); }
+.ruhe:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
 @media (max-width: 400px) { header .v-augenpaar svg + svg { display: none; } h1 { font-size: 13px; letter-spacing: 0.1em; } }
 .pause { padding: 0 18px 0 10px; font-family: var(--v-schrift-display); background: linear-gradient(180deg, #ffffff 0%, var(--v-rosa-50) 100%); box-shadow: var(--v-schatten-pause); }
 .pause::before { content: ''; flex: none; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(#fff, #fff) 9px 7px / 2.5px 10px no-repeat,
@@ -107,6 +113,7 @@ export class Galerie {
   private readonly chibiBild: HTMLImageElement;
   private readonly titel: HTMLHeadingElement;
   readonly pauseKnopf: HTMLButtonElement;
+  readonly ruheKnopf: HTMLButtonElement;
   private readonly linkListe: HTMLAnchorElement[] = [];
   private lauf = 0;
   // Dateinamen der gezeigten Pack-Bilder (nur fuer das Abbild des Testhakens).
@@ -161,7 +168,12 @@ export class Galerie {
     this.pauseKnopf = pause;
     // Phase 8b (Lesung S2/R Nr. 15): Pause steht oben im Kopf neben der Marke, auch bei 360 px ohne Scrollen erreichbar.
     kopfzeile.append(pause);
-    fuss.append(el('span', undefined, 'Pausing is always allowed. The site shows up right away.'));
+    // Session 17 (UX Fund 23): diese Seite in Ruhe lassen, gleiche Logik wie das Popup (Host-Muster auf die Ausnahmeliste), danach neu laden.
+    const ruhe = el('button', 'ruhe', 'Leave this site alone');
+    ruhe.type = 'button';
+    this.ruheKnopf = ruhe;
+    kopfzeile.append(ruhe);
+    fuss.append(el('span', undefined, 'Pausing is always allowed. The site shows up right away. Leave this site alone keeps me off it for good, and Let Mia back on this site in my popup undoes it.'));
 
     main.append(kopfzeile, kopf, bilderBereich, linkBereich, fuss);
     huelle.append(main);
@@ -181,10 +193,32 @@ export class Galerie {
   }
 
   // Gilt ein echter Klick dem Pause-Knopf? Mit Maus oder Finger nach Lage, per Tastatur (Enter, Leertaste) nach Fokus.
+  // Der Schutz in ersatz/schutz.ts fragt nur nach Pause; den leisen Knopf "Leave this site alone" wertet diese Methode in demselben Zug selbst aus
+  // (die Wurzel ist geschlossen, Horcher an den Knoepfen bekaemen nichts) und meldet dafuer nie eine Pause.
   istPauseKlick(e: MouseEvent): boolean {
-    if (e.detail === 0 && e.clientX === 0 && e.clientY === 0) return this.wurzel.activeElement === this.pauseKnopf;
-    const r = this.pauseKnopf.getBoundingClientRect();
-    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    const tastatur = e.detail === 0 && e.clientX === 0 && e.clientY === 0;
+    const trifft = (k: HTMLElement): boolean => {
+      if (tastatur) return this.wurzel.activeElement === k;
+      const r = k.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    };
+    if (trifft(this.ruheKnopf)) {
+      void this.laesstRuhe();
+      return false;
+    }
+    return trifft(this.pauseKnopf);
+  }
+
+  // Die Seite auf die Ausnahmeliste setzen (Host ohne "www.", deckt Subdomains) und neu laden: dann ist sie ohne Mia.
+  private async laesstRuhe(): Promise<void> {
+    const muster = location.hostname.toLowerCase().replace(/^www\./, '');
+    if (!zerlegeMuster(muster)) return;
+    try {
+      await aendereEinstellungen((alt) => ({ ausnahmen: [...new Set([...alt.ausnahmen, muster])] }));
+      location.reload();
+    } catch {
+      // Speicher nicht erreichbar: die Galerie bleibt, Pause geht immer
+    }
   }
 
   // Inline und wichtig: schlaegt Seitenregeln auf Popover, div und *. Zuerst `all: initial` (nimmt allgemeine Regeln der Seite wie clip-path,
@@ -343,6 +377,7 @@ export class Galerie {
       zeile: this.host.isConnected ? this.titel.parentElement?.querySelector('p')?.textContent : null,
       leerSichtbar: !this.leer.hidden,
       pause: r(this.pauseKnopf),
+      ruhe: r(this.ruheKnopf),
       host: r(this.host),
     };
     document.documentElement?.setAttribute(ABBILD_ATTR, JSON.stringify(abbild));

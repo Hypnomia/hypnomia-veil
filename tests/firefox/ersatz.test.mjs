@@ -128,7 +128,6 @@ const setze = (teil) =>
      return true;`,
     teil,
   );
-const regelAnzahl = () => imExt(`return (await api.declarativeNetRequest.getDynamicRules()).length;`);
 
 async function bis(beschreibung, fn, frist = 15_000) {
   const t0 = Date.now();
@@ -183,7 +182,9 @@ try {
   // 0. Manifest: keine web_accessible_resources; Erweiterungsseite der Galerie gibt es nicht
   const manifest = await imExt(`return api.runtime.getManifest();`);
   pruefe(!manifest.web_accessible_resources || manifest.web_accessible_resources.length === 0, 'Manifest ohne web_accessible_resources');
-  pruefe((manifest.permissions ?? []).includes('declarativeNetRequestWithHostAccess'), 'Referer-Recht bleibt im Manifest');
+  // Session 17 (Sicherheitspruefung Phase 9, R1): Firefox setzt den Referer per webRequest, das DNR-Recht steht nur noch im Chrome-Bau.
+  pruefe(!(manifest.permissions ?? []).includes('declarativeNetRequestWithHostAccess'), 'kein declarativeNetRequest-Recht im Firefox-Manifest');
+  pruefe((manifest.permissions ?? []).includes('webRequestBlocking'), 'Referer ueber webRequest');
 
   // 1. Ohne Pack: keine Galerie, keine bleibende Verdeckung; Dauer der Verdeckung
   await setze({ komplettErsatz: true });
@@ -274,6 +275,24 @@ try {
   const k2 = await driver.executeScript(`return window.__k;`);
   pruefe(Object.keys(k2).length === 0, `auch der Klick auf Pause kam bei der Seite nicht an (${JSON.stringify(k2)})`);
   await setze({ pause: false });
+
+  // 3b2. Session 17 (Fund 23): "Leave this site alone" neben Pause
+  await setze({ pause: false, ausnahmen: [] });
+  await geheZu(LISTE);
+  const ruheA = await warteGalerie('Ruhe');
+  pruefe(ruheA.ruhe.h >= 44 && ruheA.ruhe.w > 80, `Knopf "Leave this site alone" mindestens 44 px hoch (${ruheA.ruhe.h})`);
+  await driver.executeScript(`window.__vorher = 1;`);
+  await klickeBei(ruheA.ruhe.x + ruheA.ruhe.w / 2, ruheA.ruhe.y + ruheA.ruhe.h / 2);
+  await bis('Ausnahme gespeichert', async () => (await imExt(`return (await api.storage.local.get('einstellungen')).einstellungen?.ausnahmen ?? [];`)).includes('pornhub.veil-erwachsen.test'), 10_000);
+  await bis('neu geladen und ohne Galerie', async () => {
+    try {
+      return await driver.executeScript(`return window.__vorher === undefined && !document.documentElement.hasAttribute('data-veil-ersatz') && !document.querySelector('[data-veil-ersatz-host]');`);
+    } catch {
+      return false;
+    }
+  }, 10_000);
+  pruefe((await imExt(`return !!(await api.storage.local.get('einstellungen')).einstellungen?.pause;`)) === false, '"Leave this site alone" pausiert nicht');
+  await setze({ pause: false, ausnahmen: [] });
 
   // 3c. Dialog, Popover der Seite; Host angefasst; Wurzelelement ausgetauscht
   await geheZu(LISTE);
@@ -447,35 +466,9 @@ try {
   pruefe(imRahmen === false, 'Rahmen auf einer Listen-Domain bekommt nie eine Galerie');
   pruefe((await hatAttr()) === false, 'Rahmen: die Elternseite bleibt unberuehrt');
 
-  // 12. Alte Umleitungsregel aus 0.4.0 wird beim Aufwachen entfernt
-  const hintergrundStatus = async () => {
-    await driver.setContext(firefox.Context.CHROME);
-    try {
-      return await driver.executeScript(`return WebExtensionPolicy.getByID(arguments[0])?.extension?.backgroundState ?? null;`, GECKO_ID);
-    } finally {
-      await driver.setContext(firefox.Context.CONTENT);
-    }
-  };
-  await imExt(
-    `await api.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [1], addRules: [{ id: 1, priority: 1, action: { type: 'redirect', redirect: { url: args[0] } }, condition: { requestDomains: ['nirgendwo.test'], resourceTypes: ['main_frame'] } }] });
-     return true;`,
-    NEUTRAL,
-  );
-  pruefe((await regelAnzahl()) === 1, 'alte Regel steht');
-  let schlaeft = '';
-  try {
-    await bis('Ereignisseite schlaeft', async () => (schlaeft = await hintergrundStatus()) === 'stopped', 25_000);
-  } catch {
-    // unten ausgewertet
-  }
-  pruefe(schlaeft === 'stopped', `Ereignisseite schlaeft (${schlaeft})`);
-  await imExt(`return await api.runtime.sendMessage({ ziel: 'hintergrund', typ: 'wecke' }).catch(() => null);`);
-  try {
-    await bis('alte Regel entfernt', async () => (await regelAnzahl()) === 0, 15_000);
-    pruefe(true, 'alte Regel wird beim Aufwachen entfernt');
-  } catch {
-    pruefe(false, 'alte Regel wird beim Aufwachen entfernt');
-  }
+  // 12. (bis 0.8.2) Alte Umleitungsregel aus 0.4.0: entfaellt in Firefox seit Session 17, dort gibt es kein declarativeNetRequest mehr
+  // (die Regel stand in Firefox nie). Der Chrome-Fall bleibt in tests/chromium/ersatz.spec.ts.
+  pruefe(typeof (await imExt(`return typeof api.declarativeNetRequest?.getDynamicRules;`)) === 'string', 'Abfrage der DNR-Schnittstelle laeuft');
 
   // 13. Pack entfernen: Galerie sofort weg
   await geheZu(LISTE);

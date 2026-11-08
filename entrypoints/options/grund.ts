@@ -5,6 +5,7 @@ import {
   BEDECKBARE_ZONEN,
   SCHWELLE_MAX,
   SCHWELLE_MIN,
+  STANDARD,
   ZONEN,
   beiEinstellungsAenderung,
   ladeEinstellungen,
@@ -52,8 +53,9 @@ let aktuell: Einstellungen | null = null;
 // ---------- Anzeige ----------
 
 // Fund 6: ein Wort statt der rohen Schwelle, auch als aria-valuetext (die Zahl bleibt im Wert des Reglers).
+// Phase 9, Fund 28: bei Mias Standard steht "(my default)" dabei, damit der linke Rand der Skala nicht wie "ganz aufgedreht" wirkt.
 function zeigeStimmung(schwelle: number): void {
-  const wort = stimmungsWort(schwelle);
+  const wort = stimmungsWort(schwelle) + (Math.round(schwelle * 100) === Math.round(STANDARD.schwelle * 100) ? ' (my default)' : '');
   stimmungWert.textContent = wort;
   stimmung.setAttribute('aria-valuetext', wort);
 }
@@ -77,7 +79,7 @@ function zeichneStil(e: Einstellungen): void {
     ? `Mia patch uses ${pack?.bilder ?? 0} of my pictures from your Mia Pack.`
     : pack
       ? HINWEIS_PACK_OHNE_PATCH
-      : 'Mia patch needs the Mia Pack. Add it further down and I can cover things with my own pictures.';
+      : 'Mia patch needs the Mia Pack. Get it in the Mia Pack section and I can cover things with my own pictures.';
 }
 
 // `erzwingen`: auch Regler mit Fokus auf den gespeicherten Stand setzen (nach einem gescheiterten Speichern, Fund 26).
@@ -221,6 +223,8 @@ if (typeof IntersectionObserver !== "undefined") {
     { threshold: [0, 0.5, 0.99, 1] },
   ).observe(pauseKnopf);
   const chips = [...document.querySelectorAll<HTMLAnchorElement>("#sprung a[href^=\"#\"]")];
+  let gewaehlterChip: HTMLAnchorElement | null = null;
+  for (const a of chips) a.addEventListener('click', () => { gewaehlterChip = a; });
   const markiere = (): void => {
     const oben = (leiste?.getBoundingClientRect().bottom ?? 0) + 12;
     let aktuellerChip: HTMLAnchorElement | null = null;
@@ -230,6 +234,12 @@ if (typeof IntersectionObserver !== "undefined") {
       if (!ziel || ziel.hidden || ziel.getClientRects().length === 0) continue;
       if (ziel.getBoundingClientRect().top <= oben) aktuellerChip = a;
     }
+    // Phase 9: ganz unten kann der angeklickte Abschnitt nicht mehr bis unter die Leiste steigen (letzte Karten sind kurz); dann gilt er trotzdem.
+    const amEnde = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+    if (gewaehlterChip && amEnde) {
+      const z = document.getElementById(gewaehlterChip.getAttribute("href")!.slice(1));
+      if (z && z.getBoundingClientRect().top < window.innerHeight - 40) aktuellerChip = gewaehlterChip;
+    } else if (!amEnde) gewaehlterChip = null;
     // Ganz oben steht noch kein Abschnitt unter der Leiste: dann gilt der erste sichtbare Chip (genau einer ist immer markiert).
     aktuellerChip ??= chips.find((a) => !a.hidden && a.getClientRects().length > 0) ?? null;
     for (const a of chips) {

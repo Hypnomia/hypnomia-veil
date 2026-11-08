@@ -29,6 +29,16 @@ const schreibe = (seite: Page, o: Record<string, unknown>) => seite.evaluate((o)
 const einst = (seite: Page) => lies(seite, 'einstellungen').then((e) => e ?? {});
 const packMit = (freischaltungen: string[]) => ({ id: 't', version: '1.0.0', titel: 'T', freischaltungen, bilder: 3, groesse: 1, importiert: 1 });
 const zuruecksetzen = (seite: Page) => seite.evaluate(() => (globalThis as any).chrome.storage.local.remove(['pack', 'steigerung', 'einstellungen']));
+// Phase 9, Paket A (Fund 2): Mood, Zonen und Strict stehen hinter "Change". Idempotent (der Zustand bleibt in localStorage der Erweiterung).
+const oeffneGruppe = async (seite: Page) => {
+  if ((await seite.locator('#aendern').getAttribute('aria-expanded')) !== 'true') await seite.locator('#aendern').click();
+  await expect(seite.locator('#abdeckung-gruppe')).toBeVisible();
+};
+const schliesseGruppe = async (seite: Page) => {
+  if ((await seite.locator('#aendern').getAttribute('aria-expanded')) === 'true') await seite.locator('#aendern').click();
+  await expect(seite.locator('#abdeckung-gruppe')).toBeHidden();
+};
+const hilfeAdresse = (kurz: string) => `hilfe.html#${kurz}`;
 
 test.describe.configure({ mode: 'serial' });
 
@@ -165,6 +175,7 @@ test('Fund 12: die sechs "even when clothed"-Kaestchen tragen den Zonennamen', a
   try {
     await seite.goto(popupUrl());
     await expect(seite.locator('#status')).not.toBeEmpty();
+    await oeffneGruppe(seite);
     await expect(seite.locator('#zonen input[data-bedeckt]')).toHaveCount(BEDECKBAR.length);
     for (const name of BEDECKBAR) await expect(seite.getByLabel(`${name}: even when clothed`)).toHaveCount(1);
     // Echter Klick ueber den Namen: Genitals an, dann "even when clothed" frei und gespeichert
@@ -225,6 +236,7 @@ test('Fund 6: "Mia’s mood" zeigt ein Wort statt der Zahl, Regler mit aria-valu
     await zuruecksetzen(seite);
     await seite.reload();
     await expect(seite.locator('#status')).not.toBeEmpty();
+    await oeffneGruppe(seite);
     const regler = seite.locator('#stimmung');
     await regler.focus();
     // 0.10 bis 0.25: Home setzt auf 0.10, dann in 0.01-Schritten nach rechts
@@ -234,9 +246,11 @@ test('Fund 6: "Mia’s mood" zeigt ein Wort statt der Zahl, Regler mit aria-valu
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.1, 5);
     const gesehen: string[] = [];
     for (let h = 10; h <= 25; h++) {
-      await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(h / 100));
-      await expect(regler).toHaveAttribute('aria-valuetext', stimmungsWort(h / 100));
-      const t = (await seite.locator('#stimmung-wert').textContent()) ?? '';
+      // Phase 9, Fund 28: bei Mias Standard (0.10) steht "(my default)" dabei, wie auf der Einstellungsseite
+      const erwartet = stimmungsWort(h / 100) + (h === 10 ? ' (my default)' : '');
+      await expect(seite.locator('#stimmung-wert')).toHaveText(erwartet);
+      await expect(regler).toHaveAttribute('aria-valuetext', erwartet);
+      const t = ((await seite.locator('#stimmung-wert').textContent()) ?? '').replace(' (my default)', '');
       if (!gesehen.includes(t)) gesehen.push(t);
       if (h < 25) {
         await seite.keyboard.press('ArrowRight');
@@ -260,6 +274,7 @@ test('Fund 26: scheitert das Speichern, kommt der Fehlersatz und der Schalter sp
     await seite.reload();
     await expect(seite.locator('#status')).not.toBeEmpty();
     await expect(seite.locator('#fehler')).toBeHidden();
+    await oeffneGruppe(seite);
     const vorher = (await einst(seite)).strict ?? false;
     await seite.evaluate(() => {
       (globalThis as any).chrome.storage.local.set = () => Promise.reject(new Error('kaputt'));
@@ -282,6 +297,7 @@ test('Fund 26: scheitert das Speichern, kommt der Fehlersatz und der Schalter sp
     // Nach dem Neuladen speichert es wieder, der Fehlersatz ist weg
     await seite.reload();
     await expect(seite.locator('#fehler')).toBeHidden();
+    await oeffneGruppe(seite);
     await seite.locator('label.schalter:has(#strict)').click();
     await expect.poll(async () => (await einst(seite)).strict).toBe(!vorher);
     await expect(seite.locator('#fehler')).toBeHidden();
@@ -300,6 +316,7 @@ test('Schnelle Folgeklicks: zwei Schalter und eine Zone ohne Warten, danach alle
     await schreibe(seite, { pack: packMit(ALLE) });
     await seite.reload();
     await expect(seite.locator('#erwachsen-schalter')).toBeVisible();
+    await oeffneGruppe(seite);
     // Ausgangslage aus der Anzeige (die Voreinstellung kommt aus dem Code, nicht aus dem Speicher)
     const vorAn = await seite.locator('#erw-an').isChecked();
     const vorErsatz = await seite.locator('#erw-ersatz').isChecked();
@@ -439,6 +456,7 @@ test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px
     await zuruecksetzen(seite);
     await seite.reload();
     await expect(seite.locator('#status')).not.toBeEmpty();
+    await oeffneGruppe(seite);
     // N8: Zone Augen ist ab Werk aus, ihr Kaestchen gesperrt und sichtbar blass; eine eingeschaltete Zone (Brust) bleibt voll.
     const deckkraft = (sel: string) => seite.locator(sel).evaluate((e) => Number(getComputedStyle(e.closest('label')!).opacity));
     const gesperrt = await seite.locator('#zonen input[data-bedeckt]:disabled').count();
@@ -460,6 +478,7 @@ test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px
     expect(lage).toBeLessThan(40);
     // N2: Touch-Geraet (Emulation per CDP): Ziele mindestens 44 px hoch.
     await seite.reload();
+    await oeffneGruppe(seite);
     const cdp = await context.newCDPSession(seite);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'hover', value: 'none' }] });
@@ -467,7 +486,7 @@ test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px
     // Lesung Runde 3, Nr. 8: alle sichtbaren Ziele messen, fehlende Gruppen machen den Test rot.
     const messe = () =>
       seite.evaluate(() =>
-        ['#alle-einstellungen', '#pause', '#pack-link', '.wahl span', '#zonen li', '#zonen .auch', '.schalter', 'button.klein'].map((s) => {
+        ['#alle-einstellungen', '#pause', '#pack-link', '#aendern', '#hilfe', '#version', '.wahl span', '#zonen li', '#zonen .auch', '.schalter', 'button.klein'].map((s) => {
           const l = [...document.querySelectorAll<HTMLElement>(s)].filter((e) => e.getClientRects().length > 0);
           return l.length ? Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) : -1;
         }),
@@ -482,6 +501,286 @@ test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px
     console.log(`popup: Fehlersatz nach Scrollen (scrollY ${gescrollt}) bei ${lage} px; Touch-Hoehen ${hoehen.join(', ')} px; ${gesperrt} gesperrte Kaestchen blass`);
   } finally {
     await zuruecksetzen(seite);
+    await seite.close();
+  }
+});
+
+// ---------- Phase 9, Paket A: Popup neu geordnet ----------
+
+const hoehe = (seite: Page) => seite.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height));
+// Das Popup als Seite mit einer Webseite im Vordergrund (dann ist sie der aktive Tab und "This site" hat einen Namen).
+const popupMitWeb = async (): Promise<{ web: Page; seite: Page }> => {
+  const web = await context.newPage();
+  await web.goto(SEITE);
+  const seite = await context.newPage();
+  await seite.goto(popupUrl());
+  await zuruecksetzen(seite);
+  await seite.evaluate(() => localStorage.removeItem('veil-popup-aendern'));
+  await web.bringToFront();
+  await seite.reload();
+  await expect(seite.locator('#status')).not.toBeEmpty();
+  return { web, seite };
+};
+
+test('Fund 2: Reihenfolge, "This site" mit Name direkt unter der Pause, Zonen hinter "Change", Hoehe ohne Aufklappen hoechstens 600 px', async () => {
+  const { web, seite } = await popupMitWeb();
+  try {
+    await seite.setViewportSize({ width: 360, height: 1400 });
+    // Reihenfolge von oben nach unten: Pause, This site, Cover style, Adult sites, Fuss
+    const y = (sel: string) => seite.locator(sel).evaluate((e) => Math.round(e.getBoundingClientRect().top));
+    const [pause, diese, stil, erw, fuss] = [await y('#pause'), await y('#diese-seite'), await y('#stil-karte'), await y('#erwachsen'), await y('footer')];
+    expect([pause, diese, stil, erw, fuss]).toEqual([...[pause, diese, stil, erw, fuss]].sort((a, b) => a - b));
+    await expect(seite.locator('#diese-seite-name')).toHaveText('localhost');
+    await expect(seite.locator('#ausnahme')).toBeVisible();
+    // Standard: zu. Kurzfassung statt zehn Kacheln.
+    await expect(seite.locator('#aendern')).toHaveAttribute('aria-expanded', 'false');
+    await expect(seite.locator('#aendern')).toHaveText(T.AENDERN_ZU);
+    await expect(seite.locator('#abdeckung-gruppe')).toBeHidden();
+    await expect(seite.locator('#zonen')).toBeHidden();
+    const namen = (await einst(seite)).zonen ?? null;
+    const sollNamen = await seite.evaluate(() => [...document.querySelectorAll<HTMLInputElement>('input[data-zone]')].filter((i) => i.checked).map((i) => i.closest('label')!.textContent!.trim().toLowerCase()));
+    void namen;
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_KURZ(sollNamen));
+    // Ziel: ohne Aufklappen hoechstens 600 px, ohne Pack und mit Pack, ruhig und pausiert
+    const ohnePack = await hoehe(seite);
+    expect(ohnePack, 'ohne Pack').toBeLessThanOrEqual(600);
+    await schreibe(seite, { pack: packMit(ALLE) });
+    await expect(seite.locator('#erwachsen-schalter')).toBeVisible();
+    const mitPack = await hoehe(seite);
+    // Mit Pack kommen How hot, My grip und Mias Satz dazu (Fund 10): die 600 px gelten fuer den Start ohne Pack, mit Pack muss es deutlich
+    // unter den 1696 px von vorher bleiben (Messung in UX-PRUEFUNG-PHASE-9.md).
+    expect(mitPack, 'mit Pack (alle Freischaltungen)').toBeLessThanOrEqual(1000);
+    // Aufklappen: Mood, Zonen, Strict sind da, Zustand bleibt nach dem Neuladen, Zuklappen ebenso
+    await seite.locator('#aendern').click();
+    await expect(seite.locator('#aendern')).toHaveAttribute('aria-expanded', 'true');
+    await expect(seite.locator('#aendern')).toHaveText(T.AENDERN_AUF);
+    for (const sel of ['#stimmung', '#zonen', '#strict + .regler']) await expect(seite.locator(sel)).toBeVisible();
+    await seite.reload();
+    await expect(seite.locator('#zonen')).toBeVisible();
+    await expect(seite.locator('#aendern')).toHaveAttribute('aria-expanded', 'true');
+    await seite.locator('#aendern').click();
+    await seite.reload();
+    await expect(seite.locator('#abdeckung-gruppe')).toBeHidden();
+    // Die Kurzfassung folgt einer geaenderten Zone
+    await oeffneGruppe(seite);
+    const brust = seite.locator('#zonen label.schalter').filter({ hasText: 'Belly' });
+    const bauchVorher = await seite.locator('input[data-zone="belly"]').isChecked();
+    await brust.click();
+    await expect.poll(async () => (await einst(seite)).zonen?.belly?.an).toBe(!bauchVorher);
+    await expect(seite.locator('#abdeckung-kurz')).toContainText('belly', { ignoreCase: false }).catch(async () => {
+      if (bauchVorher) await expect(seite.locator('#abdeckung-kurz')).not.toContainText('belly');
+      else throw new Error('Kurzfassung nennt belly nicht');
+    });
+    console.log(`popup: Hoehe ohne Aufklappen ${ohnePack} px (ohne Pack), ${mitPack} px (Pack mit allen Freischaltungen), Reihenfolge Pause ${pause}, This site ${diese}, Cover ${stil}, Adult ${erw}, Fuss ${fuss}`);
+  } finally {
+    await seite.evaluate(() => localStorage.removeItem('veil-popup-aendern')).catch(() => {});
+    await zuruecksetzen(seite);
+    await seite.close();
+    await web.close();
+  }
+});
+
+test('Fund 2: ohne Zugriff steht "I can’t reach this page." statt eines gesperrten Knopfs, auf der Standardliste der Hinweis', async () => {
+  const seite = await context.newPage();
+  try {
+    await seite.goto(popupUrl()); // der aktive Tab ist die Erweiterungsseite selbst: kein Zugriff
+    await zuruecksetzen(seite);
+    await seite.reload();
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    await expect(seite.locator('#ausnahme-hinweis')).toHaveText(T.DIESE_SEITE_KEIN_ZUGRIFF);
+    await expect(seite.locator('#ausnahme')).toBeHidden();
+    await expect(seite.locator('#diese-seite-name')).toBeHidden();
+    expect(T.DIESE_SEITE_KEIN_ZUGRIFF).not.toMatch(/[–—]/);
+  } finally {
+    await seite.close();
+  }
+});
+
+test('Fund 1 (Popup): ohne Pack heissen beide Knoepfe "Get the Mia Pack", mit Pack "Mia Pack settings" im Fuss', async () => {
+  const seite = await context.newPage();
+  try {
+    await seite.goto(popupUrl());
+    await zuruecksetzen(seite);
+    await seite.reload();
+    await expect(seite.locator('#pack-link')).toHaveText('Get the Mia Pack');
+    await expect(seite.locator('#erwachsen-pack-link')).toHaveText('Get the Mia Pack');
+    expect(await seite.locator('#pack-link').evaluate((e) => !!e.closest('footer'))).toBe(true);
+    await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
+    await expect(seite.locator('#pack-link')).toHaveText('Mia Pack settings');
+  } finally {
+    await zuruecksetzen(seite);
+    await seite.close();
+  }
+});
+
+test('Fund 10 (Popup): "How hot do I get?" als Dreier-Wahl oben in Adult sites, "My grip" mit "?" zur Hilfe und einem Satz', async () => {
+  const seite = await context.newPage();
+  try {
+    await seite.goto(popupUrl());
+    await zuruecksetzen(seite);
+    await seite.reload();
+    await expect(seite.locator('#heiss')).toBeHidden();
+    await schreibe(seite, { pack: packMit(ALLE) });
+    await expect(seite.locator('#heiss')).toBeVisible();
+    // oben: vor dem Adult-site-Schalter
+    const lage = await seite.evaluate(() => [document.getElementById('heiss')!.getBoundingClientRect().top, document.getElementById('erw-an')!.closest('label')!.getBoundingClientRect().top]);
+    expect(lage[0]!).toBeLessThan(lage[1]!);
+    await expect(seite.locator('#heiss-titel')).toHaveText('How hot do I get?');
+    for (const wert of ['tease', 'explicit', 'hot']) {
+      await seite.locator(`#heiss label:has(input[value="${wert}"])`).click();
+      await expect.poll(async () => (await einst(seite)).erwachsen?.stufe).toBe(wert);
+      await expect(seite.locator(`#heiss input[value="${wert}"]`)).toBeChecked();
+    }
+    // My grip: Stufe, Satz, "?" auf den festen Anker, neuer Tab ohne opener
+    await expect(seite.locator('#steigerung')).toBeVisible();
+    await expect(seite.locator('#stufe-zeile')).toHaveText(/^Level \d of 4$/);
+    await expect(seite.locator('#grip-satz')).toHaveText(T.GRIP_SATZ);
+    const grip = seite.locator('#grip-hilfe');
+    await expect(grip).toHaveAttribute('href', hilfeAdresse('grip'));
+    await expect(grip).toHaveAttribute('target', '_blank');
+    expect(await grip.getAttribute('rel')).toContain('noopener');
+    const neu = context.waitForEvent('page');
+    await grip.click();
+    const ziel = await neu;
+    await expect.poll(() => ziel.url()).toContain(`/hilfe.html#grip`);
+    await ziel.close();
+    // ohne die Freischaltung der Vorschau keine Wahl
+    await schreibe(seite, { pack: packMit(['zensur:steigerung', 'chibi:pack']) });
+    await expect(seite.locator('#heiss')).toBeHidden();
+    expect(T.GRIP_SATZ).not.toMatch(/[–—]/);
+  } finally {
+    await zuruecksetzen(seite);
+    await seite.close();
+  }
+});
+
+test('Fund 12 (Popup): Werbe-Frage als Karte unter der Pause, nur mit Freischaltung und unbeantwortet, Ja und Nein speichern beide Felder', async () => {
+  const seite = await context.newPage();
+  try {
+    await seite.goto(popupUrl());
+    await zuruecksetzen(seite);
+    await seite.reload();
+    const karte = seite.locator('#popup-werbung-frage');
+    await expect(karte).toBeHidden(); // ohne Pack
+    await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
+    await expect(karte).toBeHidden(); // Pack ohne Werbe-Tausch
+    await schreibe(seite, { pack: packMit(['kontrolle:werbung']) });
+    await expect(karte).toBeVisible();
+    await expect(seite.locator('#popup-werbung-frage-titel')).toHaveText(T.WERBUNG_FRAGE_TITEL);
+    await expect(seite.locator('#popup-werbung-frage-titel')).toHaveText('Show my ads?');
+    await expect(seite.locator('#popup-werbung-frage-ja')).toHaveText('Yes, show them');
+    await expect(seite.locator('#popup-werbung-frage-nein')).toHaveText('No ads');
+    // Lage: unter der Pause, ueber "This site"
+    const lage = await seite.evaluate(() => ['pause', 'popup-werbung-frage', 'diese-seite'].map((i) => Math.round(document.getElementById(i)!.getBoundingClientRect().top)));
+    expect(lage).toEqual([...lage].sort((a, b) => a - b));
+    expect((await einst(seite)).kontrolle?.werbungGefragt ?? false).toBe(false);
+    await seite.locator('#popup-werbung-frage-ja').click();
+    await expect.poll(async () => [(await einst(seite)).kontrolle?.werbung, (await einst(seite)).kontrolle?.werbungGefragt]).toEqual([true, true]);
+    await expect(karte).toBeHidden();
+    await expect(seite.locator('#pause')).toBeFocused();
+    // keine zweite Frage nach dem Neuladen
+    await seite.reload();
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    await expect(karte).toBeHidden();
+    // Nein: neu beginnen
+    await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
+    await schreibe(seite, { pack: packMit(['kontrolle:werbung']) });
+    await seite.reload();
+    await expect(karte).toBeVisible();
+    await seite.locator('#popup-werbung-frage-nein').click();
+    await expect.poll(async () => [(await einst(seite)).kontrolle?.werbung, (await einst(seite)).kontrolle?.werbungGefragt]).toEqual([false, true]);
+    await expect(karte).toBeHidden();
+    // Scheitert das Speichern, bleibt die Karte und der Fehlersatz steht
+    await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
+    await seite.reload();
+    await expect(karte).toBeVisible();
+    await seite.evaluate(() => {
+      (globalThis as any).chrome.storage.local.set = () => Promise.reject(new Error('kaputt'));
+    });
+    await seite.locator('#popup-werbung-frage-ja').click();
+    await expect(seite.locator('#popup-werbung-frage-fehler')).toHaveText(FEHLER_SPEICHERN);
+    await expect(karte).toBeVisible();
+  } finally {
+    await zuruecksetzen(seite);
+    await seite.close();
+  }
+});
+
+test('Fund 15, 16 und 17: Kuerzel unter der Pause, Fuss-Links auf feste Anker, Pausenzeile und blassere Karten', async () => {
+  const seite = await context.newPage();
+  try {
+    await seite.goto(popupUrl());
+    await zuruecksetzen(seite);
+    await seite.reload();
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    // Fund 15: das Kuerzel steht so, wie der Browser es meldet; unter dem Knopf
+    const kuerzel = await seite.evaluate(async () => ((await (globalThis as any).chrome.commands.getAll()) as { name: string; shortcut?: string }[]).find((b) => b.name === 'pause-umschalten')?.shortcut ?? '');
+    expect(kuerzel).not.toBe('');
+    await expect(seite.locator('#pause-kuerzel')).toHaveText(T.PAUSE_KUERZEL(kuerzel));
+    const unter = await seite.evaluate(() => document.getElementById('pause-kuerzel')!.getBoundingClientRect().top >= document.getElementById('pause')!.getBoundingClientRect().bottom - 1);
+    expect(unter).toBe(true);
+    // Fund 16: "uninstalling" und die Version sind Links auf die Hilfe
+    const un = seite.locator('#deinstallieren');
+    await expect(un).toHaveText('uninstalling');
+    await expect(un).toHaveAttribute('href', hilfeAdresse('uninstall'));
+    await expect(un).toHaveAttribute('target', '_blank');
+    expect(await un.getAttribute('rel')).toContain('noopener');
+    await expect(seite.locator('footer')).toContainText('Pausing and uninstalling are always allowed.');
+    const ver = seite.locator('#version');
+    await expect(ver).toHaveText(/^v\d/);
+    await expect(ver).toHaveAttribute('href', hilfeAdresse('updates'));
+    expect(await ver.getAttribute('rel')).toContain('noopener');
+    const neu = context.waitForEvent('page');
+    await un.click();
+    const ziel = await neu;
+    await expect.poll(() => ziel.url()).toContain('/hilfe.html#uninstall');
+    await ziel.close();
+    // Fund 17: Pausenzeile nur im Pausenzustand; die Karten darunter blasser, aber bedienbar
+    await expect(seite.locator('#pause-zeile')).toBeHidden();
+    const deckkraft = (sel: string) => seite.locator(sel).evaluate((e) => Number(getComputedStyle(e).opacity));
+    expect(await deckkraft('#stil-karte')).toBe(1);
+    await seite.locator('#pause').click();
+    await expect(seite.locator('#pause-zeile')).toHaveText(T.PAUSE_ZEILE);
+    await expect.poll(() => deckkraft('#stil-karte')).toBeCloseTo(0.7, 2);
+    expect(await deckkraft('#pause')).toBe(1);
+    await seite.locator('label:has(input[value="blur"])').click();
+    await expect.poll(async () => (await einst(seite)).stil).toBe('blur');
+    await seite.locator('#pause').click();
+    await expect(seite.locator('#pause-zeile')).toBeHidden();
+    await expect.poll(() => deckkraft('#stil-karte')).toBe(1);
+    expect(T.PAUSE_ZEILE).not.toMatch(/[–—]/);
+  } finally {
+    await zuruecksetzen(seite);
+    await seite.close();
+  }
+});
+
+test('Fund 27: der Update-Hinweis hat den Link "What’s new" auf den Hilfe-Anker updates', async () => {
+  const seite = await context.newPage();
+  try {
+    await seite.addInitScript(() => {
+      const c = (globalThis as any).chrome;
+      const echt = c.runtime.sendMessage.bind(c.runtime);
+      c.runtime.sendMessage = (m: any, ...r: unknown[]) =>
+        m?.typ === 'version' ? Promise.resolve({ ok: true, browser: 'chrome', aktuell: '0.8.2', datum: '', neueste: '9.9.9', neuer: true, geprueft: Date.now(), fehler: false }) : echt(m, ...r);
+    });
+    await seite.goto(popupUrl());
+    await expect(seite.locator('#version-hinweis')).toBeVisible();
+    const neues = seite.locator('#version-neues');
+    await expect(neues).toHaveText('What’s new');
+    await expect(neues).toHaveAttribute('href', hilfeAdresse('updates'));
+    await expect(neues).toHaveAttribute('target', '_blank');
+    expect(await neues.getAttribute('rel')).toContain('noopener');
+    // der Hinweis liegt unter der Pause, der Knopf "How to update" bleibt
+    await expect(seite.locator('#version-anleitung')).toHaveText('How to update');
+    const lage = await seite.evaluate(() => [document.getElementById('pause')!.getBoundingClientRect().bottom, document.getElementById('version-hinweis')!.getBoundingClientRect().top]);
+    expect(lage[1]!).toBeGreaterThan(lage[0]! - 1);
+    const neu = context.waitForEvent('page');
+    await neues.click();
+    const ziel = await neu;
+    await expect.poll(() => ziel.url()).toContain('/hilfe.html#updates');
+    await ziel.close();
+  } finally {
     await seite.close();
   }
 });

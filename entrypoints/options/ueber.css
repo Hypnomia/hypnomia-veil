@@ -39,3 +39,12 @@
   align-items: center;
   gap: 8px 12px;
 }
+#ueber h3 {
+  margin-top: 16px;
+}
+/* Phase 9 (Fund 22): das Interview steht ganz unten, abgesetzt, weil man es selten braucht. */
+#ueber .ue-interview {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--linie);
+}

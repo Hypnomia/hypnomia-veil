@@ -191,8 +191,9 @@ test('Lizenz jederzeit: ohne Pack verborgen, nach dem Import auf- und zuklappen,
     const lizenzImPack = await seite.locator('#lizenz-text').textContent();
     expect((lizenzImPack ?? '').length).toBeGreaterThan(20);
     await seite.locator('#annehmen').click();
-    // Runde 3, N3: nach dem Import liegt der Fokus nicht auf body (der Knopf ist mit dem Lizenzblock verschwunden).
-    await expect.poll(() => seite.evaluate(() => document.activeElement?.id ?? '')).toBe('meldung');
+    // Runde 3, N3 / Session 17: nach dem Import liegt der Fokus nicht auf body, sondern bei der Frage "Show my ads?" ("Set me up"),
+    // weil das Dummy-Pack den Werbe-Tausch freischaltet.
+    await expect.poll(() => seite.evaluate(() => document.activeElement?.id ?? '')).toBe('werbung-frage-titel');
     await expect(seite.locator('#pack-version')).toHaveText('1.0.0');
 
     const knopf = seite.locator('#lizenz-zeigen');

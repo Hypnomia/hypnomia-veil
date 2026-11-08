@@ -18,7 +18,9 @@ import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, 
 import { WILLKOMMEN_KANAL, aendereEinstieg } from '../../src/einstieg/speicher';
 import { einstiegFertig, ladeEinstieg, type EinstiegStand } from '../../src/einstieg/vertrag';
 import type { ChibiPose } from '../../src/chibi';
-import { fortschritt, istInterview, naechster, startSchritt, vorheriger, type Schritt } from '../../src/einstieg/schritte';
+import { ETAPPEN, etappe, fortschritt, interviewSeiten, istInterview, naechster, startSchritt, vorheriger, type Schritt } from '../../src/einstieg/schritte';
+import { INTERVIEW_SEITEN } from '../../src/einstieg/vertrag';
+import { hilfeAdresse } from '../../src/hilfe/anker';
 import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenWahl, type ZonenWahl } from '../../src/einstieg/zonen';
 import { TEXT } from '../../src/einstieg/texte';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
@@ -136,6 +138,8 @@ let aktualisiere: ((e: Einstellungen, p: PackKurz | null) => void) | null = null
 const istFirefox = location.protocol === 'moz-extension:';
 // Beim Wiederholen des Interviews zaehlen nur seine Seiten ("Question 1 of 5", Fund 19).
 let wiederholung = false;
+// Zahl der Interview-Seiten dieses Durchgangs: mit Pack beim Einstieg 5, ohne Pack 3 (Fund 7). Gilt ab Seite 1 bis zum Abschluss.
+let seiten = INTERVIEW_SEITEN;
 // Fund 26: scheitert ein Speichern, steht der Satz FEHLER_SPEICHERN auf der Seite und das Bedienelement springt auf den gespeicherten Stand.
 let fehlerZeile: HTMLParagraphElement | null = null;
 function zeigeFehler(): void {
@@ -187,13 +191,22 @@ function seiteWarnung(): HTMLElement {
     knoten('p', 'kern', TEXT.warnungKern, 'warnung-kern'),
     knoten('p', undefined, TEXT.warnungText),
     knoten('p', 'hinweis', `${TEXT.warnungEntfernen} ${istFirefox ? TEXT.entfernenFirefox : TEXT.entfernenChrome}`, 'warnung-entfernen'),
-    knopf('warnung-ok', TEXT.warnungOk, 'gross', () => {
+    (() => {
       // Die Bestaetigung hier zaehlt auch als gesehene Warnung von Quiz und Leerlauf-Spirale (PHASE-6-BAUPLAN Abschnitt 2).
-      void Promise.all([
-        aendereEinstieg({ warnung: true }),
-        browser.storage.local.set({ [QUIZ_WARNUNG_SCHLUESSEL]: true, [WARNUNG_SPIRALE_SCHLUESSEL]: true }),
-      ]).then(() => zeige(naechster('warnung')), zeigeFehler);
-    }),
+      // Fund 8: der zweite, gleich starke Knopf schaltet zusaetzlich Calm mode ein.
+      const weiter = (ruhig: boolean) =>
+        void Promise.all([
+          aendereEinstieg({ warnung: true }),
+          browser.storage.local.set({ [QUIZ_WARNUNG_SCHLUESSEL]: true, [WARNUNG_SPIRALE_SCHLUESSEL]: true }),
+          ruhig ? aendereEinstellungen({ ruhig: true }) : Promise.resolve(),
+        ]).then(() => zeige(naechster('warnung')), zeigeFehler);
+      const k = knoten('div', 'knoepfe');
+      k.append(
+        knopf('warnung-ok', TEXT.warnungOk, 'gross', () => weiter(false)),
+        knopf('warnung-ruhig', TEXT.warnungRuhig, 'gross', () => weiter(true)),
+      );
+      return k;
+    })(),
   );
   return s;
 }
@@ -380,9 +393,13 @@ function seite3(): Seite {
   const sperre = knoten('p', 'hinweis', TEXT.stilPatchGesperrt, 'iv-stil-sperre');
   sperre.hidden = true;
   k.append(gruppe, sperre);
+  // Fund 7 und 8: ohne Pack ist Seite 3 die letzte, dort steht Calm mode (mit Pack steht er auf Seite 5).
+  const ruhig = seiten < INTERVIEW_SEITEN ? schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an })) : null;
+  if (ruhig) k.append(ruhig.zeile);
   return {
     knoten: k,
     aktualisiere: (e, p) => {
+      if (ruhig) ruhig.feld.checked = e.ruhig;
       const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
       felder.get('mia-patch')!.disabled = !patchFrei;
       sperre.hidden = patchFrei;
@@ -463,7 +480,7 @@ function seite5(): Seite {
   const cursorZeile = knoten('div', 'regel');
   cursorZeile.append(knoten('strong', undefined, TEXT.cursorTitel, 'iv-cursor-titel'), cursor);
   const ton = schalter('iv-ton', TEXT.tonTitel, TEXT.tonText, (a) => speichere((alt) => ({ ton: { ...alt.ton, an: a } })));
-  const auchAn = knoten('p', 'hinweis', undefined, 'iv-auch-an');
+  const auchAn = knoten('p', 'hinweis auch-an', undefined, 'iv-auch-an');
   k.append(hinweis, blitzZeile, leerlauf.zeile, ruhig.zeile, cursorZeile, ton.zeile, auchAn);
   return {
     knoten: k,
@@ -473,7 +490,13 @@ function seite5(): Seite {
       leerlauf.feld.checked = e.kontrolle.leerlauf;
       ruhig.feld.checked = e.ruhig;
       const an = (['werbung', 'tabtitel', 'meldungen'] as const).filter((n) => e.kontrolle[n]).map((n) => TEXT.auchAnNamen[n]);
-      auchAn.textContent = an.length ? TEXT.auchAn(an) : '';
+      // Fund 21: eigener Absatz mit Link zu den Einstellungen (neuer Tab, das Interview bleibt).
+      const link = knoten('a', undefined, TEXT.auchAnLink, 'iv-auch-an-link');
+      link.href = pfadOptionen('#kontrolle');
+      link.target = '_blank';
+      link.rel = 'noopener';
+      if (an.length) auchAn.replaceChildren(`${TEXT.auchAn(an)} `, link);
+      else auchAn.replaceChildren();
       auchAn.hidden = an.length === 0;
       cursor.value = e.kontrolle.cursor;
       ton.feld.checked = e.ton.an;
@@ -492,10 +515,10 @@ const INTERVIEW: Record<string, { titel: string; bauen: () => Seite }> = {
 function navigation(s: Schritt): HTMLElement {
   const zeile = knoten('div', 'knoepfe');
   const zurueck = vorheriger(s);
-  const letzte = naechster(s) === 'ende';
+  const letzte = naechster(s, seiten) === 'ende';
   if (zurueck) zeile.append(knopf('iv-zurueck', TEXT.zurueck, 'klein ruhig', () => zeige(zurueck)));
   const weiter = knopf('iv-weiter', letzte ? TEXT.fertig : TEXT.weiter, 'gross', () => {
-    if (!letzte) return zeige(naechster(s));
+    if (!letzte) return zeige(naechster(s, seiten));
     void aendereEinstieg({ interview: 'fertig' }).then(() => zeige('ende'), zeigeFehler);
   });
   weiter.classList.add('rechts');
@@ -542,7 +565,7 @@ function seiteInterview(s: Schritt): HTMLElement {
   const alles = knoten('div');
   alles.append(s1.knoten, navigation(s));
   // Auf der letzten Seite tut "Skip the rest" dasselbe wie "Finish", dort fehlt der Block (Fund 20).
-  if (naechster(s) === 'ende') return alles;
+  if (naechster(s, seiten) === 'ende') return alles;
   const ueber = knoten('div', 'ueberspringen');
   ueber.append(
     knopf('iv-ueberspringen', TEXT.ueberspringen, 'klein', () => {
@@ -555,6 +578,46 @@ function seiteInterview(s: Schritt): HTMLElement {
 }
 
 // ---------- Abschluss ----------
+
+// Fund 3: drei Zeilen mit Ikone: Anheften (je Browser erkannt), Pause (mit dem Kuerzel aus den Browser-Kurzbefehlen), Ausprobieren.
+function endeCheckliste(): HTMLElement {
+  const liste = knoten('ul', 'checkliste', undefined, 'ende-liste');
+  liste.setAttribute('aria-label', TEXT.endeListeAria);
+  const zeile = (id: string, ikone: string, titel: string, text: string): { li: HTMLLIElement; text: HTMLSpanElement } => {
+    const li = knoten('li', undefined, undefined, id);
+    const i = knoten('span', 'ikone', ikone);
+    i.setAttribute('aria-hidden', 'true');
+    const t = knoten('span', 'text');
+    const satz = knoten('span', undefined, text);
+    t.append(knoten('strong', undefined, titel), satz);
+    li.append(i, t);
+    liste.append(li);
+    return { li, text: satz };
+  };
+  const android = /Android/i.test(navigator.userAgent);
+  const pinText = android ? TEXT.endePinAndroid : istFirefox ? TEXT.endePinFirefox : TEXT.endePinChrome;
+  const pin = zeile('ende-pin', '1', android ? TEXT.endePinTitelAndroid : TEXT.endePinTitel, `${pinText} `);
+  const pinLink = knoten('a', undefined, TEXT.endePinLink, 'ende-pin-link');
+  pinLink.href = hilfeAdresse('pin');
+  pinLink.target = '_blank';
+  pinLink.rel = 'noopener';
+  pin.text.append(pinLink);
+  const pause = zeile('ende-pause', '2', TEXT.endePauseTitel, TEXT.endePauseNurPopup);
+  if (!android) {
+    // Das Kuerzel steht erst, wenn der Browser es nennt; ohne eines bleibt nur das Popup.
+    void (async () => {
+      try {
+        const alle = await browser.commands?.getAll?.();
+        const kuerzel = alle?.find((c) => c.name === 'pause-umschalten')?.shortcut;
+        if (kuerzel && pause.li.isConnected) pause.text.textContent = TEXT.endePauseKuerzel(kuerzel);
+      } catch {
+        // dann bleibt es beim Popup
+      }
+    })();
+  }
+  zeile('ende-versuch', '3', TEXT.endeVersuchTitel, TEXT.endeVersuch);
+  return liste;
+}
 
 function seiteEnde(): HTMLElement {
   const s = knoten('div');
@@ -574,7 +637,12 @@ function seiteEnde(): HTMLElement {
   });
   const k = knoten('div', 'knoepfe');
   k.append(packKnopf, einstellungenKnopf, knopf('ende-schliessen', TEXT.endeSchliessen, 'klein ruhig', () => void schliesse()));
-  s.append(zeile, k);
+  // Session 17: Anleitungen (Hilfe-Seite) im selben Tab erreichbar.
+  const hilfe = knoten('p', 'hinweis-leise');
+  const hilfeLink = knoten('a', undefined, TEXT.endeHilfe, 'ende-hilfe');
+  hilfeLink.href = hilfeAdresse();
+  hilfe.append(hilfeLink);
+  s.append(zeile, endeCheckliste(), k, hilfe);
   let letztes: PackKurz | null | undefined;
   aktualisiere = (_e, p) => {
     packKnopf.hidden = p !== null;
@@ -600,8 +668,27 @@ const TITEL: Partial<Record<Schritt, string>> = {
   ende: TEXT.endeTitel,
 };
 
+const fragenNr = (s: Schritt) => fortschritt(s, true, seiten).nr;
+
+// Fund 19: die Etappen unter der Bahn, die aktuelle fett und fuer Hilfsmittel als aktueller Schritt.
+function zeigeEtappen(s: Schritt): void {
+  const ol = el<HTMLOListElement>('etappen');
+  ol.setAttribute('aria-label', TEXT.etappenAria);
+  const jetzt = etappe(s);
+  ol.replaceChildren(
+    ...ETAPPEN.map((e) => {
+      const li = knoten('li', undefined, TEXT.etappen[e]);
+      li.dataset.etappe = e;
+      if (e === jetzt) li.setAttribute('aria-current', 'step');
+      return li;
+    }),
+  );
+}
+
 function zeige(s: Schritt): void {
   aktualisiere = null;
+  // Fund 7: die Zahl der Interview-Seiten steht beim Eintritt ins Interview fest (Pack da oder nicht); bis dahin folgt sie dem Pack (Gate-Zaehler).
+  if (!istInterview(platz.dataset.schritt as Schritt)) seiten = interviewSeiten(pack !== null);
   platz.dataset.schritt = s;
   merke(istInterview(s) ? s : null);
   platz.querySelectorAll('img.chibi').forEach((b) => gibChibiFrei(b as HTMLImageElement));
@@ -634,13 +721,15 @@ function zeige(s: Schritt): void {
     fortschrittZeile.hidden = true;
   } else {
     const nurFragen = wiederholung && istInterview(s);
-    const f = fortschritt(s, nurFragen);
+    const f = fortschritt(s, nurFragen, seiten);
     fortschrittZeile.hidden = false;
     fortschrittBalken.max = f.von;
     fortschrittBalken.value = f.nr;
     fortschrittZeile.style.setProperty('--anteil', String(f.nr / f.von));
     fortschrittText.id = 'fortschritt-text';
-    fortschrittText.textContent = nurFragen ? TEXT.frageVon(f.nr, f.von) : TEXT.schrittVon(f.nr, f.von);
+    // Fund 19: im Interview "Question n of m", davor "Step n of m" (m zaehlt Gate und die Fragen dieses Durchgangs).
+    fortschrittText.textContent = istInterview(s) ? TEXT.frageVon(fragenNr(s), seiten) : TEXT.schrittVon(f.nr, f.von);
+    zeigeEtappen(s);
   }
   titel.focus({ preventScroll: true });
 }
@@ -679,7 +768,8 @@ async function start(): Promise<void> {
   wiederholung = einstiegFertig(einstieg) && (location.hash === '#interview' || einstieg.interview !== 'offen');
   let start = startSchritt(einstieg, location.hash);
   const alt = gemerkt() as Schritt | null;
-  if (start === 'interview-1' && alt && istInterview(alt)) start = alt;
+  // Ein gemerkter Schritt jenseits der Seitenzahl dieses Durchgangs (ohne Pack nur 3) gilt nicht.
+  if (start === 'interview-1' && alt && istInterview(alt) && Number(alt.slice(-1)) <= interviewSeiten(pack !== null)) start = alt;
   zeige(start);
 }
 

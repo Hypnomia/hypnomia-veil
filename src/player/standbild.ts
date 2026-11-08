@@ -49,6 +49,8 @@ interface Flaeche {
   // Das Element, dessen Flaeche gedeckt wird: der Anker des Players (Adapter, samt Poster-Ebenen der Seite) oder das Video selbst.
   deckt: Element;
   zuletztZ: number;
+  // Nur dunkler Deckel ohne Bild (wartendes Video, dessen Bild fehlt oder scheiterte).
+  deckelNur: boolean;
 }
 
 export interface StandbildQuelle {
@@ -91,6 +93,8 @@ export class Standbild {
   private readonly flaechen = new Map<HTMLVideoElement, Flaeche>();
   // Videos, deren Bild nicht kam oder nicht geladen werden konnte, mit dem Stand, bei dem das passierte: erst ein anderer Stand versucht es neu.
   private readonly gescheitert = new WeakMap<HTMLVideoElement, string>();
+  private deckel: ReadonlySet<HTMLVideoElement> = new Set();
+  private bildErlaubt = true;
   private takt: ReturnType<typeof setInterval> | null = null;
   private naechsteGeneration = 1;
   // Rollen: klebende oder feste Player bewegen sich gegen ihren Bezug; die Lage folgt per requestAnimationFrame (passiv, capture).
@@ -111,8 +115,12 @@ export class Standbild {
   constructor(private readonly q: StandbildQuelle) {}
 
   // Genau diese Videos bekommen ein Standbild (Wert: das Element, dessen Flaeche gedeckt wird, Anker oder Video); alle anderen verlieren es.
-  setze(ziele: ReadonlyMap<HTMLVideoElement, Element>, stufe: StufeWahl, packStand: number): void {
-    for (const v of [...this.flaechen.keys()]) if (!ziele.has(v) || !v.isConnected) this.entferne(v);
+  // `deckel`: wartende Videos (Listenseite ohne Geste, kein Riegel darueber): scheitert ihr Bild oder ist keins erlaubt (`bildErlaubt` false),
+  // bleibt ein schlichter dunkler Deckel stehen statt des offenen Einzelbilds. Alle anderen verlieren den Host, wenn kein Bild kommt.
+  setze(ziele: ReadonlyMap<HTMLVideoElement, Element>, stufe: StufeWahl, packStand: number, deckel: ReadonlySet<HTMLVideoElement> = new Set(), bildErlaubt = true): void {
+    this.deckel = deckel;
+    this.bildErlaubt = bildErlaubt;
+    for (const [v, f] of [...this.flaechen]) if (!ziele.has(v) || !v.isConnected || (f.deckelNur && !deckel.has(v))) this.entferne(v);
     for (const [v, anker] of ziele) {
       if (!v.isConnected) continue;
       this.sichere(v, anker, stufe, packStand);
@@ -132,7 +140,23 @@ export class Standbild {
         if (!this.q.lebt()) return this.alleWeg();
         // Ein verborgener Tab braucht keine Lagepflege (sie holt beim Sichtbarwerden der Takt und der ResizeObserver nach).
         if (document.hidden) return;
-        for (const [v, f] of this.flaechen) this.lege(v, f);
+        for (const [v, f] of this.flaechen) {
+          // Session 17: hebt die Seite spaeter den z-index des Videos selbst (ohne Mutation im Anker), zieht der Host nach. Billig: nur der
+          // eigene z-index des Videos wird gelesen; die volle Rechnung laeuft erst, wenn er den Host erreicht.
+          try {
+            const zv = parseInt(getComputedStyle(v).zIndex, 10);
+            if (Number.isFinite(zv) && f.zuletztZ !== undefined && zv >= f.zuletztZ) {
+              const z = this.zFuer(v, f);
+              if (z !== f.zuletztZ) {
+                f.zuletztZ = z;
+                f.host.style.setProperty('z-index', String(z), 'important');
+              }
+            }
+          } catch {
+            // Video weg: der naechste Takt raeumt auf
+          }
+          this.lege(v, f);
+        }
       }, LAGE_TAKT_MS);
     } else if (!this.flaechen.size && this.takt) {
       clearInterval(this.takt);
@@ -159,7 +183,8 @@ export class Standbild {
     if (!(b > 0 && h > 0)) return;
     // Klasse der Flaeche wie src/pack/wahl.ts (quer, quadratisch, hoch): die Anfrage schickt die Masse der Flaeche, der Erkenner waehlt.
     const kennung = `${standbildSchluessel(location.href, document.baseURI)}|${STUFEN_WAHL.indexOf(stufe)}|${packStand}`;
-    if (this.gescheitert.get(v) === kennung) return;
+    const ohneBild = !this.bildErlaubt || this.gescheitert.get(v) === kennung;
+    if (ohneBild && !this.deckel.has(v)) return;
     let f = this.flaechen.get(v);
     if (f && f.deckt !== deckt) {
       this.entferne(v);
@@ -187,6 +212,11 @@ export class Standbild {
       f.host.style.setProperty('z-index', String(z), 'important');
     }
     this.lege(v, f, true);
+    if (ohneBild) {
+      this.setzeDeckel(f);
+      return;
+    }
+    f.deckelNur = false;
     // Neu holen nur bei anderer Wahl (Schluessel, Stufe, Pack oder Klasse der Flaeche); eine kleine Groessenaenderung innerhalb der Klasse nicht.
     const klasse = b / h >= 1.2 ? 'quer' : b / h < 0.85 ? 'hoch' : 'quadratisch';
     const wahlStand = `${kennung}|${klasse}`;
@@ -250,7 +280,7 @@ export class Standbild {
     huelle.className = 'h';
     huelle.append(etikett);
     wurzel.append(bild, huelle);
-    const f: Flaeche = { host, bild, blatt, stil, beob: null, stand: '', generation: this.naechsteGeneration++, deckt, zuletztZ: Number.NaN };
+    const f: Flaeche = { host, bild, blatt, stil, beob: null, stand: '', generation: this.naechsteGeneration++, deckt, zuletztZ: Number.NaN, deckelNur: false };
     try {
       f.beob = new ResizeObserver(() => this.lege(v, f));
       f.beob.observe(deckt);
@@ -383,8 +413,22 @@ export class Standbild {
 
   private scheitert(v: HTMLVideoElement, kennung: string): void {
     this.gescheitert.set(v, kennung);
+    const f = this.flaechen.get(v);
+    if (f && this.deckel.has(v)) {
+      this.setzeDeckel(f);
+      return;
+    }
     this.entferne(v);
     this.pflegeTakt();
+  }
+
+  // Dunkler Deckel mit Etikett, ohne Bild.
+  private setzeDeckel(f: Flaeche): void {
+    f.deckelNur = true;
+    f.stand = 'deckel';
+    this.setzeBlatt(f, GRUND_STIL);
+    if (ATTR_STANDBILD) f.host.setAttribute(ATTR_STANDBILD, 'deckel');
+    if (ATTR_GELADEN) f.host.removeAttribute(ATTR_GELADEN);
   }
 }
 

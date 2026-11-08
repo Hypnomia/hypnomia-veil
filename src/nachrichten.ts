@@ -83,6 +83,9 @@ export interface AntwortPackTon { ok: true; dataUrl: string | null }
 // aus einem ArrayBuffer laden koennen (kein `web_accessible_resources`, keine CSP der Seite betroffen). Nur Dateien aus `SCHRIFTEN`
 // (src/oberflaeche/design/werte.ts), sonst `ok: false`. Handler: src/hintergrund/schrift.ts.
 export interface NachrichtHintergrundSchrift { ziel: 'hintergrund'; typ: 'schrift'; datei: string }
+// Session 17 (Fund 24): die Hilfe-Seite am Anker in neuem Tab oeffnen (Content-Scripts duerfen die Adresse der Erweiterung nicht selbst oeffnen).
+// Handler: src/hintergrund/hilfe.ts. Antwort `{ ok }`.
+export interface NachrichtHintergrundHilfe { ziel: 'hintergrund'; typ: 'hilfe'; anker: string }
 export type AntwortSchrift = { ok: true; base64: string } | { ok: false };
 export type AntwortEinstiegTest = { ok: true; tabId?: number | null } | { ok: false; fehler: string };
 export type AntwortVersionTest = { ok: true } | { ok: false; fehler: string };
@@ -107,7 +110,8 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundVersionTest
   | NachrichtHintergrundEinstiegTest
   | NachrichtHintergrundPackTon
-  | NachrichtHintergrundSchrift;
+  | NachrichtHintergrundSchrift
+  | NachrichtHintergrundHilfe;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -131,6 +135,7 @@ export const HINTERGRUND_TYPEN = [
   'einstieg-test',
   'packton',
   'schrift',
+  'hilfe',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }

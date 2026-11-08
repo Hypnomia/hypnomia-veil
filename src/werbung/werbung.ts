@@ -12,11 +12,11 @@
 // Scrollbereich waechst nie). Alles wird aus Fenster-Koordinaten gerechnet, so wirken scale und zoom richtig. Positionierte Seiteninhalte mit
 // z-index ueber 0 (fixierte Leisten, Dialoge, Menues) und der Freilegen-Knopf liegen darueber. Bekanntes Restrisiko: positionierte Inhalte mit
 // z-index auto malt der Browser unter Mias Flaeche. Das Original bleibt im Layout, nur `visibility: hidden`. Es wird nichts blockiert.
-import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
+import { passtAusnahme, zerlegeMuster } from '../../scripts/ausnahmen-muster.mjs';
 import { adapterFuer, istVideoLink, type Adapter } from '../adapter';
 import { seiteFuer } from '../adapter/liste';
 import { beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../einstellungen';
-import { istOberstesFenster, kontrolleErlaubt, ruhigGewuenscht } from '../kontrolle/gemeinsam';
+import { adresseFuerAusnahmen, istOberstesFenster, kontrolleErlaubt, ruhigGewuenscht } from '../kontrolle/gemeinsam';
 import {
   istFuer,
   type AntwortFehler,
@@ -41,6 +41,7 @@ import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { logoSvg } from '../oberflaeche/design/logos';
 import { melde } from '../ereignisse';
 import { eigeneWurzel } from '../schleier/eigene';
+import { ETIKETT_CSS, EtikettMenue } from './etikett-menue';
 
 // Testhaken nur im Testbau: ohne Schalter faellt der Name des Attributs samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN: boolean = import.meta.env.WXT_TESTHAKEN === '1';
@@ -73,7 +74,7 @@ const TASTEN = ['keydown', 'keyup', 'keypress', 'focusin'];
 interface Ui {
   knoten: HTMLElement;
   bild: HTMLImageElement;
-  badge: HTMLElement;
+  badge: HTMLButtonElement;
   link: HTMLAnchorElement;
   deck: HTMLElement; // Huelle fuer Verlauf und Texte, gleiche Lage wie das Bild
 }
@@ -143,7 +144,7 @@ a.l:hover .d:not(.still) .kn{transform:scale(1.03)}
 .d.hoch .un{font-size:clamp(11px,7.5cqw,15px);-webkit-line-clamp:4;line-clamp:4}
 .d.hoch .kn{align-self:center;flex-direction:column;padding:10px 12px;border-radius:26px;font-size:clamp(12px,8.5cqw,16px)}
 .d.hoch .kn svg{width:26px;height:26px}
-.d.banner .in{flex-direction:row;align-items:center;justify-content:flex-start;gap:12px;padding:0 14px}
+.d.banner .in{flex-direction:row;align-items:center;justify-content:flex-start;gap:12px;padding:12px 14px 0}
 .d.banner .pl{display:block}
 .d.banner .kp{flex:1 1 0;min-width:0}
 .d.banner .ti{font-size:clamp(13px,24cqh,30px);-webkit-line-clamp:1;line-clamp:1;white-space:nowrap;text-overflow:ellipsis;display:block}
@@ -151,16 +152,16 @@ a.l:hover .d:not(.still) .kn{transform:scale(1.03)}
 .d.banner .kn{flex:none;font-size:clamp(12px,16cqh,16px)}
 .d.banner .fu{display:none}
 .d.banner .vl{background:linear-gradient(to right,rgba(43,22,48,.84) 0%,rgba(43,22,48,.68) 60%,rgba(43,22,48,.8) 100%)}
-.d.banner.niedrig .in{padding:17px 8px 0 8px;gap:8px}
+.d.banner.niedrig .in{padding:25px 8px 0 8px;gap:8px}
 .d.banner.niedrig .un,.d.banner.niedrig .kn{display:none}
 .d.banner.niedrig .ti{font-size:clamp(11px,34cqh,18px)}
 .d.banner.niedrig .pl svg{width:24px;height:24px}
 .d.klein .un,.d.klein .fu{display:none}
-.d.klein .in{padding-top:22px}
+.d.klein .in{padding-top:26px}
 .k{position:absolute;left:0;top:0;width:max-content;max-width:100%;box-sizing:border-box;background:var(--v-etikett,#2b1630);color:#fff;font:600 11px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;padding:2px 6px;border-bottom-left-radius:4px;overflow-wrap:anywhere;z-index:2;text-align:left;cursor:default;pointer-events:auto}
 .k.klein{line-height:1.15;padding:1px 4px}
 @media (prefers-reduced-motion: reduce){.d .kn{transition:none;transform:none!important}}
-`;
+${ETIKETT_CSS}`;
 
 const schnitt = (a: Rk, b: Rk): Rk => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
 const leer = (a: Rk): boolean => a.r - a.l < 1 || a.b - a.t < 1;
@@ -214,6 +215,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
   // Der eine Host je Dokument.
   let host: HTMLElement | null = null;
   let wurzel: ShadowRoot | null = null;
+  let menue: EtikettMenue | null = null;
   let druckAufHost = false; // der laufende Druck begann auf Mias Flaeche
 
   // Fruehe Erfassung am Fenster ab document_start: Klicks und Tasten, die auf Mias Flaeche zielen, erreichen die Seite nie. Ohne Host kehrt
@@ -223,9 +225,26 @@ export function starteWerbung(ctx: KontextLeicht): void {
     if (!h) return;
     const typ = ev.type;
     if (typ === 'pointerdown' || typ === 'mousedown') druckAufHost = ev.target === h;
-    if (ev.target !== h) return;
+    if (ev.target !== h) {
+      // Ein Druck ausserhalb schliesst das Menue.
+      if (menue?.offen() && (typ === 'pointerdown' || typ === 'mousedown') && ev.isTrusted) menue.schliesse(false);
+      return;
+    }
     if (LOESEN.includes(typ) && !druckAufHost) return;
     ev.stopImmediatePropagation();
+    // Etikett und Menue (Fund 13): echte Ereignisse auf dem Etikett oder im Menue wertet das Menue selbst aus.
+    if (menue) {
+      try {
+        menue.beiEreignis(
+          ev,
+          (k) => [...flaechen.values()].find((f) => f.ui?.badge === k)?.el.getBoundingClientRect().height ?? 0,
+          (k) => [...flaechen.values()].find((f) => f.ui?.badge === k)?.nr ?? -1,
+        );
+        if (TESTHAKEN) schreibeTest();
+      } catch {
+        // das Menue darf die Seite nie stoeren
+      }
+    }
     if (KLICKS.includes(typ) && wurzel) {
       const m = ev as MouseEvent;
       let imLink = false;
@@ -240,6 +259,12 @@ export function starteWerbung(ctx: KontextLeicht): void {
     }
   };
   for (const typ of [...KLICKS, ...LOESEN, ...TASTEN]) window.addEventListener(typ, schutz, { capture: true });
+  // Rollen oder Groessenwechsel: das Menue steht an einer festen Stelle und schliesst sich lieber.
+  const schliesseMenue = (): void => {
+    if (menue?.offen()) menue.schliesse(false);
+  };
+  window.addEventListener('scroll', schliesseMenue, { capture: true, passive: true });
+  window.addEventListener('resize', schliesseMenue);
 
   // Tab-Adresse (nur Rahmen): eigene Ausnahmen gelten je Tab.
   let tabAdresse: URL | null = null;
@@ -298,13 +323,13 @@ export function starteWerbung(ctx: KontextLeicht): void {
     return undefined;
   };
   const beiSichtbarkeit = (): void => {
-    if (!document.hidden && lebt() && einstellungen?.ausnahmen.length) void frageTab();
+    if (!document.hidden && lebt() && (einstellungen?.ausnahmen.length || einstellungen?.kontrolle.werbungAus.length)) void frageTab();
   };
 
   // Hoert auf Tab-Adressen, solange es eigene Ausnahmen gibt; ohne Ausnahmen ist die Antwort ohne Folgen.
   function steuereTab(e: Einstellungen): void {
     if (!istRahmen) return;
-    if (e.ausnahmen.length > 0) {
+    if (e.ausnahmen.length > 0 || e.kontrolle.werbungAus.length > 0) {
       if (!inhaltHoererAn) {
         inhaltHoererAn = true;
         browser.runtime.onMessage.addListener(beiInhaltNachricht);
@@ -341,9 +366,11 @@ export function starteWerbung(ctx: KontextLeicht): void {
     }
     steuereTab(e);
     // Rahmen mit Ausnahmen: bis die Adresse des Tabs bekannt ist, wird nichts getauscht und nichts angehalten.
-    const wartetAufTab = istRahmen && e.ausnahmen.length > 0 && !tabBekannt;
-    const tabAus = tabAdresse !== null && passtAusnahme(tabAdresse, e.ausnahmen);
-    const erlaubt = !wartetAufTab && !tabAus && e.kontrolle.werbung && kontrolleErlaubt(e, pack, 'kontrolle:werbung');
+    const wartetAufTab = istRahmen && (e.ausnahmen.length > 0 || e.kontrolle.werbungAus.length > 0) && !tabBekannt;
+    const tabAus = tabAdresse !== null && (passtAusnahme(tabAdresse, e.ausnahmen) || passtAusnahme(tabAdresse, e.kontrolle.werbungAus));
+    // "Hide my ads on this site" (Fund 13): die eigene Seite steht auf der Liste nur fuer Werbung.
+    const seiteAus = !istRahmen && passtAusnahme(adresseFuerAusnahmen(), e.kontrolle.werbungAus);
+    const erlaubt = !wartetAufTab && !tabAus && !seiteAus && e.kontrolle.werbung && kontrolleErlaubt(e, pack, 'kontrolle:werbung');
     if (!erlaubt) {
       beende();
       steuereAdresse(e);
@@ -528,6 +555,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
 
   // Alle Originale sofort zurueck, Mias Flaechen weg (Medien bleiben angehalten).
   function alleZurueck(): void {
+    menue?.schliesse(false);
     generation++;
     for (const f of [...flaechen.values()]) entferne(f, false);
     flaechen.clear();
@@ -987,6 +1015,23 @@ export function starteWerbung(ctx: KontextLeicht): void {
       const stil = document.createElement('style');
       stil.textContent = SCHATTEN_STIL;
       wurzel.append(stil);
+      menue = new EtikettMenue({
+        wurzel,
+        muster: () => {
+          const m = (tabAdresse?.hostname ?? adresseFuerAusnahmen().hostname).toLowerCase().replace(/^www\./, '');
+          return zerlegeMuster(m) ? m : null;
+        },
+        // Im Rahmen zaehlt die Adresse des Tabs, nicht die des Rahmens: vor dem Speichern erfragen (Fund 4). Ohne Antwort: kein Eintrag.
+        musterGenau: async () => {
+          if (istRahmen) {
+            if (!tabAdresse) await frageTab();
+            if (!tabAdresse) return null;
+          }
+          const m = (tabAdresse?.hostname ?? adresseFuerAusnahmen().hostname).toLowerCase().replace(/^www\./, '');
+          return zerlegeMuster(m) ? m : null;
+        },
+        beiAenderung: () => schreibeTest(),
+      });
     }
     // Elternknoten: Bildet `body` selbst eine Stapelebene (Seite sperrt das Rollen mit `position: fixed`, `isolation`, Deckkraft), liegen
     // ALLE seine Kinder, auch ein fester Dialog mit z-index 2147483647, in dieser Ebene. Ein Host als Kind von `html` malt dann ueber dem
@@ -1073,8 +1118,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
     const deck = baueDeck(f.motiv);
     link.append(deck);
     // Kennzeichnung neben dem Link: sichtbar, aber nicht klickbar.
-    const badge = document.createElement('div');
-    badge.className = 'k';
+    const badge = menue!.baueKnopf();
     badge.textContent = f.kennzeichnung;
     knoten.append(link, badge);
     f.ui = { knoten, bild, badge, link, deck };
@@ -1163,6 +1207,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
 
   // Zurueck: Original sichtbar, Mias Flaeche weg. `neuPruefen`: das Element kann spaeter wieder passen (Groesse).
   function entferne(f: Flaeche, neuPruefen: boolean): void {
+    if (menue?.gehoertZu(f.nr)) menue.schliesse(false);
     const el = f.el as HTMLElement;
     if (f.versteckt && el.style) {
       try {
@@ -1486,6 +1531,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
     try {
       const rk = (b: DOMRect) => ({ l: b.left, t: b.top, w: b.width, h: b.height });
       const daten = {
+        menue: menue?.abbild() ?? null,
         aktiv,
         adHost: adHostModus,
         erwachsen,
@@ -1583,6 +1629,8 @@ export function starteWerbung(ctx: KontextLeicht): void {
     lokalAb();
     if (tabFrist) clearTimeout(tabFrist);
     for (const typ of [...KLICKS, ...LOESEN, ...TASTEN]) window.removeEventListener(typ, schutz, true);
+    window.removeEventListener('scroll', schliesseMenue, true);
+    window.removeEventListener('resize', schliesseMenue);
     try {
       if (inhaltHoererAn) browser.runtime.onMessage.removeListener(beiInhaltNachricht);
       document.removeEventListener('visibilitychange', beiSichtbarkeit);

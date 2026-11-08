@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HYPNOMIA VEIL: Help</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- Hilfe-Seite (Session 17, Entscheidung 179): die Anleitungen aus docs/ offline in der Erweiterung. main.ts zeichnet alles per
+         textContent (src/hilfe/markdown.ts liest, src/hilfe/darstellung.ts baut Elemente). Adresse: hilfe.html#<anleitung>[/<anker>]. -->
+    <a class="springen" href="#inhalt">Skip to the guide</a>
+    <div id="seite">
+      <header id="kopf">
+        <div class="marke" id="marke"><h1>HYPNOMIA VEIL</h1><span class="unter">Help</span></div>
+        <button id="zu-einstellungen" class="klein ruhig" type="button">Settings</button>
+      </header>
+      <nav id="themen" aria-label="Guides">
+        <label class="suche" for="suche">
+          <span>Find a guide</span>
+          <input id="suche" type="search" autocomplete="off" spellcheck="false" placeholder="e.g. pause, update, Android" />
+        </label>
+        <ul id="themen-liste"></ul>
+        <p id="themen-leer" class="leise" hidden>Nothing matches. Try another word, or ask me on Discord.</p>
+      </nav>
+      <main id="inhalt" tabindex="-1"></main>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

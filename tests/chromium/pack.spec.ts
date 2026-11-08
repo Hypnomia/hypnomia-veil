@@ -203,7 +203,7 @@ test('Einstellungsseite: ohne Pack leerer Stand, Popup sperrt Mia patch und verw
     await seite.goto(popupUrl());
     const patch = seite.locator('input[name="stil"][value="mia-patch"]');
     await expect(patch).toBeDisabled();
-    await expect(seite.locator('#pack-hinweis')).toContainText('Add the Mia Pack');
+    await expect(seite.locator('#pack-hinweis')).toContainText('Mia Pack');
     await expect(seite.locator('#pack-link')).toBeVisible();
     await expect(seite.locator('input[name="stil"][value="mosaik"]')).toBeChecked();
   } finally {

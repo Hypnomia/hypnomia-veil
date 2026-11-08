@@ -5,6 +5,8 @@
 
 export const EINSTIEG_SCHLUESSEL = 'einstieg';
 export const INTERVIEW_SEITEN = 5;
+// Session 17 (UX-Fund 7): ohne Mia Pack beim Einstieg fragt das Interview nur das, was ohne Pack wirkt (Mood und Strict, Zonen, Stil und Calm mode).
+export const INTERVIEW_SEITEN_OHNE_PACK = 3;
 // Erweiterungsseite des Einstiegs (entrypoints/willkommen/). `#interview` springt direkt ins Interview (ohne Gate, nur wenn fertig).
 export const WILLKOMMEN_PFAD = '/willkommen.html';
 

@@ -397,6 +397,52 @@ try {
   await setzeKontrolle({});
   console.log(`firefox meldungen: Stufe 0->2 gezeigt, strenge Zeit einmal gezeigt (zweite Auswertung ${rt2.gezeigt})`);
 
+  // 8e. Session 17 (Fund 25): "Fewer notes?" nach drei Mal Wegklicken in Folge
+  await setzeKontrolle({});
+  await entferneSchluessel('meldungStand');
+  await entferneSchluessel('meldungWeniger');
+  await oeffne();
+  for (let i = 1; i <= 3; i++) {
+    await zeige();
+    const w = await bisAbbild(`Meldung ${i} steht`, (x) => x.phase === 'steht' && (x.deckkraft ?? 0) > 0.95, 8000, 10);
+    pruefe(w.wenigerFrage === false, `Meldung ${i}: noch keine Frage`);
+    await aktionen().move(mitte(w.schliessen)).click().perform();
+    await bisWeg();
+  }
+  await bis('Frage vorgemerkt', async () => (await liesSpeicher('meldungWeniger'))?.fragt === true, 8000);
+  await zeige();
+  const wf = await bisAbbild('Meldung mit Frage', (x) => x.phase === 'steht' && (x.deckkraft ?? 0) > 0.95 && x.wenigerFrage && x.chibi, 8000, 10);
+  pruefe(!!wf.weniger && wf.weniger.h >= 24 && wf.weniger.x >= wf.host.x && wf.weniger.x + wf.weniger.w <= wf.host.x + wf.host.w + 1, `Knopf "Turn my notes off" in der Meldung (${JSON.stringify(wf.weniger)})`);
+  await aktionen().move(mitte(wf.weniger)).click().perform();
+  const nach = await bisWeg();
+  pruefe(nach.endeGrund === 'weniger', `Meldung endet durch den Knopf (${nach.endeGrund})`);
+  pruefe((await liesSpeicher('meldungWeniger'))?.fragt === false, 'Frage verbraucht');
+  await bis('Meldungen aus gespeichert', async () => (await liesSpeicher('einstellungen'))?.kontrolle?.meldungen === false, 8000).catch(() => null);
+  pruefe((await liesSpeicher('einstellungen'))?.kontrolle?.meldungen === false, 'Knopf schaltet Meldungen aus');
+  await setzeKontrolle({});
+  console.log(`firefox meldungen: Fewer notes? Knopf ${wf.weniger.w} x ${wf.weniger.h} px, Meldungen danach aus`);
+
+  // 8f. Begruessung auf Erwachsenenseiten (eigene Seite 127.0.0.1), einmal je Tab
+  await setzeEinstellungen({ erwachsen: { eigeneSeiten: ['127.0.0.1'], an: true, komplettErsatz: false } });
+  await oeffne();
+  await warte(3500);
+  pruefe((await abbild()).gezeigt === 0, 'ohne Testmarke veil-gruss keine Begruessung');
+  await oeffne('?veil-gruss');
+  const gr = await bisAbbild('Begruessung', (x) => x.phase === 'steht' && x.anlass === 'gruss', 12_000, 20);
+  pruefe(gr.satz === 'Test greeting line.', `Begruessung "${gr.satz}"`);
+  // Fund 10: der Merker liegt im Erweiterungsspeicher je Host, nie im sessionStorage der Seite
+  const sessionSchluessel = await driver.executeScript(`return Object.keys(sessionStorage).filter((k) => k.includes('gruss'))`);
+  pruefe(sessionSchluessel.length === 0, `kein Merker im sessionStorage der Seite (${JSON.stringify(sessionSchluessel)})`);
+  const merker = await bis('Merker im Erweiterungsspeicher', async () => (await liesSpeicher('grussMerker'))?.['127.0.0.1'], 8000);
+  pruefe(typeof merker === 'number' && Date.now() - merker < 60_000, `Merker je Host mit Zeitstempel (${merker})`);
+  await bisWeg();
+  await driver.navigate().refresh();
+  await bis('Testspur nach Neuladen', () => driver.executeScript(`return document.documentElement.hasAttribute('data-veil-meldung')`));
+  await warte(4500);
+  pruefe((await abbild()).gezeigt === 0, 'zweiter Besuch (Merker je Host): keine Begruessung');
+  await setzeEinstellungen({ erwachsen: {} });
+  console.log('firefox meldungen: Begruessung einmal je Tab, nur mit Testmarke');
+
   // 9. Verborgener Tab und Rahmen
   await oeffne('?rahmen=1');
   const erstes = await driver.getWindowHandle();

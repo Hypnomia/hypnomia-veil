@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BEDECKBARE_ZONEN, STANDARD, ZONEN, vervollstaendige } from '../../src/einstellungen.ts';
-import { EINSTIEG_LEER, INTERVIEW_SEITEN, einstiegFertig } from '../../src/einstieg/vertrag.ts';
-import { ALLE_SCHRITTE, INTERVIEW_SCHRITTE, fortschritt, naechster, startSchritt, vorheriger } from '../../src/einstieg/schritte.ts';
+import { EINSTIEG_LEER, INTERVIEW_SEITEN, INTERVIEW_SEITEN_OHNE_PACK, einstiegFertig } from '../../src/einstieg/vertrag.ts';
+import { ALLE_SCHRITTE, ETAPPEN, INTERVIEW_SCHRITTE, etappe, fortschritt, interviewSeiten, naechster, startSchritt, vorheriger } from '../../src/einstieg/schritte.ts';
 import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenDerWahl, zonenWahl } from '../../src/einstieg/zonen.ts';
 
 const an = (zonen) => ZONEN.filter((z) => zonen[z].an).sort();
@@ -94,4 +94,24 @@ test('Schritte: Startschritt nach Stand und Adresse', () => {
   assert.equal(startSchritt({ ...fertig, interview: 'fertig' }, ''), 'ende');
   assert.equal(startSchritt({ ...fertig, interview: 'fertig' }, '#interview'), 'interview-1');
   assert.equal(startSchritt({ ...fertig, interview: 'uebersprungen' }, '#interview'), 'interview-1');
+});
+
+test('Schritte: ohne Pack drei Fragen (Fund 7), Fortschritt und Etappen (Fund 19)', () => {
+  assert.equal(INTERVIEW_SEITEN_OHNE_PACK, 3);
+  assert.equal(interviewSeiten(true), 5);
+  assert.equal(interviewSeiten(false), 3);
+  const n = interviewSeiten(false);
+  assert.equal(naechster('einwilligung', n), 'interview-1');
+  assert.equal(naechster('interview-2', n), 'interview-3');
+  assert.equal(naechster('interview-3', n), 'ende');
+  assert.equal(naechster('interview-4', n), 'ende'); // gemerkter Schritt jenseits der Zahl
+  assert.equal(naechster('interview-3'), 'interview-4'); // Standard bleibt fuenf Seiten
+  assert.deepEqual(fortschritt('warnung', false, n), { nr: 1, von: 6 });
+  assert.deepEqual(fortschritt('interview-3', false, n), { nr: 6, von: 6 });
+  assert.deepEqual(fortschritt('interview-3', true, n), { nr: 3, von: 3 });
+  assert.deepEqual(fortschritt('interview-5', true, n), { nr: 3, von: 3 }); // nie ueber die Zahl hinaus
+  assert.deepEqual(ETAPPEN, ['warnung', 'alter', 'einwilligung', 'interview']);
+  assert.equal(etappe('alter'), 'alter');
+  assert.equal(etappe('interview-4'), 'interview');
+  assert.equal(etappe('ende'), null);
 });

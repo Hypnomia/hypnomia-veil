@@ -174,3 +174,17 @@ test('streng: Suche ueber Raster findet den Beginn minutengenau; dasselbe Fenste
   // Dauer-Fenster: kein Beginn, kein Anlass
   assert.deepEqual(pruefeStreng(leererStand(t0), [{ tage: [0, 1, 2, 3, 4, 5, 6], von: 0, bis: 0 }], true, t0).faellig, []);
 });
+
+test('Begruessung: Merker gilt 30 Minuten je Host, Muell und Abgelaufenes fallen heraus', async () => {
+  const { bereinigeGrussMerker, grussFrisch, GRUSS_FRIST_MS, GRUSS_HOSTS_MAX } = await import('../../src/meldungen/gruss-merker.ts');
+  const jetzt = 10_000_000_000;
+  const m = bereinigeGrussMerker({ a: jetzt - 1000, b: jetzt - GRUSS_FRIST_MS, c: 'x', d: jetzt + 5000, e: NaN }, jetzt);
+  assert.deepEqual(Object.keys(m), ['a']);
+  assert.equal(grussFrisch(m, 'a', jetzt), true);
+  assert.equal(grussFrisch(m, 'a', jetzt + GRUSS_FRIST_MS), false);
+  assert.equal(grussFrisch(m, 'b', jetzt), false);
+  assert.deepEqual(bereinigeGrussMerker(null, jetzt), {});
+  assert.deepEqual(bereinigeGrussMerker([1, 2], jetzt), {});
+  const viele = Object.fromEntries(Array.from({ length: GRUSS_HOSTS_MAX + 20 }, (_, i) => [`h${i}.test`, jetzt - 10 - i]));
+  assert.equal(Object.keys(bereinigeGrussMerker(viele, jetzt)).length, GRUSS_HOSTS_MAX);
+});

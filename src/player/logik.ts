@@ -56,3 +56,34 @@ export function vollbildBetrifft(vollbild: { contains(n: unknown): boolean } | n
   if (!vollbild) return false;
   return (vollbild as unknown) === (video as unknown) || vollbild.contains(video) || video.contains(vollbild);
 }
+
+// Listenseite (Startseite, Suche, Kategorien, Kanaele, Ranglisten): dort starten Seiten Vorschau-Videos von selbst. Rein nach dem Pfad: die
+// Startseite ("/") immer, bekannte Listen-Pfade (mit oder ohne Sprachpraefix wie /de/). Alles andere gilt als Videoseite (Rueckfall: Riegel wie bisher).
+const LISTE_MIT_ENDE = /^(?:\/[a-z]{2})?\/(?:search|s|categories|category|tags?|playlists?|video\/search)(?:\/.*)?$/i;
+// Uebersichten von Modellen, Kanaelen und Darstellern gelten nur ohne weiteren Pfadteil als Liste: darunter liegen Videoseiten ("/model/x/video/1"), dort gilt der Riegel wie bisher (Session 17 Fund 7).
+const LISTE_UEBERSICHT = /^(?:\/[a-z]{2})?\/(?:channels?|pornstars?|models?)\/?$/i;
+const LISTE_EXAKT = /^(?:\/[a-z]{2})?\/(?:new|newest|latest|popular|trending|hot|best|top|top-rated|most-popular|recommended|videos?)\/?$/i;
+export const istListenPfad = (pfad: string): boolean => pfad === '' || pfad === '/' || LISTE_MIT_ENDE.test(pfad) || LISTE_UEBERSICHT.test(pfad) || LISTE_EXAKT.test(pfad);
+
+export const GESTE_MS = 1500; // so kurz vor dem Abspielversuch darf die Geste der Person her sein
+
+export interface Geste {
+  t: number; // Zeitpunkt (ms, performance.now)
+  taste: boolean; // Taste (oder Klick ohne Zeigerposition): zaehlt fuer jedes Video
+  x: number;
+  y: number;
+}
+export interface Rechteck {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+// Gehoert der Abspielversuch zu einer echten Geste der Person? Eine Taste zaehlt immer (kurz davor), ein Zeigen oder Tippen nur ueber dem Video oder
+// seinem Player (`flaechen`). So loest ein Klick auf die Altersabfrage oder ein Menue kein Abspielen aus.
+export function istGesteFuer(geste: Geste | null, jetzt: number, flaechen: readonly Rechteck[]): boolean {
+  if (!geste || jetzt - geste.t > GESTE_MS || jetzt < geste.t) return false;
+  if (geste.taste) return true;
+  return flaechen.some((r) => geste.x >= r.left && geste.x <= r.right && geste.y >= r.top && geste.y <= r.bottom);
+}

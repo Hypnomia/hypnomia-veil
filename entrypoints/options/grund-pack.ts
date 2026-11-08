@@ -12,9 +12,9 @@ function el<T extends HTMLElement>(id: string): T {
 const sperre = el<HTMLDivElement>('pack-sperre');
 const sperreKnopf = el<HTMLButtonElement>('pack-sperre-knopf');
 const datei = el<HTMLInputElement>('datei');
-const interviewAbschnitt = el<HTMLElement>('abschnitt-interview');
-const interviewKnopf = el<HTMLButtonElement>('interview-neu');
-const interviewChip = el<HTMLAnchorElement>('chip-interview');
+const interviewAbschnitt = document.getElementById('abschnitt-interview');
+const interviewKnopf = document.getElementById('interview-neu');
+const interviewChip = document.getElementById('chip-interview');
 
 function zeichne(fertig: boolean): void {
   document.body.dataset.packGesperrt = fertig ? '0' : '1';
@@ -23,8 +23,8 @@ function zeichne(fertig: boolean): void {
   if (!fertig) datei.disabled = true;
   else if (!document.getElementById('annehmen')?.hasAttribute('disabled')) datei.disabled = false;
   // Fund 17: Abschnitt und Chip "Interview" erst nach dem Einstieg.
-  interviewAbschnitt.hidden = !fertig;
-  interviewChip.hidden = !fertig;
+  if (interviewAbschnitt) interviewAbschnitt.hidden = !fertig;
+  if (interviewChip) interviewChip.hidden = !fertig;
 }
 
 function oeffneWillkommen(anker: string): void {
@@ -34,7 +34,7 @@ function oeffneWillkommen(anker: string): void {
 
 sperreKnopf.addEventListener('click', () => oeffneWillkommen(''));
 // Runde 3, N12: das Wiederholen laeuft im selben Tab; am Ende fuehrt "All settings" hierher zurueck (keine zweite Einstellungsseite).
-interviewKnopf.addEventListener('click', () => window.location.assign(browser.runtime.getURL(WILLKOMMEN_PFAD as never) + '#interview'));
+interviewKnopf?.addEventListener('click', () => window.location.assign(browser.runtime.getURL(WILLKOMMEN_PFAD as never) + '#interview'));
 
 const horcher = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
   if (bereich === 'local' && EINSTIEG_SCHLUESSEL in aenderungen) zeichne(einstiegFertig(vervollstaendigeEinstieg(aenderungen[EINSTIEG_SCHLUESSEL]?.newValue)));

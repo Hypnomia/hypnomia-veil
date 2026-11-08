@@ -13,3 +13,14 @@ export function eigeneWurzel(host: Element, init: ShadowRootInit = { mode: 'clos
 export function istEigeneWurzel(wurzel: ShadowRoot): boolean {
   return eigene.has(wurzel);
 }
+
+// Nur Testbau (Session 17, Testluecke aus UEBERGABE-16 Punkt 4): enthaelt die Seitenadresse `veil-eigene-offen`, betritt der Beobachter
+// eigene Wurzeln doch. So laesst sich die zweite Sperre in `entdecke` allein pruefen (ihr Zaehler muss dann steigen). Wird nur hinter
+// TESTHAKEN aufgerufen und faellt im Release-Bau weg.
+export function eigeneSperreImTestAus(): boolean {
+  try {
+    return location.search.includes('veil-eigene-offen');
+  } catch {
+    return false;
+  }
+}

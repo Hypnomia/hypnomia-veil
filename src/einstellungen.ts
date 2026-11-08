@@ -48,7 +48,12 @@ export const BLITZ_HAEUFIGKEITEN = ['aus', 'selten', 'oft'] as const;
 export type BlitzHaeufigkeit = (typeof BLITZ_HAEUFIGKEITEN)[number];
 
 export interface KontrolleEinstellung {
-  werbung: boolean; // Werbe-Tausch (Auftrag W), Standard an
+  werbung: boolean; // Werbe-Tausch (Auftrag W); seit 0.9.0 Standard AUS (Entscheidung 179, Mozillas Opt-in-Regel)
+  // Mia hat einmal "Show my ads?" gefragt und die Person hat geantwortet (oder den Schalter selbst bedient). Bis dahin zeigt die
+  // Einstellungsseite die Frage, sobald das Pack den Werbe-Tausch freischaltet.
+  werbungGefragt: boolean;
+  // Hosts, auf denen Mias Werbung ausbleibt ("Hide my ads on this site", Session 17 Fund 13); gleiche Schreibweise wie `ausnahmen`.
+  werbungAus: string[];
   blitz: BlitzHaeufigkeit; // Blitzwoerter (Auftrag B), Standard selten
   leerlauf: boolean; // Leerlauf-Spirale (Auftrag L), Standard an
   leerlaufMinuten: number; // Minuten ohne Eingabe bis zur Spirale (Inhaberin 04.11.2026: 2), ganzzahlig
@@ -118,6 +123,8 @@ export const FREILEGEN_MAX_MS = 30000;
 
 export const LEERLAUF_MIN_MINUTEN = 1;
 export const LEERLAUF_MAX_MINUTEN = 60;
+// Obergrenze der Liste "Sites without my ads" (Session 17 Fund 3); bei mehr bleiben die neuesten.
+export const WERBUNG_AUS_MAX = 200;
 
 export const SCHWELLE_MIN = 0.1;
 export const SCHWELLE_MAX = 0.25;
@@ -146,7 +153,7 @@ export const STANDARD: Einstellungen = {
   ruhig: false,
   erwachsen: { stufe: 'hot', an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] },
   quiz: { verweigern: 0.1, freilegenMs: 10000 },
-  kontrolle: { werbung: true, blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] },
+  kontrolle: { werbung: false, werbungGefragt: false, werbungAus: [], blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] },
   ton: { an: false, lautstaerke: TON_LAUTSTAERKE_STANDARD },
 };
 
@@ -210,6 +217,8 @@ export function vervollstaendige(roh: unknown): Einstellungen {
       const s = STANDARD.kontrolle;
       return {
         werbung: wahr(k.werbung, s.werbung),
+        werbungGefragt: wahr(k.werbungGefragt, s.werbungGefragt),
+        werbungAus: [...new Set(textListe(k.werbungAus).map((m) => m.trim().toLowerCase()).filter(Boolean))].slice(-WERBUNG_AUS_MAX),
         blitz: (BLITZ_HAEUFIGKEITEN as readonly unknown[]).includes(k.blitz) ? (k.blitz as BlitzHaeufigkeit) : s.blitz,
         leerlauf: wahr(k.leerlauf, s.leerlauf),
         leerlaufMinuten: Math.round(begrenze(k.leerlaufMinuten, LEERLAUF_MIN_MINUTEN, LEERLAUF_MAX_MINUTEN, s.leerlaufMinuten)),

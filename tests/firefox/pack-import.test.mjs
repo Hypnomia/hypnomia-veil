@@ -137,7 +137,13 @@ async function bis(beschreibung, fn, frist = 20_000) {
   const t0 = Date.now();
   let letzter;
   while (Date.now() - t0 < frist) {
-    letzter = await fn();
+    // Session 17: die Karte "Mia Pack" entsteht erst beim Laden des Skripts, ein noch fehlendes Element heisst warten.
+    try {
+      letzter = await fn();
+    } catch (e) {
+      if (e?.name !== 'NoSuchElementError') throw e;
+      letzter = null;
+    }
     if (letzter) return letzter;
     await warte(50);
   }

@@ -167,10 +167,10 @@ export default defineConfig({
         // unlimitedStorage: das Mia Pack liegt in IndexedDB und ist groesser als die Grenze von storage.local (Entscheidung 25).
         'unlimitedStorage',
         // declarativeNetRequestWithHostAccess statt declarativeNetRequest: reicht mit <all_urls> und spart eine Installationswarnung.
-        ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen']),
-        // Referer-Sitzungsregeln (Umleitung entfaellt seit Session 8, Entscheidung 107; keine web_accessible_resources). WithHostAccess zeigt in Chrome und Firefox keine eigene
-        // Installationswarnung (Firefox: nur `declarativeNetRequest` hat den Text "Block content on any page").
-        'declarativeNetRequestWithHostAccess',
+        // Referer-Sitzungsregeln nur in Chrome (Umleitung entfaellt seit Session 8, Entscheidung 107; keine web_accessible_resources).
+        // WithHostAccess zeigt keine eigene Installationswarnung. Firefox setzt den Referer per webRequest und braucht das Recht nicht
+        // (Session 17, Sicherheitspruefung Phase 9 Fund R1: ein unbenutztes Recht zieht beim Review Fragen nach sich).
+        ...(browser === 'firefox' ? ['webRequest', 'webRequestBlocking'] : ['offscreen', 'declarativeNetRequestWithHostAccess']),
         // idle (Phase 5, Auftrag L): Leerlauf der Person fuer die Leerlauf-Spirale, ohne Ereignis-Horcher auf jeder Seite; ohne
         // Installationswarnung in Chrome und Firefox.
         'idle',

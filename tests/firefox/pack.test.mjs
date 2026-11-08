@@ -130,7 +130,13 @@ async function bis(beschreibung, fn, frist = 20_000) {
   const t0 = Date.now();
   let letzter;
   while (Date.now() - t0 < frist) {
-    letzter = await fn();
+    // Session 17: die Karte "Mia Pack" entsteht erst beim Laden des Skripts, ein noch fehlendes Element heisst warten.
+    try {
+      letzter = await fn();
+    } catch (e) {
+      if (e?.name !== 'NoSuchElementError') throw e;
+      letzter = null;
+    }
     if (letzter) return letzter;
     await warte(50);
   }
@@ -214,6 +220,12 @@ try {
   // 1. Leerer Stand
   await oeffne('options.html');
   await bis('Status leer', textEnthaelt('#pack-status', 'No pack yet'));
+  // Session 17 (Paket C): Karte "Mia Pack" ohne Pack: Kauf mit Preis und zwei Links, eigene Dateiwahl
+  pruefe((await text('#stand-titel')) === 'Mia Pack', 'Karte heisst Mia Pack');
+  pruefe((await text('#kauf-preis')).startsWith('€9.99, paid once'), 'Kaufblock nennt den Preis');
+  pruefe((await text('#kauf-patreon')) === 'Get it on Patreon' && (await text('#kauf-subscribestar')) === 'Get it on SubscribeStar', 'zwei Kauf-Knoepfe');
+  pruefe((await driver.findElement(By.css('#kauf-patreon')).getAttribute('target')) === '_blank', 'Kauf-Link oeffnet in neuem Tab');
+  pruefe((await text('.pack-wahl-knopf')) === 'Choose the pack file' && (await text('#datei-name')) === 'No file chosen yet', 'eigene Dateiwahl in Mias Sprache');
   pruefe(!(await sichtbar('#pack-daten')), 'ohne Pack keine Pack-Daten sichtbar');
   pruefe(!(await sichtbar('#entfernen')), 'ohne Pack kein Entfernen-Knopf');
   pruefe((await speicher('pack')) === null, 'ohne Pack kein storage.local.pack');
@@ -239,6 +251,17 @@ try {
   pruefe((await text('#pack-bilder')) === '6', 'Status zeigt 6 Bilder');
   pruefe((await text('#pack-version')) === '0.0.1', 'Status zeigt Version');
   pruefe((await text('#meldung')).includes('The pack is in'), 'Erfolgsmeldung');
+  pruefe(await sichtbar('#werbung-frage'), 'Set me up: Frage "Show my ads?" steht nach dem Import da');
+  // Der Fokus wandert nach dem Import im naechsten Schritt dorthin (Session 17: unter Last wackelte die sofortige Abfrage).
+  let fokus = '';
+  try {
+    await bis('Fokus bei der Frage', async () => (fokus = await driver.switchTo().activeElement().getAttribute('id')) === 'werbung-frage-titel', 5000);
+  } catch {
+    // unten als rot gemeldet
+  }
+  pruefe(fokus === 'werbung-frage-titel', `Fokus liegt bei der Frage (${fokus})`);
+  await bis('Bildreihe', async () => (await driver.findElements(By.css('#pack-bildreihe img'))).length > 0);
+  pruefe(!(await sichtbar('#neu')), 'Kaufblock weg, wenn das Pack da ist');
   const pack = await speicher('pack');
   pruefe(pack && pack.id === 'dummy' && pack.bilder === 6 && pack.groesse === bau.bytes.byteLength, `storage.local.pack stimmt (${JSON.stringify(pack)})`);
   pruefe((await speicher('einstellungen'))?.stil === 'mia-patch', 'Stil steht auf mia-patch');

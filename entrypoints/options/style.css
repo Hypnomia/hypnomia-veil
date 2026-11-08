@@ -199,7 +199,8 @@ pre {
   min-height: 1.5em;
 }
 
-#meldung.fehler {
+#meldung.fehler,
+#kon-werbung-aus-meldung.fehler {
   color: var(--fehler);
   font-weight: 600;
 }
@@ -1211,4 +1212,117 @@ input[type='checkbox'] {
   background: var(--v-weiss) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a2759' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 12px center / 12px 8px no-repeat;
   color: var(--v-text);
   font-weight: 700;
+}
+
+/* Session 17: Weg zur Hilfe-Seite neben "Settings" im Kopf. */
+.hilfe-link {
+  margin-left: 10px;
+  color: var(--v-rosa-800);
+  font-weight: 700;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+/* ========== Phase 9 (Session 17, Paket B): Ordnung der Einstellungen ========== */
+/* Gruppe "Covering": vier Karten, gleicher Abstand wie die Seite (Fund 4). */
+.gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* Der alte Chip "Interview" bleibt nur als verborgener Anker im DOM (grund-pack.ts sucht ihn); das Interview wohnt in "About and help". */
+#chip-interview {
+  display: none !important;
+}
+
+#sprung .hilfe-link {
+  margin-left: 0;
+}
+
+/* "How hot do I get?" ist die erste Bedienung in Adult sites und so gross wie die anderen Bedienungen (Fund 10). */
+h3.regel-titel {
+  margin: 4px 0 8px;
+  font: 700 15px/1.4 var(--v-schrift-text);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--v-text);
+}
+
+/* Runder "?"-Knopf zur Hilfe (Fund 14): 24 px am Desktop, 44 px mit Finger und auf schmalen Schirmen. */
+.mit-hilfe {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mit-hilfe > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+a.hilfe-rund {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--v-rosa-200);
+  border-radius: 50%;
+  background: var(--v-weiss);
+  color: var(--v-rosa-800);
+  font: 800 14px/1 var(--v-schrift-text);
+  text-decoration: none;
+}
+
+a.hilfe-rund:hover {
+  background: var(--v-rosa-100);
+}
+
+a.hilfe-rund:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px), (pointer: coarse) {
+  a.hilfe-rund {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Zugeklappte Karten ohne Pack (Fund 4). */
+.zu-satz {
+  margin: 0 0 10px;
+}
+
+.zu-knopf {
+  align-self: flex-start;
+}
+
+/* Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme (ohne die Pack-Karte) bei 1280 x 800; etwas dichter, Fingerziele bleiben. */
+main,
+.gruppe {
+  gap: 14px;
+}
+
+section {
+  padding: 14px 20px;
+}
+
+h2 {
+  margin-bottom: 8px;
+}
+
+main {
+  padding-top: 20px;
+}
+
+header {
+  padding-top: 16px;
+  padding-bottom: 16px;
 }

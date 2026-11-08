@@ -1,7 +1,7 @@
 // Einheitstest Player-Riegel (Auftrag P): reine Teile in src/player/logik.ts, ohne Browser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { istGeloest, quellSchluessel, quelleVon, vollbildBetrifft, waehleGroessten, willSpielen } from '../../src/player/logik.ts';
+import { istGesteFuer, istListenPfad, istGeloest, quellSchluessel, quelleVon, vollbildBetrifft, waehleGroessten, willSpielen } from '../../src/player/logik.ts';
 
 test('Hauptvideo: groesstes ab 200 x 150, kleinere nie', () => {
   assert.equal(waehleGroessten([]), null);
@@ -52,4 +52,22 @@ test('blob:-Quellen gelten als dieselbe Quelle, andere Adressen nicht', () => {
   assert.equal(istGeloest('http://h/a.mp4', 'http://h/b.mp4'), false);
   assert.equal(istGeloest('http://h/a.mp4', 'http://h/a.mp4'), true);
   assert.equal(istGeloest('obj:1', 'obj:2'), false);
+});
+
+test('Listenseite: Startseite, Suche, Kategorien; Videoseiten nicht', () => {
+  for (const p of ['/', '', '/search/mia', '/de/search', '/s/mia/', '/categories', '/category/x', '/video', '/video/search', '/new', '/models', '/models/', '/channels', '/de/pornstar', '/pornstars', '/tags/x', '/hot'])
+    assert.equal(istListenPfad(p), true, p);
+  for (const p of ['/view_video.php', '/video12345/titel', '/videos/titel-123', '/video/12345', '/5abc/video/titel', '/erwachsen-player.html', '/newcomer', '/watch/1', '/model/name/video/123', '/channels/x/videos/9', '/pornstar/x', '/models/abc'])
+    assert.equal(istListenPfad(p), false, p);
+});
+
+test('Geste: frisch und ueber dem Video, oder eine Taste', () => {
+  const r = [{ left: 0, top: 0, right: 100, bottom: 100 }];
+  const zeigen = { t: 1000, taste: false, x: 50, y: 50 };
+  assert.equal(istGesteFuer(null, 1100, r), false);
+  assert.equal(istGesteFuer(zeigen, 1100, r), true);
+  assert.equal(istGesteFuer(zeigen, 2600, r), false); // zu alt
+  assert.equal(istGesteFuer({ ...zeigen, x: 500 }, 1100, r), false); // daneben
+  assert.equal(istGesteFuer({ t: 1000, taste: true, x: 0, y: 0 }, 1100, r), true);
+  assert.equal(istGesteFuer({ t: 1000, taste: true, x: 0, y: 0 }, 2600, r), false);
 });

@@ -4,7 +4,7 @@
 // die Nachricht an den Hintergrund; ohne dessen Antwort bleibt alles frei. Bei `ctx.onInvalidated` baut sich jeder Riegel selbst ab.
 // Alle sichtbaren Texte sind Entwuerfe (Texter liest gegen); Pack-Texte laufen nur ueber `textContent`.
 import { beiEinstellungsAenderung, ladeEinstellungen } from '../einstellungen';
-import type { AntwortPackBild, AntwortPackDaten, NachrichtErkennerPackBild, NachrichtHintergrundPackDaten, NachrichtHintergrundPause } from '../nachrichten';
+import type { AntwortPackBild, AntwortPackDaten, NachrichtErkennerPackBild, NachrichtHintergrundHilfe, NachrichtHintergrundPackDaten, NachrichtHintergrundPause } from '../nachrichten';
 import type { ChibiPose } from '../chibi';
 import { begrenzeAufgabe, spiralePeriodeS, WECHSEL_SPERRE_MS, WechselSperre } from '../quiz/grenzen';
 import { brauchtWarnung, istWahlRichtig, mischeReihenfolge, neuerSitzungsZustand, pruefeTippen, QuizSitzung, zaehleZulaessige, type Lage } from '../quiz/logik';
@@ -17,6 +17,7 @@ import { meldeLokalePause } from '../pause-lokal';
 import { installiereTastaturschutz, registriereHost } from './tastatur';
 import { HOST_MARKE, schreibeAbbild, testRiegelAktiv } from './testspur';
 import { melde } from '../ereignisse';
+import { hilfeAdresse } from '../hilfe/anker';
 import { augenpaar } from '../oberflaeche/design/motive';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { eigeneWurzel } from '../schleier/eigene';
@@ -55,6 +56,8 @@ export function gebundenerKontext(): Kontext | null {
 }
 
 export const WARNUNG_SCHLUESSEL = 'quizWarnungGesehen';
+// Session 17 (UX Fund 24): beim ersten Riegel je Installation steht unter der Frage eine Zeile, warum er kommt (Merker im Speicher).
+export const ERKLAERT_SCHLUESSEL = 'riegelErklaert';
 const RICHTIG_MS = 900;
 const VERWEIGERT_MS = 1600;
 const MIN_BREITE = 320;
@@ -91,6 +94,46 @@ function merkeWarnung(): void {
   warnungGemerkt = true;
   try {
     browser.storage.local.set({ [WARNUNG_SCHLUESSEL]: true }).catch(() => {});
+  } catch {
+    // Kontext weg
+  }
+}
+
+let erklaertGemerkt = false;
+async function leseErklaert(): Promise<boolean> {
+  if (erklaertGemerkt) return true;
+  try {
+    const a = await browser.storage.local.get(ERKLAERT_SCHLUESSEL);
+    erklaertGemerkt = a[ERKLAERT_SCHLUESSEL] === true;
+  } catch {
+    // ohne Speicher gilt: noch nicht erklaert
+  }
+  return erklaertGemerkt;
+}
+function merkeErklaert(): void {
+  erklaertGemerkt = true;
+  try {
+    browser.storage.local.set({ [ERKLAERT_SCHLUESSEL]: true }).catch(() => {});
+  } catch {
+    // Kontext weg
+  }
+}
+
+// Hilfe-Seite in neuem Tab (Content-Script: ueber die Adresse der Erweiterung).
+function hilfeUrl(): string {
+  try {
+    return browser.runtime.getURL('/hilfe.html') + hilfeAdresse('quiz').slice('hilfe.html'.length);
+  } catch {
+    return '';
+  }
+}
+
+// Der Hintergrund oeffnet den Tab: eine Webseite (und damit ein Content-Script) darf die Adresse der Erweiterung nicht selbst oeffnen.
+function oeffneHilfe(e: Event): void {
+  e.preventDefault();
+  try {
+    const n: NachrichtHintergrundHilfe = { ziel: 'hintergrund', typ: 'hilfe', anker: 'quiz' };
+    void Promise.resolve(browser.runtime.sendMessage(n)).catch(() => undefined);
   } catch {
     // Kontext weg
   }
@@ -251,10 +294,10 @@ async function starte(opt: RiegelOptionen): Promise<RiegelErgebnis> {
       const einst = await ladeEinstellungen();
       if (einst.pause) return { pause: true as const };
       if (opt.ladeVerzoegerungMs) await new Promise((ok) => setTimeout(ok, opt.ladeVerzoegerungMs));
-      const [pack, bank, texte, warnGesehen] = await Promise.all([ladePackKurz(), holeDaten('quiz'), holeDaten('texte'), leseWarnung()]);
+      const [pack, bank, texte, warnGesehen, erklaertGesehen] = await Promise.all([ladePackKurz(), holeDaten('quiz'), holeDaten('texte'), leseWarnung(), leseErklaert()]);
       // Pause waehrend des Ladens: kein Riegel
       const spaeter = await ladeEinstellungen();
-      return { pause: spaeter.pause, einst: spaeter, pack, bank, texte, warnGesehen };
+      return { pause: spaeter.pause, einst: spaeter, pack, bank, texte, warnGesehen, erklaertGesehen };
     })(),
     LADE_FRIST_MS,
     opt.signal,
@@ -278,7 +321,7 @@ async function starte(opt: RiegelOptionen): Promise<RiegelErgebnis> {
     if (opt.signal?.aborted) return abmelden(), 'abgebrochen';
   }
   abmelden();
-  const { einst, pack, bank, texte, warnGesehen } = geladen;
+  const { einst, pack, bank, texte, warnGesehen, erklaertGesehen } = geladen;
   if (!istFreigeschaltet(pack, opt.grund === 'video' ? 'erwachsen:quiz' : 'quiz:freilegen') || !bank) return 'abgebrochen';
   const lage: Lage = { geraet: opt.geraet ?? erkenneGeraet(), ruhig: einst.ruhig || bewegungReduziert() };
   const sitzung = new QuizSitzung(bank as QuizBank, lage, opt.verweigern ?? einst.quiz.verweigern, opt.zufall ?? Math.random, sitzungsZustand);
@@ -287,10 +330,10 @@ async function starte(opt: RiegelOptionen): Promise<RiegelErgebnis> {
   // Eine erzwungene Frage muss zulaessig sein (Geraet, Ruhig-Modus), sonst erscheint nichts.
   const erste = opt.ersteFrage ? sitzung.erzwinge(opt.ersteFrage) : sitzung.naechste();
   if (!erste) return 'abgebrochen';
-  return zeige(opt, sitzung, erste, (texte as Texte | null) ?? null, einst.ruhig, warnGesehen);
+  return zeige(opt, sitzung, erste, (texte as Texte | null) ?? null, einst.ruhig, warnGesehen, erklaertGesehen);
 }
 
-function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, texte: Texte | null, ruhigEinst: boolean, warnGesehen: boolean): Promise<RiegelErgebnis> {
+function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, texte: Texte | null, ruhigEinst: boolean, warnGesehen: boolean, erklaertGesehen: boolean): Promise<RiegelErgebnis> {
   return new Promise<RiegelErgebnis>((fertig) => {
     const zufall = opt.zufall ?? Math.random;
     const bewegungAus = bewegungReduziert();
@@ -347,7 +390,24 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     const fussNummer = el('span', 'fuss-nr');
     fuss.append(fussNummer);
     if (ruhigEinst) fuss.append(el('span', 'fuss-ruhig', 'Calm mode is on'));
-    karte.append(kopf, scroll, fuss, ansage);
+    // Fund 24: das "?" in der Fusszeile fuehrt immer zur Hilfe (Quiz); beim ersten Riegel je Installation steht dazu eine Zeile unter der Frage.
+    const hilfeLink = el('a', 'hilfe-link', '?');
+    hilfeLink.href = hilfeUrl();
+    hilfeLink.addEventListener('click', oeffneHilfe);
+    hilfeLink.setAttribute('aria-label', 'Help: Quiz');
+    fuss.append(hilfeLink);
+    let erklaerung: HTMLElement | null = null;
+    let erklaerungLink: HTMLElement | null = null;
+    if (!erklaertGesehen) {
+      erklaerung = el('p', 'erklaerung', 'First time? On adult sites I quiz you before videos and reveals. Pause Mia, top right, always lets you out. ');
+      const wasLink = el('a', 'hilfe-link', 'How my quiz works');
+      wasLink.href = hilfeLink.href;
+      wasLink.addEventListener('click', oeffneHilfe);
+      erklaerung.append(wasLink);
+      erklaerungLink = wasLink;
+      merkeErklaert();
+    }
+    karte.append(kopf, scroll, ...(erklaerung ? [erklaerung] : []), fuss, ansage);
     huelle.append(karte);
     wurzel.append(stil, huelle);
 
@@ -388,6 +448,11 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         augenPeriodeS: augenSpiralen[0]!.style.animationDuration || null,
         augenDrehen: augenSpiralen[0]!.classList.contains('v-dreht'),
         fussNummer: fussNummer.textContent,
+        erklaerung: erklaerung?.textContent ?? null,
+        erklaerungBox: r(erklaerung),
+        erklaerungLink: r(erklaerungLink),
+        hilfe: r(hilfeLink),
+        hilfeHref: hilfeLink.getAttribute('href'),
         marke: marke.textContent,
         aufgabe: aufgabenZustand,
         chibiPose,

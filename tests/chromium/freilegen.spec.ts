@@ -75,7 +75,8 @@ async function warteZensiert(s: Page, ids = ['a', 'hg']): Promise<void> {
 }
 async function loeseRiegel(s: Page): Promise<void> {
   // Der Riegel baut sich auf: die Rechtecke gelten erst, wenn sie zweimal hintereinander gleich waren; ein verfehlter Klick wird wiederholt.
-  for (let versuch = 0; versuch < 6; versuch++) {
+  // Session 17: unter Last (Gesamtlauf) mehr Versuche und laengeres Warten nach dem Klick.
+  for (let versuch = 0; versuch < 10; versuch++) {
     await expect.poll(async () => (await riegel(s))?.zustand, { timeout: 15_000, intervals: [50] }).toBe('frage');
     let a = await riegel(s);
     for (let i = 0; i < 20; i++) {
@@ -91,7 +92,7 @@ async function loeseRiegel(s: Page): Promise<void> {
     expect(f, `Frage ${a.frage.id}`).toBeTruthy();
     const zielK = a.antworten.find((b: any) => b.text === f.antworten[f.richtig]);
     await klickeMitte(s, zielK);
-    await s.waitForTimeout(600);
+    await s.waitForTimeout(1200);
     const danach = await riegel(s);
     if (!danach || danach.zustand !== 'frage' || danach.frage.id !== a.frage.id) return;
   }

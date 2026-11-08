@@ -19,7 +19,7 @@ interface Rect { x: number; y: number; w: number; h: number }
 interface Abbild {
   phase: string; gezeigt: number; entscheidungen: number; ergebnis: string; endeGrund: string; endeZeit: number; anlass: string | null; zahl: number | null;
   pose: string | null; satz: string; chibi: boolean; deckkraft: number | null; host: Rect | null; schliessen: Rect | null; fokusImHost: boolean;
-  sichtbarSeit: number; offeneHoerer: number; jetzt: number;
+  sichtbarSeit: number; offeneHoerer: number; jetzt: number; weniger: Rect | null; wenigerFrage: boolean;
 }
 interface Antwort { ok: boolean; gezeigt?: boolean; anlass?: string; grund?: string }
 
@@ -156,6 +156,7 @@ test.beforeEach(async () => {
   await setzeKontrolle({});
   await setzeEinstellungen({ pause: false, ruhig: false, ausnahmen: [] });
   await entferneSchluessel('meldungStand');
+  await entferneSchluessel('meldungWeniger');
 });
 
 test('ohne Pack: nichts, kein Host', async () => {
@@ -469,6 +470,100 @@ test('Stufe geht an den aktiven Tab des zuletzt fokussierten Fensters (nicht an 
   console.log(`chromium meldungen: Stufe 0->3 vom Absender-Tab A ausgeloest: Meldung in A ${inA}, im vorderen Tab B ${inB}`);
   await a.close();
   await b.close();
+});
+
+test('Fewer notes?: nach drei Mal Wegklicken in Folge traegt die naechste Meldung die Frage mit Knopf; der Knopf schaltet Meldungen aus; danach eine Woche Ruhe', async () => {
+  test.setTimeout(90_000);
+  const p = await oeffne();
+  for (let i = 1; i <= 3; i++) {
+    await zeige(p);
+    const a = await bisAbbild(p, (x) => x.phase === 'steht' && (x.deckkraft ?? 0) > 0.95);
+    expect(a.wenigerFrage, `Meldung ${i}: noch keine Frage`).toBe(false);
+    expect(a.weniger).toBeNull();
+    const s = mitte(a.schliessen!);
+    await p.mouse.click(s.x, s.y);
+    await bisWeg(p);
+  }
+  await expect.poll(async () => (await lies<any>('meldungWeniger'))?.fragt, { timeout: 5000 }).toBe(true);
+  expect((await lies<any>('meldungWeniger')).folge).toBe(3);
+  // vierte Meldung: Zeile "Fewer notes?" mit Knopf "Turn my notes off" unter dem Satz, Knopf mindestens 24 hoch, in der Meldung
+  await zeige(p);
+  const b = await bisAbbild(p, (x) => x.phase === 'steht' && (x.deckkraft ?? 0) > 0.95 && x.wenigerFrage && x.chibi);
+  expect(b.weniger, 'Knopf da').not.toBeNull();
+  expect(b.weniger!.h).toBeGreaterThanOrEqual(24);
+  expect(b.weniger!.x).toBeGreaterThanOrEqual(b.host!.x);
+  expect(b.weniger!.x + b.weniger!.w).toBeLessThanOrEqual(b.host!.x + b.host!.w + 1);
+  expect(b.weniger!.y + b.weniger!.h).toBeLessThanOrEqual(b.host!.y + b.host!.h + 1);
+  expect(b.schliessen!.h, 'das Kreuz bleibt').toBeGreaterThanOrEqual(40);
+  const st = await lies<any>('meldungWeniger');
+  expect(st.fragt, 'Frage verbraucht').toBe(false);
+  expect(st.gefragt).toBeGreaterThan(0);
+  console.log(`chromium meldungen: Fewer notes? Knopf ${b.weniger!.w} x ${b.weniger!.h} px neben dem Kreuz`);
+  // Klick auf den Knopf: Meldungen aus, Meldung weg
+  const m = mitte(b.weniger!);
+  await p.mouse.click(m.x, m.y);
+  await bisWeg(p);
+  expect(((await lies<any>('einstellungen')).kontrolle.meldungen)).toBe(false);
+  // Wieder an und noch drei Mal wegklicken: innerhalb der Woche keine neue Frage
+  await setzeKontrolle({ meldungen: true });
+  for (let i = 1; i <= 3; i++) {
+    await zeige(p);
+    const a = await bisAbbild(p, (x) => x.phase === 'steht' && (x.deckkraft ?? 0) > 0.95);
+    const s = mitte(a.schliessen!);
+    await p.mouse.click(s.x, s.y);
+    await bisWeg(p);
+  }
+  await abwarten(300);
+  expect((await lies<any>('meldungWeniger')).fragt, 'in der Woche keine zweite Frage').toBe(false);
+  await zeige(p);
+  const c = await bisAbbild(p, (x) => x.phase === 'steht');
+  expect(c.wenigerFrage).toBe(false);
+  await p.close();
+});
+
+test('Begruessung auf Erwachsenenseiten: einmal je Host in 30 Minuten (Merker nie im Speicher der Seite), Satz aus der Pack-Gruppe begruessung, nur mit Meldungen an', async () => {
+  test.setTimeout(60_000);
+  await setzeEinstellungen({ erwachsen: { eigeneSeiten: ['127.0.0.1'], an: true, komplettErsatz: false } });
+  await entferneSchluessel('grussMerker');
+  try {
+    // Fund 10: ein Seitenskript, das den alten Schluessel im sessionStorage vorab setzt, unterdrueckt die Begruessung nicht
+    const vorab = await context.newPage();
+    await vorab.addInitScript(() => sessionStorage.setItem('veil-gruss:127.0.0.1', '1'));
+    await vorab.goto(seite('?veil-gruss'));
+    await vorab.bringToFront();
+    await vorab.waitForFunction(() => document.documentElement.hasAttribute('data-veil-meldung'));
+    const v = await bisAbbild(vorab, (x) => x.phase === 'steht' && x.anlass === 'gruss', 12_000);
+    expect(v.satz).toBe('Test greeting line.');
+    expect(await vorab.evaluate(() => Object.keys(sessionStorage).filter((k) => k !== 'veil-gruss:127.0.0.1'))).toEqual([]);
+    expect(Object.keys((await lies<Record<string, number>>('grussMerker')) ?? {})).toEqual(['127.0.0.1']);
+    await bisWeg(vorab);
+    await vorab.close();
+    await entferneSchluessel('grussMerker');
+    // ohne Testmarke (veil-gruss) schweigt der Testbau, damit fremde Tests ungestoert bleiben
+    const stumm = await oeffne();
+    await abwarten(4000);
+    expect((await abbild(stumm))!.gezeigt).toBe(0);
+    await stumm.close();
+    const p = await oeffne('?veil-gruss');
+    const a = await bisAbbild(p, (x) => x.phase === 'steht' && x.anlass === 'gruss', 12_000);
+    expect(a.satz).toBe('Test greeting line.');
+    console.log(`chromium meldungen: Begruessung auf Erwachsenenseite: "${a.satz}"`);
+    await bisWeg(p);
+    // Neu laden im selben Tab: nicht noch einmal (Merker je Host)
+    await p.reload();
+    await p.waitForFunction(() => document.documentElement.hasAttribute('data-veil-meldung'));
+    await abwarten(4500);
+    expect((await abbild(p))!.gezeigt, 'zweiter Besuch im selben Tab: keine Begruessung').toBe(0);
+    await p.close();
+    // Meldungen aus: keine Begruessung
+    await setzeKontrolle({ meldungen: false });
+    const q = await oeffne('?veil-gruss');
+    await abwarten(4500);
+    expect((await abbild(q))!.gezeigt).toBe(0);
+    await q.close();
+  } finally {
+    await setzeEinstellungen({ erwachsen: {} });
+  }
 });
 
 test('Ohne Pack am Ende: nichts (Pack entfernt, Meldung weg)', async () => {

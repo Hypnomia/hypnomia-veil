@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { oeffneZugeklapptes } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -66,6 +67,7 @@ async function frischeSeite(): Promise<Page> {
   await seite.goto(optionsUrl());
   await zuruecksetzen(seite);
   await seite.reload();
+  await oeffneZugeklapptes(seite);
   return seite;
 }
 
@@ -77,14 +79,16 @@ test('Aufbau: Titel, Status, Sprungleiste und alle Abschnitte in der Reihenfolge
     await expect(seite.locator('#pause')).toHaveText('Pause Mia');
     // Reihenfolge der Abschnitte (Auftrag S Punkt 1) und die leeren Plaetze der anderen Bauer.
     const reihenfolge = await seite.evaluate(() =>
-      [...document.querySelectorAll('main > section')].map((s) => s.id),
+      [...document.querySelectorAll('main > section, main > .gruppe')].map((s) => s.id),
     );
-    // Session 12: Interview direkt unter der Leiste (Fund 17), Strict im Abschnitt "What I cover" (Fund 16).
-    const soll = ['abschnitt-interview', 'abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-ausnahmen', 'erwachsen', 'abschnitt-ruhig', 'kontrolle', 'ton', 'ledger', 'stand', 'neu', 'ueber'];
+    // Phase 9 (Fund 4): sechs Gruppen; "Covering" fasst vier Karten (Strict im Abschnitt "What I cover", Fund 16 aus Session 12). Ohne Pack steht die
+    // Pack-Karte gleich nach Covering, Calm mode wohnt in Mia’s control, das Interview in About and help.
+    const soll = ['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber'];
     expect(reihenfolge).toEqual(soll);
+    expect(await seite.evaluate(() => [...document.querySelectorAll('#covering > section')].map((s) => s.id))).toEqual(['abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-ausnahmen']);
     // Jeder Link der Sprungleiste zeigt auf einen vorhandenen Abschnitt.
-    const links = await seite.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('#sprung a:not([hidden])')].map((a) => ({ ziel: a.getAttribute('href')!.slice(1), da: !!document.getElementById(a.getAttribute('href')!.slice(1)) && document.getElementById(a.getAttribute('href')!.slice(1))!.getClientRects().length > 0 })));
-    expect(links.length).toBeGreaterThanOrEqual(10);
+    const links = await seite.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('#sprung a[href^="#"]:not([hidden])')].map((a) => ({ ziel: a.getAttribute('href')!.slice(1), da: !!document.getElementById(a.getAttribute('href')!.slice(1)) && document.getElementById(a.getAttribute('href')!.slice(1))!.getClientRects().length > 0 })));
+    expect(links.length).toBe(7);
     // Ziel vorhanden UND sichtbar (ein Abschnitt, den sein Modul nicht fuellt, waere ein toter Link).
     expect(links.filter((l) => !l.da).map((l) => l.ziel)).toEqual([]);
     // Bestehende Abschnitte behalten ihre ids.
@@ -224,6 +228,8 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
   try {
     await popup.goto(popupUrl());
     await expect(popup.locator('#pause')).toHaveText('Pause Mia');
+    // Seit Phase 9 (Paket A) liegen Mood und Zonen im Popup hinter "Change"; aufgeklappt wie die Person es tut.
+    if (await popup.locator('#aendern').isVisible()) await popup.locator('#aendern').click();
     // Aenderung auf der Einstellungsseite (echte Klicks und Tasten), Popup folgt; jede Aenderung einzeln im Speicher abwarten
     await seite.locator('#pause').click();
     await expect.poll(async () => (await einst(seite)).pause).toBe(true);
@@ -330,7 +336,7 @@ test('Pack-Sperre vor dem Einstieg: Dateiwurf wird abgewiesen (nichts gespeicher
     expect(antwort.ok).toBe(true);
     await seite.reload();
     await expect(seite.locator('#datei')).toBeDisabled();
-    await expect(seite.locator('#datei')).toHaveAttribute('aria-describedby', 'pack-sperre-text');
+    await expect(seite.locator('#datei')).toHaveAttribute('aria-describedby', /pack-sperre-text/);
     await expect(seite.locator('#pack-sperre')).toBeVisible();
     await expect(seite.locator('#abschnitt-interview')).toBeHidden();
     // Dateiwurf auf das gesperrte Feld: nichts passiert (keine Meldung, keine Lizenz)
@@ -389,6 +395,7 @@ test('360 px Breite: kein waagrechter Ueberlauf, auch mit Pack, Ausnahmen und st
       einstellungen: { ausnahmen: ['eine-ziemlich-lange-adresse-fuer-den-test.example.com/mit/langem/pfad', 'kurz.de'] },
     });
     await seite.reload();
+    await oeffneZugeklapptes(seite);
     await seite.locator('#kon-zeit-neu').click();
     await expect(seite.locator('#ausnahmen-liste li')).toHaveCount(2);
     const mass = await seite.evaluate(() => ({ breite: document.documentElement.scrollWidth, fenster: document.documentElement.clientWidth }));

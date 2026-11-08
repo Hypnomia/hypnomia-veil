@@ -8,7 +8,7 @@ export const TON_TEXTE = {
   probe: 'Play a sample',
   regel: 'Only for my quiz and my flash words, never on sites I leave alone. Pause Mia silences it right away.',
   hinweisMitTon: 'You’ll hear my snaps and chimes when my quiz starts and when my flash words come. Set how loud they are.',
-  hinweisAltesPack: 'This needs a newer Mia Pack. Add it further down to unlock my sounds. Set your volume now and it’ll be ready.',
+  hinweisAltesPack: 'This needs a newer Mia Pack. Add it in the Mia Pack section to unlock my sounds. Set your volume now and it’ll be ready.',
   hinweisOhnePack: 'My sounds come with the Mia Pack. Set your volume now and they’re ready once the pack is in.',
   probeKeinKlang: 'I can’t find a sound in your Mia Pack to play.',
   probeGespielt: 'That’s how loud I’ll be.',

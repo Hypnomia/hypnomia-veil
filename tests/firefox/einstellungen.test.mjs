@@ -101,6 +101,20 @@ async function bis(beschreibung, fn, frist = 15_000) {
 const eigenschaft = (css, name) => driver.executeScript(`return document.querySelector(arguments[0])[arguments[1]]`, css, name);
 const text = async (css) => (await driver.executeScript(`return document.querySelector(arguments[0]).textContent.trim()`, css));
 
+// Phase 9 (Paket B, Fund 4): ohne Pack sind Adult sites, Mia’s control (bis auf Calm mode) und Sound zugeklappt; wie die Person mit "Set them now" aufklappen.
+const oeffneZu = async () => {
+  const frist = Date.now() + 15_000;
+  for (;;) {
+    try {
+      if (await driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`)) break;
+    } catch {
+      /* Seite laedt noch */
+    }
+    if (Date.now() > frist) throw new Error('Ordnung der Einstellungsseite nicht bereit');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+};
 const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
@@ -128,9 +142,10 @@ const tasten = async (css, key, n) => {
   await e.sendKeys(...Array(n).fill(key));
 };
 const geklickt = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
-const gesperrt = (css) => driver.executeScript(`return document.querySelector(arguments[0]).disabled`, css);
+// Session 17: Element fehlt waehrend die Seite noch laedt (Firefox 128 langsamer): null statt Ausnahme, damit `bis` weiter wartet.
+const gesperrt = (css) => driver.executeScript(`return document.querySelector(arguments[0])?.disabled ?? null`, css);
 const wertVon = (css) => driver.executeScript(`return document.querySelector(arguments[0]).value`, css);
-const geprueft = (css) => driver.executeScript(`return document.querySelector(arguments[0]).checked`, css);
+const geprueft = (css) => driver.executeScript(`return document.querySelector(arguments[0])?.checked ?? null`, css);
 
 // Neue Seite beobachten: Griffe vor dem Klick merken, danach den neuen Griff, seine Adresse lesen, schliessen, zurueckwechseln.
 async function neueSeiteNach(aktion) {
@@ -169,16 +184,18 @@ try {
   await imSeitenkontext(`await api.storage.local.remove(['pack', 'einstellungen', 'einstieg']);`);
   await driver.navigate().refresh();
   await bis('Seite gezeichnet', async () => (await text('#status')).length > 0);
+  await oeffneZu();
 
   // ---- Aufbau ----
   pruefe((await driver.getTitle()) === 'HYPNOMIA VEIL: Settings', 'Seitentitel "HYPNOMIA VEIL: Settings"');
   pruefe((await text('#status')).includes('On watch'), 'Status: On watch');
   pruefe((await text('#pause')) === 'Pause Mia', 'Pause-Knopf: Pause Mia');
-  const reihenfolge = await driver.executeScript(`return [...document.querySelectorAll('main > section')].map((s) => s.id)`);
-  const soll = ['abschnitt-interview', 'abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-ausnahmen', 'erwachsen', 'abschnitt-ruhig', 'kontrolle', 'ton', 'ledger', 'stand', 'neu', 'ueber'];
+  const reihenfolge = await driver.executeScript(`return [...document.querySelectorAll('main > section, main > .gruppe')].map((s) => s.id)`);
+  // Phase 9 (Fund 4): sechs Gruppen, ohne Pack steht die Pack-Karte nach "Covering".
+  const soll = ['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber'];
   pruefe(JSON.stringify(reihenfolge) === JSON.stringify(soll), `Abschnitte in der Reihenfolge des Auftrags (${reihenfolge.length})`);
-  const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung a:not([hidden])')].every((a) => !!document.getElementById(a.getAttribute('href').slice(1))) ? document.querySelectorAll('#sprung a:not([hidden])').length : -1`);
-  pruefe(links >= 10, `Sprungleiste: ${links} Links, alle mit Ziel`);
+  const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung a[href^="#"]:not([hidden])')].every((a) => !!document.getElementById(a.getAttribute('href').slice(1))) ? document.querySelectorAll('#sprung a[href^="#"]:not([hidden])').length : -1`);
+  pruefe(links === 7, `Sprungleiste: ${links} Links, alle mit Ziel`);
   pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-zone]').length`)) === 10, '10 Zonen aufgebaut');
   pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-bedeckt]').length`)) === 6, '6 "even when clothed"');
 
@@ -276,6 +293,8 @@ try {
   // ---- Popup und Einstellungsseite: derselbe Stand ----
   const popup = await oeffne('popup.html');
   await bis('Popup gezeichnet', async () => (await text('#pause')).length > 0);
+  // Phase 9 (Paket A): Mood, Zonen und Strict liegen im Popup hinter "Change".
+  if ((await driver.findElement(By.css('#aendern')).getAttribute('aria-expanded')) !== 'true') await driver.findElement(By.css('#aendern')).click();
   await driver.switchTo().window(optionenSeite);
   // Jede Aenderung einzeln im Speicher abwarten (das Popup liest seine Felder erst beim Schreiben, schnelle Folgeklicks wuerden sich ueberholen).
   await klick('#pause');
@@ -336,8 +355,9 @@ try {
   const antwort = await imSeitenkontext(`return await api.runtime.sendMessage({ ziel: 'hintergrund', typ: 'einstieg-test', zuruecksetzen: true });`);
   pruefe(antwort?.ok === true, 'Testhaken einstieg-test setzt den Einstieg zurueck');
   await driver.navigate().refresh();
+  await oeffneZu();
   await bis('Dateifeld gesperrt', async () => await gesperrt('#datei'));
-  pruefe((await driver.executeScript(`return document.querySelector('#datei').getAttribute('aria-describedby')`)) === 'pack-sperre-text', 'Dateifeld nennt den Grund (aria-describedby)');
+  pruefe((await driver.executeScript(`return document.querySelector('#datei').getAttribute('aria-describedby')`)).includes('pack-sperre-text'), 'Dateifeld nennt den Grund (aria-describedby)');
   pruefe(await sichtbar('#pack-sperre'), 'ohne Einstieg: Satz und Knopf "Meet Mia first" sichtbar');
   pruefe(!(await sichtbar('#abschnitt-interview')), 'ohne Einstieg: kein Interview-Knopf');
   // Dateiwurf: Sperre im Feld umgangen (wie ein Wurf aus dem Dateimanager), die Pruefung im Speicher weist die Datei ab

@@ -186,6 +186,10 @@ try {
   // ---------- Regler ohne Pack ----------
   await oeffneErweiterung('options.html');
   await bis('Optionen gezeichnet', async () => (await text('#pack-status')).length > 0);
+  // Phase 9 (Paket B): ohne Pack ist Adult sites zugeklappt; wie die Person mit "Set them now" aufklappen (wie ton.test.mjs).
+  await bis('Ordnung bereit', () => driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`), 15_000);
+  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+  await bis('Stufen-Satz sichtbar', () => sichtbar('#stufe-gesperrt'), 10_000).catch(() => {});
   pruefe(await sichtbar('#stufe-gesperrt'), 'ohne Pack: Satz statt Regler');
   pruefe(!(await sichtbar('#stufe-wahl')), 'ohne Pack: Knoepfe nicht sichtbar');
   pruefe((await text('#stufe-gesperrt')).includes('Mia Pack'), 'ohne Pack: der Satz nennt das Pack');
@@ -337,6 +341,9 @@ try {
     await driver.findElement(By.css('#entfernen')).click();
     await bis('Rueckfrage', () => sichtbar('#entfernen-frage'));
     await driver.findElement(By.css('#entfernen-ja')).click();
+    // Ohne Pack klappt die Seite Adult sites wieder zu (Phase 9, Paket B): aufklappen wie die Person.
+    await bis('wieder zugeklappt', () => driver.executeScript(`return [...document.querySelectorAll('.zu-knopf')].some((e) => !e.hidden && e.getClientRects().length > 0)`), 15_000).catch(() => {});
+    await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); }`);
     await bis('Regler wieder gesperrt', async () => !(await sichtbar('#stufe-wahl')) && (await sichtbar('#stufe-gesperrt')), 15_000);
     pruefe(true, 'Pack entfernt: Regler wieder gesperrt');
   });

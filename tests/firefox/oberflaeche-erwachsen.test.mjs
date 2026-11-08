@@ -103,6 +103,20 @@ const radio = (wert) => `input[name="stil"][value="${wert}"]`;
 const eigenschaft = (css, name) => driver.executeScript(`return document.querySelector(arguments[0])[arguments[1]]`, css, name);
 const text = async (css) => (await driver.executeScript(`return document.querySelector(arguments[0]).textContent.trim()`, css));
 
+// Phase 9 (Paket B, Fund 4): ohne Pack sind Adult sites, Mia’s control (bis auf Calm mode) und Sound zugeklappt; wie die Person mit "Set them now" aufklappen.
+const oeffneZu = async () => {
+  const frist = Date.now() + 15_000;
+  for (;;) {
+    try {
+      if (await driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`)) break;
+    } catch {
+      /* Seite laedt noch */
+    }
+    if (Date.now() > frist) throw new Error('Ordnung der Einstellungsseite nicht bereit');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+};
 const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
@@ -229,6 +243,7 @@ try {
   const packPfad = path.join(ordner, 'dummy.miapack');
   await writeFile(packPfad, (await baueDummyPack()).bytes);
   await oeffne('options.html');
+  await oeffneZu();
   await bis('Optionen ohne Pack', async () => (await text('#pack-status')).length > 0);
   pruefe(!(await sichtbar('#begruessung')), 'ohne Pack keine Begruessung');
   await driver.findElement(By.css('#datei')).sendKeys(packPfad);
@@ -242,6 +257,7 @@ try {
   pruefe(((await speicher('pack')).freischaltungen ?? []).includes('chibi:pack'), 'Begruessungs-Chibi kommt als blob: aus dem Pack');
   // Zweites Oeffnen, schon begruesst: keine Begruessung
   await oeffne('options.html');
+  await oeffneZu();
   await bis('Optionen mit Pack', async () => (await text('#pack-status')).includes('Pack in place'));
   await warte(500);
   pruefe(!(await sichtbar('#begruessung')), 'beim zweiten Oeffnen keine Begruessung');
@@ -255,6 +271,7 @@ try {
   pruefe(true, 'Popup-Chibi (sprechblase) kommt als blob: aus dem Pack');
   // Pack ganz entfernen (IndexedDB), damit nichts zurueckbleibt
   await oeffne('options.html');
+  await oeffneZu();
   await bis('Optionen', async () => (await text('#pack-status')).includes('Pack in place'));
   await klick('#entfernen');
   await klick('#entfernen-ja');
@@ -262,6 +279,7 @@ try {
 
   // ---------- Einstellungsseite ----------
   await oeffne('options.html');
+  await oeffneZu();
   await bis('Optionen gezeichnet', async () => (await text('#pack-status')).length > 0);
   pruefe(await sichtbar('#erw-titel'), 'Einstellungsseite hat den Abschnitt "Adult sites"');
   const feld = By.css('#seite-feld');

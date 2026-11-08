@@ -12,7 +12,7 @@ import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { DUMMY_QUIZ, DUMMY_TEXTE } from '../../scripts/pack/dummy-inhalte.mjs';
 
 const kodiere = (t) => new TextEncoder().encode(t);
-const VERSION = '0.8.2'; // installierte Version (Session 16)
+const VERSION = '0.9.0'; // installierte Version (Session 17)
 
 test('Dummy-Pack: alle Phase-4-Freischaltungen, Rollen gezaehlt', async () => {
   const { bytes, vorschau, chibis } = await baueDummyPack();

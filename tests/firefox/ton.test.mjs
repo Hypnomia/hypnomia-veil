@@ -250,6 +250,9 @@ try {
     await loescheEinstellungen();
     await oeffneErweiterung('options.html');
     try {
+      // Phase 9 (Paket B): ohne Pack ist Sound zugeklappt; wie die Person mit "Set them now" aufklappen.
+      await bis('Ordnung bereit', () => driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`), 15_000);
+      await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
       await bis('Abschnitt da', () => sichtbar('#ton-titel'));
       pruefe((await driver.findElement(By.css('#ton-titel')).getAttribute('textContent')) === TON_TEXTE.titel, 'Ueberschrift');
       pruefe((await driver.findElement(By.css('#ton')).getAttribute('aria-labelledby')) === 'ton-titel', 'aria-labelledby ton-titel');
