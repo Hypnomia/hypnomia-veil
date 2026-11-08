@@ -45,5 +45,33 @@
         <video id="h6" muted loop preload="none" class="thumbVideo"></video>
       </a>
     </div>
+    <!-- Live-Lauf 18, Fund 1: stumme Anzeigen-Schleife ausserhalb von Karten und Player, ohne Bedienelemente (passt auf keinen Hover-Selektor).
+         Dazu ein grosses Hero-Video ohne Quelle wie auf der Startseite: das groesste Video einer Seite bleibt von der Regel ausgenommen. -->
+    <video id="hero-video" muted preload="none" style="display: block; width: 950px; height: 400px"></video>
+    <div class="werbe-kachel" style="width: 300px; height: 250px; position: relative">
+      <video id="anzeige-video" muted loop autoplay preload="none" width="300" height="250"></video>
+    </div>
+    <script>
+      // Quelle der Anzeige: 1 s harmlose Farbflaeche, zur Laufzeit aufgenommen (blob:), damit ein Schleier ohne die Regel sie pruefen und freigeben koennte.
+      (function () {
+        var c = document.createElement('canvas');
+        c.width = 300;
+        c.height = 250;
+        var g = c.getContext('2d');
+        var n = 0;
+        var uhr = setInterval(function () { g.fillStyle = n++ % 2 ? '#e91e63' : '#f06292'; g.fillRect(0, 0, 300, 250); }, 40);
+        var r = new MediaRecorder(c.captureStream(25));
+        var teile = [];
+        r.ondataavailable = function (e) { teile.push(e.data); };
+        r.onstop = function () {
+          clearInterval(uhr);
+          var v = document.getElementById('anzeige-video');
+          v.src = URL.createObjectURL(new Blob(teile, { type: 'video/webm' }));
+          v.play().catch(function () {});
+        };
+        r.start();
+        setTimeout(function () { r.stop(); }, 1000);
+      })();
+    </script>
   </body>
 </html>

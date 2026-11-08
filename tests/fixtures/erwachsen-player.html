@@ -99,6 +99,7 @@
           if (opt.muted !== false) v.muted = true;
           v.setAttribute('playsinline', '');
           if (opt.autoplay) v.autoplay = true;
+          if (opt.controls) v.controls = true;
           if (opt.klasse) v.className = opt.klasse;
           var ort = opt.ziel === 'schatten' ? schattenWurzel() : opt.ziel === 'karte' ? document.querySelector('#karte a') : opt.ziel === 'fremd' ? document.getElementById('fremd') : document.getElementById('player');
           ort.appendChild(v);

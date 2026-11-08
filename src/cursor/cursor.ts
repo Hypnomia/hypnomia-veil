@@ -88,6 +88,7 @@ export function starteCursor(ctx: KontextLeicht): void {
   const wurzeln = new Set<WeakRef<ShadowRoot>>();
   const bekannt = new WeakSet<ShadowRoot>();
   let letztePruefung = -Infinity;
+  let gesperrt = false; // Seite sperrt data:-Bilder (Fund 3 Live-Lauf 18)
 
   // Tab-Adresse (nur Rahmen): eigene Ausnahmen gelten je Tab.
   let tabAdresse: URL | null = null;
@@ -243,7 +244,7 @@ export function starteCursor(ctx: KontextLeicht): void {
     const wartetAufTab = istRahmen && e.ausnahmen.length > 0 && !tabBekannt;
     const tabAus = tabAdresse !== null && passtAusnahme(tabAdresse, e.ausnahmen);
     const gewaehlt = e.kontrolle.cursor;
-    if (wartetAufTab || tabAus || gewaehlt === 'aus' || document.fullscreenElement || !kontrolleErlaubt(e, pack, 'kontrolle:cursor')) {
+    if (gesperrt || wartetAufTab || tabAus || gewaehlt === 'aus' || document.fullscreenElement || !kontrolleErlaubt(e, pack, 'kontrolle:cursor')) {
       entferne();
       return;
     }
@@ -278,6 +279,16 @@ export function starteCursor(ctx: KontextLeicht): void {
     }
   };
   window.addEventListener('mouseover', beiMausueber, { capture: true, passive: true });
+  // Live-Lauf 18, Fund 3: sperrt die Seite data:-Bilder (img-src, etwa Cloudflare-Pruefseiten), bekommt sie Mias Zeiger nie zu sehen und
+  // meldet jeden Versuch in ihrer Konsole. Nach dem ersten echten Verstoss bleibt der Zeiger auf dieser Seite normal.
+  const beiVerstoss = (ev: Event): void => {
+    const v = ev as SecurityPolicyViolationEvent;
+    if (!ev.isTrusted || gesperrt || !dokBlatt) return;
+    if (!/^img-src/.test(v.effectiveDirective ?? '') || !/^data/.test(v.blockedURI ?? '')) return;
+    gesperrt = true;
+    entferne();
+  };
+  document.addEventListener('securitypolicyviolation', beiVerstoss, true);
   window.addEventListener('focus', beiFokus, { capture: true, passive: true });
   document.addEventListener('visibilitychange', beiSichtbarkeit);
   // Vollbild (Video-Player blenden den Zeiger dort mit cursor: none aus): in diesem Frame kein Blatt, beim Verlassen sofort wieder.
@@ -316,6 +327,7 @@ export function starteCursor(ctx: KontextLeicht): void {
     lokalAb();
     if (tabFrist) clearTimeout(tabFrist);
     window.removeEventListener('mouseover', beiMausueber, true);
+    document.removeEventListener('securitypolicyviolation', beiVerstoss, true);
     window.removeEventListener('focus', beiFokus, true);
     document.removeEventListener('visibilitychange', beiSichtbarkeit);
     document.removeEventListener('fullscreenchange', beiVollbild);

@@ -382,6 +382,8 @@ test('Adapter-Selektor: nur das Video in #player wird gesperrt, ein groesseres d
   const s = await oeffneSeite(ADAPTER_SEITE);
   try {
     await neuesVideo(s, { id: 'haupt', autoplay: true });
+    // Stumm und ohne Bedienelemente ausserhalb des Players, aber das groesste Video der Videoseite: von der Regel fuer Vorschauen und Anzeigen
+    // ausgenommen (Live-Lauf 18, Fund 1; Pruefung Runde 7, Nr. 1), laeuft also frei wie bisher.
     await neuesVideo(s, { id: 'gross', ziel: 'fremd', autoplay: true, abspielen: true });
     await expect.poll(async () => (await video(s, 'haupt')).paused, { timeout: 10_000 }).toBe(true);
     await s.waitForTimeout(1200);

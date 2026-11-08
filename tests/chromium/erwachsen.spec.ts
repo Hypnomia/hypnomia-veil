@@ -275,6 +275,14 @@ for (const ort of SEITEN) {
     const h = (await stand(s, ['h1']))[0]!;
     expect(h.veil).toBeNull();
     expect(h.opacity).toBe('0');
+    // Live-Lauf 18, Fund 1: auf Seiten mit eigenem Adapter auch jede andere stumme Schleife ohne Bedienelemente ausserhalb des Players (Anzeige)
+    if (ort.name === 'pornhub') {
+      // Die Anzeige hat erst nach gut 1 s eine Quelle (Aufnahme in der Seite); danach haette ein Schleier ohne die Regel sie geprueft.
+      await expect.poll(() => s.evaluate(() => (document.getElementById('anzeige-video') as HTMLVideoElement).readyState >= 2), { timeout: 10_000 }).toBe(true);
+      await abwarten(2500);
+      const anz = (await stand(s, ['anzeige-video']))[0]!;
+      expect(anz, 'Anzeigen-Video nie gezeigt').toMatchObject({ veil: null, opacity: '0' });
+    }
     await abwarten(300);
     const w = await waechter(s);
     console.log(`chromium E ${ort.name}: Waechter ${w.proben} Proben, ${w.aufblitzen} Aufblitzen, ${w.unsichtbar} unsichtbar`);

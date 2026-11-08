@@ -204,6 +204,13 @@ async function wirdOrtGetauscht(ort) {
   );
   const h = (await stand(['h1']))[0];
   pruefe(h.veil === null && h.opacity === '0', `${ort.name}: Hover-Video ohne Urteil und unsichtbar (${JSON.stringify(h)})`);
+  // Live-Lauf 18, Fund 1 (in Firefox gefunden): stumme Anzeigen-Schleife ausserhalb des Players nie gezeigt, auch mit Quelle
+  if (ort.name === 'pornhub') {
+    await bis('Anzeige hat eine Quelle', () => driver.executeScript(() => document.getElementById('anzeige-video').readyState >= 2), 10_000);
+    await warte(2500);
+    const anz = (await stand(['anzeige-video']))[0];
+    pruefe(anz.veil === null && anz.opacity === '0', `pornhub: Anzeigen-Video nie gezeigt (${JSON.stringify(anz)})`);
+  }
   await warte(300);
   const w = await waechter();
   console.log(`firefox E ${ort.name}: Waechter ${w.proben} Proben, ${w.aufblitzen} Aufblitzen, ${w.unsichtbar} unsichtbar`);

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'self'">
+<title>Cursor CSP</title>
+<style>body{margin:0;padding:10px;font:14px sans-serif;min-height:400px}</style>
+<body>
+<!-- Live-Lauf 18, Fund 3: wie die Cloudflare-Pruefseite: Bilder nur vom eigenen Ursprung, data:-Bilder (Mias Zeiger) sind gesperrt. -->
+<p id="text">Just a moment...</p>
+<script>
+  window.__verstoesse = [];
+  document.addEventListener('securitypolicyviolation', function (e) { window.__verstoesse.push(e.effectiveDirective + ' ' + e.blockedURI); });
+</script>
+</body>

@@ -311,6 +311,27 @@ try {
   await warteArt('#link', 'spirale', undefined, 5000);
   pruefe(true, 'Vollbild verlassen: Zeiger zurueck');
 
+  // 7b. Live-Lauf 18, Fund 3: sperrt die Seite data:-Bilder (img-src), nimmt Mia den Zeiger nach dem ersten Verstoss zurueck, danach keine
+  // weiteren Verstoesse. Firefox laedt das Zeigerbild auch ohne Fenster (Chromium ohne Fenster nicht, darum nur hier).
+  await driver.get(`http://127.0.0.1:${port}/cursor-csp.html`);
+  for (let i = 0; i < 6; i++) {
+    await driver.actions().move({ x: 40 + i * 30, y: 40 + i * 15 }).perform();
+    await warte(150);
+  }
+  const cspVorher = await driver.executeScript(() => window.__verstoesse.slice());
+  console.log(`firefox K2: CSP-Seite: Verstoesse ${JSON.stringify(cspVorher)}, Zeiger ${await art('body')}`);
+  await warteArt('body', 'auto', undefined, 8000).catch(() => {});
+  const cspArt = await art('body');
+  for (let i = 0; i < 6; i++) {
+    await driver.actions().move({ x: 250 - i * 30, y: 200 - i * 15 }).perform();
+    await warte(150);
+  }
+  const cspNach = await driver.executeScript(() => window.__verstoesse.length);
+  pruefe(cspVorher.length >= 1, `CSP-Seite: der Verstoss wurde gemeldet (${cspVorher.length})`);
+  pruefe(!/spirale|herz/.test(cspArt), `CSP-Seite: Zeiger danach normal (${cspArt})`);
+  pruefe(cspNach === cspVorher.length, `CSP-Seite: keine weiteren Verstoesse (${cspVorher.length} dann ${cspNach})`);
+  await driver.get(seite);
+
   // 8. Pack entfernt
   await entfernePack();
   await warteArt('#link', 'pointer');

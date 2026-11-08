@@ -342,6 +342,7 @@ try {
   await fall('Adapter-Selektor: nur das Video in #player gesperrt, groesseres daneben laeuft frei', async () => {
     await oeffneSeite(ADAPTER_SEITE);
     await neuesVideo({ id: 'haupt', autoplay: true });
+    // Groesstes Video der Videoseite: von der Regel fuer Vorschauen und Anzeigen ausgenommen (Live-Lauf 18, Fund 1; Pruefung Runde 7, Nr. 1).
     await neuesVideo({ id: 'gross', ziel: 'fremd', autoplay: true, abspielen: true });
     await bis('haupt steht', async () => (await video('haupt')).paused, 10_000);
     await warte(1200);

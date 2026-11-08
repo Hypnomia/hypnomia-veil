@@ -9,6 +9,7 @@
 
 import { adapterFuer, istHoverVideo, istVorschau, VORSCHAU_MIN_KANTE } from '../adapter';
 import { InhaltsZaehler, type InhaltsUrteil } from '../adapter/inhalt';
+import { istListenPfad } from '../player/logik';
 import { seiteFuer, TEST_DOMAIN, type SeitenName } from '../adapter/liste';
 import { erwachsenStatus, setzeErwachsenStatus } from '../adapter/status';
 import { STUFEN_WAHL, type Einstellungen, type StufeWahl } from '../einstellungen';
@@ -28,6 +29,20 @@ const SCHLUESSEL_MAX = 512;
 const TRANSPORT_SPERRE_MS = 5000;
 // Testhaken nur im Testbau (WXT_TESTHAKEN=1): ohne Schalter faellt der Name des Attributs samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN_E: boolean = import.meta.env.WXT_TESTHAKEN === '1';
+
+// Stumm ist auch ein Video mit Lautstaerke 0 (Pruefung Runde 7, Nr. 2: sonst entging eine Anzeige der Regel mit muted=false, volume=0).
+const stumm = (v: HTMLVideoElement): boolean => v.muted || v.volume === 0;
+
+// Das groesste Video des Dokuments nach dargestellter Flaeche (Hauptvideo einer Videoseite). Gleich gross: das Video selbst gilt als groesstes.
+function istGroesstesVideo(v: HTMLVideoElement): boolean {
+  const flaeche = (x: Element): number => {
+    const r = x.getBoundingClientRect();
+    return r.width * r.height;
+  };
+  const eigene = flaeche(v);
+  for (const x of document.querySelectorAll('video')) if (x !== v && flaeche(x) > eigene) return false;
+  return true;
+}
 const ATTR_ERWACHSEN = TESTHAKEN_E ? 'data-veil-erwachsen' : '';
 
 export interface VorschauRueckrufe {
@@ -414,11 +429,18 @@ export class Vorschau {
   versteckeVideo(el: Element, z: Zustand): boolean {
     if (!this.tausch || !this.r.aktiv()) return false;
     const adapter = adapterFuer(this.liste);
-    if (!istHoverVideo(Vorschau.ueberSchatten(el), adapter)) return false;
     // Nur stumme Vorschau-Schleifen: Beitragsvideos und Player (Bedienelemente, Ton, Player-Selektor) bleiben beim normalen Schleier.
     const v = el as HTMLVideoElement;
-    if (v.controls || !v.muted) return false;
+    if (v.controls || !stumm(v)) return false;
     if (adapter.player?.length && adapter.player.some((s) => { try { return !!Vorschau.naechster(el, s); } catch { return false; } })) return false;
+    // Live-Lauf 18, Fund 1: auf Seiten mit eigenem Adapter (Player bekannt) gilt jede stumme Schleife ohne Bedienelemente ausserhalb des
+    // Players als Vorschau oder Anzeige, nicht nur, was auf einen Hover-Selektor passt. Eine Anzeige ausserhalb der Karten lief sonst durch die
+    // Pruefung, die ein explizites Bild verfehlte (Firefox, Pornhub). Ausgenommen OnlyFans und Fansly: dort sind Beitragsvideos Inhalt.
+    // Pruefung Runde 7, Nr. 1: auf einer Videoseite ist das groesste Video ausgenommen (Hauptvideo, auch wenn der Player-Selektor der Seite
+    // veraltet ist; der Riegel waehlt es als Rueckfall). Auf Listenseiten gibt es kein Hauptvideo.
+    const sonstigeSchleife =
+      !!adapter.player?.length && adapter.name !== 'onlyfans' && adapter.name !== 'fansly' && (istListenPfad(location.pathname) || !istGroesstesVideo(v));
+    if (!sonstigeSchleife && !istHoverVideo(Vorschau.ueberSchatten(el), adapter)) return false;
     this.beobachteVideo(v, z);
     try {
       (el as HTMLVideoElement).pause();
@@ -434,12 +456,19 @@ export class Vorschau {
   private beobachteVideo(v: HTMLVideoElement, z: Zustand): void {
     if (this.beobachtet.has(v)) return;
     this.beobachtet.add(v);
-    const pruefe = () => {
+    const pruefe = (ev?: Event) => {
       if (!this.r.lebt() || !this.r.aktiv()) return;
-      if (v.controls || !v.muted) {
+      if (v.controls || !stumm(v)) {
         for (const e of ['volumechange', 'play', 'loadedmetadata']) v.removeEventListener(e, pruefe);
         this.beobachtet.delete(v);
         if (!z.urteil && !z.eingereiht) this.r.bewerte(v, z);
+      } else if (ev?.type === 'play' && !z.urteil) {
+        // Live-Lauf 18, Fund 2: startet die Seite eine versteckte Vorschau neu, laeuft sie nicht unsichtbar weiter.
+        try {
+          v.pause();
+        } catch {
+          // nicht steuerbar
+        }
       }
     };
     for (const e of ['volumechange', 'play', 'loadedmetadata']) v.addEventListener(e, pruefe);
