@@ -48,6 +48,18 @@
     <!-- Live-Lauf 18, Fund 1: stumme Anzeigen-Schleife ausserhalb von Karten und Player, ohne Bedienelemente (passt auf keinen Hover-Selektor).
          Dazu ein grosses Hero-Video ohne Quelle wie auf der Startseite: das groesste Video einer Seite bleibt von der Regel ausgenommen. -->
     <video id="hero-video" muted preload="none" style="display: block; width: 950px; height: 400px"></video>
+    <!-- Entscheidung 193: Anzeigen auf Erwachsenenseiten ganz verbergen. Native-Ad-Kachel wie bei xvideos (Klasse msg-native-widget-it, Link nach
+         draussen, Aufschrift "Ad") und eine Kachel nur mit Aufschrift. Beide Bilder sind synthetisch und harmlos: ohne die Regel blieben sie frei. -->
+    <div class="msg-native-widget-it" style="width: 300px; position: relative">
+      <a href="https://dating.example/klick?id=1"><img id="anzeige-bild" alt="Anzeige" width="300" height="250" src="/synthetisch/21.png" /></a>
+      <span class="label">Ad</span>
+      <video id="anzeige-ton-video" loop autoplay preload="none" width="300" height="170"></video>
+    </div>
+    <div class="kopfleiste"><img id="kopf-bild" alt="Kopf" width="120" height="90" src="/synthetisch/23.png" /><span>Ads</span></div>
+    <div class="kachel" style="width: 300px">
+      <span>Anzeige</span>
+      <a href="https://shop.example/"><img id="anzeige-bild2" alt="Anzeige 2" width="300" height="250" src="/synthetisch/22.png" /></a>
+    </div>
     <div class="werbe-kachel" style="width: 300px; height: 250px; position: relative">
       <video id="anzeige-video" muted loop autoplay preload="none" width="300" height="250"></video>
     </div>
@@ -65,9 +77,15 @@
         r.ondataavailable = function (e) { teile.push(e.data); };
         r.onstop = function () {
           clearInterval(uhr);
+          var quelle = URL.createObjectURL(new Blob(teile, { type: 'video/webm' }));
           var v = document.getElementById('anzeige-video');
-          v.src = URL.createObjectURL(new Blob(teile, { type: 'video/webm' }));
+          v.src = quelle;
           v.play().catch(function () {});
+          // Anzeigen-Video MIT Ton in der Native-Ad-Kachel (Entscheidung 193): nie gezeigt, stumm.
+          var t = document.getElementById('anzeige-ton-video');
+          t.muted = false;
+          t.src = quelle;
+          t.play().catch(function () {});
         };
         r.start();
         setTimeout(function () { r.stop(); }, 1000);

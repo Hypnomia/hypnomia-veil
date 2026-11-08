@@ -210,6 +210,13 @@ async function wirdOrtGetauscht(ort) {
     await warte(2500);
     const anz = (await stand(['anzeige-video']))[0];
     pruefe(anz.veil === null && anz.opacity === '0', `pornhub: Anzeigen-Video nie gezeigt (${JSON.stringify(anz)})`);
+    // Entscheidung 193: Anzeigen-Bilder ganz getauscht, Anzeigen-Video mit Ton versteckt und stumm
+    for (const id of ['anzeige-bild', 'anzeige-bild2']) await bis(`pornhub: ${id} getauscht`, async () => istPackBild((await stand([id]))[0]), 15_000);
+    const tonAnz = (await stand(['anzeige-ton-video']))[0];
+    pruefe(tonAnz.veil === null && tonAnz.opacity === '0', `pornhub: Anzeigen-Video mit Ton nie gezeigt (${JSON.stringify(tonAnz)})`);
+    // Firefox blockt Abspielen mit Ton ohne Klick: das Video laedt dann gar nicht. Pruefgroesse ist darum "kein Ton hoerbar" (angehalten oder stumm).
+    const tonZustand = await driver.executeScript(() => { const v = document.getElementById('anzeige-ton-video'); return { muted: v.muted, paused: v.paused }; });
+    pruefe(tonZustand.muted || tonZustand.paused, `pornhub: Anzeigen-Video ohne hoerbaren Ton (${JSON.stringify(tonZustand)})`);
   }
   await warte(300);
   const w = await waechter();

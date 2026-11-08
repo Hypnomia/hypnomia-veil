@@ -277,11 +277,31 @@ for (const ort of SEITEN) {
     expect(h.opacity).toBe('0');
     // Live-Lauf 18, Fund 1: auf Seiten mit eigenem Adapter auch jede andere stumme Schleife ohne Bedienelemente ausserhalb des Players (Anzeige)
     if (ort.name === 'pornhub') {
+      // Entscheidung 193: Anzeigen-Bilder (Native-Ad-Kachel, Kachel mit Aufschrift) werden wie Vorschaubilder ganz gegen Pack-Bilder getauscht.
+      for (const id of ['anzeige-bild', 'anzeige-bild2']) await expect.poll(async () => istPackBild((await stand(s, [id]))[0]!), { timeout: 15_000 }).toBe(true);
       // Die Anzeige hat erst nach gut 1 s eine Quelle (Aufnahme in der Seite); danach haette ein Schleier ohne die Regel sie geprueft.
       await expect.poll(() => s.evaluate(() => (document.getElementById('anzeige-video') as HTMLVideoElement).readyState >= 2), { timeout: 10_000 }).toBe(true);
       await abwarten(2500);
       const anz = (await stand(s, ['anzeige-video']))[0]!;
       expect(anz, 'Anzeigen-Video nie gezeigt').toMatchObject({ veil: null, opacity: '0' });
+      const tonAnz = (await stand(s, ['anzeige-ton-video']))[0]!;
+      expect(tonAnz, 'Anzeigen-Video mit Ton nie gezeigt').toMatchObject({ veil: null, opacity: '0' });
+      const tonZustand = await s.evaluate(() => { const v = document.getElementById('anzeige-ton-video') as HTMLVideoElement; return { muted: v.muted, paused: v.paused }; });
+      expect(tonZustand.paused || tonZustand.muted, `Anzeigen-Video ohne hoerbaren Ton ${JSON.stringify(tonZustand)}`).toBe(true);
+      // Pruefung Runde 9, A: die Seite startet die Anzeige bei jedem Anhalten neu, mit Ton: nach der Grenze laeuft sie unsichtbar, aber stumm
+      await s.evaluate(() => {
+        const v = document.getElementById('anzeige-ton-video') as HTMLVideoElement;
+        v.muted = false;
+        v.addEventListener('pause', () => void v.play().catch(() => {}));
+        void v.play().catch(() => {});
+      });
+      await abwarten(3000);
+      const hartnaeckig = await s.evaluate(() => { const v = document.getElementById('anzeige-ton-video') as HTMLVideoElement; return { muted: v.muted, paused: v.paused, op: getComputedStyle(v).opacity }; });
+      expect(hartnaeckig.paused || hartnaeckig.muted, `hartnaeckige Anzeige ohne hoerbaren Ton ${JSON.stringify(hartnaeckig)}`).toBe(true);
+      expect(hartnaeckig.op).toBe('0');
+      // Negativkontrolle (Pruefung Runde 8, Nr. 6): Bild neben einem Menuepunkt "Ads", ohne Link nach draussen, bleibt beim normalen Weg
+      await expect.poll(async () => (await stand(s, ['kopf-bild']))[0]!.veil, { timeout: 20_000 }).toBe('frei');
+      expect((await stand(s, ['kopf-bild']))[0]!.src).toMatch(/^\/synthetisch\//);
     }
     await abwarten(300);
     const w = await waechter(s);

@@ -93,6 +93,10 @@ import { zaehleZustaende, type Zaehlung } from './zaehlung';
 import { istSchleifenUmlauf, VideoTakt, type VideoErgebnis, type VideoUrteil } from './video';
 import { inhaltAusTreffern, zaehltFuerInhalt } from '../adapter/inhalt';
 import { Vorschau } from './vorschau';
+import { TonDeckel } from './ton-deckel';
+import { adapterFuer, istHoverVideo } from '../adapter';
+import { istAnzeige } from '../adapter/anzeige';
+import { erwachsenStatus } from '../adapter/status';
 import { Freilegen } from './freilegen';
 import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
@@ -1726,7 +1730,26 @@ export function starteSchleier(ctx: KontextLeicht): void {
     // Session 11: Ledger zaehlt nur neue Inhalte (Neubewertung desselben Inhalts zaehlt nicht, wie bei der Steigerung).
     if (steigerung.zensiert(el)) melde({ art: 'zensiert' });
   });
-  setzeUrteilMelder((el, z) => freilegen.beiUrteil(el, z));
+  // Entscheidung 193: verdeckte Vorschau- und Anzeigen-Videos auf Erwachsenenseiten der Liste geben keinen Ton. Nie ein Video im Player.
+  const tonDeckel = new TonDeckel(
+    () => aktiv && erwachsenStatus().liste !== null,
+    (v) => {
+      const adapter = adapterFuer(erwachsenStatus().liste);
+      const imPlayer = (adapter.player ?? []).some((sel) => {
+        try {
+          return !!v.closest(sel);
+        } catch {
+          return false;
+        }
+      });
+      // ueber Shadow-Grenzen wie versteckeVideo (Pruefung Runde 9, B: Hover-Video in einer Shadow Root mit dem Link am Host)
+      return !imPlayer && (istHoverVideo(Vorschau.ueberSchatten(v), adapter) || istAnzeige(v, location.href));
+    },
+  );
+  setzeUrteilMelder((el, z) => {
+    freilegen.beiUrteil(el, z);
+    tonDeckel.beiUrteil(el, z);
+  });
   const steigerungGeladen = steigerung.start();
   if (document.readyState === 'complete') beiLoad();
   status.plane();
@@ -1765,6 +1788,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     setzeZonenAnpassung(null);
     setzeZensiertMelder(null);
     setzeUrteilMelder(null);
+    tonDeckel.alleFrei();
     freilegen.raeumeAuf();
     try {
       steigerung.stopp();

@@ -10,6 +10,7 @@
 import { adapterFuer, istHoverVideo, istVorschau, VORSCHAU_MIN_KANTE } from '../adapter';
 import { InhaltsZaehler, type InhaltsUrteil } from '../adapter/inhalt';
 import { istListenPfad } from '../player/logik';
+import { istAnzeige } from '../adapter/anzeige';
 import { seiteFuer, TEST_DOMAIN, type SeitenName } from '../adapter/liste';
 import { erwachsenStatus, setzeErwachsenStatus } from '../adapter/status';
 import { STUFEN_WAHL, type Einstellungen, type StufeWahl } from '../einstellungen';
@@ -32,9 +33,10 @@ const TESTHAKEN_E: boolean = import.meta.env.WXT_TESTHAKEN === '1';
 
 // Stumm ist auch ein Video mit Lautstaerke 0 (Pruefung Runde 7, Nr. 2: sonst entging eine Anzeige der Regel mit muted=false, volume=0).
 const stumm = (v: HTMLVideoElement): boolean => v.muted || v.volume === 0;
+const NACHHALTEN_MAX = 20; // so oft haelt der Schleier ein verstecktes Video wieder an, wenn die Seite es neu startet
 
 // Das groesste Video des Dokuments nach dargestellter Flaeche (Hauptvideo einer Videoseite). Gleich gross: das Video selbst gilt als groesstes.
-function istGroesstesVideo(v: HTMLVideoElement): boolean {
+export function istGroesstesVideo(v: HTMLVideoElement): boolean {
   const flaeche = (x: Element): number => {
     const r = x.getBoundingClientRect();
     return r.width * r.height;
@@ -172,7 +174,8 @@ export class Vorschau {
       h = el.naturalHeight;
     }
     if (b < VORSCHAU_MIN_KANTE || h < VORSCHAU_MIN_KANTE) return null;
-    return istVorschau(Vorschau.ueberSchatten(el), adapterFuer(this.liste), location.href) ? r : null;
+    // Entscheidung 193: Anzeigen werden wie Vorschaubilder ganz getauscht (nicht nur zonenweise zensiert).
+    return istVorschau(Vorschau.ueberSchatten(el), adapterFuer(this.liste), location.href) || istAnzeige(el, location.href) ? r : null;
   }
 
   // closest geht nicht ueber Shadow-Grenzen: ohne Treffer wird am Host der Shadow Root weitergesucht.
@@ -187,7 +190,7 @@ export class Vorschau {
     return null;
   }
 
-  private static ueberSchatten(el: Element): { matches(s: string): boolean; closest(s: string): Element | null } {
+  static ueberSchatten(el: Element): { matches(s: string): boolean; closest(s: string): Element | null } {
     return { matches: (s) => el.matches(s), closest: (s) => Vorschau.naechster(el, s) };
   }
 
@@ -431,8 +434,20 @@ export class Vorschau {
     const adapter = adapterFuer(this.liste);
     // Nur stumme Vorschau-Schleifen: Beitragsvideos und Player (Bedienelemente, Ton, Player-Selektor) bleiben beim normalen Schleier.
     const v = el as HTMLVideoElement;
+    const imPlayer = !!adapter.player?.length && adapter.player.some((s) => { try { return !!Vorschau.naechster(el, s); } catch { return false; } });
+    // Entscheidung 193: ein Video in einer Anzeige wird nie gezeigt, auch mit Ton (angehalten, also still), ausser im Player der Seite. Der
+    // Ton-Zustand bleibt unberuehrt (nichts zurueckzustellen bei Pause, Pruefung Runde 8, Nr. 3).
+    if (!imPlayer && istAnzeige(el, location.href)) {
+      this.beobachteVideo(v, z);
+      try {
+        v.pause();
+      } catch {
+        // nicht steuerbar
+      }
+      return true;
+    }
     if (v.controls || !stumm(v)) return false;
-    if (adapter.player?.length && adapter.player.some((s) => { try { return !!Vorschau.naechster(el, s); } catch { return false; } })) return false;
+    if (imPlayer) return false;
     // Live-Lauf 18, Fund 1: auf Seiten mit eigenem Adapter (Player bekannt) gilt jede stumme Schleife ohne Bedienelemente ausserhalb des
     // Players als Vorschau oder Anzeige, nicht nur, was auf einen Hover-Selektor passt. Eine Anzeige ausserhalb der Karten lief sonst durch die
     // Pruefung, die ein explizites Bild verfehlte (Firefox, Pornhub). Ausgenommen OnlyFans und Fansly: dort sind Beitragsvideos Inhalt.
@@ -456,13 +471,32 @@ export class Vorschau {
   private beobachteVideo(v: HTMLVideoElement, z: Zustand): void {
     if (this.beobachtet.has(v)) return;
     this.beobachtet.add(v);
+    const anzeige = istAnzeige(v, location.href);
+    let nachgehalten = 0;
     const pruefe = (ev?: Event) => {
       if (!this.r.lebt() || !this.r.aktiv()) return;
+      if (anzeige) {
+        // Anzeige (Entscheidung 193): bleibt verborgen und angehalten, auch wenn die Seite Ton oder Bedienelemente einschaltet. Hoechstens
+        // NACHHALTEN_MAX Mal (gegen ein Hin und Her mit der Seite).
+        try {
+          if (ev?.type === 'play' && nachgehalten < NACHHALTEN_MAX) {
+            nachgehalten++;
+            v.pause();
+          } else if (nachgehalten >= NACHHALTEN_MAX && !v.muted) {
+            // Pruefung Runde 9, A: startet die Seite die Anzeige immer wieder, laeuft sie nach der Grenze unsichtbar weiter, aber nie mit Ton.
+            v.muted = true;
+          }
+        } catch {
+          // nicht steuerbar
+        }
+        return;
+      }
       if (v.controls || !stumm(v)) {
         for (const e of ['volumechange', 'play', 'loadedmetadata']) v.removeEventListener(e, pruefe);
         this.beobachtet.delete(v);
         if (!z.urteil && !z.eingereiht) this.r.bewerte(v, z);
-      } else if (ev?.type === 'play' && !z.urteil) {
+      } else if (ev?.type === 'play' && !z.urteil && nachgehalten < NACHHALTEN_MAX) {
+        nachgehalten++;
         // Live-Lauf 18, Fund 2: startet die Seite eine versteckte Vorschau neu, laeuft sie nicht unsichtbar weiter.
         try {
           v.pause();

@@ -3,6 +3,7 @@
 // Video zur Laufzeit aufgenommen (keine Mediendatei). Riegel-Abbild in data-veil-riegel. Pack mit synthetischer Quiz-Bank (nur Auswahlfragen).
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -391,6 +392,29 @@ test('Adapter-Selektor: nur das Video in #player wird gesperrt, ein groesseres d
     await laeuft(s, 'gross');
     await setzeEinstellungen({ pause: true });
     await laeuft(s, 'haupt');
+    await setzeEinstellungen({ pause: false });
+  } finally {
+    await s.close();
+  }
+});
+
+// Entscheidung 193 (Live-Lauf 18 B): ein vom Schleier verdecktes Vorschauvideo auf einer Erwachsenenseite gibt keinen Ton; Pause gibt ihn zurueck.
+test('Verdeckte Schleife mit Ton auf der Erwachsenenseite ist stumm, Pause gibt den Ton zurueck; das Hauptvideo bleibt unberuehrt', async () => {
+  test.skip(!existsSync(path.resolve(wurzel, '../05 Testbilder/nsfw/IMG_0260.jpg')), 'ohne Testbilder');
+  const s = await context.newPage();
+  try {
+    await s.goto(`http://pornhub.veil-erwachsen.test:${port}/erwachsen-ton.html`);
+    await s.waitForFunction(() => document.documentElement.dataset.tonBereit === '1', null, { timeout: 30_000 });
+    const zustand = (id: string) => s.evaluate((i) => { const v = document.getElementById(i) as HTMLVideoElement; return { veil: v.getAttribute('data-veil'), muted: v.muted }; }, id);
+    const ton = () => zustand('ton');
+    await expect.poll(async () => (await ton()).veil, { timeout: 20_000 }).toBe('verdeckt');
+    await expect.poll(async () => (await ton()).muted, { timeout: 5000 }).toBe(true);
+    // Beitragsvideo ohne Vorschau-Link: verdeckt, aber kein Vorschau-Video, behaelt den Ton; Hauptvideo unberuehrt
+    await expect.poll(async () => (await zustand('beitrag')).veil, { timeout: 20_000 }).toBe('verdeckt');
+    expect((await zustand('beitrag')).muted, 'Beitragsvideo behaelt Ton').toBe(false);
+    expect((await zustand('haupt')).muted, 'Hauptvideo behaelt Ton').toBe(false);
+    await setzeEinstellungen({ pause: true });
+    await expect.poll(async () => (await ton()).muted, { timeout: 5000 }).toBe(false);
     await setzeEinstellungen({ pause: false });
   } finally {
     await s.close();

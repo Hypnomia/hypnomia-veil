@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Ton-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      #haupt { width: 800px; height: 450px; display: block; background: #223; }
+      #ton { width: 320px; height: 180px; display: block; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <!-- Entscheidung 193: abgedeckte Vorschauvideos auf Erwachsenenseiten geben keinen Ton. Ein groesseres Video ohne Quelle und mit Ton (Hauptvideo,
+         bleibt unberuehrt), eine kleine Schleife MIT Ton in einem Vorschau-Link (#ton, Hover-Video des Pornhub-Adapters: wird verdeckt und stumm) und
+         dieselbe Schleife ohne Link (#beitrag: kein Vorschau-Video, wird verdeckt, behaelt aber ihren Ton). Quelle aus einem Testbild (Treffer).
+         Laeuft auf pornhub.veil-erwachsen.test (Testbau). -->
+    <video id="haupt" preload="none"></video>
+    <a id="platz" href="/view_video.php?viewkey=ton"></a>
+    <div id="platz2"></div>
+    <script>
+      (function () {
+        var bild = new URLSearchParams(location.search).get('bild') || 'IMG_0260.jpg';
+        var img = new Image();
+        img.onload = function () {
+          var c = document.createElement('canvas');
+          c.width = 320;
+          c.height = 180;
+          var g = c.getContext('2d');
+          var uhr = setInterval(function () { g.drawImage(img, 0, 0, 320, 180); }, 40);
+          var r = new MediaRecorder(c.captureStream(25));
+          var teile = [];
+          r.ondataavailable = function (e) { teile.push(e.data); };
+          r.onstop = function () {
+            clearInterval(uhr);
+            var v = document.createElement('video');
+            v.id = 'ton';
+            v.loop = true;
+            v.autoplay = true;
+            v.muted = false;
+            v.setAttribute('playsinline', '');
+            v.src = URL.createObjectURL(new Blob(teile, { type: r.mimeType }));
+            document.getElementById('platz').appendChild(v);
+            v.play().catch(function () {});
+            var b = document.createElement('video');
+            b.id = 'beitrag';
+            b.loop = true;
+            b.autoplay = true;
+            b.muted = false;
+            b.setAttribute('playsinline', '');
+            b.src = v.src;
+            b.style.cssText = 'width:320px;height:180px;display:block';
+            document.getElementById('platz2').appendChild(b);
+            b.play().catch(function () {});
+            document.documentElement.dataset.tonBereit = '1';
+          };
+          r.start();
+          setTimeout(function () { r.stop(); }, 1500);
+        };
+        img.src = '/testbild/nsfw/' + encodeURIComponent(bild);
+      })();
+    </script>
+  </body>
+</html>
