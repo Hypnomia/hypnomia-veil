@@ -251,6 +251,44 @@ test('Erster Riegel je Installation erklaert sich (Zeile mit Link zur Hilfe), da
   }
 });
 
+// Session 18 (Entscheidung 185): beim ersten Riegel auf einem kleinen Anker schob die Erklaerzeile die unterste Antwort unter die sichtbare
+// Kante des Rollbereichs. Jetzt liegen alle Antworten ohne Rollen im Blick; die Zeile folgt darunter (notfalls erst nach dem Rollen).
+test('Erster Riegel auf kleinem Anker (320 x 480): alle Antworten liegen ohne Rollen im Blick, die Erklaerzeile darunter', async () => {
+  const e = await extSeite();
+  await e.evaluate(() => (globalThis as any).chrome.storage.local.remove('riegelErklaert'));
+  await e.close();
+  const s = await frischeSeite();
+  try {
+    await s.evaluate(() => {
+      const p = document.querySelector('#player') as HTMLElement;
+      p.style.width = '320px';
+      p.style.height = '480px';
+    });
+    await oeffne(s, { frage: 'test-w1', anker: '#player' });
+    const a = await bis(s, (x) => x.offen && x.zustand === 'frage' && x.antworten.length === 3 && !!x.erklaerung);
+    await s.waitForTimeout(300);
+    const b = await bis(s, (x) => x.offen && x.zustand === 'frage');
+    expect(b.host.h, 'Riegel auf dem Anker').toBeLessThan(500);
+    for (const k of b.antworten) {
+      expect(k.y, `${k.text} oben im Blick`).toBeGreaterThanOrEqual(b.scrollBox.y - 1);
+      expect(k.y + k.h, `${k.text} unten im Blick`).toBeLessThanOrEqual(b.scrollBox.y + b.scrollBox.h + 1);
+    }
+    expect(b.erklaerungBox.y, 'Erklaerzeile unter den Antworten').toBeGreaterThan(b.antworten[b.antworten.length - 1]!.y);
+    expect(a.erklaerung).toContain('First time?');
+    // Der Link in der Zeile bleibt bedienbar: in den Blick rollen, klicken, die Hilfe oeffnet sich
+    await s.mouse.move(b.scrollBox.x + b.scrollBox.w / 2, b.scrollBox.y + b.scrollBox.h / 2);
+    await s.mouse.wheel(0, 600);
+    await s.waitForTimeout(400);
+    const c = await bis(s, (x) => x.offen && !!x.erklaerungLink && x.erklaerungLink.y + x.erklaerungLink.h <= x.scrollBox.y + x.scrollBox.h + 1);
+    const [neu] = await Promise.all([context.waitForEvent('page', { timeout: 10_000 }), clickErklaerung(s, c)]);
+    await neu.waitForLoadState('domcontentloaded').catch(() => undefined);
+    expect(neu.url()).toBe(`chrome-extension://${erweiterungsId}/hilfe.html#quiz`);
+    await neu.close();
+  } finally {
+    await s.close();
+  }
+});
+
 async function clickErklaerung(s: Page, a: any): Promise<void> {
   // Der Link "How my quiz works" steht am Ende der Zeile.
   await s.mouse.click(a.erklaerungLink.x + a.erklaerungLink.w / 2, a.erklaerungLink.y + a.erklaerungLink.h / 2);

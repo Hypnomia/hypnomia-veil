@@ -65,8 +65,14 @@ for (const { id, behalten } of ZU) {
   knopf.addEventListener('click', () => {
     z.offen = true;
     zeichneZu(z);
-    // Der Fokus bleibt nicht auf dem verschwundenen Knopf: er geht zum ersten Bedienelement der aufgeklappten Karte.
-    block.querySelector<HTMLElement>('input:not([disabled]), select, button:not([disabled])')?.focus();
+    // Der Fokus bleibt nicht auf dem verschwundenen Knopf: er geht zum ersten sichtbaren Bedienelement der aufgeklappten Karte, sonst auf ihre
+    // Ueberschrift (erste Lesung 17, Fund 17: ein Element in einem verborgenen Teil nimmt keinen Fokus, er fiele auf body).
+    const ziel = [...block.querySelectorAll<HTMLElement>('input:not([disabled]), select, button:not([disabled])')].find((e) => e.getClientRects().length > 0);
+    if (ziel) ziel.focus();
+    else if (kopf instanceof HTMLElement) {
+      if (!kopf.hasAttribute('tabindex')) kopf.tabIndex = -1;
+      kopf.focus();
+    }
   });
   zus.push(z);
   zeichneZu(z);
@@ -84,11 +90,42 @@ function ordne(): void {
   if (chip && chipNach && chip.previousElementSibling !== chipNach) chipNach.after(chip);
 }
 
+// Sprung beim Oeffnen (Popup oeffnet "#stand" oder "#neu"): der Browser springt sofort, die Reihenfolge der Karten steht aber erst, wenn das
+// Pack gelesen ist; unter Last rutschte der Abschnitt danach aus dem Blick (Session 18, Wackler popup "Fund 7"). In den ersten Sekunden haelt die
+// Seite den Anker darum im Blick, bis die Person selbst rollt, tippt oder klickt.
+const ANKER_HALTEN_MS = 3000;
+let halteAnker = (): void => {};
+(() => {
+  const id = (() => {
+    try {
+      return decodeURIComponent(location.hash.slice(1));
+    } catch {
+      return '';
+    }
+  })();
+  if (!id || !document.getElementById(id)) return;
+  const EINGRIFFE = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+  let aus = false;
+  const lage = typeof ResizeObserver === 'function' ? new ResizeObserver(() => halteAnker()) : null;
+  const ende = (): void => {
+    aus = true;
+    lage?.disconnect();
+    for (const t of EINGRIFFE) removeEventListener(t, ende, true);
+  };
+  halteAnker = () => {
+    if (!aus) document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  };
+  lage?.observe(document.body);
+  for (const t of EINGRIFFE) addEventListener(t, ende, { capture: true, passive: true });
+  setTimeout(ende, ANKER_HALTEN_MS);
+})();
+
 function setzePack(pack: PackKurz | null): void {
   packBekannt = true;
   mitPack = pack !== null;
   for (const z of zus) zeichneZu(z);
   ordne();
+  halteAnker();
   // Testhaken (nur Testbau, ohne Wirkung): die Seite hat gelesen, ob ein Pack da ist, Zuklappen und Reihenfolge stehen.
   if (TESTHAKEN) document.body.setAttribute('data-veil-ordnung', 'bereit');
 }

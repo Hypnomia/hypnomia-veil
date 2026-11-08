@@ -259,9 +259,16 @@ export function starteWerbung(ctx: KontextLeicht): void {
     }
   };
   for (const typ of [...KLICKS, ...LOESEN, ...TASTEN]) window.addEventListener(typ, schutz, { capture: true });
-  // Rollen oder Groessenwechsel: das Menue steht an einer festen Stelle und schliesst sich lieber.
-  const schliesseMenue = (): void => {
-    if (menue?.offen()) menue.schliesse(false);
+  // Rollen oder Groessenwechsel: das Menue steht an einer festen Stelle und schliesst sich lieber. Rollt nur eine innere Leiste, die die
+  // Flaeche des Menues nicht enthaelt (Karussell, Seitenleiste, programmatisches Rollen anderswo), bleibt es offen (erste Lesung 17, Fund 13).
+  const schliesseMenue = (ev?: Event): void => {
+    if (!menue?.offen() || (ev && !ev.isTrusted)) return; // eine Seite schliesst das Menue nicht mit einem eigenen Ereignis
+    const ziel = ev?.type === 'scroll' ? ev.target : null;
+    if (ziel instanceof Element && ziel !== document.scrollingElement && ziel !== document.documentElement && ziel !== document.body) {
+      const eigene = [...flaechen.values()].find((f) => menue!.gehoertZu(f.nr));
+      if (eigene && !ziel.contains(eigene.el)) return;
+    }
+    menue.schliesse(false);
   };
   window.addEventListener('scroll', schliesseMenue, { capture: true, passive: true });
   window.addEventListener('resize', schliesseMenue);

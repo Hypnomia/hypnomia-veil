@@ -1127,6 +1127,35 @@ test('Menue im Rahmen waehrend einer laufenden Tab-Abfrage: "Hide my ads on this
   }
 });
 
+// Erste Lesung Session 17, Fund 13: Rollen einer inneren Leiste, die die Flaeche nicht enthaelt, schliesst das Menue nicht mehr; Rollen der
+// Seite schon (das Menue steht fest und wuerde sonst neben der Flaeche haengen).
+test('Menue: Rollen einer fremden inneren Leiste laesst es offen, Rollen der Seite schliesst es', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
+  const s = await context.newPage();
+  try {
+    await s.goto(nachrichten);
+    await warteAuf(s, ERWARTET);
+    await s.evaluate(() => {
+      const leiste = document.createElement('div');
+      leiste.id = 'leiste';
+      leiste.style.cssText = 'position:fixed;left:0;bottom:0;width:200px;height:40px;overflow:auto;white-space:nowrap';
+      leiste.textContent = 'x '.repeat(400);
+      document.body.append(leiste);
+    });
+    await klickEtikett(s, 'a-rahmen');
+    expect((await menueVon(s))?.offen).toBe(true);
+    await s.evaluate(() => {
+      document.getElementById('leiste')!.scrollLeft = 300;
+    });
+    await abwarten(300);
+    expect((await menueVon(s))?.offen, 'fremde Leiste gerollt').toBe(true);
+    await s.evaluate(() => scrollBy(0, 200));
+    await expect.poll(async () => (await menueVon(s))?.offen, { timeout: 3000 }).toBe(false);
+  } finally {
+    await s.close();
+  }
+});
+
 test('Menue: "Pause Mia" pausiert alles; auf einer Flaeche unter 80 px gibt es nur "Turn my ads off"', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
   const s = await context.newPage();

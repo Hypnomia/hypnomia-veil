@@ -66,3 +66,7 @@ Hours you pick for me to be stricter. Set them under **All settings**, **Mia’s
 - a quiz waits before videos on every site, if **Adult-site mode** is on
 
 My popup tells you while a strict time runs. [Pause](pause.md) works as always and lets go of everything, strict time or not.
+
+## My little notes
+
+Now and then I leave a short note on the page, at most one every 10 minutes. Close it with the cross, or click **Turn my notes off** when I ask whether you’ve had enough. With the keyboard, switch them off under **All settings**, **Mia’s control**, **My little notes**. [Pause](pause.md) hides them too.

@@ -135,7 +135,18 @@ const entferne = (k) => imSeitenkontext(`await api.storage.local.remove(args[0])
 const packMit = (freischaltungen) => ({ id: 't', version: '1.0.0', titel: 'T', freischaltungen, bilder: 7, groesse: 1, importiert: 1 });
 const anzeige = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return e.value ?? e.textContent;`, css);
 // Echte WebDriver-Klicks und Tasten (Mausklick aufs Label, Pfeiltasten am Regler), kein element.click() im Seitenskript.
-const wdKlick = async (by) => (await driver.findElement(by)).click();
+// Session 18: unter Last meldet geckodriver fuer den klebenden Pause-Knopf gelegentlich "could not be scrolled into view" (Seite waechst
+// noch); dann kurz warten und einmal wiederholen. Andere Fehler gehen durch.
+const wdKlick = async (by) => {
+  for (let versuch = 0; ; versuch++) {
+    try {
+      return await (await driver.findElement(by)).click();
+    } catch (e) {
+      if (versuch >= 2 || e?.name !== 'ElementNotInteractableError') throw e;
+      await new Promise((ok) => setTimeout(ok, 500));
+    }
+  }
+};
 const labelMit = (bereich, text) => By.xpath(`//*[@id='${bereich}']//label[contains(., '${text}')]`);
 const zone = (text) => wdKlick(labelMit('zonen', text));
 const stilWahl = (text) => wdKlick(By.xpath(`//div[contains(@class,'wahl')]//label[contains(., '${text}')]`));

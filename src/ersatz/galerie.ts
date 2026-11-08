@@ -173,7 +173,7 @@ export class Galerie {
     ruhe.type = 'button';
     this.ruheKnopf = ruhe;
     kopfzeile.append(ruhe);
-    fuss.append(el('span', undefined, 'Pausing is always allowed. The site shows up right away. Leave this site alone keeps me off it for good, and Let Mia back on this site in my popup undoes it.'));
+    fuss.append(el('span', undefined, 'Pausing is always allowed. The site shows up right away. Leave this site alone keeps me off it for good, and takes it off your own adult sites too. Let Mia back on this site in my popup undoes it.'));
 
     main.append(kopfzeile, kopf, bilderBereich, linkBereich, fuss);
     huelle.append(main);
@@ -209,12 +209,17 @@ export class Galerie {
     return trifft(this.pauseKnopf);
   }
 
-  // Die Seite auf die Ausnahmeliste setzen (Host ohne "www.", deckt Subdomains) und neu laden: dann ist sie ohne Mia.
+  // Die Seite auf die Ausnahmeliste setzen (Host ohne "www.", deckt Subdomains) und neu laden: dann ist sie ohne Mia. Steht der Host (oder eine
+  // Oberdomain) in den eigenen Erwachsenenseiten, faellt er dort heraus (erste Lesung 17, Fund 11): die Person will die Seite in Ruhe, und die
+  // Einstellungsseite laesst denselben Host nie auf beiden Listen stehen.
   private async laesstRuhe(): Promise<void> {
     const muster = location.hostname.toLowerCase().replace(/^www\./, '');
     if (!zerlegeMuster(muster)) return;
     try {
-      await aendereEinstellungen((alt) => ({ ausnahmen: [...new Set([...alt.ausnahmen, muster])] }));
+      await aendereEinstellungen((alt) => ({
+        ausnahmen: [...new Set([...alt.ausnahmen, muster])],
+        erwachsen: { ...alt.erwachsen, eigeneSeiten: alt.erwachsen.eigeneSeiten.filter((h) => !(muster === h || muster.endsWith(`.${h}`))) },
+      }));
       location.reload();
     } catch {
       // Speicher nicht erreichbar: die Galerie bleibt, Pause geht immer

@@ -407,7 +407,10 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
       erklaerungLink = wasLink;
       merkeErklaert();
     }
-    karte.append(kopf, scroll, ...(erklaerung ? [erklaerung] : []), fuss, ansage);
+    // Session 18 (Entscheidung 185): die Erklaerzeile steht im Rollbereich hinter den Antworten, nicht fest darunter; sonst nahm sie kleinen
+    // Riegeln die Hoehe und die unterste Antwort startete verdeckt.
+    if (erklaerung) scroll.append(erklaerung);
+    karte.append(kopf, scroll, fuss, ansage);
     huelle.append(karte);
     wurzel.append(stil, huelle);
 

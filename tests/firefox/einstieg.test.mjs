@@ -107,7 +107,8 @@ const setzeRange = (css, wert) =>
   driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));`, css, String(wert));
 const waehle = (css, wert) =>
   driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('change', { bubbles: true }));`, css, wert);
-const schritt = () => driver.executeScript(`return document.querySelector('#schritt').dataset.schritt`);
+// Session 18: null-sicher, die Seite kann beim Abfragen noch laden (Gesamtlauf unter Last).
+const schritt = () => driver.executeScript(`return document.querySelector('#schritt')?.dataset.schritt ?? null`);
 const einst = async () => (await speicher('einstellungen')) ?? {};
 const einstieg = () => speicher('einstieg');
 const sende = (n) => imSeitenkontext(`return await api.runtime.sendMessage(args[0]);`, { ziel: 'hintergrund', typ: 'einstieg-test', ...n });

@@ -107,7 +107,26 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
     expect(await seite.evaluate(() => document.getElementById('kontrolle-block')!.contains(document.activeElement))).toBe(true);
     // Die anderen bleiben zu, bis man sie aufklappt.
     await expect(seite.locator('#erw-an')).toBeHidden();
+    // Erste Lesung 17, Fund 17: liegt das erste Bedienelement in einem verborgenen Teil, geht der Fokus auf ein sichtbares, nie auf body.
+    await seite.evaluate(() => {
+      const zeile = document.querySelector('#erwachsen-block label.schalter:has(#erw-an)') as HTMLElement;
+      zeile.dataset.testVerborgen = '1';
+      zeile.hidden = true;
+    });
     await seite.locator('#erwachsen-zu-knopf').click();
+    expect(
+      await seite.evaluate(() => {
+        const a = document.activeElement as HTMLElement | null;
+        return !!a && a !== document.body && a.tagName !== 'H2' && a.getClientRects().length > 0 && !!document.getElementById('erwachsen-block')!.contains(a);
+      }),
+      'Fokus sichtbar in der Karte',
+    ).toBe(true);
+    await seite.evaluate(() => {
+      for (const e of document.querySelectorAll<HTMLElement>('[data-test-verborgen]')) {
+        e.hidden = false;
+        delete e.dataset.testVerborgen;
+      }
+    });
     await expect(seite.locator('#erw-an')).toBeVisible();
     await seite.locator('label.schalter:has(#erw-an)').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(false);

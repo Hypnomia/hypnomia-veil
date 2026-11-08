@@ -565,6 +565,38 @@ test('eigene Seite bekommt die Galerie (auch in Chrome); ohne Eintrag nicht', as
   }
 });
 
+// Erste Lesung Session 17, Fund 11: "Leave this site alone" auf einer eigenen Erwachsenenseite nimmt sie aus "Your own sites", statt sie auf
+// beiden Listen zu lassen (die Einstellungsseite verweigert diesen Doppelstand).
+test('Leave this site alone auf einer eigenen Seite: Host kommt in die Ausnahmen und verlaesst die eigenen Seiten', async () => {
+  await setze({ pause: false, ausnahmen: [], eigeneSeiten: ['eigen.test', 'andere.test'] });
+  const seite = await oeffne(EIGEN);
+  try {
+    let a = await warteGalerie(seite);
+    // Lage erst nach zwei gleichen Messungen (Schrift und Bilder laden unter Last spaeter, der Knopf wandert).
+    for (let i = 0; i < 20; i++) {
+      await seite.waitForTimeout(150);
+      const b = (await abbild(seite))!;
+      const gleich = JSON.stringify(b.ruhe) === JSON.stringify(a.ruhe);
+      a = b;
+      if (gleich) break;
+    }
+    await seite.mouse.click(a.ruhe.x + a.ruhe.w / 2, a.ruhe.y + a.ruhe.h / 2);
+    const lies = () => ext.evaluate(async () => {
+      const e = (await (globalThis as any).chrome.storage.local.get('einstellungen')).einstellungen;
+      return { ausnahmen: e?.ausnahmen ?? [], eigene: e?.erwachsen?.eigeneSeiten ?? [] };
+    });
+    await expect.poll(async () => (await lies()).ausnahmen, { timeout: 10_000 }).toContain('eigen.test');
+    expect((await lies()).eigene).toEqual(['andere.test']);
+    // Das Neuladen nach dem Klick abwarten: eine Seite mitten im Neuladen zu schliessen, haengt in Chromium manchmal 60 s (Session 18).
+    await expect
+      .poll(async () => seite.evaluate(() => document.readyState === 'complete' && !document.documentElement.hasAttribute('data-veil-ersatz')).catch(() => false), { timeout: 10_000, intervals: [50] })
+      .toBe(true);
+  } finally {
+    await seite.close();
+  }
+  await setze({ pause: false, ausnahmen: [], eigeneSeiten: [] });
+});
+
 test('am Inhalt erkannte Seite bekommt nie die Galerie', async () => {
   await setze({ erkennenAmInhalt: true });
   const seite = await oeffne(INHALT);
