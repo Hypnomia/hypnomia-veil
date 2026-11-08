@@ -83,19 +83,41 @@ function zeichne(): void {
   }
 }
 
+// Session 18: mehrere Speicher-Ereignisse beim Import starten mehrere Ladungen; nur die juengste gilt. Sonst setzte eine aeltere, spaeter
+// fertige Ladung kurz den Stand ohne Pack, der Block verschwand und der Fokus (Frage "Show my ads?") fiel auf body.
+// Wer ladeAlles abwartet, wartet bis zur juengsten Ladung: danach ist der Stand aktuell (fokussiereEinrichten verlaesst sich darauf).
+let ladung = 0;
+let juengste: Promise<void> = Promise.resolve();
 async function ladeAlles(): Promise<void> {
+  const p = ladeEinmal(++ladung);
+  juengste = p;
+  let warte = p;
+  for (;;) {
+    await warte;
+    if (warte === juengste) return;
+    warte = juengste;
+  }
+}
+async function ladeEinmal(nr: number): Promise<void> {
+  let neuErledigt: string | null = erledigtFuer;
+  let neuWarnung = warnungBestaetigt;
   try {
     const a = await browser.storage.local.get([EINRICHTEN_SCHLUESSEL, QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL]);
-    erledigtFuer = typeof a[EINRICHTEN_SCHLUESSEL] === 'string' ? (a[EINRICHTEN_SCHLUESSEL] as string) : null;
-    warnungBestaetigt = a[QUIZ_WARNUNG_SCHLUESSEL] === true || a[WARNUNG_SPIRALE_SCHLUESSEL] === true;
+    neuErledigt = typeof a[EINRICHTEN_SCHLUESSEL] === 'string' ? (a[EINRICHTEN_SCHLUESSEL] as string) : null;
+    neuWarnung = a[QUIZ_WARNUNG_SCHLUESSEL] === true || a[WARNUNG_SPIRALE_SCHLUESSEL] === true;
   } catch {
-    erledigtFuer = null;
+    neuErledigt = null;
   }
+  let neu: [PackKurz | null, Einstellungen] | null = null;
   try {
-    [pack, einst] = await Promise.all([ladePackKurz(), ladeEinstellungen()]);
+    neu = await Promise.all([ladePackKurz(), ladeEinstellungen()]);
   } catch {
     // der naechste Stand zeichnet
   }
+  if (nr !== ladung) return;
+  erledigtFuer = neuErledigt;
+  warnungBestaetigt = neuWarnung;
+  if (neu) [pack, einst] = neu;
   zeichne();
 }
 

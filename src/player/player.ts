@@ -22,7 +22,7 @@ import { zeigeRiegel, type RiegelErgebnis } from '../riegel/riegel';
 import { AdressBeobachter } from '../schleier/adresse';
 import type { KontextLeicht } from '../schleier/schleier';
 import { istStandbildHost, Standbild } from './standbild';
-import { istGesteFuer, istGeloest, istListenPfad, quelleVon, quellSchluessel, vollbildBetrifft, waehleGroessten, willSpielen, type Geste } from './logik';
+import { istGesteFuer, istGeloest, istListenPfad, quelleVon, quellSchluessel, tasteZaehltAlsGeste, vollbildBetrifft, waehleGroessten, willSpielen, type Geste } from './logik';
 
 interface Sperre {
   warStumm: boolean; // Ton-Zustand vor der Sperre (folgt Aenderungen, die nicht von uns kommen)
@@ -277,8 +277,10 @@ export function startePlayer(ctx: KontextLeicht): void {
   function pflegeStandbild(ziele?: ReadonlySet<HTMLVideoElement>): void {
     if (!lebt()) return;
     const soll = new Map<HTMLVideoElement, Element>();
-    const bildErlaubt = !!pack && istFreigeschaltet(pack, 'erwachsen:vorschau');
-    if (einst && einst.erwachsen.an && aktiv() && erwachsenStatus().liste !== null && (bildErlaubt || [...gesperrt.values()].some((i) => i.wartet))) {
+    // Das Bild (Vorschau-Tausch) nur auf Seiten der Liste. Der Deckel fuer wartende Videos gilt ueberall, wo der Player sperrt, auch auf am Inhalt
+    // erkannten Seiten und in strengen Zeiten (Lesung 17 R2-3): ein wartendes Video liegt nie offen.
+    const bildErlaubt = !!pack && istFreigeschaltet(pack, 'erwachsen:vorschau') && erwachsenStatus().liste !== null;
+    if (einst && einst.erwachsen.an && aktiv() && (bildErlaubt || [...gesperrt.values()].some((i) => i.wartet))) {
       // Ein Anker bekommt nur ein Standbild (zwei Videos im selben Player: das erste zaehlt), sonst kaempften zwei Hosts um dieselbe Flaeche.
       const belegt = new Set<Element>();
       for (const v of standbildKandidaten(ziele ?? bestimmeZiele(true))) {
@@ -416,9 +418,11 @@ export function startePlayer(ctx: KontextLeicht): void {
   let geste: Geste | null = null;
   function beiGeste(e: Event): void {
     if (!e.isTrusted) return;
+    let taste = e.type === 'keydown';
+    // Tippen in ein Feld (Live-Suche) ist keine Geste fuer Videos (Lesung 17 R2-5).
+    if (taste && !tasteZaehltAlsGeste((e.composedPath()[0] as Element | undefined) ?? null)) return;
     let x = 0;
     let y = 0;
-    let taste = e.type === 'keydown';
     const t = (e as TouchEvent).touches?.[0];
     if (t) {
       x = t.clientX;

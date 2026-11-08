@@ -86,6 +86,10 @@ export interface NachrichtHintergrundSchrift { ziel: 'hintergrund'; typ: 'schrif
 // Session 17 (Fund 24): die Hilfe-Seite am Anker in neuem Tab oeffnen (Content-Scripts duerfen die Adresse der Erweiterung nicht selbst oeffnen).
 // Handler: src/hintergrund/hilfe.ts. Antwort `{ ok }`.
 export interface NachrichtHintergrundHilfe { ziel: 'hintergrund'; typ: 'hilfe'; anker: string }
+// Lesung 17 R2-4: Merker der Begruessung je Host im Hintergrund (storage.session). `merken`: jetzt als gezeigt merken. Antwort: war der Host in den
+// letzten 30 Minuten schon begruesst (vor diesem Aufruf)? Handler: src/hintergrund/gruss.ts.
+export interface NachrichtHintergrundGruss { ziel: 'hintergrund'; typ: 'gruss'; host: string; merken?: boolean }
+export type AntwortGruss = { ok: true; gezeigt: boolean } | { ok: false };
 export type AntwortSchrift = { ok: true; base64: string } | { ok: false };
 export type AntwortEinstiegTest = { ok: true; tabId?: number | null } | { ok: false; fehler: string };
 export type AntwortVersionTest = { ok: true } | { ok: false; fehler: string };
@@ -111,7 +115,8 @@ export type NachrichtHintergrund =
   | NachrichtHintergrundEinstiegTest
   | NachrichtHintergrundPackTon
   | NachrichtHintergrundSchrift
-  | NachrichtHintergrundHilfe;
+  | NachrichtHintergrundHilfe
+  | NachrichtHintergrundGruss;
 
 // Alle Typen, die der Hintergrund beantwortet (background.ts filtert damit; neue Typen hier und im Handler eintragen).
 export const HINTERGRUND_TYPEN = [
@@ -136,6 +141,7 @@ export const HINTERGRUND_TYPEN = [
   'packton',
   'schrift',
   'hilfe',
+  'gruss',
 ] as const satisfies readonly NachrichtHintergrund['typ'][];
 
 export interface AntwortPackDaten { ok: true; daten: QuizBank | Texte | null }

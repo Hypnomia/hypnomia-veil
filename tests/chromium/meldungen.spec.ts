@@ -68,6 +68,9 @@ const setzeKontrolle = (teil: Record<string, unknown>) => setzeEinstellungen({ k
 const schreibe = (schluessel: string, wert: unknown) =>
   worker.evaluate(async ([k, w]) => (globalThis as any).chrome.storage.local.set({ [k as string]: w }), [schluessel, wert] as const);
 const entferneSchluessel = (schluessel: string) => worker.evaluate(async (k) => (globalThis as any).chrome.storage.local.remove(k), schluessel);
+// Lesung 17 R2-4: der Begruessungs-Merker liegt nur noch in storage.session des Hintergrunds (fluechtig), nie mehr in storage.local.
+const vergissGruss = () => worker.evaluate(async () => (globalThis as any).chrome.storage.session.remove('grussMerker'));
+const liesSitzung = <T>(schluessel: string) => worker.evaluate(async (k) => ((await (globalThis as any).chrome.storage.session.get(k)) as any)[k] as T, schluessel);
 const lies = <T>(schluessel: string) => worker.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as any)[k] as T, schluessel);
 
 async function importierePack() {
@@ -524,7 +527,9 @@ test('Fewer notes?: nach drei Mal Wegklicken in Folge traegt die naechste Meldun
 test('Begruessung auf Erwachsenenseiten: einmal je Host in 30 Minuten (Merker nie im Speicher der Seite), Satz aus der Pack-Gruppe begruessung, nur mit Meldungen an', async () => {
   test.setTimeout(60_000);
   await setzeEinstellungen({ erwachsen: { eigeneSeiten: ['127.0.0.1'], an: true, komplettErsatz: false } });
-  await entferneSchluessel('grussMerker');
+  await vergissGruss();
+  // Altbestand aus 0.9.0 (Besuchsliste in storage.local) verschwindet mit der ersten Begruessung.
+  await schreibe('grussMerker', { 'alt.example': Date.now() });
   try {
     // Fund 10: ein Seitenskript, das den alten Schluessel im sessionStorage vorab setzt, unterdrueckt die Begruessung nicht
     const vorab = await context.newPage();
@@ -535,10 +540,11 @@ test('Begruessung auf Erwachsenenseiten: einmal je Host in 30 Minuten (Merker ni
     const v = await bisAbbild(vorab, (x) => x.phase === 'steht' && x.anlass === 'gruss', 12_000);
     expect(v.satz).toBe('Test greeting line.');
     expect(await vorab.evaluate(() => Object.keys(sessionStorage).filter((k) => k !== 'veil-gruss:127.0.0.1'))).toEqual([]);
-    expect(Object.keys((await lies<Record<string, number>>('grussMerker')) ?? {})).toEqual(['127.0.0.1']);
+    expect(Object.keys((await liesSitzung<Record<string, number>>('grussMerker')) ?? {})).toEqual(['127.0.0.1']);
+    await expect.poll(() => lies('grussMerker'), { timeout: 5000 }).toBeUndefined();
     await bisWeg(vorab);
     await vorab.close();
-    await entferneSchluessel('grussMerker');
+    await vergissGruss();
     // ohne Testmarke (veil-gruss) schweigt der Testbau, damit fremde Tests ungestoert bleiben
     const stumm = await oeffne();
     await abwarten(4000);

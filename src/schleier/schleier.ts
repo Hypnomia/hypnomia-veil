@@ -79,6 +79,7 @@ import {
   pixelLesenErlaubt,
   refererDerSeite,
   sendePruefe,
+  svgQuelle,
   urlAusEbene,
   wecke,
   zerlegeEbenen,
@@ -121,6 +122,12 @@ interface QuelleMitMass {
   breite: number;
   hoehe: number;
 }
+// Keine Anfrage, sondern gleich ein Fehler (SVG nicht lesbar oder zu gross, R2-1). endgueltig wie bei der Netzgrenze: nie wiederholen.
+interface BauFehler {
+  fehler: string;
+  endgueltig?: boolean;
+}
+const FEHLER_NICHT_PRUEFBAR = 'nicht pruefbar';
 
 const FALLBACK_LOAD_MS = 1500;
 const CANVAS_VERZOEGERUNG_MS = 300;
@@ -864,7 +871,10 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return `${epoche}|${adresse}`;
   }
 
-  async function frageNach(adresse: string, bau: () => Promise<QuelleMitMass | null> | QuelleMitMass | null): Promise<AntwortPruefe | null> {
+  async function frageNach(
+    adresse: string,
+    bau: () => Promise<QuelleMitMass | BauFehler | null> | QuelleMitMass | BauFehler | null,
+  ): Promise<AntwortPruefe | null> {
     // Die Einstellungen werden einmal festgehalten: Anfrage, Schluessel und Ablage gehoeren zum selben Stand.
     const e = einstellungen;
     if (!e) return null;
@@ -875,6 +885,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     const antwort = await speicher.einmal(schluessel, async () => {
       const q = await bau();
       if (!q) return null;
+      if ('fehler' in q) return { ok: false, id: '', fehler: q.endgueltig ? FEHLER_NICHT_PRUEFBAR : q.fehler } as AntwortPruefe;
       if (!(await wecke(lebt))) return { ok: false, id: '', fehler: 'Erkenner nicht erreichbar' } as AntwortPruefe;
       return sendePruefe(q.quelle, q.breite, q.hoehe, e, true, packStandFuer(e));
     });
@@ -885,7 +896,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // Netzgrenze: 'privat' ist endgueltig (die Seite darf das Ziel nie bekommen), jede Wiederholung wuerde dasselbe antworten.
   function fehlerErgebnis(a: AntwortPruefe): Ergebnis {
-    return !a.ok && a.fehler === 'privat' ? { art: 'fehler', endgueltig: true } : { art: 'fehler' };
+    return !a.ok && (a.fehler === 'privat' || a.fehler === FEHLER_NICHT_PRUEFBAR) ? { art: 'fehler', endgueltig: true } : { art: 'fehler' };
   }
 
   // Vorpruefung der Ausgangsadresse (Netzgrenze im Content-Script, spart den Weg zum Erkenner). Die Endadresse nach Weiterleitungen
@@ -903,16 +914,44 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return entscheideNachladen(url, refererDerSeite()) === 'privat';
   }
 
+  // SVG auf dem Canvas-Weg (Lesung 17 R2-1): Bytes statt Pixel, damit der Erkenner die Bewegungspruefung macht. 'kein' = kein SVG.
+  // Nicht lesbare Bytes: http(s) geht den Url-Weg (der Erkenner laedt und prueft selbst). Eine blob:-Adresse, die die Seite nach dem Laden
+  // widerrufen hat (verbreitetes Muster: revokeObjectURL im onload), ist nicht mehr abrufbar: dann wie bisher die Pixel (Pruefung Runde 3, N1).
+  // Restrisiko: ein bewegtes SVG hinter einer widerrufenen blob:-Adresse wird als Momentaufnahme geprueft (Stand vor 0.9.0).
+  async function svgWeg(adresse: string, breite: number, hoehe: number): Promise<QuelleMitMass | BauFehler | 'kein'> {
+    const svg = await svgQuelle(adresse);
+    if (svg === 'kein') return 'kein';
+    if (svg === 'zuGross') return { fehler: 'SVG zu gross', endgueltig: true };
+    if (svg === 'unklar') {
+      if (/^https?:/i.test(adresse)) return { quelle: { art: 'url', url: adresse, referer: refererDerSeite() }, breite, hoehe };
+      return 'kein';
+    }
+    return { quelle: { art: 'daten', dataUrl: svg.dataUrl }, breite, hoehe };
+  }
+
   async function pruefeBild(el: HTMLImageElement, z: Zustand): Promise<Ergebnis> {
     const adresse = bildAdresse(el);
     z.adresse = adresse;
     z.pruefAdresse = adresse;
     z.inhalt = null;
     if (netzgrenzeSperrt(adresse)) return { art: 'fehler', endgueltig: true };
-    const antwort = await frageNach(adresse, () => {
+    const antwort = await frageNach(adresse, async () => {
       const m = bildMass(el);
-      const px = pixelLesenErlaubt(adresse) ? lesePixel(el, m.breite, m.hoehe) : null;
-      if (px) return { quelle: { art: 'daten', dataUrl: px.dataUrl }, breite: m.breite, hoehe: m.hoehe };
+      const lesbar = pixelLesenErlaubt(adresse);
+      // data: und blob: vor dem Canvas: ein SVG, das das Canvas verschmutzt (foreignObject), gaebe sonst gar kein Urteil.
+      if (lesbar && /^(data|blob):/i.test(adresse)) {
+        const svg = await svgWeg(adresse, m.breite, m.hoehe);
+        if (svg !== 'kein') return svg;
+      }
+      const px = lesbar ? lesePixel(el, m.breite, m.hoehe) : null;
+      if (px) {
+        // http(s) lesbar (gleicher Ursprung, CORS; nur Chrome): erst nachsehen, ob es ein SVG ist.
+        if (/^https?:/i.test(adresse)) {
+          const svg = await svgWeg(adresse, m.breite, m.hoehe);
+          if (svg !== 'kein') return svg;
+        }
+        return { quelle: { art: 'daten', dataUrl: px.dataUrl }, breite: m.breite, hoehe: m.hoehe };
+      }
       // Ohne Eigengroesse und nicht lesbar: kaputtes Bild oder fremdes SVG, es gibt nichts zu pruefen.
       if (!(el.naturalWidth > 0)) return null;
       // Nicht lesbar (Chrome ohne CORS) oder in Firefox nicht erlaubt: der Erkenner laedt selbst. data: und blob: gibt es nur ueber den Canvas-Weg.
@@ -999,9 +1038,12 @@ export function starteSchleier(ctx: KontextLeicht): void {
     }
   }
 
-  async function hintergrundQuelleBauen(url: string): Promise<QuelleMitMass | null> {
+  async function hintergrundQuelleBauen(url: string): Promise<QuelleMitMass | BauFehler | null> {
     // Firefox liest nur data: und blob: selbst (hier gibt es kein crossOrigin); sonst geht es den Url-Weg.
     if (gleicherUrsprung(url) && pixelLesenErlaubt(url)) {
+      // SVG: Bytes statt Pixel (R2-1), wie bei pruefeBild.
+      const svg = await svgWeg(url, 0, 0);
+      if (svg !== 'kein') return svg;
       const bild = await ladeBild(url);
       if (bild) {
         const px = lesePixel(bild, bild.naturalWidth, bild.naturalHeight);
@@ -1037,7 +1079,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (!a) neu.push(ebene);
       else if (!a.ok) {
         fehler = true;
-        if (a.fehler === 'privat') endgueltig = true;
+        if (a.fehler === 'privat' || a.fehler === FEHLER_NICHT_PRUEFBAR) endgueltig = true;
       }
       else if (!a.flaechen.length) neu.push(ebene);
       else if (a.bild) {

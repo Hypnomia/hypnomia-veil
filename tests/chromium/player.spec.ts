@@ -626,6 +626,30 @@ test('Listenseite (Startseite): Klick ausserhalb des Videos ist keine Geste fuer
   }
 });
 
+// Lesung 17 R2-5: Tippen in ein Suchfeld (Live-Suche startet ein Vorschauvideo) ist keine Geste; eine Taste ausserhalb von Feldern schon.
+test('Listenseite: Tippen in ein Suchfeld oeffnet keinen Riegel', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/search/mia');
+    await s.evaluate(() => {
+      const f = document.createElement('input');
+      f.type = 'search';
+      f.id = 'suche';
+      document.body.prepend(f);
+    });
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await s.waitForTimeout(600);
+    await s.locator('#suche').click();
+    await s.keyboard.type('mia');
+    await s.evaluate(() => (window as any).findeVideo('haupt').play().catch(() => {}));
+    await s.waitForTimeout(1200);
+    expect(await hostDa(s)).toBe(false);
+    await bleibtStehen(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
 test('Listenseite verlassen (Adresswechsel ohne Neuladen auf eine Videoseite): das wartende Autoplay-Video bekommt den Riegel', async () => {
   const s = await oeffneSeite();
   try {
@@ -667,6 +691,19 @@ test('Videoseite unter /model/<name>/video/<nr> (kein Listenpfad): Autoplay beko
   const s = await oeffneSeite();
   try {
     await aufListe(s, '/model/mia/video/123');
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    await riegelOffen(s);
+    await bleibtStehen(s, 'haupt');
+  } finally {
+    await s.close();
+  }
+});
+
+// Fund 7 Rest (Lesung 17 Runde 2): Videoseiten unter /tags, /category und /search sind keine Listen.
+test('Videoseite unter /tags/<name>/video/<nr> (kein Listenpfad): Autoplay bekommt den Riegel ohne Geste', async () => {
+  const s = await oeffneSeite();
+  try {
+    await aufListe(s, '/tags/mia/video/123');
     await neuesVideo(s, { id: 'haupt', autoplay: true });
     await riegelOffen(s);
     await bleibtStehen(s, 'haupt');

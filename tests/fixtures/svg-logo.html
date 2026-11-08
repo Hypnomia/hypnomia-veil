@@ -49,6 +49,38 @@
           bild('logo-skript', basis + '/skript.svg');
           bild('logo-fo', basis + '/fremdobjekt.svg');
         }
+        // 8: SVG auf dem Canvas-Weg (Parameter lesbar=1, Lesung 17 R2-1): data:, blob: und gleicher Ursprung. Bewegte SVG bleiben verdeckt,
+        // ruhige werden frei. Ein Hintergrund mit bewegtem data:-SVG ebenso.
+        if (q.get('lesbar')) {
+          var zeile = document.getElementById('zeile');
+          var smil = '<svg xmlns="http://www.w3.org/2000/svg" width="150" height="40"><rect width="150" height="40" fill="#e91e63"><set attributeName="fill" to="#000" begin="1s"/></rect></svg>';
+          var ruhig = '<svg xmlns="http://www.w3.org/2000/svg" width="150" height="40"><rect width="150" height="40" fill="#e91e63"/></svg>';
+          bild('lesbar-smil-data', 'data:image/svg+xml;utf8,' + encodeURIComponent(smil), zeile);
+          bild('lesbar-smil-blob', URL.createObjectURL(new Blob([smil], { type: 'image/svg+xml' })), zeile);
+          bild('lesbar-smil-gleich', '/smil.svg', zeile);
+          bild('lesbar-ruhig-blob', URL.createObjectURL(new Blob([ruhig], { type: 'image/svg+xml' })), zeile);
+          bild('lesbar-ruhig-gleich', '/statisch.svg', zeile);
+          var hgs = document.createElement('div');
+          hgs.id = 'lesbar-hg-smil';
+          hgs.style.cssText = 'width:150px;height:40px;background-repeat:no-repeat';
+          hgs.style.backgroundImage = 'url("data:image/svg+xml;utf8,' + encodeURIComponent(smil) + '")';
+          zeile.appendChild(hgs);
+          // Rasterbild hinter einer blob:-Adresse, die die Seite nach dem Laden widerruft (Pruefung Runde 3, N1): muss beurteilt werden.
+          var leinwand = document.createElement('canvas');
+          leinwand.width = 150;
+          leinwand.height = 40;
+          var c = leinwand.getContext('2d');
+          c.fillStyle = '#e91e63';
+          c.fillRect(0, 0, 150, 40);
+          leinwand.toBlob(function (b) {
+            var w = document.createElement('img');
+            w.id = 'lesbar-raster-widerrufen';
+            w.alt = w.id;
+            w.onload = function () { URL.revokeObjectURL(w.src); };
+            w.src = URL.createObjectURL(b);
+            zeile.appendChild(w);
+          }, 'image/png');
+        }
         // 6: SVG, das nicht ladbar ist (404): kein Urteil darf ewig offen bleiben.
         if (q.get('kaputt')) bild('logo-kaputt', basis + '/gibt-es-nicht.svg');
       })();

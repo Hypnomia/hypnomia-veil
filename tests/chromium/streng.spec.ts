@@ -327,6 +327,37 @@ test('Player: endet das Fenster, bleibt das offene Quiz stehen, ein neues Video 
   }
 });
 
+// Lesung 17 R2-3: auf einer Seite ohne Listen-Treffer (hier strenge Zeit auf einer normalen Seite) wartet ein Autoplay-Video auf einem Listenpfad
+// ohne Riegel; es darf nicht offen liegen, sondern bekommt den dunklen Deckel (ohne Bild: kein Vorschau-Tausch ausserhalb der Liste).
+test('Player: strenge Zeit, normale Seite auf einem Listenpfad: wartendes Video liegt unter dem Deckel, der Klick oeffnet den Riegel', async () => {
+  await setzeZeiten(GANZ_HEUTE);
+  const s = await oeffneSeite();
+  try {
+    await s.evaluate(() => history.pushState({}, '', '/search/mia'));
+    await neuesVideo(s, { id: 'haupt', autoplay: true });
+    const deckel = () =>
+      s.evaluate(() => {
+        const h = document.querySelector('[data-veil-standbild]') as HTMLElement | null;
+        if (!h) return null;
+        const v = (window as any).findeVideo('haupt').getBoundingClientRect();
+        const r = h.getBoundingClientRect();
+        return { art: h.getAttribute('data-veil-standbild'), deckt: r.left <= v.left + 1 && r.top <= v.top + 1 && r.right >= v.right - 1 && r.bottom >= v.bottom - 1 };
+      });
+    await expect.poll(deckel, { timeout: 8000 }).toEqual({ art: 'deckel', deckt: true });
+    expect(await hostDa(s)).toBe(false);
+    await steht(s, 'haupt');
+    const m = await s.evaluate(() => {
+      const b = (window as any).findeVideo('haupt').getBoundingClientRect();
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    });
+    await s.mouse.click(m.x, m.y);
+    await s.evaluate(() => (window as any).findeVideo('haupt').play().catch(() => {}));
+    await riegelOffen(s);
+  } finally {
+    await s.close();
+  }
+});
+
 test('Player: beginnt ein Fenster waehrend ein Video laeuft, greift der Zeitgeber beim Fensterbeginn (ohne Einstellungsaenderung)', async () => {
   test.setTimeout(240_000);
   await setzeZeiten(NUR_MORGEN);

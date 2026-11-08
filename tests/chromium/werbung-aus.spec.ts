@@ -71,6 +71,9 @@ test('Sites without my ads: Liste, Knopf nimmt zurueck, leer verborgen, Obergren
     // Den letzten zuruecknehmen: Block weg
     await seite.locator('#kon-werbung-aus-liste button').click();
     await expect(seite.locator('#kon-werbung-aus')).toBeHidden();
+    // Lesung 17 R2-7: die Bestaetigung bleibt sichtbar (und hoerbar), obwohl der Block mit der leeren Liste verschwindet
+    await expect(seite.locator('#kon-werbung-aus-meldung')).toBeVisible();
+    await expect(seite.locator('#kon-werbung-aus-meldung')).toHaveText('b.example gets my ads again.');
     expect((await lies(seite, 'einstellungen')).kontrolle.werbungAus).toEqual([]);
     // Obergrenze: 250 Eintraege gespeichert, ueber die Seite geschrieben (aendereEinstellungen laeuft durch vervollstaendige): 200 bleiben
     const viele = Array.from({ length: 250 }, (_, i) => `site${i}.example`);

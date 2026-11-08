@@ -158,6 +158,9 @@ const setzeKontrolle = (teil) => setzeEinstellungen({ kontrolle: { ...KONTROLLE,
 const schreibe = (k, w) => mitOptionen(() => imSeitenkontext(`await api.storage.local.set({ [args[0]]: args[1] }); return true;`, k, w));
 const entferneSchluessel = (k) => mitOptionen(() => imSeitenkontext(`await api.storage.local.remove(args[0]); return true;`, k));
 const liesSpeicher = (k) => mitOptionen(() => imSeitenkontext(`return (await api.storage.local.get(args[0]))[args[0]] ?? null;`, k));
+// Lesung 17 R2-4: der Begruessungs-Merker liegt nur noch in storage.session (fluechtig), nie in storage.local.
+const liesSitzung = (k) => mitOptionen(() => imSeitenkontext(`return (await api.storage.session.get(args[0]))[args[0]] ?? null;`, k));
+const schreibeSpeicher = (k, w) => mitOptionen(() => imSeitenkontext(`await api.storage.local.set({ [args[0]]: args[1] }); return true;`, k, w));
 const abbild = async () => {
   const t = await driver.executeScript(`return document.documentElement.getAttribute('data-veil-meldung')`);
   return t ? JSON.parse(t) : null;
@@ -424,6 +427,7 @@ try {
 
   // 8f. Begruessung auf Erwachsenenseiten (eigene Seite 127.0.0.1), einmal je Tab
   await setzeEinstellungen({ erwachsen: { eigeneSeiten: ['127.0.0.1'], an: true, komplettErsatz: false } });
+  await schreibeSpeicher('grussMerker', { 'alt.example': Date.now() });
   await oeffne();
   await warte(3500);
   pruefe((await abbild()).gezeigt === 0, 'ohne Testmarke veil-gruss keine Begruessung');
@@ -433,8 +437,9 @@ try {
   // Fund 10: der Merker liegt im Erweiterungsspeicher je Host, nie im sessionStorage der Seite
   const sessionSchluessel = await driver.executeScript(`return Object.keys(sessionStorage).filter((k) => k.includes('gruss'))`);
   pruefe(sessionSchluessel.length === 0, `kein Merker im sessionStorage der Seite (${JSON.stringify(sessionSchluessel)})`);
-  const merker = await bis('Merker im Erweiterungsspeicher', async () => (await liesSpeicher('grussMerker'))?.['127.0.0.1'], 8000);
-  pruefe(typeof merker === 'number' && Date.now() - merker < 60_000, `Merker je Host mit Zeitstempel (${merker})`);
+  const merker = await bis('Merker im Erweiterungsspeicher', async () => (await liesSitzung('grussMerker'))?.['127.0.0.1'], 8000);
+  pruefe(typeof merker === 'number' && Date.now() - merker < 60_000, `Merker je Host mit Zeitstempel in storage.session (${merker})`);
+  pruefe((await liesSpeicher('grussMerker')) === null, 'kein Merker (auch kein Altbestand) in storage.local');
   await bisWeg();
   await driver.navigate().refresh();
   await bis('Testspur nach Neuladen', () => driver.executeScript(`return document.documentElement.hasAttribute('data-veil-meldung')`));

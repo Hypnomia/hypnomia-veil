@@ -17,14 +17,102 @@ export async function istSvg(blob: Blob): Promise<boolean> {
 // SVG mit Bewegung oder Skript (SMIL, CSS-Animation, script, foreignObject): zum Ladezeitpunkt zeigt es einen harmlosen ersten Zustand, spaeter
 // etwas anderes. Es wird nie freigegeben (Session 17 Fund 9): der Erkenner meldet eine Flaeche ueber das ganze Bild, das Urteil lautet wie bei
 // einem unklaren Bild "zensiert". Gelesen werden hoechstens SVG_PRUEF_MAX Zeichen; ein groesseres SVG gilt als bewegt (nicht pruefbar).
+// Lesung 17 R2-2: auch alles, was zeitversetzt (discard, transition, @starting-style) oder je nach Groesse und Umgebung (@media, @container)
+// anderes zeigt, gilt als bewegt; der Erkenner rastert in Eigengroesse, die Seite zeigt in ihrer.
 const SVG_PRUEF_MAX = 4 * 1024 * 1024;
 const SVG_BEWEGUNG =
-  /<\s*(?:[\w.-]+:)?(?:animate|set|animateTransform|animateMotion|script|foreignObject)[\s/>]|@(?:-\w+-)?keyframes|\banimation(?:-name)?\s*:/i;
+  /<\s*(?:[\w.-]+:)?(?:animate|animateColor|set|animateTransform|animateMotion|discard|script|foreignObject)[\s/>]|@(?:-\w+-)?keyframes|@(?:media|container|import|starting-style)\b|\b(?:animation|transition)(?:-[\w-]+)?\s*:/i;
+// Nicht pruefbar, weil der Text Inhalt verbergen kann, den das Muster nicht sieht: Stilblaetter per xml-stylesheet und jede eingebettete
+// data:-Adresse in href oder url() ausser Rasterbildern (ein SVG im SVG, CSS, Schriften; Base64 oder Prozent-Kodierung verdecken die Bewegung).
+// Eingebettete Rasterbilder werden mitgezeichnet und gehen durch die normale Pruefung.
+// Entitaeten im DOCTYPE (Illustrator-Exporte tragen sie fast immer) sperren nicht pauschal (Pruefung Runde 3, N3): interne Entitaeten werden
+// aufgeloest wie im XML-Leser, danach wird geprueft (Pruefung Runde 4, M1: sonst zerlegen sie Schluesselwoerter in Stil und Attributen).
+// Parameter-Entitaeten, externe Entitaeten, Bezuege ohne Definition und zu tiefe oder zu grosse Aufloesungen gelten als nicht pruefbar;
+// Rueckstriche im DOCTYPE gelten wie im Stil als nicht pruefbar.
+const SVG_NICHT_PRUEFBAR =
+  /<\?xml-stylesheet|(?:\bhref\s*=\s*["']?|\burl\(\s*["']?)\s*data:(?!\s*image\/(?:png|jpe?g|gif|webp|avif|bmp)\s*[;,])/i;
+// @media nur mit Vorlieben der Person, die eine Seite nicht steuern kann (prefers-reduced-motion, -contrast, -reduced-transparency,
+// -reduced-data), haengt nicht an der Groesse und gilt nicht als bewegt (N3). prefers-color-scheme bleibt "bewegt": die Seite kann
+// `color-scheme` am Bild setzen, der Erkenner rastert hell (Pruefung Runde 4, M2). Jede andere Abfrage (Breite, Hoehe, Seitenverhaeltnis,
+// Aufloesung) bleibt ebenso "bewegt".
+const MEDIA_NUR_VORLIEBE =
+  /^\s*(?:(?:not|only|screen|all|and|,)\s*|\(\s*prefers-(?:reduced-motion|contrast|reduced-transparency|reduced-data)\s*:\s*[a-z-]+\s*\)\s*)+$/i;
+const XML_VORGEGEBEN = new Set(['lt', 'gt', 'amp', 'quot', 'apos']);
+const ENTITAET_TIEFE = 8;
+
+// Interne Entitaeten aufloesen. null = nicht pruefbar.
+function loeseEntitaeten(roh: string): string | null {
+  if (/<!ENTITY\s+%/i.test(roh)) return null;
+  // Nur echte Deklarationen: im internen Teil des DOCTYPE, ohne Kommentare und Verarbeitungsanweisungen (Pruefung Runde 5, P1). Ein doppelter
+  // Name gilt als nicht pruefbar (XML nimmt den ersten Wert, eine falsche Wahl haette eine andere Lesart als der Browser).
+  const teil = roh.match(/<!DOCTYPE[^[>]*\[([\s\S]*?)\]\s*>/i)?.[1] ?? '';
+  const deklarationen = teil.replace(/<!--[\s\S]*?-->/g, '').replace(/<\?[\s\S]*?\?>/g, '');
+  const werte = new Map<string, string>();
+  for (const m of deklarationen.matchAll(/<!ENTITY\s+([^\s%"'>]+)\s+(?:(SYSTEM|PUBLIC)\b|"([^"]*)"|'([^']*)')/gi)) {
+    if (m[2] || werte.has(m[1]!)) return null;
+    werte.set(m[1]!, entschluesselt(m[3] ?? m[4] ?? ''));
+  }
+  // Deklarationen ausserhalb des DOCTYPE-Teils (in Kommentaren, Texten) sind keine: wer sich darauf verlaesst, bekommt sie nicht aufgeloest
+  // und landet bei "Bezug ohne Definition" (nicht pruefbar).
+  const grenze = Math.max(roh.length * 4, 64 * 1024);
+  let text = roh;
+  for (let tiefe = 0; tiefe <= ENTITAET_TIEFE; tiefe++) {
+    let offen = false;
+    let fremd = false;
+    text = text.replace(/&([A-Za-z_:][\w.:-]*);/g, (ganz, name: string) => {
+      if (XML_VORGEGEBEN.has(name)) return ganz;
+      const w = werte.get(name);
+      if (w === undefined) {
+        fremd = true;
+        return ganz;
+      }
+      offen = true;
+      return w;
+    });
+    if (fremd || text.length > grenze) return null;
+    if (!offen) return text;
+  }
+  return null;
+}
+
+// Zeichenbezuege (&#107; &#x61;) und die fuenf XML-Entitaeten aufloesen: der XML-Leser tut es vor dem CSS-Leser.
+function entschluesselt(text: string): string {
+  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));/gi, (ganz, dez?: string, hex?: string, name?: string) => {
+    if (dez || hex) {
+      const code = dez ? Number(dez) : parseInt(hex as string, 16);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : ganz;
+    }
+    return ({ lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" } as Record<string, string>)[(name as string).toLowerCase()] ?? ganz;
+  });
+}
+
+// Inhalt der style-Elemente und style-Attribute.
+function stilTeile(text: string): string[] {
+  const teile: string[] = [];
+  for (const m of text.matchAll(/<\s*(?:[\w.-]+:)?style\b[^>]*>([\s\S]*?)<\s*\/\s*(?:[\w.-]+:)?style\s*>/gi)) teile.push(m[1] ?? '');
+  for (const m of text.matchAll(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) teile.push(m[1] ?? m[2] ?? '');
+  // Interner Teil des DOCTYPE: Entitaeten koennen Stil-Text in ein style-Element tragen.
+  for (const m of text.matchAll(/<!DOCTYPE[^[>]*\[([\s\S]*?)\]\s*>/gi)) teile.push(m[1] ?? '');
+  return teile;
+}
+
+export function svgTextMitBewegung(roh: string): boolean {
+  const aufgeloest = loeseEntitaeten(roh);
+  if (aufgeloest === null) return true;
+  const text = entschluesselt(aufgeloest);
+  if (SVG_NICHT_PRUEFBAR.test(text)) return true;
+  // CSS-Escapes (anim\61tion, @\6b eyframes) sieht das Muster nicht: jeder Rueckstrich im Stil gilt als nicht pruefbar.
+  if (stilTeile(text).some((s) => s.includes('\\'))) return true;
+  // CSS-Kommentare duerfen zwischen Namen und Doppelpunkt stehen (animation/**/:).
+  const ohneKommentare = text.replace(/\/\*[\s\S]*?\*\//g, '');
+  return SVG_BEWEGUNG.test(ohneKommentare.replace(/@media\b([^{]*)\{/gi, (ganz, vor: string) => (MEDIA_NUR_VORLIEBE.test(vor) ? '{' : ganz)));
+}
+
 export async function svgMitBewegung(blob: Blob): Promise<boolean> {
   if (!(await istSvg(blob))) return false;
   if (blob.size > SVG_PRUEF_MAX) return true;
   try {
-    return SVG_BEWEGUNG.test(await blob.text());
+    return svgTextMitBewegung(await blob.text());
   } catch {
     return true;
   }

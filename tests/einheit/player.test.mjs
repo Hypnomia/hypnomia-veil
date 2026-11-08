@@ -1,7 +1,7 @@
 // Einheitstest Player-Riegel (Auftrag P): reine Teile in src/player/logik.ts, ohne Browser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { istGesteFuer, istListenPfad, istGeloest, quellSchluessel, quelleVon, vollbildBetrifft, waehleGroessten, willSpielen } from '../../src/player/logik.ts';
+import { istGesteFuer, istListenPfad, tasteZaehltAlsGeste, istGeloest, quellSchluessel, quelleVon, vollbildBetrifft, waehleGroessten, willSpielen } from '../../src/player/logik.ts';
 
 test('Hauptvideo: groesstes ab 200 x 150, kleinere nie', () => {
   assert.equal(waehleGroessten([]), null);
@@ -59,6 +59,30 @@ test('Listenseite: Startseite, Suche, Kategorien; Videoseiten nicht', () => {
     assert.equal(istListenPfad(p), true, p);
   for (const p of ['/view_video.php', '/video12345/titel', '/videos/titel-123', '/video/12345', '/5abc/video/titel', '/erwachsen-player.html', '/newcomer', '/watch/1', '/model/name/video/123', '/channels/x/videos/9', '/pornstar/x', '/models/abc'])
     assert.equal(istListenPfad(p), false, p);
+});
+
+// Fund 7 Rest (Lesung 17 Runde 2): Unterseiten von Suche, Kategorien, Tags und Playlists sind Listen nur mit Listenendung (Name, Seitenzahl,
+// Sortierung); darunter liegende Videoseiten bekommen den Riegel wie bisher.
+test('Listenseite: Suche, Kategorien, Tags mit Unterpfad nur mit Listenendung', () => {
+  for (const p of ['/tags/x/2', '/tags/x/', '/category/x/page/3', '/search/mia/2', '/categories/x/newest', '/playlists', '/playlist/abc', '/de/category/x/top-rated', '/s/mia/videos', '/category/x/most-viewed/2', '/search/x/newest/3', '/tags/x/page/4', '/categories/x/top/page/2'])
+    assert.equal(istListenPfad(p), true, p);
+  for (const p of ['/tags/x/video/123', '/tag/x/watch/1', '/category/x/videos/titel-9', '/search/x/video/titel', '/categories/x/12345/titel', '/tags/video/123', '/s/x/y/z', '/playlists/abc/video/7', '/category/x/embed/1'])
+    assert.equal(istListenPfad(p), false, p);
+});
+
+// Lesung 17 R2-5: Tippen in ein Feld (Live-Suche) ist keine Geste fuer ein Video.
+test('Taste als Geste: nicht in Eingabefeldern, Textflaechen und editierbaren Bereichen', () => {
+  assert.equal(tasteZaehltAlsGeste(null), true);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'BODY' }), true);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'VIDEO' }), true);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'BUTTON' }), true);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'INPUT', type: 'checkbox' }), true);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'INPUT', type: 'range' }), true);
+  for (const typ of ['', 'text', 'search', 'email', 'url', 'password', 'number', 'tel'])
+    assert.equal(tasteZaehltAlsGeste({ tagName: 'INPUT', type: typ }), false, typ);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'TEXTAREA' }), false);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'SELECT' }), false);
+  assert.equal(tasteZaehltAlsGeste({ tagName: 'DIV', isContentEditable: true }), false);
 });
 
 test('Geste: frisch und ueber dem Video, oder eine Taste', () => {

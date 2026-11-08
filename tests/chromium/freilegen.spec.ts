@@ -90,7 +90,18 @@ async function loeseRiegel(s: Page): Promise<void> {
     if (a.zustand !== 'frage') return;
     const f = fragen.find((q) => q.id === a.frage.id);
     expect(f, `Frage ${a.frage.id}`).toBeTruthy();
-    const zielK = a.antworten.find((b: any) => b.text === f.antworten[f.richtig]);
+    let zielK = a.antworten.find((b: any) => b.text === f.antworten[f.richtig]);
+    expect(zielK, `Antwort "${f.antworten[f.richtig]}" im Riegel`).toBeTruthy();
+    // Session 18: auf einem kleinen Riegel liegt die unterste Antwort beim ersten Riegel (Erklaerzeile) unter dem sichtbaren Rollbereich:
+    // erst hineinrollen wie eine Person, dann neu messen (Ursache des Wacklers, Entscheidung 185).
+    const box = a.scrollBox;
+    if (box && zielK.y + zielK.h > box.y + box.h - 2) {
+      await s.mouse.move(box.x + box.w / 2, box.y + box.h / 2);
+      await s.mouse.wheel(0, zielK.y + zielK.h - (box.y + box.h) + 24);
+      await s.waitForTimeout(400);
+      const neu = await riegel(s);
+      if (neu?.zustand === 'frage') zielK = neu.antworten.find((b: any) => b.text === f.antworten[f.richtig]) ?? zielK;
+    }
     await klickeMitte(s, zielK);
     await s.waitForTimeout(1200);
     const danach = await riegel(s);
@@ -455,6 +466,9 @@ test('Pack entfernt: offener Riegel schliesst, Freigelegtes ist sofort wieder ze
 });
 
 test('Pack entfernt: Knoepfe sofort weg', async () => {
+  // Session 18: der Fall davor endet ohne Pack; ohne eigenen Import hing dieser Fall daran, ob der Pack-Eintrag zufaellig zurueckkam.
+  await importierePack();
+  await aendereEinstellungen({ quiz: { verweigern: 0, freilegenMs: 3000 } });
   const s = await frischeSeite();
   try {
     await warteZensiert(s);

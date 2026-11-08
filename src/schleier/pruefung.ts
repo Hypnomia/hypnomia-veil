@@ -102,6 +102,63 @@ export function lesePixel(
   }
 }
 
+// ---------- SVG auf dem Canvas-Weg (Lesung 17 R2-1) ----------
+
+// Ein lesbares SVG (data:, blob:, gleicher Ursprung oder CORS) ging als Momentaufnahme ueber das Canvas zum Erkenner und damit an dessen
+// Bewegungspruefung vorbei (src/erkenner/dekodiere.ts, svgMitBewegung): harmloser erster Zustand, freigegeben, spaeter etwas anderes.
+// Darum gehen von einem SVG die Bytes statt der Pixel zum Erkenner (als SVG-Data-URL, art 'daten'); er prueft sie wie auf dem Url-Weg.
+// Ein img zeigt ein SVG nur mit dem Typ image/svg+xml (Browser erraten SVG nie), darum genuegt der Typ als Merkmal.
+// Ergebnis: Data-URL des SVG, 'kein' (kein SVG: Pixel lesen wie bisher), 'unklar' (Bytes nicht lesbar), 'zuGross' (nicht pruefbar).
+export type SvgBefund = { dataUrl: string } | 'kein' | 'unklar' | 'zuGross';
+export const SVG_BYTES_MAX = 4 * 1024 * 1024; // wie SVG_PRUEF_MAX im Erkenner: groesser gilt als nicht pruefbar
+const SVG_DATA_URL_MAX = Math.ceil((SVG_BYTES_MAX * 4) / 3) + 1024; // Base64 plus Kopf
+const SVG_FRIST_MS = 8000;
+
+export function istSvgDataUrl(url: string): boolean {
+  return /^data:\s*image\/svg\+xml\s*[;,]/i.test(url);
+}
+
+function alsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((ok, nein) => {
+    const leser = new FileReader();
+    leser.onload = () => (typeof leser.result === 'string' ? ok(leser.result) : nein(new Error('kein Text')));
+    leser.onerror = () => nein(leser.error ?? new Error('FileReader'));
+    leser.readAsDataURL(blob);
+  });
+}
+
+export async function svgQuelle(url: string): Promise<SvgBefund> {
+  if (/^data:/i.test(url)) {
+    if (!istSvgDataUrl(url)) return 'kein';
+    return url.length > SVG_DATA_URL_MAX ? 'zuGross' : { dataUrl: url };
+  }
+  if (!/^(blob|https?):/i.test(url)) return 'kein';
+  const abbruch = new AbortController();
+  const uhr = setTimeout(() => abbruch.abort(), SVG_FRIST_MS);
+  try {
+    // http(s): meist aus dem Zwischenspeicher des Browsers; ist es kein SVG, wird nach dem Kopf abgebrochen (kein zweiter Download).
+    const antwort = await fetch(url, { cache: 'force-cache', signal: abbruch.signal });
+    if (!antwort.ok) return 'unklar';
+    if (!/^\s*image\/svg\+xml/i.test(antwort.headers.get('content-type') ?? '')) {
+      abbruch.abort();
+      return 'kein';
+    }
+    const laenge = Number(antwort.headers.get('content-length') ?? '0');
+    if (laenge > SVG_BYTES_MAX) {
+      abbruch.abort();
+      return 'zuGross';
+    }
+    const blob = await antwort.blob();
+    if (blob.size > SVG_BYTES_MAX) return 'zuGross';
+    // Typ erzwingen: der Erkenner erkennt das SVG am Typ der Data-URL.
+    return { dataUrl: await alsDataUrl(new Blob([blob], { type: 'image/svg+xml' })) };
+  } catch {
+    return 'unklar';
+  } finally {
+    clearTimeout(uhr);
+  }
+}
+
 // ---------- Anfrage ----------
 
 let zaehler = 0;

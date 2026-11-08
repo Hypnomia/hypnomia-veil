@@ -21,6 +21,7 @@ import { bearbeiteVersion, bearbeiteVersionTest, starteVersion } from '../src/hi
 import { bearbeitePackTon } from '../src/hintergrund/ton';
 import { bearbeiteSchrift } from '../src/hintergrund/schrift';
 import { bearbeiteHilfe } from '../src/hintergrund/hilfe';
+import { bearbeiteGruss, raeumeAltenGrussMerker } from '../src/hintergrund/gruss';
 import { starteSymbol } from '../src/hintergrund/symbol';
 
 const OFFSCREEN_SEITE = '/offscreen.html' as const;
@@ -182,6 +183,8 @@ function setzeRefererFirefox(host: string, referer: string): boolean {
 }
 
 export default defineBackground(() => {
+  // Lesung 17 R2-4: Begruessungs-Merker aus 0.9.0 in storage.local (Liste besuchter Erwachsenenseiten) loeschen; er lebt jetzt in storage.session.
+  void raeumeAltenGrussMerker();
   // Firefox: Erkenner im selben Kontext. Dynamischer Import, im Chrome-Build entfaellt der Zweig samt ORT.
   const erkenner = import.meta.env.FIREFOX
     ? import('../src/erkenner').then((m) => {
@@ -257,6 +260,11 @@ export default defineBackground(() => {
       case 'adresse':
         return (await reicheAdresseWeiter(absender, n.url)) ? { ok: true } : { ok: false, fehler: 'nur die oberste Seite eines Tabs darf melden' };
       case 'tab': {
+        // Testhaken (Lesung 17 R2-6): verzoegerte Antwort, damit der Test eine laufende Tab-Abfrage im Rahmen sicher trifft.
+        if (import.meta.env.WXT_TESTHAKEN === '1') {
+          const v = (await browser.storage.local.get('testTabVerzoegerung')).testTabVerzoegerung;
+          if (typeof v === 'number' && v > 0) await new Promise((fertig) => setTimeout(fertig, Math.min(v, 10_000)));
+        }
         // Absender ist das Content-Script; mit Host-Rechten liefert sender.tab.url die Adresse des Tabs.
         const antwort: AntwortTab = { ok: true, url: absender?.tab?.url ?? null };
         return antwort;
@@ -310,6 +318,8 @@ export default defineBackground(() => {
         return bearbeiteSchrift(n);
       case 'hilfe':
         return bearbeiteHilfe(n, absender);
+      case 'gruss':
+        return bearbeiteGruss(n);
       default:
         return undefined;
     }

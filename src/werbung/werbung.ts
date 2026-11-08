@@ -269,7 +269,10 @@ export function starteWerbung(ctx: KontextLeicht): void {
   // Tab-Adresse (nur Rahmen): eigene Ausnahmen gelten je Tab.
   let tabAdresse: URL | null = null;
   let tabBekannt = false;
-  let tabFrageLaeuft = false;
+  // Laufende Tab-Abfrage als Promise (Lesung 17 R2-6): wer waehrenddessen fragt, wartet auf dieselbe Antwort statt leer auszugehen.
+  let tabFrage: Promise<void> | null = null;
+  // Die letzte Abfrage blieb ohne Antwort: im Rahmen gibt es dann keinen Punkt "Hide my ads on this site" (er koennte nichts speichern).
+  let tabOhneAntwort = false;
   let inhaltHoererAn = false;
   let tabFrist: ReturnType<typeof setTimeout> | null = null;
 
@@ -288,22 +291,30 @@ export function starteWerbung(ctx: KontextLeicht): void {
       });
   }
 
-  async function frageTab(): Promise<void> {
-    if (!istRahmen || tabFrageLaeuft || !lebt()) return;
-    tabFrageLaeuft = true;
-    try {
-      const n: NachrichtHintergrundTab = { ziel: 'hintergrund', typ: 'tab' };
-      const a = (await browser.runtime.sendMessage(n)) as Partial<AntwortTab> | undefined;
-      if (a && a.ok === true) {
-        tabAdresse = typeof a.url === 'string' ? new URL(a.url) : null;
-        tabBekannt = true;
+  function frageTab(): Promise<void> {
+    if (!istRahmen || !lebt()) return Promise.resolve();
+    if (tabFrage) return tabFrage;
+    tabFrage = (async () => {
+      let beantwortet = false;
+      try {
+        const n: NachrichtHintergrundTab = { ziel: 'hintergrund', typ: 'tab' };
+        const a = (await browser.runtime.sendMessage(n)) as Partial<AntwortTab> | undefined;
+        if (a && a.ok === true) {
+          tabAdresse = typeof a.url === 'string' ? new URL(a.url) : null;
+          tabBekannt = true;
+          beantwortet = tabAdresse !== null;
+        }
+      } catch {
+        // keine verwertbare Antwort
+      } finally {
+        tabOhneAntwort = !beantwortet;
       }
-    } catch {
-      // keine verwertbare Antwort
-    } finally {
-      tabFrageLaeuft = false;
-    }
-    if (lebt()) pruefeLage();
+      if (lebt()) pruefeLage();
+    })().finally(() => {
+      // Immer nach der Zuweisung oben (auch wenn sendMessage sofort wirft): sonst bliebe ein erledigtes Promise stehen.
+      tabFrage = null;
+    });
+    return tabFrage;
   }
 
   const beiInhaltNachricht = (nachricht: unknown): undefined => {
@@ -335,7 +346,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
         browser.runtime.onMessage.addListener(beiInhaltNachricht);
         document.addEventListener('visibilitychange', beiSichtbarkeit);
       }
-      if (!tabBekannt && !tabFrageLaeuft) {
+      if (!tabBekannt && !tabFrage) {
         void frageTab();
         if (!tabFrist) {
           // Nach TAB_FRIST_MS zaehlt nur die eigene Adresse, wenn der Hintergrund nicht antwortet.
@@ -1018,10 +1029,16 @@ export function starteWerbung(ctx: KontextLeicht): void {
       menue = new EtikettMenue({
         wurzel,
         muster: () => {
+          // Rahmen ohne bekannte Tab-Adresse: jetzt fragen (der Klick wartet darauf); blieb die letzte Abfrage ohne Antwort, kein Punkt.
+          if (istRahmen && !tabAdresse) {
+            if (!tabFrage) void frageTab();
+            if (tabOhneAntwort) return null;
+          }
           const m = (tabAdresse?.hostname ?? adresseFuerAusnahmen().hostname).toLowerCase().replace(/^www\./, '');
           return zerlegeMuster(m) ? m : null;
         },
-        // Im Rahmen zaehlt die Adresse des Tabs, nicht die des Rahmens: vor dem Speichern erfragen (Fund 4). Ohne Antwort: kein Eintrag.
+        // Im Rahmen zaehlt die Adresse des Tabs, nicht die des Rahmens: vor dem Speichern erfragen (Fund 4), eine laufende Abfrage abwarten
+        // (R2-6). Ohne Antwort: kein Eintrag.
         musterGenau: async () => {
           if (istRahmen) {
             if (!tabAdresse) await frageTab();

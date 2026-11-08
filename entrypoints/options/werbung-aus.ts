@@ -31,10 +31,12 @@ if (zeile) {
   meldung.id = 'kon-werbung-aus-meldung';
   meldung.setAttribute('role', 'status');
   meldung.setAttribute('aria-live', 'polite');
-  block.append(titel, hinweis, ul, meldung);
-  // Hinter den Schalter (und hinter den Hilfe-Rahmen, falls ordnung.ts ihn schon darum gelegt hat).
+  block.append(titel, hinweis, ul);
+  // Hinter den Schalter (und hinter den Hilfe-Rahmen, falls ordnung.ts ihn schon darum gelegt hat). Die Statuszeile steht direkt hinter dem
+  // Block, nicht darin: nimmt die Person den letzten Eintrag zurueck, verschwindet der Block, die Bestaetigung bleibt sichtbar und hoerbar
+  // (Lesung 17 R2-7).
   const anker = zeile.parentElement?.classList.contains('mit-hilfe') ? zeile.parentElement : zeile;
-  anker.after(block);
+  anker.after(block, meldung);
 
   let gezeichnet = '';
   const zeichne = (e: Einstellungen): void => {

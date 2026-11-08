@@ -106,6 +106,23 @@ test('nicht ladbares SVG bleibt nicht ewig offen', async () => {
   await seite.close();
 });
 
+// Lesung 17 R2-1: lesbare SVG (data:, blob:, gleicher Ursprung) gingen als Momentaufnahme ueber das Canvas an der Bewegungspruefung vorbei.
+test('lesbares SVG mit Bewegung (data:, blob:, gleicher Ursprung, Hintergrund) wird nie frei, ruhiges wird frei', async () => {
+  const seite = await context.newPage();
+  await seite.goto(`http://127.0.0.1:${port}/svg-logo.html?lesbar=1`);
+  const bewegt = ['lesbar-smil-data', 'lesbar-smil-blob', 'lesbar-smil-gleich', 'lesbar-hg-smil'];
+  const ruhig = ['lesbar-ruhig-blob', 'lesbar-ruhig-gleich', 'lesbar-raster-widerrufen'];
+  for (const id of [...bewegt, ...ruhig]) {
+    const r = await zeitBisUrteil(seite, id, 10_000);
+    console.log(`svg chromium: ${id} ${r.urteil || 'kein Urteil'} nach ${r.ms} ms`);
+    if (bewegt.includes(id)) expect(['zensiert', 'verdeckt'], `${id}: ${r.urteil}`).toContain(r.urteil);
+    else expect(r.urteil, id).toBe('frei');
+  }
+  await seite.waitForTimeout(1500);
+  for (const id of bewegt) expect(await urteil(seite, id), id).not.toBe('frei');
+  await seite.close();
+});
+
 test('SVG mit Animation (SMIL, CSS), Skript oder foreignObject wird nie frei', async () => {
   const seite = await context.newPage();
   await seite.goto(`http://127.0.0.1:${port}/svg-logo.html?animiert=1`);

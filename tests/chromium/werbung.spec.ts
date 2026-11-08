@@ -1084,6 +1084,49 @@ test('Menue in einem eingebetteten Rahmen: "Hide my ads on this site" speichert 
   await setzeEinstellungen({ kontrolle: { ...KONTROLLE, werbungAus: [] } });
 });
 
+// Lesung 17 R2-6: laeuft die Tab-Abfrage des Rahmens noch (hier vom Testhaken auf 9 s verzoegert), wartet "Hide my ads on this site" auf ihre
+// Antwort, statt still nichts zu tun. Belegt wird das Warten: der Eintrag erscheint erst, nachdem die Antwort da sein kann (Pruefung Runde 3, N5).
+test('Menue im Rahmen waehrend einer laufenden Tab-Abfrage: "Hide my ads on this site" wartet auf die Antwort und speichert die Seite des Tabs', async () => {
+  // Eine eigene Ausnahme (fremder Host) laesst den Rahmen schon beim Laden nach dem Tab fragen.
+  await setzeEinstellungen({ pause: false, ausnahmen: ['beispiel.invalid'], kontrolle: { ...KONTROLLE, werbungAus: [] } });
+  await worker.evaluate(() => (globalThis as any).chrome.storage.local.set({ testTabVerzoegerung: 9000 }));
+  const s = await context.newPage();
+  try {
+    // Die erste Abfrage des Rahmens startet erst nach dem Laden: ihre Antwort kommt fruehestens 9 s nach tLaden (Pruefung Runde 4 zu N5).
+    const tLaden = Date.now();
+    await s.goto(nachrichten);
+    await warteAuf(s, ERWARTET);
+    const rahmen = s.frames().find((f) => f.url().startsWith(`http://localhost:${portFremd}/`));
+    expect(rahmen, 'Rahmen auf localhost').toBeTruthy();
+    await warteAuf(rahmen!, ['i-ins']);
+    await s.evaluate(() => document.getElementById('n-rahmen2')!.scrollIntoView({ block: 'center' }));
+    await abwarten(300);
+    // Neue Abfrage anstossen (Sichtbarkeit), damit sie sicher noch laeuft, wenn geklickt wird. Ab hier antwortet der Hintergrund fruehestens
+    // nach 9 s (laeuft schon eine Abfrage, kommt deren Antwort spaeter als dieser Zeitpunkt minus 9 s).
+    await rahmen!.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    const tAnstoss = Date.now();
+    const versatz = (await (await rahmen!.frameElement()).boundingBox())!;
+    const f = (await standVon(rahmen!))!.flaechen.find((x) => x.id === 'i-ins')!;
+    expect(f.sichtbar && f.badge).toBeTruthy();
+    const b = f.badge!;
+    await s.mouse.click(versatz.x + b.l + b.w / 2, versatz.y + b.t + b.h / 2);
+    await expect.poll(async () => (await menueVon(rahmen!))?.offen, { timeout: 5000 }).toBe(true);
+    const p = (await menueVon(rahmen!))!.punkte.find((x) => x.aktion === 'verbergen' && x.w > 0);
+    expect(p, 'Punkt Hide my ads on this site').toBeTruthy();
+    await s.mouse.click(versatz.x + p!.x + p!.w / 2, versatz.y + p!.y + p!.h / 2);
+    const tKlick = Date.now();
+    // Der Klick liegt sicher vor jeder Antwort (auch der Abfrage vom Laden): ohne Warten waere danach nie etwas gespeichert worden.
+    expect(tKlick - tLaden, 'Klick vor der Antwort').toBeLessThan(8500);
+    expect(tKlick - tAnstoss).toBeGreaterThanOrEqual(0);
+    await expect.poll(async () => (await kontrolleSpeicher()).kontrolle.werbungAus, { timeout: 15_000 }).toEqual(['127.0.0.1']);
+    console.log(`werbung: Rahmen-Klick ${tKlick - tLaden} ms nach dem Laden, Eintrag nach ${Date.now() - tLaden} ms`);
+  } finally {
+    await worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('testTabVerzoegerung'));
+    await s.close();
+    await setzeEinstellungen({ ausnahmen: [], kontrolle: { ...KONTROLLE, werbungAus: [] } });
+  }
+});
+
 test('Menue: "Pause Mia" pausiert alles; auf einer Flaeche unter 80 px gibt es nur "Turn my ads off"', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
   const s = await context.newPage();

@@ -20,13 +20,40 @@ function zeichne(): void {
   beiAenderung();
 }
 
+// Nur die juengste Ladung des Packs gilt (Session 18, wie in pack-einrichten.ts): eine aeltere, spaeter fertige Ladung blendete die Frage
+// sonst kurz aus und nahm ihr den Fokus.
+// Wer wartet, wartet bis zur juengsten Ladung.
+let ladung = 0;
+let juengste: Promise<void> = Promise.resolve();
+function ladePack(): Promise<void> {
+  const nr = ++ladung;
+  const p = ladePackKurz().then(
+    (neu) => {
+      if (nr === ladung) pack = neu;
+    },
+    () => {},
+  );
+  juengste = p;
+  return p;
+}
+async function bisJuengste(p: Promise<void>): Promise<void> {
+  let warte = p;
+  for (;;) {
+    await warte;
+    if (warte === juengste) return;
+    warte = juengste;
+  }
+}
+
 // Liest Pack und Einstellungen jetzt und zeichnet neu (nach dem Import, bevor der Fokus gesetzt wird).
 export async function frischeWerbungFrageAuf(): Promise<void> {
+  const p = ladePack();
   try {
-    [pack, zuletzt] = await Promise.all([ladePackKurz(), ladeEinstellungen()]);
+    zuletzt = await ladeEinstellungen();
   } catch {
     // die Horcher zeichnen beim naechsten Stand
   }
+  await bisJuengste(p);
   zeichne();
 }
 
@@ -83,7 +110,11 @@ export function baueWerbungFrage(nachAntwort: () => void, bei: () => void): HTML
     zeichne();
   });
   const horcher = (aenderungen: Record<string, unknown>, bereich: string): void => {
-    if (bereich === 'local' && PACK_SPEICHER_SCHLUESSEL in aenderungen) void ladePackKurz().then((p) => { pack = p; zeichne(); }, () => {});
+    if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen)) return;
+    const p = ladePack();
+    void p.then(() => {
+      if (p === juengste) zeichne();
+    });
   };
   browser.storage.onChanged.addListener(horcher);
   window.addEventListener('pagehide', () => {

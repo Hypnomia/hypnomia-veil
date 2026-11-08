@@ -460,6 +460,8 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
         fokusImRiegel: document.activeElement === host,
         host: r(host),
         karte: r(karte),
+        // Sichtbarer Rollbereich der Karte: Antworten ausserhalb davon muss man erst hineinrollen (Session 18).
+        scrollBox: r(scroll),
         kartenFarbe: getComputedStyle(karte).backgroundImage.slice(0, 60),
         zitat: buehne.querySelector('.zitat')?.textContent ?? null,
       };
@@ -470,6 +472,17 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
       queueMicrotask(() => {
         abbildOffen = false;
         schreibeAbbild(abbild());
+      });
+    }
+    // Nur Testbau: verschiebt sich das Layout ohne Zustandswechsel (Chibi-Bild oder Schrift geladen, Groessenwechsel, Rollen in der Karte),
+    // zieht das Abbild nach. Sonst klickt ein Test auf veraltete Rechtecke (Wackler Firefox freilegen, Chromium quiz 375 px, Session 18).
+    if (testRiegelAktiv() && typeof ResizeObserver === 'function') {
+      const lage = new ResizeObserver(() => schreibe());
+      for (const e of [karte, kopf, miaZeile, buehne]) lage.observe(e);
+      scroll.addEventListener('scroll', schreibe, { passive: true });
+      aufraeumer.push(() => {
+        lage.disconnect();
+        scroll.removeEventListener('scroll', schreibe);
       });
     }
 

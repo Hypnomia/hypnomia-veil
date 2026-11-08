@@ -168,7 +168,19 @@ async function loeseRiegel() {
     }
     if (a.zustand !== 'frage') return;
     const f = FRAGEN.find((q) => q.id === a.frage.id);
-    await klickeAuf(a.antworten.find((b) => b.text === f.antworten[f.richtig]));
+    let ziel = a.antworten.find((b) => b.text === f.antworten[f.richtig]);
+    if (!ziel) throw new Error(`Antwort "${f.antworten[f.richtig]}" fehlt im Riegel`);
+    // Session 18: auf einem kleinen Riegel liegt die unterste Antwort beim ersten Riegel (Erklaerzeile) unter dem sichtbaren Rollbereich:
+    // erst hineinrollen wie eine Person, dann neu messen.
+    const box = a.scrollBox;
+    if (box && ziel.y + ziel.h > box.y + box.h - 2) {
+      const dy = Math.round(ziel.y + ziel.h - (box.y + box.h) + 24);
+      await driver.actions({ async: true }).scroll(Math.round(box.x + box.w / 2), Math.round(box.y + box.h / 2), 0, dy, 'viewport').perform();
+      await warte(400);
+      const neu = await riegel();
+      if (neu?.zustand === 'frage') ziel = neu.antworten.find((b) => b.text === f.antworten[f.richtig]) ?? ziel;
+    }
+    await klickeAuf(ziel);
     await warte(600);
     const danach = await riegel();
     if (!danach || danach.zustand !== 'frage' || danach.frage.id !== a.frage.id) return;

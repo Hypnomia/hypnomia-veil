@@ -122,6 +122,22 @@ try {
     for (const id of ids) if ((await urteil(id)) === 'frei') throw new Error(`${id} wurde frei`);
   });
 
+  // Lesung 17 R2-1: lesbare SVG (Firefox liest data: und blob: ueber das Canvas) gingen an der Bewegungspruefung vorbei. Gleicher Ursprung
+  // geht in Firefox den Url-Weg und muss ebenso verdeckt bleiben.
+  await test('lesbares SVG mit Bewegung (data:, blob:, gleicher Ursprung, Hintergrund) wird nie frei, ruhiges wird frei', async () => {
+    await driver.get(`${basis}/svg-logo.html?lesbar=1`);
+    const bewegt = ['lesbar-smil-data', 'lesbar-smil-blob', 'lesbar-smil-gleich', 'lesbar-hg-smil'];
+    const ruhig = ['lesbar-ruhig-blob', 'lesbar-ruhig-gleich', 'lesbar-raster-widerrufen'];
+    for (const id of [...bewegt, ...ruhig]) {
+      const r = await zeitBisUrteil(id, 10_000);
+      console.log(`firefox svg: ${id} ${r.urteil || 'kein Urteil'} nach ${r.ms} ms`);
+      if (bewegt.includes(id) && !['zensiert', 'verdeckt'].includes(r.urteil)) throw new Error(`${id}: Urteil "${r.urteil}"`);
+      if (ruhig.includes(id) && r.urteil !== 'frei') throw new Error(`${id}: Urteil "${r.urteil}"`);
+    }
+    await warte(1500);
+    for (const id of bewegt) if ((await urteil(id)) === 'frei') throw new Error(`${id} wurde frei`);
+  });
+
   await test('nicht ladbares SVG bleibt nicht ewig offen', async () => {
     await driver.get(`${basis}/svg-logo.html?kaputt=1`);
     const r = await zeitBisUrteil('logo-kaputt', 6000);

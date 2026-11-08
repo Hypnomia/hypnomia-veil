@@ -412,7 +412,7 @@ export function starteMeldungen(ctx: KontextLeicht): void {
   }
 
   // ---------- Begruessung auf Erwachsenenseiten ----------
-  // Hoechstens einmal je Host in 30 Minuten (Speicher des Skripts und storage.local, nie der Speicher der Seite; src/meldungen/gruss-merker.ts),
+  // Hoechstens einmal je Host in 30 Minuten (Speicher des Skripts und storage.session des Hintergrunds, nie der Speicher der Seite; src/meldungen/gruss-merker.ts),
   // nur mit Meldungen an (dieselben Bedingungen wie jede Meldung) und nie, wenn die Galerie des Komplett-Ersatzes ohnehin begruesst. Im Testbau nur mit `veil-gruss` in der Adresse, damit fremde Tests ungestoert bleiben.
   const grussUhr = setTimeout(() => void gruesse(), GRUSS_VERZOEGERUNG_MS);
   async function gruesse(): Promise<void> {

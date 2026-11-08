@@ -59,7 +59,14 @@ export function vollbildBetrifft(vollbild: { contains(n: unknown): boolean } | n
 
 // Listenseite (Startseite, Suche, Kategorien, Kanaele, Ranglisten): dort starten Seiten Vorschau-Videos von selbst. Rein nach dem Pfad: die
 // Startseite ("/") immer, bekannte Listen-Pfade (mit oder ohne Sprachpraefix wie /de/). Alles andere gilt als Videoseite (Rueckfall: Riegel wie bisher).
-const LISTE_MIT_ENDE = /^(?:\/[a-z]{2})?\/(?:search|s|categories|category|tags?|playlists?|video\/search)(?:\/.*)?$/i;
+// Unter Suche, Kategorien, Tags und Playlists gilt ein Unterpfad nur mit Listenendung als Liste: ein Name (nicht video, watch, embed, v),
+// danach hoechstens eine Sortierung und eine Seitenzahl. "/tags/x/video/123" ist eine Videoseite (Lesung 17, Rest von Fund 7; Pruefung Runde 3 N4).
+const LISTE_NAME = String.raw`(?:\/(?!(?:videos?|watch|embed|v)(?:\/|$))[^/]+)?`;
+const LISTE_ENDUNG = String.raw`(?:\/(?:new|newest|latest|popular|trending|hot|best|top|top-rated|most-popular|most-viewed|recommended|videos))?(?:\/(?:page\/)?\d+)?`;
+const LISTE_MIT_ENDE = new RegExp(
+  String.raw`^(?:\/[a-z]{2})?\/(?:search|s|categories|category|tags?|playlists?|video\/search)` + LISTE_NAME + LISTE_ENDUNG + String.raw`\/?$`,
+  'i',
+);
 // Uebersichten von Modellen, Kanaelen und Darstellern gelten nur ohne weiteren Pfadteil als Liste: darunter liegen Videoseiten ("/model/x/video/1"), dort gilt der Riegel wie bisher (Session 17 Fund 7).
 const LISTE_UEBERSICHT = /^(?:\/[a-z]{2})?\/(?:channels?|pornstars?|models?)\/?$/i;
 const LISTE_EXAKT = /^(?:\/[a-z]{2})?\/(?:new|newest|latest|popular|trending|hot|best|top|top-rated|most-popular|recommended|videos?)\/?$/i;
@@ -86,4 +93,16 @@ export function istGesteFuer(geste: Geste | null, jetzt: number, flaechen: reado
   if (!geste || jetzt - geste.t > GESTE_MS || jetzt < geste.t) return false;
   if (geste.taste) return true;
   return flaechen.some((r) => geste.x >= r.left && geste.x <= r.right && geste.y >= r.top && geste.y <= r.bottom);
+}
+
+// Zaehlt eine echte Taste als Geste fuer Videos? Nicht beim Tippen in ein Textfeld, eine Textflaeche, eine Auswahl oder einen editierbaren
+// Bereich (Live-Suche startet sonst mitten im Tippen den Riegel, Lesung 17 R2-5). Knoepfe, Kaestchen, Regler und die Seite selbst zaehlen.
+const TASTE_OHNE_TEXT = /^(?:button|submit|reset|checkbox|radio|range|color|file|image)$/i;
+export function tasteZaehltAlsGeste(ziel: { tagName?: string; type?: string; isContentEditable?: boolean } | null): boolean {
+  if (!ziel) return true;
+  if (ziel.isContentEditable === true) return false;
+  const tag = (ziel.tagName ?? '').toUpperCase();
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return false;
+  if (tag === 'INPUT') return TASTE_OHNE_TEXT.test(ziel.type ?? '');
+  return true;
 }

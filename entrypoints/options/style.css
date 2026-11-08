@@ -199,6 +199,14 @@ pre {
   min-height: 1.5em;
 }
 
+/* Statuszeile hinter "Sites without my ads" (Lesung 17 R2-7): leer ohne Abstand, bleibt aber im Baum (Live-Bereich). */
+#kon-werbung-aus-meldung {
+  margin: 6px 0 0;
+}
+#kon-werbung-aus-meldung:empty {
+  margin: 0;
+}
+
 #meldung.fehler,
 #kon-werbung-aus-meldung.fehler {
   color: var(--fehler);
