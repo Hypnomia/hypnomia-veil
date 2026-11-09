@@ -4,6 +4,13 @@ New versions of me, and new versions of the Mia Pack. Your pack and your setting
 
 ## What’s new
 
+### 0.9.1
+
+- On the adult sites I know, I now hide their ads completely while I swap the previews, and covered preview videos stay silent. Pause gives everything back at once.
+- Pictures inside SVG graphics go through my veil like any other picture.
+- My ad label and my ad links work with the Enter key too.
+- A shorter settings page that keeps your place when the cards move.
+
 ### 0.9.0
 
 - My help pages now live inside me and work offline: the round **?** in my popup, or **Help and guides** in my settings.

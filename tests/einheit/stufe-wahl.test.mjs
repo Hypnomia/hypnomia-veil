@@ -2,11 +2,14 @@
 // alte Packs ohne Masse, Einstellung mit unbekanntem Wert, Pack-Masse beim Pruefen, Kern-Wahl je Tag.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { STANDARD, STUFEN_WAHL, vervollstaendige } from '../../src/einstellungen.ts';
 import { bildKlasse, erlaubteStufen, schluesselMitKlasse, trenneKlasse, waehleVorschauNamen } from '../../src/pack/wahl.ts';
 import { kernName, tagesZahl, waehleKern } from '../../src/kern.ts';
 import { pruefePack, quelleAusBytes, schreibePack } from '../../src/pack/format.ts';
 import { baueDummyPack, DUMMY_STUFEN_BILDER } from '../../scripts/pack/baue-pack.mjs';
+
+const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version; // installierte Version (package.json)
 
 const datei = (name, stufe, breite, hoehe) => ({ name, stufe, breite, hoehe });
 // Je Stufe und Klasse genau ein Bild (wie das Dummy-Pack mit Stufen-Satz).
@@ -122,7 +125,7 @@ test('Zwischenspeicher-Schluessel traegt die Klasse und laesst sich wieder trenn
 
 test('Pack-Pruefung liest die Masse jedes Bildes; das Dummy-Pack mit Stufen-Satz besteht sie', async () => {
   const dummy = await baueDummyPack({ vorschauSatz: 'stufen' });
-  const p = await pruefePack(quelleAusBytes(dummy.bytes), '0.9.0');
+  const p = await pruefePack(quelleAusBytes(dummy.bytes), VERSION);
   for (const x of DUMMY_STUFEN_BILDER) {
     const m = p.masse[`vorschau/stufe-${x.schluessel}.webp`];
     assert.deepEqual(m, { breite: x.breite, hoehe: x.hoehe }, x.schluessel);
@@ -131,7 +134,7 @@ test('Pack-Pruefung liest die Masse jedes Bildes; das Dummy-Pack mit Stufen-Satz
   }
   assert.equal(dummy.vorschau, DUMMY_STUFEN_BILDER.length);
   // Standard-Dummy: vier Querbilder, zwei Tease und zwei Hot (die Standardstufe zeigt alle vier)
-  const std = await pruefePack(quelleAusBytes((await baueDummyPack()).bytes), '0.9.0');
+  const std = await pruefePack(quelleAusBytes((await baueDummyPack()).bytes), VERSION);
   const vs = std.manifest.dateien.filter((d) => d.rolle === 'vorschau');
   assert.equal(vs.length, 4);
   assert.deepEqual(vs.map((d) => d.stufe), ['tease', 'hot', 'tease', 'hot']);

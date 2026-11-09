@@ -2,13 +2,15 @@
 // Namen aus TON_NAMEN, Freischaltung `ton`) und das Dummy-Pack mit seinen synthetischen Toenen.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { MAX_TON_BYTES, pruefePack, quelleAusBytes, schreibePack, tonNameAusDatei } from '../../src/pack/format.ts';
 import { BENOETIGT, FREISCHALTUNGEN, ROLLEN } from '../../src/pack/vertrag.ts';
 import { TON_NAMEN } from '../../src/ton/vertrag.ts';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { baueWav, dummyToene } from '../../scripts/pack/dummy-toene.mjs';
 
-const VERSION = '0.9.0';
+// Installierte Version = package.json (das Dummy-Pack verlangt sie als mindestVeil)
+const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
 const kodiere = (t) => new TextEncoder().encode(t);
 const KOPF = { id: 'tontest', version: '1.0.0', titel: 'Tontest', erstellt: '2026-11-05T10:00:00Z', mindestVeil: '0.0.1', freischaltungen: ['ton'] };
 const LIZENZ = { name: 'lizenz.txt', typ: 'text/plain', daten: kodiere('Test license.'), rolle: 'lizenz' };

@@ -2,6 +2,7 @@
 // Schema von Quiz-Bank und Saetzen, Einstellungen, Steigerung (reine Funktionen), Seitenliste.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { pruefePack, quelleAusBytes, schreibePack } from '../../src/pack/format.ts';
 import { BENOETIGT, FREISCHALTUNGEN, ROLLEN } from '../../src/pack/vertrag.ts';
 import { fuelleSatz, pruefeQuizBank, pruefeTexte, sichererText } from '../../src/quiz/vertrag.ts';
@@ -12,7 +13,7 @@ import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { DUMMY_QUIZ, DUMMY_TEXTE } from '../../scripts/pack/dummy-inhalte.mjs';
 
 const kodiere = (t) => new TextEncoder().encode(t);
-const VERSION = '0.9.0'; // installierte Version (Session 17)
+const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version; // installierte Version (package.json, das Dummy-Pack verlangt sie als mindestVeil)
 
 test('Dummy-Pack: alle Phase-4-Freischaltungen, Rollen gezaehlt', async () => {
   const { bytes, vorschau, chibis } = await baueDummyPack();
