@@ -269,6 +269,18 @@ function stelleFilterBildHer(el: Element): void {
   filterVorab.delete(el);
   setzeAttribut(el, 'href', vorab.href);
   filterZurueck.set(el, { href: vorab.href, xlink: vorab.xlink });
+  weckeXlink(el);
+}
+
+// Firefox 128 greift nach dem Entfernen von href nicht auf xlink:href zurueck (das Filterbild bleibt leer, gemessen Nacht 18, N4; Firefox 159 und
+// Chromium tun es). Gemessen in Firefox 128: xlink:href mit gleichem Wert noch einmal setzen genuegt nicht, es hilft, xlink:href zu entfernen und
+// neu zu setzen. Der Wert aendert sich am Ende nicht, die Markierung der Rueckschreibung gilt weiter.
+function weckeXlink(el: Element): void {
+  if (!istFeImage(el) || el.getAttribute('href') !== null) return;
+  const xlink = el.getAttributeNS(XLINK, 'href');
+  if (xlink === null) return;
+  el.removeAttributeNS(XLINK, 'href');
+  el.setAttributeNS(XLINK, 'xlink:href', xlink);
 }
 
 // Urteil an einem feImage: frei = Quelle der Seite zurueck, zensiert = die Fassung, verdeckt = der neutrale Platzhalter bleibt (das gefilterte
@@ -293,7 +305,10 @@ function wendeFilterUrteilAn(el: Element, z: Zustand, urteil: Urteil): void {
 function setzeSvgOriginal(el: Element, z: Zustand): void {
   if (!z.svgOriginal) return;
   setzeAttribut(el, 'href', z.svgOriginal.href);
-  if (istFeImage(el)) filterZurueck.set(el, { href: el.getAttribute('href'), xlink: el.getAttributeNS(XLINK, 'href') });
+  if (istFeImage(el)) {
+    filterZurueck.set(el, { href: el.getAttribute('href'), xlink: el.getAttributeNS(XLINK, 'href') });
+    weckeXlink(el);
+  }
   z.signatur = svgSignatur(el);
 }
 
