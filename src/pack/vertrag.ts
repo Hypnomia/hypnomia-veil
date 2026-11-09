@@ -3,7 +3,7 @@
 // Ablage: Dateien in IndexedDB (Erweiterungs-Ursprung, `unlimitedStorage`, Entscheidung 25), eine kleine Kurzfassung
 // in storage.local unter `pack`, damit Popup und Content-Script ohne IndexedDB wissen, was freigeschaltet ist.
 
-import type { Stil } from '../einstellungen';
+import { OHNE_PACK_PRESET, PRESETS, type Preset } from '../presets.ts';
 import type { SatzGruppe } from '../quiz/vertrag';
 
 // ---------- Ablage ----------
@@ -17,6 +17,9 @@ export const PACK_META_SCHLUESSEL = 'aktiv';
 export const PACK_STORE_DATEIEN = 'dateien';
 // storage.local-Schluessel der Kurzfassung (PackKurz). Fehlt er, gibt es kein Pack.
 export const PACK_SPEICHER_SCHLUESSEL = 'pack';
+// storage.local-Schluessel `gesichterStand` ({ importiert, mit, zeit }): der Erkenner meldet (ueber den Hintergrund), dass die Gesichtssuche in den Patch-Bildern
+// fertig ist. Waehrend sie lief, bekamen Pruefungen den Ersatz; offene Seiten nehmen den Stand in ihren Pruefstand auf und bewerten dann neu.
+export const GESICHTER_STAND_SCHLUESSEL = 'gesichterStand';
 
 // ---------- Freischaltungen ----------
 // Was ein Pack freischalten kann. Unbekannte Eintraege im Pack werden beim Import verworfen (ein Pack kann nichts
@@ -40,6 +43,8 @@ export const PACK_SPEICHER_SCHLUESSEL = 'pack';
 //   kontrolle:besuche   Pflicht-Besuche: Mia oeffnet selbst einen Tab (Rolle `texte`, Gruppe `besuch`)
 // Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md, Version 0.6.0):
 //   ton                 kurze Klaenge zu Quiz und Blitzwoertern (Rolle `ton`, mindestens eine Audio-Datei mit Namen aus TON_NAMEN)
+// Zensur-Presets (ZENSUR-PRESETS-BAUPLAN):
+//   zensur:woerter      Woerter fuer die Presets mit Wort (Rolle `woerter`, JSON, Schema src/presets.ts pruefeWoerter)
 export const FREISCHALTUNGEN = [
   'stil:mia-patch',
   'erwachsen:vorschau',
@@ -58,6 +63,7 @@ export const FREISCHALTUNGEN = [
   'kontrolle:zeitplan',
   'kontrolle:besuche',
   'ton',
+  'zensur:woerter',
 ] as const;
 export type Freischaltung = (typeof FREISCHALTUNGEN)[number];
 
@@ -69,8 +75,8 @@ export type Stufe = 'tease' | 'hot' | 'explicit';
 // `format` Pflicht). `ton` (Phase 6): kurzer Klang als Audio (ogg, mp3 oder wav, hoechstens 1 MB), der Dateiname ohne Ordner und Endung muss
 // in TON_NAMEN (src/ton/vertrag.ts) stehen, sonst verwirft der Import die Datei; Audio gibt es nur in dieser Rolle und diese Rolle nur als Audio.
 // Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
-export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung' | 'ton';
-export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton'];
+export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung' | 'ton' | 'woerter';
+export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton', 'woerter'];
 
 // Werbeformate (Breite x Hoehe in CSS-Pixeln) fuer die Rolle `werbung`: jedes Werbebild nennt sein Format. Der Werbe-Tausch waehlt fuer eine
 // Flaeche das Format, das ihr am naechsten kommt (Auftrag W).
@@ -81,7 +87,7 @@ export function formatMasse(f: WerbeFormat): { breite: number; hoehe: number } {
   return { breite: b!, hoehe: h! };
 }
 // Rollen, die hoechstens einmal vorkommen duerfen (JSON-Dateien).
-export const EINZEL_ROLLEN: readonly Rolle[] = ['quiz', 'texte'];
+export const EINZEL_ROLLEN: readonly Rolle[] = ['quiz', 'texte', 'woerter'];
 
 // Eine Freischaltung gilt nur, wenn das Pack die Datei dafuer gueltig mitbringt (Entscheidung 100, Pruefer-Fund 5).
 // `null`: braucht keine Datei. Bilder: mindestens ein Bild dieser Rolle. JSON: die Datei ist da und besteht die Schema-Pruefung.
@@ -103,6 +109,7 @@ export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:zeitplan': null,
   'kontrolle:besuche': 'texte',
   ton: 'ton',
+  'zensur:woerter': 'woerter',
 };
 
 // Freischaltungen, die zusaetzlich eine Satz-Gruppe in der Texte-Datei brauchen (mindestens ein gueltiger Satz nach `pruefeTexte`).
@@ -193,10 +200,9 @@ export function istFreigeschaltet(pack: PackKurz | null | undefined, f: Freischa
   return !!pack && Array.isArray(pack.freischaltungen) && pack.freischaltungen.includes(f);
 }
 
-// Stil, der tatsaechlich gilt: Mia-Patch nur mit Pack, sonst Mosaik (Demo: nur Mosaik und Blur, Entscheidung 12).
-export function wirksamerStil(stil: Stil, pack: PackKurz | null | undefined): Stil {
-  if (stil === 'mia-patch' && !istFreigeschaltet(pack, 'stil:mia-patch')) return 'mosaik';
-  return stil;
+// Preset, das tatsaechlich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), sonst Mosaik (Demo: Klassisch und Ganze Person).
+export function presetFuerPackKurz(preset: Preset, pack: PackKurz | null | undefined): Preset {
+  return PRESETS[preset].braucht === 'pack' && !istFreigeschaltet(pack, 'stil:mia-patch') ? OHNE_PACK_PRESET : preset;
 }
 
 // Liest die Kurzfassung aus storage.local (Popup, Optionsseite, Content-Script).

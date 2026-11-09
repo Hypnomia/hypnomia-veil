@@ -2,9 +2,9 @@
 //   npm run pack:bau -- --quelle <ordner> --aus <datei>   Ordner mit pack.json und den Dateien
 //   npm run pack:dummy [-- --aus <datei> --version <x.y.z> --id <kennung>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
 // pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch", ...], "lizenz": "<Name der Lizenzdatei>",
-//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung"|"ton",
+//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung"|"ton"|"woerter",
 //                            "stufe"?: "tease"|"hot"|"explicit", "format"?: "300x250"|... }] }
-//              (vorschau braucht eine Stufe, werbung ein Format aus WERBE_FORMATE, quiz und texte hoechstens einmal; ton ist ein Audio
+//              (vorschau braucht eine Stufe, werbung ein Format aus WERBE_FORMATE, quiz, texte und woerter hoechstens einmal (woerter: { "themen": [{ "id", "titel", "woerter": [...] }] }, Freischaltung zensur:woerter); ton ist ein Audio
 //               .ogg, .mp3 oder .wav bis 1 MB, Name ohne Ordner und Endung aus quiz, richtig, falsch, verweigert, trigger)
 // `datei` ist der Pfad unter dem Quellordner (Standard: gleich `name`), `typ` wird sonst aus der Endung geschlossen.
 // Die Ausgabe landet nie im Repo: erlaubt sind Orte ausserhalb des Repos und Ordner `.output*` darin (ignoriert).
@@ -14,7 +14,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PackFehler, pruefePack, quelleAusBytes, schreibePack } from '../../src/pack/format.ts';
-import { DUMMY_QUIZ, DUMMY_TEXTE } from './dummy-inhalte.mjs';
+import { WORT_MUSTER, pruefeWoerter } from '../../src/presets.ts';
+import { DUMMY_QUIZ, DUMMY_TEXTE, DUMMY_WOERTER } from './dummy-inhalte.mjs';
 import { dummyToene } from './dummy-toene.mjs';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,36 @@ const TYPEN = {
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
 };
+
+// Prueft die Woerter-Datei (Rolle `woerter`) mit dem Code der Erweiterung (src/presets.ts, pruefeWoerter): bricht mit genauer Meldung ab, wenn
+// kein gueltiges Thema bleibt, und warnt fuer jedes Thema und jedes Wort, das die Erweiterung verwerfen wuerde (Muster: Grossbuchstaben, Ziffern,
+// Leerzeichen, Apostroph (gerade oder ’), !; hoechstens 14 Zeichen; 5 bis 60 Woerter je Thema; hoechstens 12 Themen; Kennung a-z, 0-9, -).
+export function pruefeWoerterDatei(bytes, name = 'woerter.json') {
+  let roh;
+  try {
+    roh = JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) {
+    throw new Error(`${name}: kein gueltiges JSON (${e instanceof Error ? e.message : e})`);
+  }
+  const gut = pruefeWoerter(roh);
+  if (!gut) throw new Error(`${name}: kein gueltiges Thema (je Thema Kennung, Titel und 5 bis 60 Woerter aus Grossbuchstaben, Ziffern, Leerzeichen, Apostroph und Ausrufezeichen, hoechstens 14 Zeichen)`);
+  const warnungen = [];
+  const themenRoh = Array.isArray(roh.themen) ? roh.themen : [];
+  for (const t of themenRoh) {
+    const id = t && typeof t.id === 'string' ? t.id : '(ohne Kennung)';
+    const da = gut.themen.find((x) => x.id === id);
+    if (!da) {
+      warnungen.push(`Thema "${id}" faellt weg (Kennung, Titel oder weniger als 5 gueltige Woerter)`);
+      continue;
+    }
+    const ungueltig = (Array.isArray(t.woerter) ? t.woerter : []).filter((w) => typeof w !== 'string' || !WORT_MUSTER.test(w.trim()));
+    if (ungueltig.length) warnungen.push(`Thema "${id}": ${ungueltig.length} Wort/Woerter faellt/fallen weg: ${ungueltig.map((w) => JSON.stringify(w)).join(', ')}`);
+    if ((t.woerter?.length ?? 0) > 60) warnungen.push(`Thema "${id}": mehr als 60 Woerter, die ueberzaehligen fallen weg`);
+  }
+  if (themenRoh.length > 12) warnungen.push('mehr als 12 Themen, die ueberzaehligen fallen weg');
+  for (const w of warnungen) console.warn(`pack: WARNUNG ${name}: ${w}`);
+  return gut;
+}
 
 // Liest das fertige Pack mit demselben Code wie die Erweiterung (alle Pruefungen aus 9.1) und bricht bei jedem Fehler ab:
 // ein Pack, das die Erweiterung ablehnen wuerde, verlaesst den Bau nicht.
@@ -165,6 +196,8 @@ export async function baueDummyPack(opts = {}) {
       stufe: i % 2 === 0 ? 'tease' : 'hot',
     });
   }
+  // `opts.extraPatches`: [{ name, typ, daten }] zusaetzliche Patch-Bilder (Tests: ein Patch mit Gesicht aus einem Testbild, Mias Gesicht).
+  for (const p of opts.extraPatches ?? []) dateien.push({ name: p.name, typ: p.typ, daten: p.daten, rolle: 'patch', stufe: 'tease' });
   // Phase 4 (PHASE-4-BAUPLAN Abschnitt 8 Punkt 11): Vorschau-Bilder, Chibis, Quiz-Bank und Saetze. `opts.ohnePhase4` baut ein Pack
   // wie vor 0.4.0 (nur Patches), fuer Tests "Pack ohne die neuen Freischaltungen".
   const phase4 = !opts.ohnePhase4;
@@ -201,6 +234,12 @@ export async function baueDummyPack(opts = {}) {
     const json = (x) => new TextEncoder().encode(JSON.stringify(x, null, 1));
     dateien.push({ name: 'quiz.json', typ: 'application/json', daten: json(opts.quiz ?? DUMMY_QUIZ), rolle: 'quiz' });
     dateien.push({ name: 'texte.json', typ: 'application/json', daten: json(opts.texte ?? DUMMY_TEXTE), rolle: 'texte' });
+    // Zensur-Presets: Wort-Themen (`opts.ohneWoerter` laesst sie samt Freischaltung weg).
+    if (!opts.ohneWoerter) {
+      const daten = json(opts.woerter ?? DUMMY_WOERTER);
+      if (opts.woerter === undefined) pruefeWoerterDatei(daten);
+      dateien.push({ name: 'woerter.json', typ: 'application/json', daten, rolle: 'woerter' });
+    }
   }
   const bytes = await pruefeErgebnis(await schreibePack(
     {
@@ -228,6 +267,7 @@ export async function baueDummyPack(opts = {}) {
             'kontrolle:zeitplan',
             'kontrolle:besuche',
             ...(opts.ohneTon ? [] : ['ton']),
+            ...(opts.ohneWoerter ? [] : ['zensur:woerter']),
           ]
         : ['stil:mia-patch'],
     },
@@ -262,6 +302,7 @@ export async function bauePackAusOrdner(quelle) {
     if (rolle) eintrag.rolle = rolle;
     if (d.stufe) eintrag.stufe = d.stufe;
     if (d.format) eintrag.format = d.format;
+    if (rolle === 'woerter') pruefeWoerterDatei(eintrag.daten, d.name);
     dateien.push(eintrag);
   }
   return pruefeErgebnis(await schreibePack(

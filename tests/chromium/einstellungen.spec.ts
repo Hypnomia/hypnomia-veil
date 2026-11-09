@@ -42,7 +42,8 @@ const taste = async (seite: Page, css: string, taste: string, n = 1) => {
 };
 // Echte Mausklicks auf die sichtbare Beschriftung (Label) des Schalters, nicht auf das versteckte Eingabefeld.
 const zonenLabel = (seite: Page, name: string) => seite.locator('#zonen label.schalter').filter({ hasText: name });
-const stilLabel = (seite: Page, name: string) => seite.locator('.wahl label').filter({ hasText: name });
+// Preset-Karten (Zensur-Presets): Klick aufs Label der Karte mit diesem Namen
+const stilLabel = (seite: Page, name: string) => seite.locator('#preset-karten label.preset-karte').filter({ has: seite.locator('strong', { hasText: new RegExp(`^${name}$`) }) });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -141,19 +142,19 @@ test('Pause, Stimmung, Zonen, bedeckt, Stil und Strict: jeder Klick landet im Sp
     const namen = await seite.locator('#zonen input[data-bedeckt]').evaluateAll((l) => l.map((e) => e.getAttribute('aria-label')));
     expect(new Set(namen).size).toBe(6);
 
-    // Stil: Blur gewaehlt; Mia patch ohne Pack gesperrt, mit Hinweis
+    // Preset: Blur gewaehlt; die Presets mit meinem Gesicht sind ohne Pack gesperrt, mit Hinweis
     await stilLabel(seite, 'Blur').click();
-    await expect.poll(async () => (await einst(seite)).stil).toBe('blur');
-    await expect(seite.locator('input[name="stil"][value="mia-patch"]')).toBeDisabled();
-    await expect(seite.locator('#stil-hinweis')).toContainText('Mia Pack');
+    await expect.poll(async () => (await einst(seite)).preset).toBe('blur');
+    await expect(seite.locator('#preset-mia-wort')).toBeDisabled();
+    await expect(seite.locator('#preset-pack-hinweis')).toContainText('Mia Pack');
     // Mit Pack waehlbar und gespeichert
     await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
-    await expect(seite.locator('input[name="stil"][value="mia-patch"]')).toBeEnabled();
-    await expect(seite.locator('#stil-hinweis')).toContainText('7 of my pictures');
-    await stilLabel(seite, 'Mia patch').click();
-    await expect.poll(async () => (await einst(seite)).stil).toBe('mia-patch');
+    await expect(seite.locator('#preset-mia-wort')).toBeEnabled();
+    await stilLabel(seite, 'My face, black, words').click();
+    await expect.poll(async () => (await einst(seite)).preset).toBe('mia-wort');
+    await expect(seite.locator('#stil-hinweis')).toContainText('I choose my face from');
     await stilLabel(seite, 'Mosaic').click();
-    await expect.poll(async () => (await einst(seite)).stil).toBe('mosaik');
+    await expect.poll(async () => (await einst(seite)).preset).toBe('mosaik');
 
     // Strict (Klick aufs Label)
     const strictLabel = seite.locator('label.schalter:has(#strict)');
@@ -163,7 +164,7 @@ test('Pause, Stimmung, Zonen, bedeckt, Stil und Strict: jeder Klick landet im Sp
     await expect.poll(async () => (await einst(seite)).strict).toBe(false);
     // Messzahl: die geaenderten Felder im Speicher
     const e = await einst(seite);
-    console.log(`einstellungen: schwelle ${e.schwelle}, stil ${e.stil}, belly ${JSON.stringify(e.zonen.belly)}`);
+    console.log(`einstellungen: schwelle ${e.schwelle}, preset ${e.preset}, belly ${JSON.stringify(e.zonen.belly)}`);
   } finally {
     await seite.close();
   }
@@ -240,12 +241,12 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
     await zonenLabel(seite, 'Mouth').click();
     await expect.poll(async () => (await einst(seite)).zonen?.mouth?.an).toBe(true);
     await stilLabel(seite, 'Blur').click();
-    await expect.poll(async () => (await einst(seite)).stil).toBe('blur');
+    await expect.poll(async () => (await einst(seite)).preset).toBe('blur');
     await expect(popup.locator('#pause')).toHaveText('Let Mia back in');
     await expect(popup.locator('#stimmung')).toHaveValue('0.22');
     await expect(popup.locator('#strict')).toBeChecked();
     await expect(popup.locator('#zonen input[data-zone="mouth"]')).toBeChecked();
-    await expect(popup.locator('input[name="stil"][value="blur"]')).toBeChecked();
+    await expect(popup.locator('#preset-name')).toHaveText('Blur');
     // Aenderung im Popup, Einstellungsseite folgt
     await popup.locator('#pause').click();
     await expect.poll(async () => (await einst(seite)).pause).toBe(false);

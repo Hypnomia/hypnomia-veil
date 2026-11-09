@@ -412,7 +412,8 @@ try {
     await ausErweiterung(`await api.storage.local.remove('pack'); return true;`);
     await bis('Riegel zu', async () => !(await driver.executeScript("return document.querySelector('[data-veil-riegel-host]') !== null")), 5000);
     await importierePack();
-    await einstellungenMerge({ quiz: { verweigern: 0, freilegenMs: 30000 } });
+    // Preset ohne Pack-Bezug: mit einem Mia-Preset gilt nach dem Entfernen Mosaik, das Bild wird dann zu Recht neu zensiert (andere Fassung)
+    await einstellungenMerge({ preset: 'mosaik', quiz: { verweigern: 0, freilegenMs: 30000 } });
     await frischeSeite();
     await warteZensiert();
     const quelle = await srcVon('a');

@@ -13,7 +13,20 @@ export function stimmungsWort(schwelle: number): string {
 }
 
 // UX-Fund 26: ueberall derselbe Satz, wenn das Speichern scheitert (Schalter und Regler springen dann auf den gespeicherten Stand zurueck).
-export const HINWEIS_PACK_OHNE_PATCH = 'Your Mia Pack has no patch pictures, so Mia patch stays locked. Mosaic and Blur still work.';
+export const HINWEIS_PACK_OHNE_PATCH = 'This Mia Pack has no pictures of my face to use, so the styles with my face stay locked. Classic and Whole person still work.';
+// Zensur-Presets (ZENSUR-PRESETS-BAUPLAN, Texte vom Texter freigegeben): Hinweise bei den Zonen und zum Pack. Namen und Saetze der Karten
+// stehen in src/presets.ts. In der Oberflaeche heisst es "style", "preset" bleibt intern.
+export const HINWEIS_ZONEN_AUGENBALKEN = 'Eye bar covers only the eyes. Your other zones rest until you pick another style.';
+export const HINWEIS_ZONEN_ZENSURBALKEN = 'Censor bars always black out the eyes. Your zones decide what else turns black.';
+export const HINWEIS_ZONEN_MIA = 'My face only goes where Face is on. While it is, Eyes and Mouth add nothing on top.';
+export const HINWEIS_MIA_PACK_FEHLT = 'The styles with my face need the Mia Pack. Once it’s in, every face I cover becomes mine.';
+export const HINWEIS_KEINE_WOERTER = 'No topic picked, so I just write MIA.';
+export const HINWEIS_KEIN_GESICHT = 'None of the pictures in this pack shows my face clearly enough, so faces get the same cover as everything else.';
+export const HINWEIS_WORT_OHNE_PACK = 'Without the Mia Pack, my word is MIA.';
+// Wer ein Mia-Preset waehlt (und beim ersten Pack-Import), bekommt die Zone Face eingeschaltet; Abschalten bleibt moeglich.
+export const HINWEIS_FACE_EIN = 'I switched Face on under What I cover, so every face becomes mine. You can switch it off again.';
+// Mia-Preset gewaehlt, Face steht aus (bewusst abgeschaltet oder aus dem Altbestand): kurzer Hinweis auf Einstellungsseite, Popup und Einstieg.
+export const HINWEIS_FACE_AUS = 'My face only goes on faces. Switch Face on under What I cover and every face becomes mine.';
 export const FEHLER_SPEICHERN = 'I couldn’t save that, so nothing changed. Try again in a moment.';
 
 // UX-Fund 28: Daten ueberall amerikanisch mit ausgeschriebenem Monat ("Nov 5, 2026"), mit Uhrzeit "Nov 5, 2026, 2:03 PM".

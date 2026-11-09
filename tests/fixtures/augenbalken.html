@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Eye-bar-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      img, canvas, video { display: block; width: 320px; height: 240px; margin-bottom: 8px; object-fit: cover; }
+    </style>
+  </head>
+  <body>
+    <h1>Eye bar</h1>
+    <!-- Bild mit Gesicht vom Testserver (Satz sfw, nie im Repo), eine Leinwand und ein Video, die dasselbe Gesicht zeigen (gleicher Ursprung,
+         lesbar). Das Video nimmt die Seite zur Laufzeit selbst auf (MediaRecorder): keine Mediendatei im Repo. -->
+    <img id="bild" alt="" />
+    <canvas id="leinwand" width="480" height="360"></canvas>
+    <video id="film" muted loop playsinline></video>
+    <script>
+      (function () {
+        var bild = document.getElementById('bild');
+        var leinwand = document.getElementById('leinwand');
+        var name = new URLSearchParams(location.search).get('bild') || 'sfw-001-portraet.jpg';
+        var adresse = '/testbild/sfw/' + encodeURIComponent(name);
+        var quelle = new Image();
+        quelle.onload = function () {
+          function zeichne(c) {
+            var g = c.getContext('2d');
+            var f = Math.max(c.width / quelle.naturalWidth, c.height / quelle.naturalHeight);
+            g.drawImage(quelle, (c.width - quelle.naturalWidth * f) / 2, (c.height - quelle.naturalHeight * f) / 2, quelle.naturalWidth * f, quelle.naturalHeight * f);
+          }
+          zeichne(leinwand);
+          var aufnahmeLeinwand = document.createElement('canvas');
+          aufnahmeLeinwand.width = 480;
+          aufnahmeLeinwand.height = 360;
+          zeichne(aufnahmeLeinwand);
+          var timer = setInterval(function () { zeichne(aufnahmeLeinwand); }, 50);
+          var aufnahme = new MediaRecorder(aufnahmeLeinwand.captureStream(20));
+          var stuecke = [];
+          aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+          aufnahme.onstop = function () {
+            clearInterval(timer);
+            var film = document.getElementById('film');
+            film.src = URL.createObjectURL(new Blob(stuecke, { type: aufnahme.mimeType }));
+            film.play().catch(function () {});
+            document.documentElement.dataset.filmBereit = '1';
+          };
+          aufnahme.start();
+          setTimeout(function () { aufnahme.stop(); }, 700);
+          bild.src = adresse;
+        };
+        quelle.src = adresse;
+      })();
+    </script>
+  </body>
+</html>

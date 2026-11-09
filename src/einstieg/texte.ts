@@ -76,11 +76,7 @@ export const TEXT = {
   bedecktText: 'I cover it under clothing too',
 
   i3Titel: 'How do I cover it?',
-  i3Text: 'Mosaic and blur work right away. My own patch needs the Mia Pack.',
-  stilMosaik: 'Mosaic',
-  stilBlur: 'Blur',
-  stilPatch: 'Mia patch',
-  stilPatchGesperrt: 'Mia patch unlocks with the Mia Pack.',
+  i3Text: 'Classic and Whole person work right away. The styles with my face need the Mia Pack.',
   // Fund 8: Calm mode steht ohne Pack auf Interview-Seite 3.
   ruhigTitel: 'Calm mode',
   ruhigText: 'slower spiral, no moving or flashing words',

@@ -1,4 +1,5 @@
 // Nachrichten-Vertrag zwischen Content-Script, Hintergrund und Erkenner (PHASE-2-BAUPLAN Abschnitt 2).
+import type { Behandlung } from './presets';
 // Alle Nachrichten sind reine JSON-Objekte (Chrome serialisiert runtime.sendMessage als JSON).
 // Jeder Empfaenger antwortet nur auf sein `ziel`; auf fremde Ziele und unbekannte Typen gibt er undefined zurueck.
 
@@ -12,6 +13,8 @@ export type Ziel = 'hintergrund' | 'erkenner' | 'inhalt';
 
 // ---------- Ziel hintergrund ----------
 export interface NachrichtHintergrundWecke { ziel: 'hintergrund'; typ: 'wecke' }
+// Der Erkenner meldet: die Gesichtssuche in den Patch-Bildern des Packs `importiert` ist fertig (`mit` Bilder mit Gesicht). Der Hintergrund legt es in storage.local ab.
+export interface NachrichtHintergrundGesichter { ziel: 'hintergrund'; typ: 'gesichter-stand'; importiert: number; mit: number }
 export interface NachrichtHintergrundReferer { ziel: 'hintergrund'; typ: 'referer'; host: string; referer: string }
 export interface NachrichtHintergrundPause { ziel: 'hintergrund'; typ: 'pause'; an?: boolean }
 // Adresse des Tabs, aus dem die Nachricht kommt (fuer eingebettete Frames: die oberste Seite). Eigene Ausnahmen gelten je Tab.
@@ -97,6 +100,7 @@ export type AntwortVersionTest = { ok: true } | { ok: false; fehler: string };
 export type NachrichtHintergrund =
   | NachrichtHintergrundWecke
   | NachrichtHintergrundReferer
+  | NachrichtHintergrundGesichter
   | NachrichtHintergrundPause
   | NachrichtHintergrundTab
   | NachrichtHintergrundAdresse
@@ -122,6 +126,7 @@ export type NachrichtHintergrund =
 export const HINTERGRUND_TYPEN = [
   'wecke',
   'referer',
+  'gesichter-stand',
   'pause',
   'tab',
   'adresse',
@@ -163,16 +168,20 @@ export interface PruefEinstellungen {
   schwelle: number;
   zonen: Einstellungen['zonen'];
   rand: number;
-  stil: Einstellungen['stil'];
+  preset: Einstellungen['preset'];
+  // Wort-Themen (Kennungen), null = alle Themen des Packs, [] = keins (dann "MIA"). Nur fuer Presets mit Woertern.
+  woerterThemen?: string[] | null;
   // Steigerung Stufe 4 (src/steigerung.ts): jedes Bild mit einer erkannten Frau wird ganz verdeckt. Fehlt = aus.
   ganzVerdecken?: boolean;
-  // Nur bei Stil mia-patch: `importiert` der Pack-Kurzfassung, die das Content-Script kennt (0 = kein Pack). Weicht der Stand im
+  // Nur bei Presets, die das Pack brauchen (Mias Gesicht, Woerter): `importiert` der Pack-Kurzfassung, die das Content-Script kennt (0 = kein Pack). Weicht der Stand im
   // Erkenner ab, liest er die Patch-Bilder neu, bevor er rendert (kein Rendern mit dem alten Pack nach einem Ersetzen).
   packStand?: number;
 }
 
 export interface NachrichtErkennerWecke { ziel: 'erkenner'; typ: 'wecke' }
 export interface NachrichtErkennerStatus { ziel: 'erkenner'; typ: 'status' }
+// Prueft alle Patch-Bilder des Packs einmal auf ein Gesicht (Mias Gesicht) und liefert die Zahlen: gesamt, geprueft, mit Gesicht.
+export interface NachrichtErkennerGesichtsscan { ziel: 'erkenner'; typ: 'gesichtsscan'; packStand?: number }
 export interface NachrichtErkennerPruefe {
   ziel: 'erkenner';
   typ: 'pruefe';
@@ -207,7 +216,7 @@ export interface NachrichtErkennerPackBild {
   hoehe?: number;
   stufe?: StufeWahl;
 }
-export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerPruefe | NachrichtErkennerPackBild;
+export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerGesichtsscan | NachrichtErkennerPruefe | NachrichtErkennerPackBild;
 export const PACKBILD_MAX_SEITE = 480;
 export const PACKBILD_MAX_SEITE_CHIBI = 512;
 export const PACKBILD_MAX_SEITE_WERBUNG = 970;
@@ -216,8 +225,14 @@ export interface AntwortPackBild { ok: true; dataUrl: string; breite: number; ho
 
 // quelle: welches Modell den Treffer lieferte (fehlt = 320n). Gesichtszonen aus YuNet tragen 'yunet' (PHASE-2-BAUPLAN 10.4).
 // weiblich: Klasse einer Frau (nur 320n); Steigerung Stufe 4 verdeckt dann das ganze Bild.
-export interface Treffer { zone: Zone; bedeckt: boolean; score: number; box: Box; quelle?: '320n' | 'yunet'; weiblich?: true }
-export interface Flaeche { zone: Zone; box: Box }
+// winkel: nur bei YuNet-Augen und -Gesichtern: Neigung der Augenlinie in Bogenmass (Uhrzeigersinn positiv, in (-pi/2, pi/2]), fuer Augenbalken und Mias Gesicht.
+export interface Treffer { zone: Zone; bedeckt: boolean; score: number; box: Box; quelle?: '320n' | 'yunet'; weiblich?: true; winkel?: number }
+// balken: bei geneigter Augenlinie das gedrehte Rechteck (Augenbalken oder Mias Gesicht; Mitte, Mass vor der Drehung, Winkel in Bogenmass);
+// `box` ist dann die umschliessende Box, auf das Bild begrenzt. Ohne `balken` ist `box` das achsenparallele Rechteck.
+// behandlung: wie die Flaeche gezeichnet wird (src/presets.ts); fehlt sie, gilt die Behandlung des Presets fuer ein ganzes Bild.
+// ersatz: nur bei `mia-gesicht`: Behandlung, wenn kein Gesichts-Patch passt oder keins zu haben ist.
+export interface Augenbalken { mitte: [number, number]; breite: number; hoehe: number; winkel: number }
+export interface Flaeche { zone: Zone; box: Box; balken?: Augenbalken; behandlung?: Behandlung; ersatz?: Behandlung }
 
 export interface ZeitenPruefung {
   netz: number;
@@ -243,6 +258,8 @@ export interface AntwortErkennerStatus {
   gesichtKaltstartMs?: number | null;
   // Anzahl der YuNet-Laeufe seit Start (Beleg, dass ohne Gesichtszonen nichts rechnet).
   gesichtLaeufe?: number;
+  // Mias Gesicht: wie viele Patch-Bilder schon auf ein Gesicht geprueft sind und wie viele eins haben.
+  patchGesichter?: { gesamt: number; geprueft: number; mit: number; fertig: boolean };
   laeufe: number;
   warteschlange: number;
 }

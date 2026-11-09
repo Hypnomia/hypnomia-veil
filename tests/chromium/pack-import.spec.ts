@@ -30,8 +30,8 @@ interface PackBau {
 const bauModul = '../../scripts/pack/baue-pack.mjs';
 const ladeBau = async (): Promise<PackBau> => (await import(bauModul)) as PackBau;
 
-const DATEIEN = 31; // Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, 5 Klaenge, Quiz, Texte
-const DATEIEN_OHNE_TON = 26; // ohne die 5 Klaenge: andere Zahl, damit "Zahl der Dateien" etwas aussagt
+const DATEIEN = 32; // Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, 5 Klaenge, Quiz, Texte, Woerter
+const DATEIEN_OHNE_TON = 27; // ohne die 5 Klaenge: andere Zahl, damit "Zahl der Dateien" etwas aussagt
 const EINSTIEG_FERTIG = { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'uebersprungen', zeit: 1 };
 
 test.describe.configure({ mode: 'serial' });
@@ -268,17 +268,18 @@ test('Ersetzen: 1.0.0 mit geaenderten Einstellungen, dann 1.1.0 (Hinweis neuer),
     expect(await leseMetaIdb(seite)).toMatchObject({ version: '1.0.0', dateienImMeta: DATEIEN });
     const e0 = await lies(seite, 'einstellungen');
     await schreibe(seite, {
-      einstellungen: { ...e0, stil: 'blur', zonen: { ...e0.zonen, belly: { ...e0.zonen.belly, an: true } }, erwachsen: { ...e0.erwachsen, an: false } },
+      einstellungen: { ...e0, preset: 'blur', zonen: { ...e0.zonen, belly: { ...e0.zonen.belly, an: true } }, erwachsen: { ...e0.erwachsen, an: false } },
     });
     // `begruesstFuer` (Begruessungs-Merker, main.ts von Auftrag O) folgt jedem Import und bleibt hier aussen vor.
     const ohneMerker = async () => {
       const o = await alles(seite);
       delete o.pack;
       delete o.begruesstFuer;
+      delete o.gesichterStand; // Meldung "Gesichtssuche fertig" des Erkenners folgt jedem Import (Zensur-Presets)
       return o;
     };
     const vorher = await ohneMerker();
-    expect(vorher.einstellungen.stil).toBe('blur');
+    expect(vorher.einstellungen.preset).toBe('blur');
     const titel = 'Dummy pack (synthetic pictures)';
 
     // 1.1.0 (ohne Klaenge): Hinweis "neuer", noch nichts ersetzt

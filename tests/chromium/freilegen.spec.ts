@@ -446,7 +446,8 @@ test('Pack entfernt: offener Riegel schliesst, Freigelegtes ist sofort wieder ze
     await s.close();
   }
   await importierePack();
-  await aendereEinstellungen({ quiz: { verweigern: 0, freilegenMs: 30000 } });
+  // Preset ohne Pack-Bezug: mit einem Mia-Preset gilt nach dem Entfernen Mosaik, das Bild wird dann zu Recht neu zensiert (andere Fassung)
+  await aendereEinstellungen({ preset: 'mosaik', quiz: { verweigern: 0, freilegenMs: 30000 } });
   const t = await frischeSeite();
   try {
     await warteZensiert(t);

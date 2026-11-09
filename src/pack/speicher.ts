@@ -14,6 +14,9 @@ import {
 } from './db';
 import { PackFehler, filtereFreischaltungen, sha256, type Fortschritt, type GeprueftesPack } from './format';
 import { pruefeQuizBank, pruefeTexte } from '../quiz/vertrag';
+import { waehlePreset } from '../einstellungen';
+import { leereGesichter } from './gesichter-ablage';
+import { PACK_PRESET, OHNE_PACK_PRESET, PRESETS, pruefeWoerter } from '../presets.ts';
 import { ersetztVorhandenes, vergleichePacks, type PackVergleich } from './ersetzen';
 import {
   filtereNachGruppen,
@@ -85,6 +88,11 @@ export interface ImportErgebnis {
   // Session 12: was der Import mit einem vorhandenen Pack gemacht hat. Nur bei 'erstes' stellt er den Stil um; sonst bleiben alle
   // Einstellungen unveraendert (Entscheidung 141).
   fall: PackVergleich;
+  // Der Import hat die Zone Face wirklich eingeschaltet (Mia-Preset gewaehlt und Face war aus). Im Altbestand-Fall (Mia-Preset steht schon,
+  // Face bewusst aus) bleibt es false: der Hinweis nennt Face dann nicht als eingeschaltet.
+  faceEingeschaltet: boolean;
+  // Face ist nach dem Import an (eingeschaltet oder schon an gewesen); die Meldung sagt nur dann "Face is on".
+  faceAn: boolean;
 }
 
 // Speicherbedarf: die Bytes jeder Datei werden einmal gelesen, gehasht und als Blob gehalten, bis die Transaktion steht. Faustwert
@@ -114,7 +122,7 @@ export async function importierePack(
       filtereFreischaltungen(
         m.freischaltungen.filter((f): f is Freischaltung => (FREISCHALTUNGEN as readonly string[]).includes(f)),
         (rolle) =>
-          rolle === 'quiz' ? pruefeQuizBank(geprueft.json.quiz) !== null : rolle === 'texte' ? pruefeTexte(geprueft.json.texte) !== null : geprueft.rollen[rolle] > 0,
+          rolle === 'quiz' ? pruefeQuizBank(geprueft.json.quiz) !== null : rolle === 'texte' ? pruefeTexte(geprueft.json.texte) !== null : rolle === 'woerter' ? pruefeWoerter(geprueft.json.woerter) !== null : geprueft.rollen[rolle] > 0,
       ),
       pruefeTexte(geprueft.json.texte),
     ),
@@ -201,14 +209,21 @@ export async function importierePack(
     throw new PackSpeicherFehler('kurzfassung', e);
   }
   let stilGesetzt = true;
+  let faceEingeschaltet = false;
+  let faceAn = false;
   if (!ersetztVorhandenes(fall) && istFreigeschaltet(kurz, 'stil:mia-patch')) {
     try {
-      await aendereEinstellungen({ stil: 'mia-patch' });
+      await aendereEinstellungen((alt) => {
+        const r = waehlePreset(alt, PACK_PRESET); // schaltet Face mit ein (Entscheidung der Inhaberin)
+        faceEingeschaltet = r.faceEingeschaltet;
+        faceAn = r.faceEingeschaltet || alt.zonen.face.an;
+        return r.teil;
+      });
     } catch {
       stilGesetzt = false;
     }
   }
-  return { kurz, stilGesetzt, fall };
+  return { kurz, stilGesetzt, fall, faceEingeschaltet, faceAn };
 }
 
 async function leereAblage(): Promise<void> {
@@ -221,9 +236,9 @@ async function leereAblage(): Promise<void> {
   });
 }
 
-// Stil von Mia-Patch zurueck auf Mosaik, aber nur, wenn er auch so steht (jede Speicherung setzt alle Seiten neu).
+// Preset von einem Mia-Preset zurueck auf Mosaik, aber nur, wenn es auch so steht (jede Speicherung setzt alle Seiten neu).
 async function setzeStilZurueck(): Promise<void> {
-  if ((await ladeEinstellungen()).stil === 'mia-patch') await aendereEinstellungen({ stil: 'mosaik' });
+  if (PRESETS[(await ladeEinstellungen()).preset].braucht === 'pack') await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
 }
 
 // Entfernt das Pack: zuerst IndexedDB leeren, dann Kurzfassung weg, dann Stil zurueck auf Mosaik. Bleibt nach dem Leeren etwas
@@ -235,6 +250,7 @@ export async function entfernePack(): Promise<void> {
     throw new PackSpeicherFehler('ablage', e);
   }
   meldePackGeaendert();
+  await leereGesichter(); // die Ablage der Gesichtssuche gehoert zum Pack und geht mit ihm
   try {
     await browser.storage.local.remove(PACK_SPEICHER_SCHLUESSEL);
     await setzeStilZurueck();

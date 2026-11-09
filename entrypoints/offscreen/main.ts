@@ -9,4 +9,9 @@ async function setzeReferer(host: string, referer: string): Promise<void> {
 
 // Zuerst zuhoeren, dann das Modell laden: ein frisches Dokument soll moeglichst frueh antworten.
 horcheErkenner();
-starteErkenner({ setzeReferer });
+// Die Gesichtssuche in den Patch-Bildern ist fertig: der Hintergrund legt den Stand ab, offene Seiten bewerten danach neu.
+async function meldeGesichter(importiert: number, mit: number): Promise<void> {
+  await browser.runtime.sendMessage({ ziel: 'hintergrund', typ: 'gesichter-stand', importiert, mit });
+}
+
+starteErkenner({ setzeReferer, meldeGesichter });

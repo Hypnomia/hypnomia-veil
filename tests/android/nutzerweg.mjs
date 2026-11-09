@@ -185,8 +185,8 @@ try {
   await L.warte(1500);
   const popupTexte = sichtbar();
   L.foto('nutzerweg', 'popup-nach-neustart');
-  // Das Popup nennt mit Pack "Mia patch uses N of my pictures from the Mia Pack", ohne Pack "Add the Mia Pack" (Stil-Hinweis).
-  const packDa = popupTexte.some((t) => /Mia patch uses \d+ of my pictures/.test(t));
+  // Das Popup nennt mit Pack "I choose my face from ... pictures in your Mia Pack", ohne Pack "Add the Mia Pack" (Stil-Hinweis).
+  const packDa = popupTexte.some((t) => /I choose my face from/.test(t));
   const einstiegDa = !popupTexte.some((t) => /finish setting me up|Welcome/i.test(t));
   schritt('nach-neustart', { packDa, einstiegDa, popup: popupTexte.slice(0, 12) });
   if (!packDa) code = 1;

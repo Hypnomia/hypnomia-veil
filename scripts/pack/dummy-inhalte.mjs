@@ -45,3 +45,12 @@ export const DUMMY_TEXTE = {
     besuch: ['Test visit line.'],
   },
 };
+
+// Synthetische Wort-Themen fuer das Dummy-Pack und die Tests (Fantasiewoerter, keine echten Woerter; die echten liegen nur im Pack,
+// Entscheidung 100). Schema: src/presets.ts pruefeWoerter (je Thema 5 bis 60 Woerter, Grossbuchstaben, Ziffern, Leerzeichen, Apostroph, !).
+export const DUMMY_WOERTER = {
+  themen: [
+    { id: 'alpha', titel: 'Alpha', woerter: ['ALPHA', 'ALPHA ONE', 'ALPHA TWO', 'ALPHA 3!', "ALPHA'S"] },
+    { id: 'beta', titel: 'Beta', woerter: ['BETA', 'BETA ONE', 'BETA TWO', 'BETA 3!', "BETA'S"] },
+  ],
+};

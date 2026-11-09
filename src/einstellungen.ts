@@ -7,9 +7,10 @@ export type Zone = (typeof ZONEN)[number];
 // Zonen, bei denen "auch bedeckt" Sinn ergibt (das Modell kennt dort bedeckte Varianten).
 export const BEDECKBARE_ZONEN: ReadonlySet<Zone> = new Set<Zone>(['breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits']);
 
-// 'mia-patch' gilt nur mit Pack (src/pack/vertrag.ts, wirksamerStil); ohne Pack zeichnet der Erkenner Mosaik.
-export type Stil = 'mosaik' | 'blur' | 'mia-patch';
-export const STILE: readonly Stil[] = ['mosaik', 'blur', 'mia-patch'];
+// Zensur-Preset (ZENSUR-PRESETS-BAUPLAN, ersetzt die frueheree Stil-Wahl): Tabelle und Logik in src/presets.ts. Mia-Presets gelten nur mit
+// Pack (presetFuerPack), sonst zeichnet der Erkenner Mosaik. Alte gespeicherte `stil`-Werte werden beim Laden zu Presets (presetAusStil).
+import { nutztMiasGesicht, STANDARD_PRESET, THEMA_ID_MUSTER, MAX_THEMEN, istPreset, presetAusStil, zonenFuerPreset as zonenFuerPresetAllgemein, type Preset } from './presets.ts';
+export { PRESET_IDS, type Preset } from './presets.ts';
 
 export interface ZonenEinstellung {
   an: boolean;
@@ -21,7 +22,9 @@ export interface Einstellungen {
   pause: boolean;
   strict: boolean;
   schwelle: number;
-  stil: Stil;
+  preset: Preset;
+  // Wort-Themen der Presets mit Woertern (Kennungen aus dem Pack). null: alle Themen des Packs (Standard), []: keins, dann steht "MIA" da.
+  woerterThemen: string[] | null;
   rand: number;
   zonen: Record<Zone, ZonenEinstellung>;
   ausnahmen: string[];
@@ -135,7 +138,8 @@ export const STANDARD: Einstellungen = {
   pause: false,
   strict: false,
   schwelle: 0.1,
-  stil: 'mosaik',
+  preset: STANDARD_PRESET,
+  woerterThemen: null,
   rand: 0.15,
   zonen: {
     eyes: { an: false },
@@ -156,6 +160,23 @@ export const STANDARD: Einstellungen = {
   kontrolle: { werbung: false, werbungGefragt: false, werbungAus: [], blitz: 'selten', leerlauf: true, leerlaufMinuten: 2, tabtitel: true, cursor: 'spirale', meldungen: true, besuche: false, zeiten: [] },
   ton: { an: false, lautstaerke: TON_LAUTSTAERKE_STANDARD },
 };
+
+// Preset waehlen (Einstellungsseite, Einstieg, erstes Pack): beim Wechsel auf ein Preset mit Mias Gesicht schaltet sich die Zone Face ein
+// (Entscheidung der Inhaberin), sonst saehe man kein einziges Gesicht von Mia. Gilt nur beim Wechsel (vorher kein Mia-Preset) und nur, wenn
+// Face aus war; spaeter abgeschaltet bleibt es aus, es wird nie bei jedem Laden neu eingeschaltet. `faceEingeschaltet` sagt der Oberflaeche,
+// ob sie den kurzen Hinweis zeigen soll.
+export function waehlePreset(alt: Pick<Einstellungen, 'preset' | 'zonen'>, neu: Preset): { teil: Partial<Einstellungen>; faceEingeschaltet: boolean } {
+  if (nutztMiasGesicht(neu) && !nutztMiasGesicht(alt.preset) && !alt.zonen.face.an) {
+    return { teil: { preset: neu, zonen: { ...alt.zonen, face: { ...alt.zonen.face, an: true } } }, faceEingeschaltet: true };
+  }
+  return { teil: { preset: neu }, faceEingeschaltet: false };
+}
+
+// Zonen, die ein Preset wirklich auswertet (src/presets.ts, zonenFuerPreset): Augenbalken nur die Augen, Zensurbalken die Schalter plus
+// Augen, alle anderen die Schalter unveraendert (dasselbe Objekt). Unabhaengig von der Steigerung.
+export function zonenFuerPreset(preset: Preset | undefined, zonen: Record<Zone, ZonenEinstellung>): Record<Zone, ZonenEinstellung> {
+  return zonenFuerPresetAllgemein(preset, zonen) as Record<Zone, ZonenEinstellung>;
+}
 
 // Liste von Hosts oder Mustern: nur Texte, getrimmt, klein, ohne Leere und Doppelte.
 function textListe(roh: unknown): string[] {
@@ -187,7 +208,11 @@ export function vervollstaendige(roh: unknown): Einstellungen {
     pause: typeof r.pause === 'boolean' ? r.pause : STANDARD.pause,
     strict: typeof r.strict === 'boolean' ? r.strict : STANDARD.strict,
     schwelle: begrenze(r.schwelle, SCHWELLE_MIN, SCHWELLE_MAX, STANDARD.schwelle),
-    stil: STILE.includes(r.stil as Stil) ? (r.stil as Stil) : 'mosaik',
+    // Altbestand: `stil` wird zum Preset (mia-patch zu mia-wort), `preset` gewinnt, wo beides steht.
+    preset: istPreset(r.preset) ? r.preset : presetAusStil((r as { stil?: unknown }).stil) ?? STANDARD_PRESET,
+    woerterThemen: Array.isArray(r.woerterThemen)
+      ? [...new Set(r.woerterThemen.filter((t): t is string => typeof t === 'string' && THEMA_ID_MUSTER.test(t)))].slice(0, MAX_THEMEN)
+      : null,
     rand: begrenze(r.rand, 0, 0.5, STANDARD.rand),
     zonen,
     ausnahmen: Array.isArray(r.ausnahmen)

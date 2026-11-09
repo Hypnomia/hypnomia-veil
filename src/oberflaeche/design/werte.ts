@@ -31,6 +31,8 @@ export const FARBEN = {
   ok: '#23704c',
   'ok-punkt': '#3fae7a',
   weiss: '#ffffff',
+  // Zensur im Bild (Erkenner): deckendes Schwarz fuer Balken und Schwarz-Behandlung, nie ein dunkles Grau
+  schwarz: '#000000',
   // Kennzeichnung der Werbung: dunkles Etikett, weisse Schrift
   etikett: '#2b1630',
 } as const;
@@ -45,6 +47,8 @@ export const WERTE: Record<string, string> = {
   'verlauf-kopf': 'linear-gradient(135deg, #ffd6e8 0%, #e6dcff 100%)',
   'verlauf-grund':
     'radial-gradient(1200px 700px at 8% -10%, #ffe1ee 0%, transparent 60%), radial-gradient(900px 600px at 100% 0%, #e9e0ff 0%, transparent 55%), radial-gradient(800px 600px at 50% 110%, #ffe8db 0%, transparent 60%), #fff7fb',
+  // Unterlage hinter dem Wort auf Mosaik (Erkenner, stile.ts)
+  'wort-unterlage': 'rgba(0, 0, 0, 0.62)',
   glas: 'rgba(255, 255, 255, 0.62)',
   'glas-stark': 'rgba(255, 255, 255, 0.82)',
   'glas-kante': 'rgba(255, 255, 255, 0.9)',

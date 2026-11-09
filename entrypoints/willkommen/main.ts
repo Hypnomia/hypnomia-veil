@@ -6,15 +6,20 @@ import {
   VERWEIGERN_MAX,
   VERWEIGERN_MIN,
   aendereEinstellungen,
+  waehlePreset,
   beiEinstellungsAenderung,
   ladeEinstellungen,
   type BlitzHaeufigkeit,
   type CursorArt,
   type Einstellungen,
-  type Stil,
 } from '../../src/einstellungen';
 import { QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL } from '../../src/kontrolle/grenzen';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../../src/pack/vertrag';
+import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
+import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
+import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
+import { PRESETS } from '../../src/presets';
+import { packHinweis as packHinweisText, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
 import { WILLKOMMEN_KANAL, aendereEinstieg } from '../../src/einstieg/speicher';
 import { einstiegFertig, ladeEinstieg, type EinstiegStand } from '../../src/einstieg/vertrag';
 import type { ChibiPose } from '../../src/chibi';
@@ -291,7 +296,11 @@ function seiteEinwilligung(): HTMLElement {
 interface Seite {
   knoten: HTMLElement;
   aktualisiere: (e: Einstellungen, p: PackKurz | null) => void;
+  // Aufraeumen, wenn die Seite verlassen wird (laufende Beobachtungen beenden)
+  abbau?: () => void;
 }
+let abbauSeite: (() => void) | null = null;
+window.addEventListener('pagehide', () => abbauSeite?.(), { once: true });
 
 // Fund 4: ohne Pack ein Satz, was das Pack auf dieser Seite zeigt, und der Link zum Pack-Abschnitt (die Seite merkt sich den Schritt).
 function packHinweis(text: string): HTMLParagraphElement {
@@ -376,35 +385,82 @@ function seite2(): Seite {
 function seite3(): Seite {
   const k = knoten('div');
   k.append(knoten('p', undefined, TEXT.i3Text));
-  const gruppe = knoten('div', 'wahl');
-  gruppe.setAttribute('role', 'radiogroup');
-  gruppe.setAttribute('aria-labelledby', 'schritt-titel');
-  const stile: Array<[Stil, string]> = [
-    ['mosaik', TEXT.stilMosaik],
-    ['blur', TEXT.stilBlur],
-    ['mia-patch', TEXT.stilPatch],
-  ];
-  const felder = new Map<Stil, HTMLInputElement>();
-  for (const [stil, titel] of stile) {
-    const karte = wahlKarte(`iv-stil-${stil}`, 'iv-stil', stil, titel, '', () => speichere({ stil }));
-    felder.set(stil, karte.feld);
-    gruppe.append(karte.label);
-  }
-  const sperre = knoten('p', 'hinweis', TEXT.stilPatchGesperrt, 'iv-stil-sperre');
+  // Dieselben Preset-Karten wie auf der Einstellungsseite, kompakt (nur Vorschau und Name).
+  let faceHinweisAn = false;
+  const kartenHost = knoten('div', undefined, undefined, 'iv-preset-karten');
+  const karten = baueKarten(kartenHost, {
+    name: 'iv-preset',
+    praefix: 'iv-preset',
+    kompakt: true,
+    labelId: 'schritt-titel',
+    // Wechsel auf ein Preset mit Mias Gesicht schaltet Face ein (waehlePreset); der Hinweis steht darunter
+    beiWahl: (preset) => {
+      let faceEin = false;
+      void aendereEinstellungen((alt) => {
+        const r = waehlePreset(alt, preset);
+        faceEin = r.faceEingeschaltet;
+        return r.teil;
+      }).then(
+        () => {
+          // Hinweis erst nach erfolgreichem Speichern
+          if (fehlerZeile) fehlerZeile.hidden = true;
+          faceHinweisAn = faceEin;
+          zeichneSatz();
+        },
+        () => void nachFehler(),
+      );
+    },
+  });
+  const satz = knoten('p', 'hinweis', '', 'iv-stil-satz');
+  const sperre = knoten('p', 'hinweis', '', 'iv-stil-sperre');
   sperre.hidden = true;
-  k.append(gruppe, sperre);
+  const zonenText = knoten('p', 'hinweis', '', 'iv-stil-zonen');
+  zonenText.hidden = true;
+  const faceText = knoten('p', 'hinweis', '', 'iv-stil-face');
+  faceText.hidden = true;
+  faceText.setAttribute('role', 'status');
+  // Stand der Gesichtssuche (Zahl der Bilder mit Gesicht im Satz), einmal angestossen
+  let gesichter: GesichterStand | null = null;
+  let beobachtet: (() => void) | null = null;
+  // zuletzt gesehener Stand: die Beobachtung der Gesichtssuche und der Hinweis zeichnen mit den aktuellen Werten, nicht mit denen von damals
+  let letzt: { e: Einstellungen; p: PackKurz | null } | null = null;
+  const zeichneSatz = (): void => {
+    if (letzt) zeichne(letzt.e, letzt.p);
+  };
+  let zeichne: (e: Einstellungen, p: PackKurz | null) => void = () => undefined;
+  k.append(kartenHost, satz, sperre, zonenText, faceText);
   // Fund 7 und 8: ohne Pack ist Seite 3 die letzte, dort steht Calm mode (mit Pack steht er auf Seite 5).
   const ruhig = seiten < INTERVIEW_SEITEN ? schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an })) : null;
   if (ruhig) k.append(ruhig.zeile);
-  return {
-    knoten: k,
-    aktualisiere: (e, p) => {
+  zeichne = (e, p) => {
       if (ruhig) ruhig.feld.checked = e.ruhig;
       const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
-      felder.get('mia-patch')!.disabled = !patchFrei;
+      karten.aktualisiere(e.preset, patchFrei);
+      const wirksam = presetFuerPackKurz(e.preset, p);
+      if (patchFrei && !beobachtet) {
+        beobachtet = beobachteGesichter((st) => {
+          gesichter = st;
+          zeichneSatz(); // mit dem aktuellen Stand, nicht mit dem von damals
+        });
+      }
+      satz.textContent = presetSatz(wirksam, patchFrei, patchFrei && gesichter?.fertig ? gesichter.mit : null);
+      sperre.textContent = packHinweisText(patchFrei, p);
       sperre.hidden = patchFrei;
-      const wirksam = wirksamerStil(e.stil, p);
-      for (const [stil, feld] of felder) feld.checked = stil === wirksam;
+      // Hinweise der Zonen (Balken-Presets) und zu Face: gerade eingeschaltet (kurz), oder spaeter wieder aus (dann sagt es der Hinweis)
+      const zh = zonenHinweis(wirksam);
+      zonenText.textContent = zh;
+      zonenText.hidden = zh === '';
+      const mia = PRESETS[wirksam].gesicht === 'mia-gesicht';
+      const ft = mia ? (faceHinweisAn && e.zonen.face.an ? HINWEIS_FACE_EIN : e.zonen.face.an ? '' : HINWEIS_FACE_AUS) : '';
+      faceText.textContent = ft;
+      faceText.hidden = ft === '';
+  };
+  return {
+    knoten: k,
+    abbau: () => beobachtet?.(),
+    aktualisiere: (e, p) => {
+      letzt = { e, p };
+      zeichne(e, p);
     },
   };
 }
@@ -535,7 +591,9 @@ const POSE_JE_SEITE: Record<string, ChibiPose> = {
 };
 
 function seiteInterview(s: Schritt): HTMLElement {
+  abbauSeite?.();
   const s1 = INTERVIEW[s]!.bauen();
+  abbauSeite = s1.abbau ?? null;
   aktualisiere = s1.aktualisiere;
   s1.aktualisiere(einst, pack);
   // Phase 8b (Auftrag W): der Erklaertext steht in einer Sprechblase neben dem Chibi (Demo-Chibi oder Pack-Chibi ueber den vorhandenen Weg).

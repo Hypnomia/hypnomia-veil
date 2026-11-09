@@ -56,10 +56,10 @@
 
       <section id="stil-karte" aria-labelledby="stil-titel">
         <h2 id="stil-titel">Cover style</h2>
-        <div class="wahl" role="radiogroup" aria-labelledby="stil-titel">
-          <label><input type="radio" name="stil" value="mosaik" /><span>Mosaic</span></label>
-          <label><input type="radio" name="stil" value="blur" /><span>Blur</span></label>
-          <label><input type="radio" name="stil" value="mia-patch" /><span>Mia patch</span></label>
+        <div class="preset-zeile">
+          <span id="preset-bild" class="preset-bild" aria-hidden="true"></span>
+          <strong id="preset-name" class="preset-name"></strong>
+          <button id="preset-aendern" class="klein" type="button">Change style</button>
         </div>
         <p id="pack-hinweis" class="hinweis"></p>
         <!-- Fund 2: Kurzfassung statt zehn Kacheln; "Change" klappt Mood, Zonen und Strict auf (Zustand in localStorage). -->
@@ -82,8 +82,9 @@
 
         <section aria-labelledby="zonen-titel">
           <h2 id="zonen-titel">What I cover</h2>
-          <ul id="zonen" class="zonen"></ul>
+          <ul id="zonen" class="zonen" aria-describedby="zonen-hinweis"></ul>
           <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+          <p id="zonen-hinweis" class="hinweis" hidden></p>
         </section>
 
         <section>

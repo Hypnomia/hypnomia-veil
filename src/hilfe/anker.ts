@@ -5,6 +5,7 @@ export const HILFE_ANKER = {
   pin: 'how-i-work/pin-me',
   pause: 'pause',
   pack: 'mia-pack',
+  styles: 'how-i-work/cover-styles',
   ads: 'how-i-work/my-ads',
   adult: 'how-i-work/adult-sites',
   'full-replacement': 'how-i-work/full-replacement',

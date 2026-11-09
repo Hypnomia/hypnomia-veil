@@ -1,4 +1,5 @@
 @import '../../src/oberflaeche/design/tokens.css';
+@import '../../src/oberflaeche/design/presets.css';
 
 /* Popup im Look "Sakura Glas" (Phase 8b, Auftrag U): Verlaufskopf mit Spirale, Glas-Karten, Segment, Schalter-Kacheln.
    Breite 320 bis 360 px, auf schmalen Bildschirmen (Android, ganze Seite) die volle Breite (UX-Fund 27). Alle Farben aus werte.ts (--v-*). */
@@ -319,6 +320,10 @@ output {
   border-radius: var(--v-r-s);
   background: #f3e8f0;
 }
+
+/* Cover style: eine Zeile mit der Vorschau des Presets (klein, damit das Popup unter 600 px bleibt), dem Namen und "Change style". */
+.preset-zeile { grid-template-columns: 40px 1fr auto; gap: 10px; }
+.preset-zeile .preset-bild svg { width: 40px; height: 48px; }
 
 .wahl label {
   position: relative;

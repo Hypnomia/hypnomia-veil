@@ -1,9 +1,11 @@
 // Steigerung der Zensur (PHASE-4-BAUPLAN Abschnitt 9, Entscheidung 101). Vertrag vom Orchestrator: Typen, Ablage-Schluessel,
 // reine Funktionen `wirksameZonen`, `wirksameStufe`, `anzeigeStufe`. Auftrag S baut darauf das Zaehlen (Anstieg mit Zufall, Pause,
 // Hintergrund-Handler src/hintergrund/steigerung.ts) und darf diese Datei ergaenzen; andere Auftraege lesen nur.
-// Keine Laufzeit-Importe (Einheitstests mit `node --experimental-strip-types`). Ablage nur lokal (storage.local), kein Netzverkehr.
+// Laufzeit-Abhaengigkeiten nur `zonenFuerPreset` (einstellungen.ts) und die Preset-Tabelle (presets.ts), beide rein und mit `.ts`-Endung importiert,
+// damit die Einheitstests mit `node --experimental-strip-types` laufen. Ablage nur lokal (storage.local), kein Netzverkehr.
 
-import type { Einstellungen, Zone, ZonenEinstellung } from './einstellungen';
+import { zonenFuerPreset, type Einstellungen, type Zone, type ZonenEinstellung } from './einstellungen.ts';
+import { PRESETS, type Preset } from './presets.ts';
 
 export const STEIGERUNG_SCHLUESSEL = 'steigerung';
 export const MAX_STUFE = 4;
@@ -97,7 +99,15 @@ export interface WirksameZonen {
 
 // Was der Erkenner bekommt (statt `einstellungen.zonen`). `stufe` ist die wirksame Stufe; ohne Freischaltung `zensur:steigerung`
 // gibt der Aufrufer 0. Pause regelt der Schleier selbst (dann wird gar nicht geprueft).
-export function wirksameZonen(einstellungen: Pick<Einstellungen, 'zonen'>, stufe: SteigerungStufe): WirksameZonen {
+// Preset Augenbalken: die Steigerung (und damit auch strenge Zeiten, die nur die Stufe heben) fasst es nicht an. Es bleibt bei den Augen
+// (Stufe 2 und 3 fuegen keine Zonen hinzu, Stufe 4 verdeckt kein ganzes Bild), denn das Preset zensiert nur den Augenbereich. Die Regel
+// "nur Augen" steht an einer Stelle: `zonenFuerPreset` in src/einstellungen.ts (src/presets.ts); der Erkenner wendet sie ebenfalls an, damit
+// auch eine Anfrage ohne Steigerung nur die Augen sucht. Der Popup-Abschnitt "My grip" sagt das (entrypoints/popup/texte.ts).
+// Zensurbalken: die Steigerung wirkt wie gewohnt, die Augen bleiben zusaetzlich immer an.
+export function wirksameZonen(einstellungen: Pick<Einstellungen, 'zonen'> & { preset?: Preset }, stufe: SteigerungStufe): WirksameZonen {
+  if (einstellungen.preset && PRESETS[einstellungen.preset].augen === 'nur-balken') {
+    return { zonen: zonenFuerPreset(einstellungen.preset, einstellungen.zonen), ganzVerdecken: false };
+  }
   const zonen = Object.fromEntries(
     Object.entries(einstellungen.zonen).map(([z, e]) => [z, { ...e }]),
   ) as Record<Zone, ZonenEinstellung>;
@@ -106,7 +116,7 @@ export function wirksameZonen(einstellungen: Pick<Einstellungen, 'zonen'>, stufe
     for (const z of STUFE_ZONEN[s].an) zonen[z] = { ...zonen[z], an: true };
     for (const z of STUFE_ZONEN[s].bedeckt) zonen[z] = { ...zonen[z], bedeckt: true };
   }
-  return { zonen, ganzVerdecken: stufe >= 4 };
+  return { zonen: zonenFuerPreset(einstellungen.preset, zonen), ganzVerdecken: stufe >= 4 };
 }
 
 // ---------- Zaehlen (Auftrag S) ----------

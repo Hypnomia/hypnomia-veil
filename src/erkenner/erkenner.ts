@@ -3,7 +3,8 @@
 // Ist eine Gesichtszone an, laeuft zusaetzlich das Gesichtsmodell YuNet (yunet.ts) fuer genauere Augen und Mund.
 
 import * as ort from 'onnxruntime-web/wasm';
-import { vervollstaendige, type Einstellungen } from '../einstellungen';
+import { vervollstaendige, zonenFuerPreset, type Einstellungen } from '../einstellungen';
+import { PRESETS, ganzesBildBehandlung, hatWort, nutztMiasGesicht, waehleWort } from '../presets.ts';
 import type {
   AntwortErkennerStatus,
   AntwortPruefe,
@@ -12,12 +13,13 @@ import type {
   Treffer,
   ZeitenPruefung,
 } from '../nachrichten';
-import { hashe, waehlePatch } from '../pack/patches';
+import { gesichtsStatistik, hashe, scanneGesichter, setzeGesichtsSucher, starteGesichtsScan, starteGesichtsUeberwachung, waehleGesichtsPatch, type GesichtsBox } from '../pack/patches';
 import { geometrieFuer, MODELL_GROESSE, nachverarbeite } from './modell';
 import { blobAusDataUrl, ladeNach, type RefererSetzer } from './nachladen';
 import { dekodiereBild, ersatzBildFuerBewegtesSvg, svgMitBewegung } from './dekodiere';
 import { Schranke } from './schranke';
-import { rendereZensur } from './stile';
+import { WORT_FAMILIE, hatTransparenz, kannAlpha, rendereZensur, type GesichtsBild } from './stile';
+import { ladeWoerter } from '../pack/woerter';
 import {
   ladeYunetSitzung,
   yunetLauf,
@@ -43,22 +45,85 @@ function bildKennung(n: NachrichtErkennerPruefe): string {
   return `daten:${d.length}:${hashe(d)}`;
 }
 
-// Zu jeder Flaeche ein Patch-Bild aus dem Pack (Auswahl stabil je Bild und Flaeche), dazu die Rueckgabe der geliehenen Bilder
-// (nach dem Rendern aufrufen). null, wenn keins zu haben ist: dann Mosaik. `packStand`: das Pack, das der Aufrufer kennt.
-async function patchesFuer(
+// Zu jeder Flaeche mit Mias Gesicht ein Gesichts-Patch aus dem Pack (Auswahl stabil je Bild und Flaeche), dazu die Rueckgabe der geliehenen
+// Bilder (nach dem Rendern aufrufen). `null` an einer Stelle: dort ist keiner zu haben (kein Pack, kein Gesicht in den Patches), die
+// Flaeche faellt auf ihren Ersatz zurueck. `packStand`: das Pack, das der Aufrufer kennt.
+async function gesichterFuer(
   kennung: string,
   flaechen: readonly Flaeche[],
   packStand: number | undefined,
-): Promise<{ bilder: (CanvasImageSource | null)[]; freigeben: () => void } | null> {
-  const bilder: (CanvasImageSource | null)[] = [];
+): Promise<{ bilder: (GesichtsBild | null)[]; freigeben: () => void }> {
+  const bilder: (GesichtsBild | null)[] = [];
   const frei: (() => void)[] = [];
   for (const f of flaechen) {
-    const wahl = await waehlePatch(`${kennung}|${f.zone}|${f.box.join(',')}`, packStand);
-    bilder.push(wahl ? wahl.bild : null);
+    if (f.behandlung !== 'mia-gesicht') {
+      bilder.push(null);
+      continue;
+    }
+    const wahl = await waehleGesichtsPatch(`${kennung}|${f.zone}|${f.box.join(',')}`, packStand);
+    bilder.push(wahl ? { bild: wahl.bild, ausschnitt: wahl.ausschnitt } : null);
     if (wahl) frei.push(wahl.freigeben);
   }
-  if (frei.length === 0) return null;
-  return { bilder, freigeben: () => frei.forEach((f) => f()) };
+  return { bilder, freigeben: () => frei.forEach((x) => x()) };
+}
+
+// Wort-Schrift (public/schrift/rounded-800.woff2) einmal je Dokument registrieren. `wortSchriftFertig` wird erst nach dem Laden gesetzt. Scheitert das
+// Laden (auch synchron), gilt die Systemschrift und es wird fruehestens nach WORT_SCHRIFT_PAUSE_MS wieder versucht (nie bei jedem Wort neu).
+const WORT_SCHRIFT_PAUSE_MS = 30_000;
+let wortSchriftFertig = false;
+let wortSchriftLaeuft: Promise<void> | null = null;
+let wortSchriftFehlerBis = 0;
+function ladeWortSchrift(): Promise<void> {
+  if (wortSchriftFertig) return Promise.resolve();
+  if (wortSchriftLaeuft) return wortSchriftLaeuft;
+  if (jetzt() < wortSchriftFehlerBis) return Promise.resolve();
+  const lauf = (async () => {
+    try {
+      if (typeof FontFace !== 'function' || typeof document === 'undefined') return; // kein Dokument: Systemschrift, nichts zu versuchen
+      const ff = new FontFace(WORT_FAMILIE, `url(${(browser.runtime.getURL as (p: string) => string)('/schrift/rounded-800.woff2')})`, { weight: '800' });
+      await ff.load();
+      document.fonts.add(ff);
+      wortSchriftFertig = true;
+    } catch {
+      wortSchriftFehlerBis = jetzt() + WORT_SCHRIFT_PAUSE_MS;
+    } finally {
+      wortSchriftLaeuft = null;
+    }
+  })();
+  wortSchriftLaeuft = lauf;
+  return lauf;
+}
+
+// Arbeit im Hintergrund nach dem Start: Modell geladen, dann die Wort-Schrift und der Gesichts-Scan der Patch-Bilder (nie innerhalb einer Pruefung).
+export function starteHintergrundArbeit(): void {
+  starteGesichtsUeberwachung();
+  void (async () => {
+    try {
+      await ladeModell();
+      void ladeWortSchrift();
+      // Erst Ablage und Stand pruefen (starteGesichtsScan): YuNet wird nur geladen, wenn Patch-Bilder ohne gespeichertes Ergebnis uebrig sind
+      // (die Suche ruft ladeGesicht selbst). Ohne Pack oder mit fertiger Ablage bleibt YuNet ungeladen.
+      await starteGesichtsScan();
+    } catch {
+      // ohne Modell gibt es nichts zu tun, die naechste Pruefung versucht es selbst
+    }
+  })();
+}
+
+// Je Flaeche das Wort fuer die Behandlungen mit Wort (stabil je Bild und Flaeche), sonst ''.
+async function woerterFuer(
+  kennung: string,
+  flaechen: readonly Flaeche[],
+  themen: string[] | null,
+  packStand: number | undefined,
+  preset: Einstellungen['preset'],
+): Promise<string[]> {
+  const standard = ganzesBildBehandlung(preset);
+  const braucht = (f: Flaeche): boolean => hatWort(f.behandlung ?? standard) || (f.behandlung === 'mia-gesicht' && !!f.ersatz && hatWort(f.ersatz));
+  if (!flaechen.some(braucht)) return flaechen.map(() => '');
+  const datei = await ladeWoerter(packStand).catch(() => null);
+  await ladeWortSchrift();
+  return flaechen.map((f) => (braucht(f) ? waehleWort(`${kennung}|${f.zone}|${f.box.join(',')}`, datei, themen) : ''));
 }
 
 const jetzt = (): number => performance.now();
@@ -179,10 +244,34 @@ export function status(): AntwortErkennerStatus {
     gesichtBereit: gesichtSitzung !== null,
     gesichtKaltstartMs: gesichtSitzung ? gesichtSitzung.kaltstartMs : null,
     gesichtLaeufe,
+    patchGesichter: gesichtsStatistik(),
     laeufe,
     warteschlange: wartend + schranke.wartend,
   };
 }
+
+// Alle Patch-Bilder des Packs einmal auf ein Gesicht pruefen (Mias Gesicht) und die Zahlen liefern.
+export async function gesichtsscan(packStand?: number): Promise<{ ok: true; gesamt: number; geprueft: number; mit: number; fertig: boolean }> {
+  await ladeModell();
+  await ladeGesicht();
+  return { ok: true, ...(await scanneGesichter(packStand)) };
+}
+
+// Gesicht in einem Patch-Bild: das groesste, das YuNet findet (Box auf das Bild begrenzt). Wirft, wenn YuNet nicht zu haben ist
+// (dann merkt sich der Aufrufer nichts). Laeuft in der gemeinsamen Reihe wie jede Inferenz.
+async function gesichtImPatch(bild: ImageBitmap): Promise<GesichtsBox | null> {
+  const sitzung = await ladeGesicht();
+  if (!sitzung) throw new Error('YuNet nicht bereit');
+  const tensor = yunetVorverarbeitung(sitzung, bild, bild.width, bild.height);
+  const r = await inReihe(() => yunetLauf(sitzung, tensor, bild.width, bild.height));
+  let beste: YunetGesicht | null = null;
+  for (const g of r.wert) if (!beste || g.box[2] * g.box[3] > beste.box[2] * beste.box[3]) beste = g;
+  if (!beste) return null;
+  const x = Math.max(0, Math.min(bild.width - 1, beste.box[0]));
+  const y = Math.max(0, Math.min(bild.height - 1, beste.box[1]));
+  return [x, y, Math.max(1, Math.min(bild.width - x, beste.box[2])), Math.max(1, Math.min(bild.height - y, beste.box[3]))];
+}
+setzeGesichtsSucher(gesichtImPatch);
 
 // Bild auf 320 x 320 bringen (Seitenverhaeltnis bleibt, rechts und unten schwarz) und als RGB-Tensor 0 bis 1 aufbauen.
 function baueTensor(quelle: CanvasImageSource, breite: number, hoehe: number): ort.Tensor {
@@ -345,28 +434,40 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     const tInf = jetzt();
     const rohTreffer: Treffer[] = nachverarbeite(lauf.daten, lauf.dims, geometrieFuer(arbeit.breite, arbeit.hoehe), e.schwelle);
     const tRoh = jetzt();
-    const gesicht = await sucheGesichter(e.zonen, arbeit.quelle, arbeit.breite, arbeit.hoehe);
+    // Preset Augenbalken: nur die Augen gelten, egal was die Schalter (oder die Steigerung) sagen; Zensurbalken: Augen immer dazu. Also
+    // laeuft YuNet dann auch bei ausgeschalteten Augen, und der Augenbalken verdeckt nie ein ganzes Bild.
+    const zonenGilt = zonenFuerPreset(e.preset, e.zonen);
+    const def = PRESETS[e.preset];
+    const ganz = ganzesBildBehandlung(e.preset);
+    const gesicht = await sucheGesichter(zonenGilt, arbeit.quelle, arbeit.breite, arbeit.hoehe);
     const tNachStart = jetzt();
     const alle = gesicht?.gesichter ? kombiniereGesichter(rohTreffer, gesicht.gesichter, arbeit.breite, arbeit.hoehe) : rohTreffer;
     // Steigerung Stufe 4: ein Treffer einer Frau verdeckt das ganze Bild (eine Flaeche ueber alles), sonst die Zonen wie eingestellt.
     // Aus den rohen 320n-Treffern: kombiniereGesichter ersetzt ein FACE_FEMALE durch die (geschlechtslosen) YuNet-Treffer.
-    const frau = n.einstellungen?.ganzVerdecken === true ? rohTreffer.find((t) => t.weiblich) : undefined;
+    const frau = n.einstellungen?.ganzVerdecken === true && def.augen !== 'nur-balken' ? rohTreffer.find((t) => t.weiblich) : undefined;
     // Animiertes SVG (Fund 9): nie freigeben, ganzes Bild verdecken.
     const flaechen = bewegtesSvg
-      ? [{ zone: 'face' as const, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number] }]
+      ? [{ zone: 'face' as const, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number], behandlung: ganz }]
       : frau
-      ? [{ zone: frau.zone, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number] }]
+      ? [{ zone: frau.zone, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number], behandlung: ganz }]
       : berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe);
     const tNach = jetzt();
     let bild: string | undefined;
     if (n.rendern && flaechen.length > 0) {
-      // Mia-Patch nur mit Patch-Bildern aus dem Pack; ohne Pack oder ohne Bilder wird es Mosaik.
+      // Mias Gesicht und Woerter brauchen das Pack; ohne Patch mit Gesicht gilt die Koerper-Behandlung (Ersatz), ohne Woerter "MIA".
       const stand = n.einstellungen?.packStand;
-      const patches = e.stil === 'mia-patch' ? await patchesFuer(bildKennung(n), flaechen, typeof stand === 'number' ? stand : undefined) : null;
+      const packStand = typeof stand === 'number' ? stand : undefined;
+      const kennung = bildKennung(n);
+      const gesichter = nutztMiasGesicht(e.preset) ? await gesichterFuer(kennung, flaechen, packStand) : null;
       try {
-        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.stil, patches?.bilder);
+        const woerter = await woerterFuer(kennung, flaechen, e.woerterThemen, packStand, e.preset);
+        // Darstellungsgroesse zu Arbeitsbild (fuer Mindestgroessen); Balken-Presets: PNG, wenn die Quelle Durchsichtiges hat.
+        const anzeigeSkala = n.breite > 0 && n.hoehe > 0 ? Math.min(n.breite / arbeit.breite, n.hoehe / arbeit.hoehe) : 1;
+        const nurSchwarz = def.augen !== 'wie-koerper';
+        const png = nurSchwarz && !bewegtesSvg && kannAlpha(blob.type) && hatTransparenz(arbeit.quelle, arbeit.breite, arbeit.hoehe);
+        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.preset, { anzeigeSkala, png, gesichter: gesichter?.bilder, woerter });
       } finally {
-        patches?.freigeben();
+        gesichter?.freigeben();
       }
     }
     const tRender = jetzt();

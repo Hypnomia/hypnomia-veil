@@ -11,6 +11,11 @@ let zonenAnpassung: ((e: Einstellungen) => WirksameZonen | null) | null = null;
 export function setzeZonenAnpassung(fn: ((e: Einstellungen) => WirksameZonen | null) | null): void {
   zonenAnpassung = fn;
 }
+// Das Preset, das wirklich gilt (Mia-Presets nur mit Pack, src/pack/vertrag.ts presetFuerPackKurz); null = das eingestellte.
+let presetAnpassung: ((e: Einstellungen) => Einstellungen['preset']) | null = null;
+export function setzePresetAnpassung(fn: ((e: Einstellungen) => Einstellungen['preset']) | null): void {
+  presetAnpassung = fn;
+}
 import {
   ANTWORT_MAX_MS,
   JPEG_QUALITAET,
@@ -187,7 +192,8 @@ export async function sendePruefe(
       schwelle: e.schwelle,
       zonen: angepasst?.zonen ?? e.zonen,
       rand: e.rand,
-      stil: e.stil,
+      preset: presetAnpassung?.(e) ?? e.preset,
+      ...(e.woerterThemen === null ? {} : { woerterThemen: e.woerterThemen }),
       ...(packStand === undefined ? {} : { packStand }),
       ...(angepasst?.ganzVerdecken ? { ganzVerdecken: true } : {}),
     },

@@ -1,10 +1,16 @@
-// Rendern der Zensur auf einem OffscreenCanvas: Pixel-Mosaik (mit pinkem Rahmen), Blur oder Mia-Patch (Bild aus dem Mia Pack, mit
-// pinkem Rahmen), Ausgabe als JPEG-Data-URL.
+// Rendern der Zensur auf einem Canvas: je Flaeche eine Behandlung (src/presets.ts): Pixel-Mosaik (mit pinkem Rahmen), Blur, Schwarz,
+// Wort (auf Schwarz oder auf Mosaik), schwarzer Augenbalken oder Mias Gesicht (Ausschnitt aus einem Patch-Bild des Mia Packs, nur wo
+// er zur Flaeche passt, mit pinkem Rahmen). Ausgabe als JPEG-Data-URL (PNG, wenn die Quelle Durchsichtiges hat und nur Balken oder Schwarz kommen).
 
-import type { Stil } from '../einstellungen';
+import { FARBEN, WERTE } from '../oberflaeche/design/werte.ts';
+import { ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
 import type { Box, Flaeche } from '../nachrichten';
 
 const JPEG_QUALITAET = 0.85;
+// Schwarz-Behandlung und Augenbalken: reines, deckendes Schwarz (kein Rahmen, keine Schrift), Farbe aus werte.ts.
+export const BALKEN_FARBE = FARBEN.schwarz;
+// PNG-Ausgabe (Quelle mit Durchsichtigem): groesser als das, wird es JPEG (die Antwort an das Content-Script soll klein bleiben).
+export const PNG_MAX_BYTES = 3_000_000;
 const MOSAIK_ANTEIL = 0.1;
 const MOSAIK_MINDEST = 4;
 const BLUR_ANTEIL = 0.35;
@@ -32,32 +38,77 @@ function zeichneRahmen(ctx: Kontext, box: Box): void {
   ctx.restore();
 }
 
+// Wann passt ein Patch-Bild in eine Flaeche? Das Bild wird formatfuellend und mittig beschnitten (zeichnePatch). Der sichtbare Anteil des
+// Bildes nach dem Beschneiden ist min(r, 1/r) mit r = Seitenverhaeltnis der Flaeche durch Seitenverhaeltnis des Bildes. Zwei Regeln:
+// - Anteil mindestens PATCH_MIN_ANTEIL (0,5): mindestens die Haelfte des Bildes bleibt zu sehen, also Flaeche und Bild im Format hoechstens
+//   Faktor 2 auseinander. Ein schmaler Augen- oder Mundstreifen (etwa 4 zu 1) zeigte sonst nur einen Streifen aus der Mitte des Bildes,
+//   der nicht mehr als Mia zu erkennen ist.
+// - Kleinere Seite der Flaeche mindestens PATCH_MIN_SEITE (24 px): darunter ist von einem Bild nichts mehr zu erkennen, nur noch der
+//   pinke Rahmen (Breite 2 px bei kleinen Flaechen) und ein Farbfleck; Mosaik mit Rahmen sagt dort ehrlicher "hier ist zensiert".
+// Passt die Flaeche nicht, wird sie Mosaik mit pinkem Rahmen (wie ohne Patch). Gemessen wird am tatsaechlich gewaehlten Patch-Bild
+// (die Wahl in src/pack/patches.ts laeuft stabil per Hash und kennt kein Format).
+// Die Box liegt in Pixeln des Arbeitsbildes (bis 1600 px lang, oft groesser als die Darstellung). Die kleinste Seite zaehlt aber, wie sie
+// auf dem Bildschirm aussieht: `anzeigeSkala` (Darstellungsgroesse durch Arbeitsbild, 1 wenn unbekannt) rechnet sie um. Das Seitenverhaeltnis
+// ist davon unberuehrt.
+export const PATCH_MIN_ANTEIL = 0.5;
+export const PATCH_MIN_SEITE = 24;
+
+export function sichtbarerAnteil(flaecheB: number, flaecheH: number, bildB: number, bildH: number): number {
+  if (flaecheB <= 0 || flaecheH <= 0 || bildB <= 0 || bildH <= 0) return 0;
+  const r = flaecheB / flaecheH / (bildB / bildH);
+  return Math.min(r, 1 / r);
+}
+
+export function patchPasst(box: Box, bildB: number, bildH: number, anzeigeSkala = 1): boolean {
+  const skala = Number.isFinite(anzeigeSkala) && anzeigeSkala > 0 ? anzeigeSkala : 1;
+  return Math.min(box[2], box[3]) * skala >= PATCH_MIN_SEITE && sichtbarerAnteil(box[2], box[3], bildB, bildH) >= PATCH_MIN_ANTEIL;
+}
+
 // Breite und Hoehe eines Patch-Bildes (ImageBitmap, OffscreenCanvas, HTML-Leinwand).
 function bildMass(q: CanvasImageSource): { b: number; h: number } {
   const o = q as { width?: number; height?: number; naturalWidth?: number; naturalHeight?: number };
   return { b: o.naturalWidth ?? o.width ?? 0, h: o.naturalHeight ?? o.height ?? 0 };
 }
 
-// Patch formatfuellend einpassen (zentriert beschnitten), auf die Flaeche begrenzt. false, wenn das Bild nicht zu zeichnen ist
-// (leer oder inzwischen geschlossen): der Aufrufer faellt dann auf Mosaik zurueck.
-function zeichnePatch(ctx: Kontext, patch: CanvasImageSource, box: Box): boolean {
-  const [x, y, w, h] = box;
-  const { b: sb, h: sh } = bildMass(patch);
-  if (sb <= 0 || sh <= 0 || w <= 0 || h <= 0) return false;
-  const skala = Math.max(w / sb, h / sh);
-  const cb = w / skala;
-  const ch = h / skala;
+// Mias Gesicht: der Ausschnitt `a` (x, y, w, h im Patch-Bild) wird formatfuellend auf die Gesichtsflaeche gesetzt (bei `balken` gedreht
+// um die Mitte, sonst achsenparallel), mit abgerundeten Ecken und pinkem Rahmen. false, wenn nicht zu zeichnen (leer oder geschlossen).
+function zeichneGesicht(ctx: Kontext, f: Flaeche, patch: CanvasImageSource, a: Box): boolean {
+  const mitte = f.balken ? f.balken.mitte : ([f.box[0] + f.box[2] / 2, f.box[1] + f.box[3] / 2] as [number, number]);
+  const w = f.balken ? f.balken.breite : f.box[2];
+  const h = f.balken ? f.balken.hoehe : f.box[3];
+  const winkel = f.balken ? f.balken.winkel : 0;
+  const [ax, ay, aw, ah] = a;
+  if (aw <= 0 || ah <= 0 || w <= 0 || h <= 0) return false;
+  const skala = Math.max(w / aw, h / ah);
+  const sw = w / skala;
+  const sh = h / skala;
+  const r = Math.min(w, h) * 0.14;
+  const pfad = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(-w / 2 + r, -h / 2);
+    ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+    ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+    ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+    ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+    ctx.closePath();
+  };
   ctx.save();
   try {
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
+    ctx.translate(mitte[0], mitte[1]);
+    ctx.rotate(winkel);
+    pfad();
     ctx.clip();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(patch, (sb - cb) / 2, (sh - ch) / 2, cb, ch, x, y, w, h);
+    ctx.drawImage(patch, ax + (aw - sw) / 2, ay + (ah - sh) / 2, sw, sh, -w / 2, -h / 2, w, h);
+    // Rahmen: doppelt so breit gezogen wie gewollt, die Aussenhaelfte liegt ausserhalb des Beschnitts
+    pfad();
+    ctx.strokeStyle = RAHMEN_FARBE;
+    ctx.lineWidth = 2 * rahmenBreite(w, h);
+    ctx.stroke();
     return true;
   } catch {
-    // Geschlossenes oder sonst unzeichenbares Bitmap (InvalidStateError): nichts wurde gezeichnet.
+    // Geschlossenes oder sonst unzeichenbares Bitmap (InvalidStateError): nichts Ganzes wurde gezeichnet.
     return false;
   } finally {
     ctx.restore();
@@ -148,6 +199,74 @@ function zeichneBlur(ctx: Kontext, quelle: CanvasImageSource, box: Box, bildB: n
   ctx.restore();
 }
 
+// Schwarz und Augenbalken: deckender Balken in reinem Schwarz, ohne Rahmen und ohne Schrift. Mit `balken` (geneigte Augenlinie) gedreht um seine Mitte,
+// sonst die Box. Die Leinwand beschneidet am Bildrand selbst. Kantenglaettung bei der Drehung ist gewollt (der Balken ist deckend, auch
+// die Randpixel sind nur Mischung aus Schwarz und Original).
+function zeichneSchwarz(ctx: Kontext, f: Flaeche): void {
+  ctx.save();
+  ctx.fillStyle = BALKEN_FARBE;
+  if (f.balken) {
+    const b = f.balken;
+    ctx.translate(b.mitte[0], b.mitte[1]);
+    ctx.rotate(b.winkel);
+    ctx.fillRect(-b.breite / 2, -b.hoehe / 2, b.breite, b.hoehe);
+  } else {
+    ctx.fillRect(f.box[0], f.box[1], f.box[2], f.box[3]);
+  }
+  ctx.restore();
+}
+
+// Traegt das Bild durchsichtige Pixel? Gefragt fuer Balken-Presets (siehe rendereZensur): dort soll ausser den Balken nichts anders aussehen, und
+// JPEG machte Durchsichtiges schwarz. Geprueft wird ein auf hoechstens ALPHA_PROBE_SEITE verkleinertes Abbild (billig, auch fuer grosse Bilder):
+// durchsichtige Flaechen erscheinen dort als Pixel mit Alpha unter 255; nur ein einzelnes durchsichtiges Pixel in einem grossen Bild kann
+// durchrutschen (es wird dann wie bisher schwarz).
+export const ALPHA_PROBE_SEITE = 64;
+export function hatTransparenz(quelle: CanvasImageSource, breite: number, hoehe: number): boolean {
+  const f = Math.min(1, ALPHA_PROBE_SEITE / Math.max(1, breite, hoehe));
+  const b = Math.max(1, Math.round(breite * f));
+  const h = Math.max(1, Math.round(hoehe * f));
+  const { ctx } = neueLeinwand(b, h);
+  ctx.drawImage(quelle, 0, 0, b, h);
+  const d = ctx.getImageData(0, 0, b, h).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i]! < 255) return true;
+  return false;
+}
+
+// Formate, die Durchsichtigkeit kennen koennen (nur dann lohnt das Pruefen auf Alpha).
+export function kannAlpha(typ: string): boolean {
+  return /^image\/(png|apng|webp|gif|avif|svg\+xml)/i.test(typ);
+}
+
+// Familie der Wort-Schrift (der Erkenner registriert sie per FontFace aus public/schrift/rounded-800.woff2, siehe erkenner.ts) und Farbe.
+export const WORT_FAMILIE = 'VEIL Wort';
+const WORT_FARBE = FARBEN['rosa-300'];
+const WORT_UNTERLAGE = WERTE['wort-unterlage']!;
+const WORT_BREITE = 0.8; // hoechstens 80 % der Breite der Flaeche
+const WORT_HOEHE = 0.5; // und hoechstens die Haelfte der Hoehe
+
+// Ein Wort waagerecht in die Mitte der Flaeche (Box). Auf Mosaik liegt eine dunkle Unterlage hinter dem Wort, damit es lesbar bleibt.
+function zeichneWort(ctx: Kontext, text: string, box: Box, aufMosaik: boolean): void {
+  const [x, y, w, h] = box;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `800 100px "${WORT_FAMILIE}", "Arial Rounded MT Bold", system-ui, sans-serif`;
+  const m = Math.max(1, ctx.measureText(text).width);
+  const groesse = Math.max(6, Math.min((100 * w * WORT_BREITE) / m, h * WORT_HOEHE));
+  ctx.font = `800 ${groesse}px "${WORT_FAMILIE}", "Arial Rounded MT Bold", system-ui, sans-serif`;
+  const tb = ctx.measureText(text).width;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  if (aufMosaik) {
+    const pad = groesse * 0.3;
+    ctx.fillStyle = WORT_UNTERLAGE;
+    ctx.fillRect(cx - tb / 2 - pad, cy - groesse * 0.65, tb + 2 * pad, groesse * 1.3);
+  }
+  ctx.fillStyle = WORT_FARBE;
+  ctx.fillText(text, cx, cy);
+  ctx.restore();
+}
+
 function alsDataUrl(blob: Blob): Promise<string> {
   return new Promise((ok, fehl) => {
     const leser = new FileReader();
@@ -157,29 +276,84 @@ function alsDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+export interface GesichtsBild {
+  bild: CanvasImageSource;
+  // Ausschnitt in den Pixeln des Bildes: [x, y, w, h]
+  ausschnitt: Box;
+}
+
+export interface RenderOptionen {
+  // Darstellungsgroesse durch Arbeitsbild (1 wenn unbekannt): rechnet Mindestgroessen in Anzeigepixel um.
+  anzeigeSkala?: number;
+  // PNG statt JPEG (Quelle mit Durchsichtigem, nur Balken oder Schwarz).
+  png?: boolean;
+  // Je Flaeche (gleiche Reihenfolge wie `flaechen`): Gesichts-Patch fuer `mia-gesicht`, null wenn keiner zu haben ist.
+  gesichter?: readonly (GesichtsBild | null)[];
+  // Je Flaeche: das Wort fuer Behandlungen mit Wort ('' oder fehlend: kein Wort).
+  woerter?: readonly string[];
+}
+
 // Zeichnet das Bild in Zielgroesse, legt die Zensur auf alle Flaechen und liefert ein JPEG als Data-URL.
-// `patches`: je Flaeche das Patch-Bild fuer den Stil Mia-Patch (gleiche Reihenfolge wie `flaechen`); fehlt eins, wird diese Flaeche Mosaik.
+// Behandlung je Flaeche: `f.behandlung`, fehlt sie die des Presets fuer ein ganzes Bild. `mia-gesicht` ohne passenden Patch (keiner da,
+// Patch-Passt-Regel nicht erfuellt) wird `f.ersatz` (sonst Mosaik); Behandlungen mit Wort ohne Wort oder auf zu kleiner Flaeche
+// (src/presets.ts wortPasst) werden ihre Variante ohne Wort.
 export async function rendereZensur(
   quelle: CanvasImageSource,
   breite: number,
   hoehe: number,
   flaechen: readonly Flaeche[],
-  stil: Stil,
-  patches?: readonly (CanvasImageSource | null)[],
+  preset: Preset,
+  optionen: RenderOptionen = {},
 ): Promise<string> {
   const { leinwand, ctx } = neueZielLeinwand(breite, hoehe);
   ctx.drawImage(quelle, 0, 0, leinwand.width, leinwand.height);
-  const blurOk = stil === 'blur' && kannFilter(ctx);
+  const blurOk = kannFilter(ctx);
+  const standard = ganzesBildBehandlung(preset);
   flaechen.forEach((f, i) => {
-    const patch = stil === 'mia-patch' ? patches?.[i] : null;
-    if (patch && zeichnePatch(ctx, patch, f.box)) zeichneRahmen(ctx, f.box);
-    else if (blurOk) zeichneBlur(ctx, quelle, f.box, leinwand.width, leinwand.height);
-    else zeichneMosaik(ctx, quelle, f.box);
+    let b: Behandlung = f.behandlung ?? standard;
+    if (b === 'mia-gesicht') {
+      const g = optionen.gesichter?.[i];
+      const w = f.balken ? f.balken.breite : f.box[2];
+      const h = f.balken ? f.balken.hoehe : f.box[3];
+      if (g && patchPasst([0, 0, w, h], g.ausschnitt[2], g.ausschnitt[3], optionen.anzeigeSkala) && zeichneGesicht(ctx, f, g.bild, g.ausschnitt)) return;
+      b = f.ersatz && f.ersatz !== 'mia-gesicht' ? f.ersatz : 'mosaik';
+    }
+    const wort = hatWort(b) ? (optionen.woerter?.[i] ?? '') : '';
+    if (hatWort(b) && (wort === '' || !wortPasst(f.box[2], f.box[3], optionen.anzeigeSkala))) b = ohneWort(b);
+    switch (b) {
+      case 'schwarz':
+      case 'balken':
+        zeichneSchwarz(ctx, f);
+        return;
+      case 'schwarz-wort':
+        zeichneSchwarz(ctx, f);
+        zeichneWort(ctx, wort, f.box, false);
+        return;
+      case 'blur':
+        if (blurOk) zeichneBlur(ctx, quelle, f.box, leinwand.width, leinwand.height);
+        else zeichneMosaik(ctx, quelle, f.box);
+        return;
+      case 'mosaik-wort':
+        zeichneMosaik(ctx, quelle, f.box);
+        zeichneWort(ctx, wort, f.box, true);
+        return;
+      default:
+        zeichneMosaik(ctx, quelle, f.box);
+    }
   });
   // Auf einer HTML-Leinwand kodiert toDataURL sofort. OffscreenCanvas.convertToBlob wartet in versteckten Dokumenten
   // (Offscreen-Dokument) auf gedrosselte Aufgaben und brauchte dort rund eine Sekunde.
+  // `png`: bei einer Quelle mit durchsichtigen Pixeln verlustfrei und mit Alpha, damit ausser den Balken nichts anders aussieht.
   if (leinwand instanceof OffscreenCanvas) {
+    if (optionen.png) {
+      const png = await leinwand.convertToBlob({ type: 'image/png' });
+      if (png.size <= PNG_MAX_BYTES) return alsDataUrl(png);
+    }
     return alsDataUrl(await leinwand.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITAET }));
+  }
+  if (optionen.png) {
+    const png = leinwand.toDataURL('image/png');
+    if (png.length <= PNG_MAX_BYTES * 1.4) return png; // Base64: etwa ein Drittel groesser als die Bytes
   }
   return leinwand.toDataURL('image/jpeg', JPEG_QUALITAET);
 }

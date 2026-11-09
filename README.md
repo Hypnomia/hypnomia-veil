@@ -6,7 +6,7 @@ Kink tool for adults (18+). Not a parental control. Over-censoring is part of th
 
 ## What this repository is
 
-The free demo of HYPNOMIA VEIL: veil plus zone censoring with blur or pixel. The paid **Mia Pack** (Patreon / SubscribeStar) unlocks the full version: hot images, Mia patch style, porn replacement, quiz gates, ad takeover, control features and sound. The Pack is one file you import in the menu. No account, no key, no server.
+The free demo of HYPNOMIA VEIL: veil plus zone censoring with blur or pixel. The paid **Mia Pack** (Patreon / SubscribeStar) unlocks the full version: hot images, cover styles with my face and words, porn replacement, quiz gates, ad takeover, control features and sound. The Pack is one file you import in the menu. No account, no key, no server.
 
 - Code: AGPL-3.0, see `LICENSE`
 - Mia images, texts, brand: proprietary, see `LIZENZ-MIA-INHALTE.md`

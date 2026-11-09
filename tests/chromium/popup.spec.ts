@@ -283,15 +283,13 @@ test('Fund 26: scheitert das Speichern, kommt der Fehlersatz und der Schalter sp
     await expect(seite.locator('#fehler')).toHaveText(FEHLER_SPEICHERN);
     await expect(seite.locator('#strict')).toBeChecked({ checked: vorher });
     expect((await einst(seite)).strict ?? false).toBe(vorher);
-    // Auch Regler, Stil und Zone: Fehlersatz, Anzeige beim gespeicherten Stand
+    // Auch Regler und Zone (das Preset waehlt man auf der Einstellungsseite, nicht im Popup): Fehlersatz, Anzeige beim gespeicherten Stand
     await seite.locator('#stimmung').focus();
     const schwelleVorher = (await einst(seite)).schwelle;
     await seite.keyboard.press('End');
     await expect(seite.locator('#fehler')).toBeVisible();
     const erwartet = Number(schwelleVorher ?? 0.1);
     await expect.poll(async () => Number(await seite.locator('#stimmung').inputValue())).toBeCloseTo(erwartet, 5);
-    await seite.locator('label:has(input[value="blur"])').click();
-    await expect(seite.locator('input[name="stil"][value="blur"]')).not.toBeChecked();
     await seite.locator('#zonen label.schalter').filter({ hasText: 'Eyes' }).click();
     await expect(seite.locator('#zonen input[data-zone="eyes"]')).toBeChecked({ checked: (await einst(seite)).zonen?.eyes?.an ?? false });
     // Nach dem Neuladen speichert es wieder, der Fehlersatz ist weg
@@ -341,13 +339,12 @@ test('Schnelle Folgeklicks: zwei Schalter und eine Zone ohne Warten, danach alle
       (document.getElementById('erw-inhalt') as HTMLInputElement).click();
       (document.getElementById('erw-inhalt') as HTMLInputElement).click();
       (document.getElementById('erw-an') as HTMLInputElement).click();
-      (document.querySelector('input[name="stil"][value="blur"]') as HTMLInputElement).click();
     });
     await expect.poll(async () => {
       const e = await einst(seite);
-      return [e.erwachsen?.an, e.erwachsen?.erkennenAmInhalt, e.stil];
-    }).toEqual([vorAn, vorInhalt, 'blur']);
-    console.log('popup: sieben Klicks ohne Warten (zwei Schalter, Zone, Zwischenklick, Stil), Speicher und Anzeige stimmen');
+      return [e.erwachsen?.an, e.erwachsen?.erkennenAmInhalt];
+    }).toEqual([vorAn, vorInhalt]);
+    console.log('popup: sechs Klicks ohne Warten (zwei Schalter, Zone, Zwischenklick), Speicher und Anzeige stimmen');
   } finally {
     await zuruecksetzen(seite);
     await seite.close();
@@ -363,11 +360,12 @@ test('Nr 7 und 9: Pack ohne Mia patch heisst "Mia Pack settings", Reglerenden st
     await expect(seite.locator('#pack-link')).toHaveText(T.PACK_KNOPF_OHNE);
     await expect(seite.locator('#ende-links')).toHaveText(STIMMUNG_WOERTER[0]);
     await expect(seite.locator('#ende-rechts')).toHaveText(STIMMUNG_WOERTER[3]);
-    await schreibe(seite, { pack: packMit(['erwachsen:vorschau']) });
+    // Mia-Preset gewaehlt: ohne Patch-Bilder im Pack gesperrt (Hinweis), mit Patch-Bildern waehlbar (Satz mit der Zahl der Bilder)
+    await schreibe(seite, { pack: packMit(['erwachsen:vorschau']), einstellungen: { version: 1, preset: 'mia-wort' } });
     await expect(seite.locator('#pack-link')).toHaveText(T.PACK_KNOPF_MIT);
     await expect(seite.locator('#pack-hinweis')).toHaveText(T.PACK_HINWEIS_OHNE_PATCH);
     await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
-    await expect(seite.locator('#pack-hinweis')).toHaveText(T.PACK_HINWEIS_MIT(3));
+    await expect(seite.locator('#pack-hinweis')).toContainText('I choose my face from');
   } finally {
     await zuruecksetzen(seite);
     await seite.close();
@@ -486,7 +484,7 @@ test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px
     // Lesung Runde 3, Nr. 8: alle sichtbaren Ziele messen, fehlende Gruppen machen den Test rot.
     const messe = () =>
       seite.evaluate(() =>
-        ['#alle-einstellungen', '#pause', '#pack-link', '#aendern', '#hilfe', '#version', '.wahl span', '#zonen li', '#zonen .auch', '.schalter', 'button.klein'].map((s) => {
+        ['#alle-einstellungen', '#pause', '#pack-link', '#aendern', '#hilfe', '#version', '#preset-aendern', '#zonen li', '#zonen .auch', '.schalter', 'button.klein'].map((s) => {
           const l = [...document.querySelectorAll<HTMLElement>(s)].filter((e) => e.getClientRects().length > 0);
           return l.length ? Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) : -1;
         }),
@@ -743,8 +741,11 @@ test('Fund 15, 16 und 17: Kuerzel unter der Pause, Fuss-Links auf feste Anker, P
     await expect(seite.locator('#pause-zeile')).toHaveText(T.PAUSE_ZEILE);
     await expect.poll(() => deckkraft('#stil-karte')).toBeCloseTo(0.7, 2);
     expect(await deckkraft('#pause')).toBe(1);
-    await seite.locator('label:has(input[value="blur"])').click();
-    await expect.poll(async () => (await einst(seite)).stil).toBe('blur');
+    // bedienbar: "Change" klappt auch in der Pause auf und zu
+    await seite.locator('#aendern').click();
+    await expect(seite.locator('#abdeckung-gruppe')).toBeVisible();
+    await seite.locator('#aendern').click();
+    await expect(seite.locator('#abdeckung-gruppe')).toBeHidden();
     await seite.locator('#pause').click();
     await expect(seite.locator('#pause-zeile')).toBeHidden();
     await expect.poll(() => deckkraft('#stil-karte')).toBe(1);

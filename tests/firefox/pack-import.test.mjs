@@ -156,8 +156,8 @@ const textEnthaelt = (css, teil) => async () => (await text(css)).includes(teil)
 
 
 const TITEL = 'Dummy pack (synthetic pictures)';
-const DATEIEN = 31;
-const DATEIEN_OHNE_TON = 26; // ohne die 5 Klaenge: andere Zahl, damit die Zahl der Dateien etwas aussagt
+const DATEIEN = 32;
+const DATEIEN_OHNE_TON = 27; // ohne die 5 Klaenge: andere Zahl, damit die Zahl der Dateien etwas aussagt
 // Klick mit Scrollen in die Mitte (die feste Sprungleiste verdeckt sonst Elemente am oberen Rand)
 const klick = async (css) => {
   const e = await driver.findElement(By.css(css));
@@ -277,16 +277,17 @@ try {
   const e0 = await speicher('einstellungen');
   await imSeitenkontext(
     `const a = (await api.storage.local.get('einstellungen')).einstellungen;
-     await api.storage.local.set({ einstellungen: { ...a, stil: 'blur', zonen: { ...a.zonen, belly: { ...a.zonen.belly, an: true } }, erwachsen: { ...a.erwachsen, an: false } } }); return true;`,
+     await api.storage.local.set({ einstellungen: { ...a, preset: 'blur', zonen: { ...a.zonen, belly: { ...a.zonen.belly, an: true } }, erwachsen: { ...a.erwachsen, an: false } } }); return true;`,
   );
   const alles = async () => {
     const o = await imSeitenkontext(`return await api.storage.local.get(null);`);
     delete o.pack;
     delete o.begruesstFuer; // Begruessungs-Merker folgt jedem Import (main.ts, Auftrag O)
+    delete o.gesichterStand; // Meldung "Gesichtssuche fertig" des Erkenners folgt jedem Import (Zensur-Presets)
     return JSON.stringify(o);
   };
   const vorher = await alles();
-  pruefe((await speicher('einstellungen')).stil === 'blur' && e0.stil !== 'blur', 'Einstellungen geaendert: Stil Blur');
+  pruefe((await speicher('einstellungen')).preset === 'blur' && e0.preset !== 'blur', 'Einstellungen geaendert: Preset Blur');
   const m0 = await leseMetaIdb();
   pruefe(m0?.version === '1.0.0' && m0.dateienImMeta === DATEIEN, `Meta vor dem Ersetzen: 1.0.0 mit ${DATEIEN} Dateien (${json(m0)})`);
 

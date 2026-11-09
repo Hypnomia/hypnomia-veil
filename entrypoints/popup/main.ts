@@ -13,7 +13,6 @@ import {
   STANDARD,
   STUFEN_WAHL,
   type Einstellungen,
-  type Stil,
   type StufeWahl,
   type Zone,
 } from '../../src/einstellungen';
@@ -24,7 +23,11 @@ import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import * as T from './texte';
 import { FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import type { Texte } from '../../src/quiz/vertrag';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../../src/pack/vertrag';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../../src/pack/vertrag';
+import { PRESETS } from '../../src/presets';
+import { presetVorschau } from '../../src/oberflaeche/presets-ansicht';
+import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
+import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
 // Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): eigene Module je Auftrag, jedes zeichnet nur seinen Platz.
 import './einstieg-hinweis';
 import './version-hinweis';
@@ -71,8 +74,11 @@ const gruppe = el<HTMLDivElement>('abdeckung-gruppe');
 const heiss = el<HTMLDivElement>('heiss');
 const heissFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stufe"]')];
 const gripSatz = el<HTMLParagraphElement>('grip-satz');
-const stilFelder = [...document.querySelectorAll<HTMLInputElement>('input[name="stil"]')];
-const packHinweis = el<HTMLParagraphElement>('pack-hinweis');
+const packHinweis_ = el<HTMLParagraphElement>('pack-hinweis');
+const zonenHinweisZeile = el<HTMLParagraphElement>('zonen-hinweis');
+const presetBild = el<HTMLSpanElement>('preset-bild');
+const presetName = el<HTMLElement>('preset-name');
+const presetAendern = el<HTMLButtonElement>('preset-aendern');
 const packLink = el<HTMLButtonElement>('pack-link');
 const fehlerZeile = el<HTMLParagraphElement>('fehler');
 el<HTMLSpanElement>('ende-links').textContent = T.REGLER_ENDE_LINKS;
@@ -136,7 +142,7 @@ function zeichne(e: Einstellungen): void {
   if (document.activeElement !== stimmung) stimmung.value = e.schwelle.toFixed(2);
   zeigeStimmung(e.schwelle);
 
-  zeichneStil(e);
+  zeichnePreset(e);
   strict.checked = e.strict;
 
   for (const zone of ZONEN) {
@@ -149,23 +155,39 @@ function zeichne(e: Einstellungen): void {
     }
   }
 
-  abdeckungKurz.textContent = T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()));
+  abdeckungKurz.textContent = PRESETS[e.preset].augen === 'nur-balken' ? T.ABDECKUNG_AUGENBALKEN : T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()));
   zeichneDieseSeite(e, seite);
   zeichneErwachsen(e);
 }
 
-// Stilwahl: Mia patch ist ohne Pack gesperrt (Hinweis auf das Pack), mit Pack waehlbar. Angezeigt wird der Stil, der wirklich gilt.
-function zeichneStil(e: Einstellungen): void {
+// Stand der Gesichtssuche (Zahl der Patch-Bilder mit Gesicht im Satz)
+let gesichter: GesichterStand | null = null;
+let beobachtung: (() => void) | null = null;
+function beobachteNeu(): void {
+  beobachtung?.();
+  beobachtung = beobachteGesichter((s) => {
+    gesichter = s;
+    if (aktuellE) zeichnePreset(aktuellE);
+  });
+}
+let aktuellE: Einstellungen | null = null;
+
+// Cover style: das Preset, das wirklich gilt (Mia-Presets nur mit Pack), mit Vorschau, Name und Satz; gewaehlt wird auf der Einstellungsseite.
+function zeichnePreset(e: Einstellungen): void {
+  aktuellE = e;
   const frei = istFreigeschaltet(pack, 'stil:mia-patch');
-  const gilt = wirksamerStil(e.stil, pack);
-  for (const feld of stilFelder) {
-    feld.checked = feld.value === gilt;
-    if (feld.value === 'mia-patch') {
-      feld.disabled = !frei;
-      feld.closest('label')?.classList.toggle('gesperrt', !frei);
-    }
-  }
-  packHinweis.textContent = frei ? T.PACK_HINWEIS_MIT(pack?.bilder ?? 0) : pack ? T.PACK_HINWEIS_OHNE_PATCH : T.PACK_HINWEIS_OHNE;
+  const gilt = presetFuerPackKurz(e.preset, pack);
+  presetBild.innerHTML = presetVorschau(gilt, 'popup');
+  presetName.textContent = PRESETS[gilt].name;
+  // Sperre der Mia-Presets: der Hinweis auf das Pack hat Vorrang, sonst der Satz zum Preset.
+  const gesperrt = PRESETS[e.preset].braucht === 'pack' && !frei;
+  // Ohne Pack steht dabei, was bis dahin gilt (Mosaik); mit Pack aber ohne brauchbares Patch der Hinweis des Packs allein.
+  packHinweis_.textContent = gesperrt ? packHinweis(frei, pack) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
+  // Mia-Preset gilt, aber Face steht aus: sagen, was dann gilt (der Satz der Karte klaenge sonst nach mehr)
+  if (!gesperrt && PRESETS[gilt].gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
+  const zh = zonenHinweis(gilt);
+  zonenHinweisZeile.hidden = zh === '';
+  zonenHinweisZeile.textContent = zh;
   // Beschriftung und Ziel aus derselben Bedingung: mit Pack "settings" (#stand), ohne Pack "Get the Mia Pack" (#neu)
   packLink.textContent = pack ? T.PACK_KNOPF_MIT : T.PACK_KNOPF_OHNE;
 }
@@ -237,7 +259,7 @@ function zeichneStufe(e: Einstellungen): void {
     strengText.textContent = '';
   }
   if (!hat) return;
-  gripSatz.textContent = T.GRIP_SATZ;
+  gripSatz.textContent = PRESETS[e.preset].augen === 'nur-balken' ? `${T.GRIP_SATZ} ${T.GRIP_AUGENBALKEN}` : T.GRIP_SATZ;
   const stufeKlein = STUFE_TEXT(stufe);
   stufeZeile.textContent = stufeKlein.charAt(0).toUpperCase() + stufeKlein.slice(1);
   // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.
@@ -420,13 +442,7 @@ stimmung.addEventListener('change', () => {
   void aendere(() => ({ schwelle: wert }));
 });
 
-for (const feld of stilFelder) {
-  feld.addEventListener('change', () => {
-    if (!feld.checked) return;
-    const wert = feld.value as Stil;
-    void aendere(() => ({ stil: wert }));
-  });
-}
+presetAendern.addEventListener('click', () => void oeffneOptionen('abschnitt-stil'));
 
 strict.addEventListener('change', () => {
   const wert = strict.checked;
@@ -546,6 +562,7 @@ const packHorcher = (aenderungen: Record<string, { newValue?: unknown }>, bereic
   chibiPose = '';
   texte = null;
   void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
+  if (istFreigeschaltet(pack, 'stil:mia-patch')) beobachteNeu();
   if (aktuell && offen === 0) zeichne(aktuell);
 };
 browser.storage.onChanged.addListener(packHorcher);
@@ -563,6 +580,7 @@ void (async () => {
   pack = await ladePackKurz().catch(() => null);
   await ladeStand().catch(() => undefined);
   zeichne(await ladeEinstellungen());
+  if (istFreigeschaltet(pack, 'stil:mia-patch')) beobachteNeu();
   // Pack-Texte danach nachladen, nur die Stufen-Anzeige neu zeichnen.
   void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
 })();

@@ -41,6 +41,7 @@ import {
   TEXT_FERTIG,
   TEXT_FERTIG_ERSETZT,
   TEXT_FERTIG_STIL,
+  TEXT_FERTIG_STIL_FACE_AUS,
   TEXT_FERTIG_STIL_FEHLT,
   TEXT_KEINE_DATEI,
   TEXT_KURZFASSUNG_FEHLT,
@@ -381,7 +382,7 @@ annehmen.addEventListener('click', async () => {
     fortschritt.removeAttribute('value');
     fortschrittText.textContent = textFortschrittStart(geprueft.groesse);
     try {
-      const { kurz, stilGesetzt, fall } = await importierePack(
+      const { kurz, stilGesetzt, fall, faceAn: faceEin } = await importierePack(
         datei,
         geprueft,
         (fertig, gesamt) => {
@@ -399,7 +400,9 @@ annehmen.addEventListener('click', async () => {
         : !istFreigeschaltet(kurz, 'stil:mia-patch')
           ? ''
           : stilGesetzt
-            ? TEXT_FERTIG_STIL
+            ? faceEin
+              ? TEXT_FERTIG_STIL
+              : TEXT_FERTIG_STIL_FACE_AUS
             : TEXT_FERTIG_STIL_FEHLT;
       // Ohne Nachsatz kein Leerzeichen am Ende (Fund aus dem Text-Einbau).
       zeigeMeldung(`${TEXT_FERTIG} ${textPatchBilder(kurz.bilder)} added.` + (nachsatz ? ` ${nachsatz}` : ''));

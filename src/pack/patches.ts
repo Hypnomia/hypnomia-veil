@@ -12,6 +12,8 @@ import { anfrage, horchePackGeaendert, kopiereBlob, MAX_LESE_BYTES, leseStandAus
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from './format';
 import { Zwischenspeicher, type Leihe } from './leihe';
 import { hashe } from './hash';
+import { gesichtsAusschnitt } from '../presets.ts';
+import { leseGesichter, schreibeGesichter, leereGesichter, type Box4 } from './gesichter-ablage';
 
 // Laengste Seite eines gehaltenen Patch-Bildes: groesser als jede sinnvolle Flaeche, aber klein genug fuer den Speicher.
 const MAX_SEITE = 1024;
@@ -31,6 +33,8 @@ let namen: string[] = [];
 // Zaehlt jeden Wechsel des Standes. Wer vor einem await eine Zahl merkt und danach eine andere findet, hat ein ueberholtes Bild.
 let generation = 0;
 const dekodiert = new Zwischenspeicher<ImageBitmap>(MAX_IM_SPEICHER);
+// Gesichtsbox je Patch-Bild (in den Pixeln des dekodierten Bildes), null = kein Gesicht gefunden; gilt je Stand des Packs (siehe Mias Gesicht unten).
+const gesichtsMemo = new Map<string, Box4 | null>();
 
 let db: IDBDatabase | null = null;
 let dbVersprechen: Promise<IDBDatabase> | null = null;
@@ -68,6 +72,10 @@ function uebernimm(neu: PackStand | null): void {
   if (neuerStand === stand) return;
   generation++;
   dekodiert.leere();
+  gesichtsMemo.clear();
+  scanFertig = false;
+  // scanLaeuft bleibt stehen: ein alter Lauf endet ueber die Generation von selbst, der neue beginnt erst danach (starteGesichtsScan)
+  if (neu === null) void leereGesichter();
   stand = neuerStand;
   namen = neu && neuerStand !== null ? [...neu.patches] : [];
 }
@@ -204,4 +212,163 @@ export async function waehlePatch(schluessel: string, packStand?: number): Promi
 // Fuer Tests: wie viele Bilder gerade dekodiert gehalten werden.
 export function anzahlImSpeicher(): number {
   return dekodiert.groesse;
+}
+
+// ---------- Mias Gesicht (ZENSUR-PRESETS-BAUPLAN) ----------
+// Ein Patch-Bild taugt fuer den Gesichtstausch, wenn YuNet darin ein Gesicht findet. Der Ausschnitt um das groesste Gesicht (Rand 25 %,
+// Seitenverhaeltnis 3:4, src/presets.ts gesichtsAusschnitt) ist Mias Gesicht. Die Suche liefert der Erkenner (YuNet laeuft dort).
+// Die Suche laeuft NIE innerhalb einer Pruefanfrage: nach einem Import, nach dem Laden des Modells und nach einem Wechsel des Packs stoesst
+// der Erkenner sie im Hintergrund an (`starteGesichtsScan`), das Ergebnis je Stand des Packs liegt in einer eigenen Ablage
+// (src/pack/gesichter-ablage.ts). Solange sie nicht fertig ist, gibt `waehleGesichtsPatch` null (die Pruefung nimmt die Koerper-Behandlung,
+// das ist sicher: das Gesicht ist verdeckt, nur nicht mit Mias Gesicht).
+export type GesichtsBox = Box4;
+export type GesichtsSucher = (bild: ImageBitmap) => Promise<GesichtsBox | null>;
+let sucher: GesichtsSucher | null = null;
+// Fertig fuer den aktuellen Stand: alle Patch-Bilder sind geprueft (Speicher gesichtsMemo).
+let scanFertig = false;
+let scanLaeuft: Promise<void> | null = null;
+
+export function setzeGesichtsSucher(f: GesichtsSucher | null): void {
+  sucher = f;
+}
+
+// Wird gerufen, wenn die Suche fuer einen Stand fertig wird (Stand `importiert`, Zahl der Bilder mit Gesicht): der Erkenner meldet es weiter, damit offene
+// Seiten, deren Pruefungen waehrend der Suche den Ersatz bekamen, neu bewerten.
+let scanMelder: ((importiert: number, mit: number) => Promise<void>) | null = null;
+export function setzeScanMelder(f: ((importiert: number, mit: number) => Promise<void>) | null): void {
+  scanMelder = f;
+}
+let scanGen = -1;
+
+export interface GesichtsWahl extends PatchWahl {
+  // Ausschnitt in den Pixeln von `bild`: [x, y, w, h]
+  ausschnitt: GesichtsBox;
+}
+
+// Prueft ein Bild (aus dem Speicher oder per YuNet) und merkt die Box. Wirft, wenn die Suche nicht geht (dann wird nichts gemerkt).
+async function pruefeBild(name: string): Promise<GesichtsBox | null> {
+  const bekannt = gesichtsMemo.get(name);
+  if (bekannt !== undefined) return bekannt;
+  if (!sucher) throw new Error('keine Gesichtssuche');
+  const leihe = await dekodiere(name);
+  if (!leihe) {
+    // nicht dekodierbar: kein Gesicht, aber nicht abbrechen
+    gesichtsMemo.set(name, null);
+    return null;
+  }
+  const meine = generation;
+  try {
+    const box = await sucher(leihe.wert);
+    if (meine === generation) gesichtsMemo.set(name, box);
+    return box;
+  } finally {
+    leihe.freigeben();
+  }
+}
+
+// Stoesst die Suche im Hintergrund an (oder wartet auf die laufende) und liefert, wenn sie fertig ist. Wirft nie.
+export function starteGesichtsScan(packStand?: number): Promise<void> {
+  if (scanLaeuft) {
+    // gehoert der laufende Lauf zu einem alten Stand, beginnt der neue nach seinem Ende
+    return scanGen === generation ? scanLaeuft : scanLaeuft.then(() => starteGesichtsScan(packStand));
+  }
+  let lauf: Promise<void> | undefined;
+  lauf = (async () => {
+    try {
+      if (!(await aktualisiere(packStand))) {
+        scanFertig = true; // keine Patch-Bilder: nichts zu pruefen
+        return;
+      }
+      if (scanFertig) return;
+      const meine = generation;
+      const meinStand = stand;
+      const gespeichert = meinStand !== null ? await leseGesichter(meinStand) : null;
+      if (gespeichert) for (const n of namen) if (n in gespeichert.boxen) gesichtsMemo.set(n, gespeichert.boxen[n] ?? null);
+      for (const n of [...namen]) {
+        if (meine !== generation) return; // das Pack hat gewechselt, der naechste Lauf beginnt neu
+        await pruefeBild(n);
+      }
+      if (meine !== generation) return;
+      scanFertig = true;
+      if (scanMelder && meinStand !== null) void scanMelder(meinStand, [...gesichtsMemo.values()].filter((b) => b !== null).length).catch(() => undefined);
+      if (meinStand !== null && (!gespeichert || namen.some((n) => !(n in gespeichert.boxen)))) {
+        const boxen: Record<string, GesichtsBox | null> = {};
+        for (const n of namen) boxen[n] = gesichtsMemo.get(n) ?? null;
+        await schreibeGesichter({ importiert: meinStand, boxen });
+      }
+    } catch {
+      // YuNet noch nicht bereit oder Lesefehler: nicht fertig, ein spaeterer Anstoss versucht es wieder
+    } finally {
+      if (scanLaeuft === lauf) scanLaeuft = null;
+    }
+  })();
+  scanLaeuft = lauf;
+  scanGen = generation;
+  return lauf;
+}
+
+// Waehlt stabil je Schluessel ein Patch-Bild mit Gesicht (ab dem Hash-Platz das erste mit Gesicht). null: Scan noch nicht fertig (dann wird er
+// angestossen und diese Pruefung nimmt die Koerper-Behandlung), kein Pack, keine Patch-Bilder oder in keinem ein Gesicht.
+export async function waehleGesichtsPatch(schluessel: string, packStand?: number): Promise<GesichtsWahl | null> {
+  try {
+    if (!(await aktualisiere(packStand))) return null;
+  } catch {
+    return null;
+  }
+  if (!scanFertig) {
+    void starteGesichtsScan(packStand);
+    return null;
+  }
+  const liste = namen;
+  const start = hashe(schluessel) % liste.length;
+  for (let i = 0; i < liste.length; i++) {
+    const name = liste[(start + i) % liste.length]!;
+    const box = gesichtsMemo.get(name);
+    if (!box) continue;
+    try {
+      const leihe = await dekodiere(name);
+      if (!leihe) continue;
+      const b = leihe.wert;
+      return { name, bild: b, ausschnitt: gesichtsAusschnitt(box, b.width, b.height), freigeben: leihe.freigeben };
+    } catch {
+      // naechstes Bild versuchen
+    }
+  }
+  return null;
+}
+
+export interface GesichtsStatistik {
+  gesamt: number; // Patch-Bilder im Pack
+  geprueft: number; // davon schon auf ein Gesicht geprueft
+  mit: number; // davon mit Gesicht
+  fertig: boolean; // alle geprueft (der Scan ist durch)
+}
+
+export function gesichtsStatistik(): GesichtsStatistik {
+  let geprueft = 0;
+  let mit = 0;
+  for (const n of namen) {
+    const b = gesichtsMemo.get(n);
+    if (b === undefined) continue;
+    geprueft++;
+    if (b) mit++;
+  }
+  return { gesamt: namen.length, geprueft, mit, fertig: scanFertig };
+}
+
+// Prueft alle Patch-Bilder (wartet auf den Scan) und liefert die Zahlen. Fuer den Erkenner und die Tests.
+export async function scanneGesichter(packStand?: number): Promise<GesichtsStatistik> {
+  await starteGesichtsScan(packStand);
+  return gesichtsStatistik();
+}
+
+// Hoert auf Wechsel des Packs (Import, Ersetzen, Entfernen) und stoesst danach den Scan an. Einmal beim Start des Erkenners.
+let ueberwacht = false;
+export function starteGesichtsUeberwachung(): void {
+  if (ueberwacht) return;
+  ueberwacht = true;
+  horchePackGeaendert(() => {
+    ungueltig = true;
+    setTimeout(() => void starteGesichtsScan(), 300);
+  });
 }

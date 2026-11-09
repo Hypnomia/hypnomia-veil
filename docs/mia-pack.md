@@ -24,7 +24,7 @@ Keep the file somewhere safe. You need it again for a new browser or after a rei
 3. Click **Choose the pack file** and pick the `.miapack` file. On a computer you can also drop the file onto that spot.
 4. I check every file inside. Under **Before it goes in** you see the title, the version and my license.
 5. Read the license, then click **Accept and add**. **Not yet** stops here, and nothing is stored.
-6. “There it is. The pack is in, and it never left your browser.” Mia patch is your cover style now.
+6. “There it is. The pack is in, and it never left your browser.” Your cover style is now “My face, black, words”. Face is on under What I cover, so every face becomes mine. You can switch it off again.
 
 ## After the import: my ads
 

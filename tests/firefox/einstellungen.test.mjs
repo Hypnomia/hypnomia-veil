@@ -135,7 +135,8 @@ const anzeige = (css) => driver.executeScript(`const e = document.querySelector(
 const wdKlick = async (by) => (await driver.findElement(by)).click();
 const labelMit = (bereich, text) => By.xpath(`//*[@id='${bereich}']//label[contains(., '${text}')]`);
 const zone = (text) => wdKlick(labelMit('zonen', text));
-const stilWahl = (text) => wdKlick(By.xpath(`//div[contains(@class,'wahl')]//label[contains(., '${text}')]`));
+// Preset-Karten: Klick aufs Label der Karte mit diesem Namen
+const stilWahl = (text) => wdKlick(By.xpath(`//div[@id='preset-karten']//label[.//strong[normalize-space(.)='${text}']]`));
 const strictKlick = () => wdKlick(By.xpath(`//label[.//input[@id='strict']]`));
 const tasten = async (css, key, n) => {
   const e = await driver.findElement(By.css(css));
@@ -237,17 +238,17 @@ try {
 
   // ---- Stil ----
   await stilWahl('Blur');
-  await bis('stil blur', async () => (await einst()).stil === 'blur');
-  pruefe(await gesperrt('input[name="stil"][value="mia-patch"]'), 'Mia patch ohne Pack gesperrt');
-  pruefe((await text('#stil-hinweis')).includes('Mia Pack'), 'Hinweis nennt das Mia Pack');
+  await bis('preset blur', async () => (await einst()).preset === 'blur');
+  pruefe(await gesperrt('#preset-mia-wort'), 'Preset mit meinem Gesicht ohne Pack gesperrt');
+  pruefe((await text('#preset-pack-hinweis')).includes('Mia Pack'), 'Hinweis nennt das Mia Pack');
   await setze({ pack: packMit(['stil:mia-patch']) });
-  await bis('Mia patch frei', async () => !(await gesperrt('input[name="stil"][value="mia-patch"]')));
-  pruefe((await text('#stil-hinweis')).includes('7 of my pictures'), 'Hinweis mit Pack nennt die Bilder');
-  await stilWahl('Mia patch');
-  await bis('stil mia-patch', async () => (await einst()).stil === 'mia-patch');
+  await bis('Mia-Preset frei', async () => !(await gesperrt('#preset-mia-wort')));
+  await stilWahl('My face, black, words');
+  await bis('preset mia-wort', async () => (await einst()).preset === 'mia-wort');
+  pruefe((await text('#stil-hinweis')).includes('I choose my face from'), 'Satz mit Pack nennt die Herkunft des Gesichts');
   await stilWahl('Mosaic');
-  await bis('stil mosaik', async () => (await einst()).stil === 'mosaik');
-  pruefe(true, 'Stil: Blur, Mia patch (mit Pack), Mosaic gespeichert');
+  await bis('preset mosaik', async () => (await einst()).preset === 'mosaik');
+  pruefe(true, 'Preset: Blur, My face, black, words (mit Pack), Mosaic gespeichert');
 
   // ---- Strict ----
   await strictKlick();

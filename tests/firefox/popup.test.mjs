@@ -147,32 +147,31 @@ try {
   await bis('Pause aus', async () => (await speicher('einstellungen'))?.pause === false);
   pruefe(true, 'zweiter Klick setzt einstellungen.pause = false');
 
-  // Mia patch ohne Pack gesperrt
-  pruefe((await eigenschaft(radio('mia-patch'), 'disabled')) === true, 'Mia patch ist ohne Pack gesperrt');
-  pruefe((await text('#pack-hinweis')) === T.PACK_HINWEIS_OHNE, 'Hinweis nennt den Weg zum Pack');
-  pruefe((await eigenschaft(radio('mosaik'), 'checked')) === true, 'ohne Pack gilt Mosaik');
+  // Cover style im Popup: eine Zeile mit Vorschau, Name und "Change style" (gewaehlt wird auf der Einstellungsseite); ohne Pack gilt Mosaik
+  const setzePreset = (preset) => imSeitenkontext(`await api.storage.local.set({ einstellungen: { ...((await api.storage.local.get('einstellungen')).einstellungen ?? {}), preset: args[0] } });`, preset);
+  pruefe((await text('#preset-name')) === 'Mosaic', 'ohne Pack gilt Mosaik (Name in der Zeile)');
+  pruefe((await driver.findElements(By.css('#preset-bild svg'))).length === 1, 'Vorschau der Figur steht da');
+  pruefe((await driver.findElements(By.css('input[name="stil"]'))).length === 0, 'keine Stil-Knoepfe im Popup');
   pruefe((await text('#pack-link')).length > 0, 'Verweis auf die Einstellungsseite ist da');
-  // Blur ist waehlbar
-  await driver.findElement(By.css('label:has(input[value="blur"])')).click();
-  await bis('Blur', async () => (await speicher('einstellungen'))?.stil === 'blur');
-  pruefe(true, 'Blur waehlbar, in storage.local');
+  await setzePreset('blur');
+  await bis('Blur', async () => (await text('#preset-name')) === 'Blur');
+  pruefe(true, 'Blur in storage.local, das Popup folgt');
+  // Ein Mia-Preset ohne Pack: gilt Mosaik, der Hinweis nennt den Weg zum Pack
+  await setzePreset('mia-wort');
+  await bis('Mosaik gilt', async () => (await text('#preset-name')) === 'Mosaic');
+  pruefe((await text('#pack-hinweis')).includes('Mia Pack'), 'Hinweis nennt den Weg zum Pack');
 
-  // Mit Pack (Kurzfassung in storage.local) wird Mia patch waehlbar, das Popup folgt der Aenderung ohne Neuladen
+  // Mit Pack (Kurzfassung in storage.local) gilt das Mia-Preset, das Popup folgt der Aenderung ohne Neuladen
   await imSeitenkontext(
     `await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch'], bilder: 3, groesse: 100, importiert: 1 } });`,
   );
-  await bis('Mia patch frei', async () => (await eigenschaft(radio('mia-patch'), 'disabled')) === false);
-  pruefe(true, 'mit Pack ist Mia patch waehlbar');
-  pruefe((await text('#pack-hinweis')).includes('3 of my pictures'), 'Hinweis zaehlt die Bilder');
-  await driver.findElement(By.css('label:has(input[value="mia-patch"])')).click();
-  await bis('Mia patch gewaehlt', async () => (await speicher('einstellungen'))?.stil === 'mia-patch');
-  pruefe((await eigenschaft(radio('mia-patch'), 'checked')) === true, 'Mia patch ist gewaehlt');
+  await bis('Mia-Preset gilt', async () => (await text('#preset-name')) === 'My face, black, words');
+  pruefe((await text('#pack-hinweis')).includes('I choose my face from'), 'Satz nennt die Herkunft des Gesichts');
 
-  // Pack weg: das Popup zeigt wieder den wirksamen Stil (Mosaik) und sperrt
+  // Pack weg: das Popup zeigt wieder das wirksame Preset (Mosaik)
   await imSeitenkontext(`await api.storage.local.remove('pack');`);
-  await bis('wieder gesperrt', async () => (await eigenschaft(radio('mia-patch'), 'disabled')) === true);
-  pruefe((await eigenschaft(radio('mosaik'), 'checked')) === true, 'ohne Pack zeigt das Popup Mosaik');
-  await imSeitenkontext(`await api.storage.local.set({ einstellungen: { ...(await api.storage.local.get('einstellungen')).einstellungen, stil: 'mosaik' } });`);
+  await bis('wieder Mosaik', async () => (await text('#preset-name')) === 'Mosaic');
+  await setzePreset('mosaik');
 
   // Auftrag U, Session 12: UX-Funde im echten Firefox (Popup als Tab, Fenster 1280 px breit)
   pruefe((await text('#pack-hinweis')).length > 0, 'U Vorbereitung');

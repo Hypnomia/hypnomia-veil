@@ -37,10 +37,11 @@ import {
   zeigeOriginal,
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, wirksamerStil, type PackKurz } from '../pack/vertrag';
+import { GESICHTER_STAND_SCHLUESSEL, PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../pack/vertrag';
+import { PRESETS } from '../presets.ts';
 import { SteigerungMelder } from './steigerung-melder';
 import { setzeUrteilMelder, setzeZensiertMelder } from './anwenden';
-import { setzeZonenAnpassung } from './pruefung';
+import { setzePresetAnpassung, setzeZonenAnpassung } from './pruefung';
 import { AdressBeobachter } from './adresse';
 import { Beobachter } from './beobachter';
 import {
@@ -1699,16 +1700,27 @@ export function starteSchleier(ctx: KontextLeicht): void {
   const steigerung = new SteigerungMelder(!istRahmen, () => {
     if (einstellungen) wendeEinstellungenAn(einstellungen);
   });
-  // packStand fuer die Anfrage an den Erkenner: nur bei Stil mia-patch (importiert des Packs, sonst 0), sonst weggelassen.
+  // Presets, die das Pack brauchen (Mias Gesicht) oder Woerter nutzen: dann gehoert das Pack zum Pruefstand.
+  const nutztPack = (e: Einstellungen): boolean => PRESETS[e.preset].braucht === 'pack' || PRESETS[e.preset].woerter;
+  // packStand fuer die Anfrage an den Erkenner: nur bei Presets, die das Pack nutzen (importiert des Packs, sonst 0), sonst weggelassen.
   function packStandFuer(e: Einstellungen): number | undefined {
-    return e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : undefined;
+    return nutztPack(e) ? (packKurz?.importiert ?? 0) : undefined;
   }
   function pruefRelevant(e: Einstellungen): string {
-    const stil = wirksamerStil(e.stil, packKurz);
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.stil, stil, e.stil === 'mia-patch' ? (packKurz?.importiert ?? 0) : 0, vorschau.stand(), steigerung.stufe()]);
+    const preset = presetFuerPackKurz(e.preset, packKurz);
+    // gesichterStand: Mias Gesicht nur nach der Gesichtssuche (bis dahin bekamen Pruefungen den Ersatz): wenn sie fertig meldet, bewerten offene Seiten neu
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, PRESETS[preset].gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe()]);
   }
 
+  // Zeit der letzten Meldung "Gesichtssuche fertig" (storage.local.gesichterStand), 0 = keine
+  let gesichterStand = 0;
+  const standZeit = (roh: unknown): number => (roh && typeof roh === 'object' && typeof (roh as { zeit?: unknown }).zeit === 'number' ? (roh as { zeit: number }).zeit : 0);
+
   function beiPackAenderung(aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void {
+    if (bereich === 'local' && GESICHTER_STAND_SCHLUESSEL in aenderungen && !abgebaut) {
+      gesichterStand = standZeit(aenderungen[GESICHTER_STAND_SCHLUESSEL]?.newValue);
+      if (einstellungen) wendeEinstellungenAn(einstellungen);
+    }
     if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen) || abgebaut) return;
     const p = aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue as PackKurz | undefined;
     packKurz = p && typeof p === 'object' && typeof p.id === 'string' ? p : null;
@@ -1889,6 +1901,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   planeStartphasenEnde(STARTPHASE_MAX_MS);
   beobachter.start(); // sofort sammeln, auswerten erst nach dem Laden der Einstellungen
   setzeZonenAnpassung((e) => steigerung.zonenFuer(e));
+  setzePresetAnpassung((e) => presetFuerPackKurz(e.preset, packKurz));
   setzeZensiertMelder((el) => {
     // Session 11: Ledger zaehlt nur neue Inhalte (Neubewertung desselben Inhalts zaehlt nicht, wie bei der Steigerung).
     if (steigerung.zensiert(el)) melde({ art: 'zensiert' });
@@ -1926,6 +1939,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
   // ohne Folgen). Der Start wartet hoechstens TAB_FRIST_MS darauf; spaetere Wechsel melden die Frames ueber inhalt/tab.
   let packGehoert = false;
   const packLaden = ladePackKurz().catch(() => null);
+  void browser.storage.local.get(GESICHTER_STAND_SCHLUESSEL).then((r) => {
+    if (gesichterStand === 0) gesichterStand = standZeit(r[GESICHTER_STAND_SCHLUESSEL]);
+  }).catch(() => undefined);
   const packHoerer = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
     if (bereich === 'local' && PACK_SPEICHER_SCHLUESSEL in aenderungen) packGehoert = true;
     beiPackAenderung(aenderungen, bereich);
@@ -1949,6 +1965,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     abmelden();
     browser.storage.onChanged.removeListener(packHoerer);
     setzeZonenAnpassung(null);
+    setzePresetAnpassung(null);
     setzeZensiertMelder(null);
     setzeUrteilMelder(null);
     tonDeckel.alleFrei();

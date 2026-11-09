@@ -4,18 +4,24 @@
 import { istFuer, type NachrichtErkenner } from '../nachrichten';
 import { fehlerAntwortFuer } from './antwort';
 import { lieferePackBild } from './packbild';
-import { istBereit, ladeModell, pruefe, setzeRefererSetzer, status } from './erkenner';
+import { setzeScanMelder } from '../pack/patches';
+import { gesichtsscan, istBereit, ladeModell, pruefe, setzeRefererSetzer, starteHintergrundArbeit, status } from './erkenner';
 import { herkunftFuerEntscheidung, type AbsenderHerkunft, type RefererSetzer } from './nachladen';
 
 export interface ErkennerOptionen {
   // Wie ein Referer fuer eigene Abrufe gesetzt wird (Chrome: Nachricht an den Hintergrund, Firefox: direkter Aufruf).
   setzeReferer: RefererSetzer;
+  // Meldet, dass die Gesichtssuche in den Patch-Bildern fertig ist (Hintergrund legt `gesichterStand` in storage.local ab).
+  meldeGesichter?: (importiert: number, mit: number) => Promise<void>;
 }
 
 // Modell vorladen, nicht erst bei der ersten Anfrage.
 export function starteErkenner(optionen: ErkennerOptionen): void {
   setzeRefererSetzer(optionen.setzeReferer);
+  setzeScanMelder(optionen.meldeGesichter ?? null);
   ladeModell().catch((e) => console.warn('Erkenner: Vorladen fehlgeschlagen', e));
+  // Danach im Hintergrund: Wort-Schrift laden und die Patch-Bilder des Packs einmal auf Gesichter pruefen (Mias Gesicht).
+  starteHintergrundArbeit();
 }
 
 // Beantwortet Nachrichten fuer `erkenner`. Gibt undefined zurueck, wenn die Nachricht nicht gemeint ist
@@ -28,6 +34,8 @@ export function bearbeiteErkennerNachricht(nachricht: unknown, absender?: Absend
       return Promise.resolve({ ok: true, bereit: istBereit() });
     case 'status':
       return Promise.resolve(status());
+    case 'gesichtsscan':
+      return gesichtsscan(typeof n.packStand === 'number' ? n.packStand : undefined);
     case 'pruefe': {
       // Netzgrenze: die Herkunft kommt aus dem Absender (Tab, sender.origin), nicht allein aus dem Referer der Nachricht.
       const referer = n.quelle && n.quelle.art === 'url' ? (n.quelle.referer ?? '') : '';

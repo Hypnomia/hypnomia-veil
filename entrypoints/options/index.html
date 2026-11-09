@@ -53,8 +53,9 @@
 
       <section aria-labelledby="zonen-titel" id="abschnitt-zonen">
         <h2 id="zonen-titel">What I cover</h2>
-        <ul id="zonen" class="zonen"></ul>
+        <ul id="zonen" class="zonen" aria-describedby="zonen-hinweis"></ul>
         <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+        <p id="zonen-hinweis" class="hinweis" hidden></p>
         <label class="schalter">
           <input id="strict" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
@@ -64,12 +65,18 @@
 
       <section aria-labelledby="stil-titel" id="abschnitt-stil">
         <h2 id="stil-titel">Cover style</h2>
-        <div class="wahl" role="radiogroup" aria-labelledby="stil-titel">
-          <label><input type="radio" name="stil" value="mosaik" /><span>Mosaic</span></label>
-          <label><input type="radio" name="stil" value="blur" /><span>Blur</span></label>
-          <label><input type="radio" name="stil" value="mia-patch" /><span>Mia patch</span></label>
-        </div>
+        <div id="preset-karten"></div>
         <p id="stil-hinweis" class="hinweis"></p>
+        <p id="preset-face-hinweis" class="hinweis" role="status" hidden></p>
+        <p id="preset-kein-gesicht" class="hinweis" hidden></p>
+        <p id="preset-pack-hinweis" class="hinweis"></p>
+        <p id="wort-ohne-pack" class="hinweis" hidden></p>
+        <div id="wort-themen" hidden>
+          <h3 id="wort-titel" class="regel-titel">My words</h3>
+          <p class="hinweis">Pick the topics my words come from: one, a few or all.</p>
+          <ul id="wort-chips" class="wort-chips" aria-labelledby="wort-titel"></ul>
+          <p id="wort-hinweis" class="hinweis"></p>
+        </div>
       </section>
 
       <section aria-labelledby="ausnahmen-titel" id="abschnitt-ausnahmen">

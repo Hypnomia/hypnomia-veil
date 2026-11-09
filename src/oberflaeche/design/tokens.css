@@ -31,11 +31,13 @@
   --v-ok: #23704c;
   --v-ok-punkt: #3fae7a;
   --v-weiss: #ffffff;
+  --v-schwarz: #000000;
   --v-etikett: #2b1630;
   --v-verlauf-akzent: linear-gradient(135deg, #b8327a 0%, #8a3fb8 55%, #6a4bc4 100%);
   --v-verlauf-zart: linear-gradient(135deg, #ffe3ef 0%, #efe7ff 100%);
   --v-verlauf-kopf: linear-gradient(135deg, #ffd6e8 0%, #e6dcff 100%);
   --v-verlauf-grund: radial-gradient(1200px 700px at 8% -10%, #ffe1ee 0%, transparent 60%), radial-gradient(900px 600px at 100% 0%, #e9e0ff 0%, transparent 55%), radial-gradient(800px 600px at 50% 110%, #ffe8db 0%, transparent 60%), #fff7fb;
+  --v-wort-unterlage: rgba(0, 0, 0, 0.62);
   --v-glas: rgba(255, 255, 255, 0.62);
   --v-glas-stark: rgba(255, 255, 255, 0.82);
   --v-glas-kante: rgba(255, 255, 255, 0.9);

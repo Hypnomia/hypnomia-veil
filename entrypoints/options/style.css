@@ -1,4 +1,5 @@
 @import '../../src/oberflaeche/design/tokens.css';
+@import '../../src/oberflaeche/design/presets.css';
 /* Einstellungsseite: hell und pastellfarben (Entscheidung 4), seit Phase 8b im Look "Sakura Glas" (Entscheidung 161). */
 :root {
   /* Phase 8b (Entscheidung 161, "Sakura Glas"): die alten Namen zeigen auf das Gestaltungs-System (tokens.css), damit pack.css,

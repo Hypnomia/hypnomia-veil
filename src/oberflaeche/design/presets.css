@@ -1,0 +1,33 @@
+/* Karten der Zensur-Presets (src/oberflaeche/presets-ansicht.ts): Einstellungsseite, Einstieg (kompakt) und Vorschau im Popup.
+   Nur Variablen aus tokens.css. Karte: kleine Figur links, Name rechts; schmal (Telefon) zwei Karten je Zeile. */
+.preset-wahl { display: grid; gap: var(--v-a-3); }
+.preset-gruppe { border: 0; padding: 0; margin: 0; }
+.preset-gruppe-titel { margin: 0 0 var(--v-a-1); font-size: 13px; font-weight: 800; color: var(--v-rosa-800); font-family: var(--v-schrift-display); text-transform: uppercase; letter-spacing: 0.04em; }
+.preset-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.preset-karte { position: relative; display: block; min-width: 0; }
+.preset-karte input { position: absolute; opacity: 0; }
+.preset-box { display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 8px; height: 100%; padding: 5px 8px; box-sizing: border-box;
+  border: 1.5px solid var(--v-rand); border-radius: var(--v-r-s); background: var(--v-weiss); color: var(--v-text); cursor: pointer; }
+.preset-bild svg { display: block; width: 32px; height: 38px; }
+.preset-text { display: grid; gap: 2px; min-width: 0; }
+.preset-text strong { font-size: 13px; font-weight: 800; line-height: 1.2; }
+.preset-text small { display: none; } /* der Satz zum gewaehlten Preset steht unter den Karten (Seite) und im Einstieg; Karten bleiben kurz */
+.preset-karte input:checked + .preset-box { border-color: var(--v-rosa-800); background: var(--v-rosa-100); box-shadow: 0 2px 8px -2px rgba(168, 50, 111, 0.35); }
+.preset-karte input:focus-visible + .preset-box { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
+.preset-karte.gesperrt .preset-box { opacity: 0.55; cursor: not-allowed; }
+@media (max-width: 600px) {
+  .preset-liste { grid-template-columns: repeat(2, 1fr); }
+  .preset-text strong { font-size: 12.5px; }
+}
+/* Chips der Wort-Themen */
+.wort-chips { display: flex; flex-wrap: wrap; gap: var(--v-a-2); margin: var(--v-a-2) 0 0; padding: 0; list-style: none; }
+.wort-chip { position: relative; }
+.wort-chip input { position: absolute; opacity: 0; }
+.wort-chip span { display: inline-block; padding: 6px 12px; border: 1.5px solid var(--v-rand); border-radius: var(--v-r-voll); background: var(--v-weiss); color: var(--v-leise); font-weight: 700; font-size: 13px; cursor: pointer; }
+.wort-chip input:checked + span { border-color: var(--v-rosa-800); background: var(--v-rosa-100); color: var(--v-rosa-800); }
+.wort-chip input:focus-visible + span { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
+.wort-chip input:disabled + span { opacity: 0.55; cursor: not-allowed; }
+/* Zeile im Popup: aktuelles Preset mit Vorschau */
+.preset-zeile { display: grid; grid-template-columns: 60px 1fr auto; align-items: center; gap: var(--v-a-3); }
+.preset-zeile .preset-bild svg { display: block; width: 40px; height: 48px; }
+.preset-zeile .preset-name { font-weight: 800; }

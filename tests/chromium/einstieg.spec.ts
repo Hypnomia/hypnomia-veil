@@ -1,5 +1,6 @@
 // Chromium: Auftrag E (Einstieg, Session 11). Testbau: nach der Installation gilt der Einstieg als erledigt und nichts oeffnet sich;
 // `einstieg-test` setzt zurueck und oeffnet. Ganzer Durchgang mit echten Klicks, Ueberspringen, "I’m not", Popup-Hinweis, #interview, 360 px.
+import { HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -160,24 +161,33 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   await expect(w.locator('#iv-bedeckt')).toBeChecked();
   await w.locator('#iv-weiter').click();
   // d3. Stil und Calm
-  await expect(w.locator('#iv-stil-mosaik')).toBeChecked();
-  await expect(w.locator('#iv-stil-mia-patch')).toBeDisabled();
+  await expect(w.locator('#iv-preset-mosaik')).toBeChecked();
+  await expect(w.locator('#iv-preset-mia-wort')).toBeDisabled();
   await expect(w.locator('#iv-stil-sperre')).toBeVisible();
-  await w.locator('label', { has: w.locator('#iv-stil-blur') }).click();
-  await expect.poll(async () => (await einst(v)).stil).toBe('blur');
+  await expect(w.locator('#iv-preset-karten input[name="iv-preset"]')).toHaveCount(11); // dieselben Karten wie auf der Einstellungsseite
+  await w.locator('label', { has: w.locator('#iv-preset-blur') }).click();
+  await expect.poll(async () => (await einst(v)).preset).toBe('blur');
   await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Calm mode steht auf Seite 5 (Fund 23)
-  // Mit Pack wird "Mia patch" waehlbar und der Hinweis verschwindet (folgt dem Speicher)
+  // Mit Pack werden die Presets mit meinem Gesicht waehlbar und der Hinweis verschwindet (folgt dem Speicher)
   await schreibe(v, { pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch'], bilder: 1, groesse: 1, importiert: 1 } });
-  await expect(w.locator('#iv-stil-mia-patch')).toBeEnabled();
+  await expect(w.locator('#iv-preset-mia-wort')).toBeEnabled();
   await expect(w.locator('#iv-stil-sperre')).toBeHidden();
-  await w.locator('label', { has: w.locator('#iv-stil-mia-patch') }).click();
-  await expect.poll(async () => (await einst(v)).stil).toBe('mia-patch');
+  // Face steht aus ("Body" ohne Gesicht gewaehlt): das Mia-Preset schaltet es ein
+  const vorMia = await einst(v);
+  await schreibe(v, { einstellungen: { ...vorMia, zonen: { ...vorMia.zonen, face: { an: false } } } });
+  await w.locator('label', { has: w.locator('#iv-preset-mia-wort') }).click();
+  await expect.poll(async () => (await einst(v)).preset).toBe('mia-wort');
+  // Entscheidung der Inhaberin: das Mia-Preset schaltet Face ein (die Zonenwahl "Body" der Seite davor hatte es aus), mit kurzem Hinweis
+  await expect.poll(async () => (await einst(v)).zonen.face.an).toBe(true);
+  await expect(w.locator('#iv-stil-face')).toHaveText(HINWEIS_FACE_EIN);
+  await expect(w.locator('#iv-preset-karten')).toHaveAttribute('role', 'radiogroup');
+  await expect(w.locator('#iv-preset-karten')).toHaveAttribute('aria-labelledby', 'schritt-titel');
   await entferne(v, ['pack']);
-  await expect(w.locator('#iv-stil-mia-patch')).toBeDisabled();
-  await expect(w.locator('#iv-stil-mosaik')).toBeChecked();
+  await expect(w.locator('#iv-preset-mia-wort')).toBeDisabled();
+  await expect(w.locator('#iv-preset-mosaik')).toBeChecked();
   // Das Pack ist direkt aus dem Speicher weg (nicht ueber entfernePack): der gespeicherte Stil bleibt, also stellen wir ihn ausdruecklich auf Blur.
-  await w.locator('label', { has: w.locator('#iv-stil-blur') }).click();
-  await expect.poll(async () => (await einst(v)).stil).toBe('blur');
+  await w.locator('label', { has: w.locator('#iv-preset-blur') }).click();
+  await expect.poll(async () => (await einst(v)).preset).toBe('blur');
   messzahl += 5;
   await w.locator('#iv-weiter').click();
   // d4. Erwachsenenseiten
@@ -223,7 +233,7 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   messzahl += 3;
   // Einstellungen blieben wie gewaehlt
   const e = await einst(v);
-  expect([e.schwelle, e.strict, e.stil, e.ruhig, e.erwachsen.an, e.erwachsen.komplettErsatz, e.quiz.verweigern, e.kontrolle.blitz, e.kontrolle.leerlauf, e.kontrolle.cursor, e.ton.an]).toEqual([
+  expect([e.schwelle, e.strict, e.preset, e.ruhig, e.erwachsen.an, e.erwachsen.komplettErsatz, e.quiz.verweigern, e.kontrolle.blitz, e.kontrolle.leerlauf, e.kontrolle.cursor, e.ton.an]).toEqual([
     0.2, true, 'blur', true, false, true, 0.2, 'oft', false, 'herz', true,
   ]);
   for (const p of context.pages()) if (p !== v) await p.close();

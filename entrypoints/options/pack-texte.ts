@@ -20,8 +20,10 @@ export const KNOPF_LIZENZ_ZEIGEN = 'Read the license';
 export const KNOPF_LIZENZ_ZU = 'Hide the license';
 
 export const TEXT_FERTIG = 'There it is. The pack is in, and it never left your browser.';
-export const TEXT_FERTIG_STIL = 'Mia patch is your cover style now.';
-export const TEXT_FERTIG_STIL_FEHLT = 'I couldn’t switch the cover style for you, so pick Mia patch under Cover style.';
+// Der Import hat Face eingeschaltet (nur dann steht das da) bzw. Face stand schon aus (Altbestand: Mia-Preset gewaehlt, Face bewusst aus).
+export const TEXT_FERTIG_STIL = 'Your cover style is now “My face, black, words”. Face is on under What I cover, so every face becomes mine. You can switch it off again.';
+export const TEXT_FERTIG_STIL_FACE_AUS = 'Your cover style is now “My face, black, words”. Face is off under What I cover, so faces stay as they are. Switch it on and every face becomes mine.';
+export const TEXT_FERTIG_STIL_FEHLT = 'I couldn’t switch the cover style for you, so pick a style with my face under Cover style.';
 export const TEXT_FERTIG_ERSETZT = 'The old pack is gone. Your settings stayed exactly as they were.';
 
 export function megabyte(bytes: number): string {
@@ -89,7 +91,7 @@ export function ersetzenHinweis(fall: PackVergleich, alt: KurzePackAngabe | null
 }
 
 export const TEXT_ERSETZT_KURZFASSUNG_OK = 'The pictures are stored, and I’ve finished setting up the pack.';
-export const TEXT_KURZFASSUNG_STIL = ' Pick Mia patch under Cover style to use it.';
+export const TEXT_KURZFASSUNG_STIL = ' Pick a style with my face under Cover style to use it.';
 export const TEXT_KURZFASSUNG_FEHLT = 'The pictures are stored, but I couldn’t finish setting up the pack. Open this page again and I’ll sort it out.';
 export const TEXT_NICHT_GESPEICHERT = 'The pictures couldn’t be stored, and nothing changed. Try again in a moment.';
 
@@ -98,11 +100,11 @@ export const TEXT_PACK_GEAENDERT =
   'Your pack changed while this file was waiting (maybe in another tab). Nothing was stored. Choose the file again and I’ll check it against what’s there now.';
 export const TEXT_VORHANDENES_NICHT_LESBAR =
   'I couldn’t look at your current pack just now, so I’m not touching anything. Nothing was stored. Try again in a moment.';
-export const STATUS_LEER = 'No pack yet. Mosaic and Blur work without it.';
+export const STATUS_LEER = 'No pack yet. The Classic and Whole person styles work without it.';
 export const STATUS_VERWAIST = 'I found leftover pictures from an earlier pack. Remove them to start clean.';
 export const STATUS_DA = 'Pack in place. Stored on this device only.';
 export const TEXT_ABGEBROCHEN = 'Not yet, then. Nothing was stored.';
-export const TEXT_ENTFERNT = 'Mia Pack removed. If Mia patch was your cover style, it’s Mosaic now.';
+export const TEXT_ENTFERNT = 'Mia Pack removed. If a style with my face was your cover style, it’s Mosaic now.';
 export const TEXT_ENTFERNEN_TEILWEISE = 'The pictures are gone, but I couldn’t update everything else. Open this page again and I’ll finish the cleanup.';
 export const TEXT_ENTFERNEN_FEHLER = 'I couldn’t remove the Mia Pack just now, so nothing changed. Try again in a moment.';
 export const TEXT_ABGLEICH_NACHGESCHRIEBEN = 'I found your pictures and set the pack up again.';

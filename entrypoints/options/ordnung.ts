@@ -167,7 +167,7 @@ const HILFEN: readonly { wo: string; kurz: HilfeAnker; name: string; label?: boo
   { wo: '#erw-ersatz-zeile', kurz: 'full-replacement', name: 'Full replacement' },
   { wo: '#erw-inhalt', kurz: 'adult', name: 'Spot adult pages by content', label: true },
   { wo: '#quiz-titel', kurz: 'quiz', name: 'Quiz' },
-  { wo: '#stil-titel', kurz: 'pack', name: 'Mia patch' },
+  { wo: '#stil-titel', kurz: 'styles', name: 'Cover style' },
   { wo: '#ruhig-zeile', kurz: 'calm', name: 'Calm mode' },
   { wo: '#kon-werbung-zeile', kurz: 'ads', name: 'My ads' },
   { wo: '#kon-zeiten-titel', kurz: 'strict-times', name: 'Strict times' },

@@ -1,6 +1,11 @@
 // Popup-Texte als Konstanten (Entwuerfe, der Texter liest gegen; Tests pruefen gegen diese Konstanten, Session 12 Regel 2.5).
 // Besitzwort fuer die eigene Liste: "my list of sites I leave alone" (Mias Liste, Woerterbuch in src/oberflaeche/gemeinsam.ts).
-import { HINWEIS_PACK_OHNE_PATCH, STIMMUNG_WOERTER } from '../../src/oberflaeche/gemeinsam.ts';
+import {
+  HINWEIS_FACE_AUS as GEMEINSAM_HINWEIS_FACE_AUS,
+  HINWEIS_PACK_OHNE_PATCH,
+  HINWEIS_ZONEN_AUGENBALKEN as GEMEINSAM_HINWEIS_ZONEN_AUGENBALKEN,
+  STIMMUNG_WOERTER,
+} from '../../src/oberflaeche/gemeinsam.ts';
 
 export const REGLER_ENDE_LINKS = STIMMUNG_WOERTER[0];
 export const REGLER_ENDE_RECHTS = STIMMUNG_WOERTER[3];
@@ -11,19 +16,23 @@ export const AUSNAHME_NACH = (muster: string): string => `${muster} is on my lis
 export const STATUS_AUSNAHME = 'You put this site on my list of sites I leave alone. I’m keeping my hands off it.';
 export const PACK_KNOPF_OHNE = 'Get the Mia Pack';
 export const PACK_KNOPF_MIT = 'Mia Pack settings';
-export const PACK_HINWEIS_OHNE = 'Mia patch unlocks with the Mia Pack.';
 export const PACK_HINWEIS_OHNE_PATCH = HINWEIS_PACK_OHNE_PATCH;
+// Popup, Mia-Preset gewaehlt ohne Pack: der Hinweis nennt auch, was bis dahin gilt.
+export const HINWEIS_FACE_AUS = GEMEINSAM_HINWEIS_FACE_AUS;
+export const PACK_HINWEIS_BIS_DAHIN = ' Until then I use Mosaic.';
 export const ERW_HINWEIS_AUS = 'Adult-site mode is off. I still cover pictures there, just no swaps and no quiz.';
-export const PACK_HINWEIS_MIT = (n: number): string => `Mia patch uses ${n} of my pictures from the Mia Pack.`;
 
 // Phase 9, Paket A (Entwuerfe, der Texter liest gegen).
 export const DIESE_SEITE_KEIN_ZUGRIFF = 'I can’t reach this page.';
 export const ABDECKUNG_KURZ = (namen: readonly string[]): string => (namen.length ? `I cover: ${namen.join(', ')}.` : 'I cover: nothing right now.');
+export const ABDECKUNG_AUGENBALKEN = 'I cover: the eyes, with a black bar.';
+export const HINWEIS_ZONEN_AUGENBALKEN = GEMEINSAM_HINWEIS_ZONEN_AUGENBALKEN;
 export const AENDERN_ZU = 'Change';
 export const AENDERN_AUF = 'Done';
 export const PAUSE_ZEILE = 'Changes still save. They start when you let me back in.';
 export const PAUSE_KUERZEL = (kuerzel: string): string => `or press ${kuerzel}`;
 export const GRIP_SATZ = 'My grip tightens by itself and eases off with time.';
+export const GRIP_AUGENBALKEN = 'With Eye bar as your style, my grip rests, strict hours too: I stay with the eyes. Pick another style and I take hold again.';
 export const GRIP_HILFE = 'What is my grip?';
 export const NEUES_LINK = 'What’s new';
 // Werbe-Frage im Popup: dieselben Saetze wie auf der Einstellungsseite.

@@ -204,9 +204,20 @@ try {
   await klick('#iv-weiter');
   // Seite 3
   await bisSchritt('interview-3');
-  pruefe((await eigenschaft('#iv-stil-mia-patch', 'disabled')) === true && (await sichtbar('#iv-stil-sperre')), 'ohne Pack: Mia patch gesperrt mit Hinweis');
-  await klick('#iv-stil-blur');
-  await bis('stil blur', async () => (await einst()).stil === 'blur');
+  pruefe((await eigenschaft('#iv-preset-mia-wort', 'disabled')) === true && (await sichtbar('#iv-stil-sperre')), 'ohne Pack: Presets mit meinem Gesicht gesperrt mit Hinweis');
+  pruefe((await driver.findElements(By.css('#iv-preset-karten input[name="iv-preset"]'))).length === 11, 'Seite 3 zeigt elf Preset-Karten');
+  await klick('#iv-preset-blur');
+  await bis('preset blur', async () => (await einst()).preset === 'blur');
+  // Mit Pack: ein Mia-Preset schaltet Face ein (Entscheidung der Inhaberin), mit kurzem Hinweis; Radiogruppe mit Ueberschrift
+  pruefe((await driver.findElement(By.css('#iv-preset-karten')).getAttribute('role')) === 'radiogroup' && (await driver.findElement(By.css('#iv-preset-karten')).getAttribute('aria-labelledby')) === 'schritt-titel', 'Seite 3: eine Radiogruppe mit Ueberschrift');
+  await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen ?? {}; await api.storage.local.set({ einstellungen: { ...a, zonen: { ...(a.zonen ?? {}), face: { an: false } } }, pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch'], bilder: 1, groesse: 1, importiert: 1 } });`);
+  await bis('Mia-Karte frei', async () => (await eigenschaft('#iv-preset-mia-wort', 'disabled')) === false);
+  await klick('#iv-preset-mia-wort');
+  await bis('Face an', async () => (await einst()).zonen?.face?.an === true && (await einst()).preset === 'mia-wort');
+  await bis('Face-Hinweis', () => sichtbar('#iv-stil-face'));
+  pruefe(true, 'Mia-Preset schaltet Face ein, mit Hinweis');
+  await imSeitenkontext(`await api.storage.local.remove('pack'); const a = (await api.storage.local.get('einstellungen')).einstellungen; await api.storage.local.set({ einstellungen: { ...a, preset: 'blur' } });`);
+  await bis('wieder blur', async () => (await einst()).preset === 'blur');
   pruefe(!(await driver.executeScript(`return !!document.querySelector('#iv-ruhig')`)), 'Calm mode steht nicht auf Seite 3');
   await klick('#iv-weiter');
   // Seite 4

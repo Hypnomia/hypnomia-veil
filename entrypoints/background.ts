@@ -3,6 +3,7 @@
 // Chrome: legt das Offscreen-Dokument mit dem Erkenner an und setzt Referer per declarativeNetRequest (Sitzungsregeln).
 // Firefox: startet den Erkenner im selben Kontext und setzt Referer per webRequest (blocking).
 import { aendereEinstellungen } from '../src/einstellungen';
+import { GESICHTER_STAND_SCHLUESSEL } from '../src/pack/vertrag';
 import { fehlerAntwortFuer } from '../src/erkenner/antwort';
 import { HINTERGRUND_TYPEN, istFuer, type AntwortTab, type NachrichtHintergrund, type NachrichtInhaltTab } from '../src/nachrichten';
 // Phase 4: je Auftrag ein Handler-Modul (Orchestrator verdrahtet, Bauer fuellen nur ihr Modul).
@@ -127,7 +128,10 @@ export default defineBackground(() => {
   // Firefox: Erkenner im selben Kontext. Dynamischer Import, im Chrome-Build entfaellt der Zweig samt ORT.
   const erkenner = import.meta.env.FIREFOX
     ? import('../src/erkenner').then((m) => {
-        m.starteErkenner({ setzeReferer: async (host, referer) => void (await refererFirefox?.setze(host, referer)) });
+        m.starteErkenner({
+          setzeReferer: async (host, referer) => void (await refererFirefox?.setze(host, referer)),
+          meldeGesichter: async (importiert, mit) => void (await browser.storage.local.set({ [GESICHTER_STAND_SCHLUESSEL]: { importiert, mit, zeit: Date.now() } })),
+        });
         return m;
       })
     : null;
@@ -195,6 +199,11 @@ export default defineBackground(() => {
       case 'referer': {
         const gesetzt = (await (refererFirefox ?? refererChrome)?.setze(n.host, n.referer)) ?? false;
         return gesetzt ? { ok: true } : { ok: false, fehler: 'ungueltiger Host oder Referer' };
+      }
+      case 'gesichter-stand': {
+        if (typeof n.importiert !== 'number' || typeof n.mit !== 'number') return { ok: false };
+        await browser.storage.local.set({ [GESICHTER_STAND_SCHLUESSEL]: { importiert: n.importiert, mit: n.mit, zeit: Date.now() } });
+        return { ok: true };
       }
       case 'pause':
         return { ok: true, pause: await schaltePause(typeof n.an === 'boolean' ? n.an : undefined) };
@@ -269,7 +278,7 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener((nachricht: unknown, absender: AbsenderMitTab | undefined, antworte: (antwort: unknown) => void) => {
     // Firefox: der Erkenner lebt in diesem Kontext; Nachrichten fuer ihn hier beantworten.
     if (erkenner && istFuer(nachricht, 'erkenner')) {
-      if (nachricht.typ !== 'wecke' && nachricht.typ !== 'status' && nachricht.typ !== 'pruefe' && nachricht.typ !== 'packbild') return undefined;
+      if (nachricht.typ !== 'wecke' && nachricht.typ !== 'status' && nachricht.typ !== 'pruefe' && nachricht.typ !== 'packbild' && nachricht.typ !== 'gesichtsscan') return undefined;
       erkenner
         .then((m) => m.bearbeiteErkennerNachricht(nachricht, absender))
         .then(

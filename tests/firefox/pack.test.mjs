@@ -148,10 +148,10 @@ const sichtbar = (css) => driver.findElement(By.css(css)).isDisplayed();
 const textEnthaelt = (css, teil) => async () => (await text(css)).includes(teil);
 
 // Pixelanalyse und Erkenner-Aufruf im Seitenkontext der Einstellungsseite (dort laufen fetch, Canvas und runtime.sendMessage).
-async function rendereUndAnalysiere(stil, farben) {
+async function rendereUndAnalysiere(preset, farben) {
   return imSeitenkontext(
     `
-    const [basis, stil, farben] = args;
+    const [basis, preset, farben] = args;
     const zonen = {};
     for (const n of ['eyes','mouth','face','head']) zonen[n] = { an: true };
     for (const n of ['breast','genitals','buttocks','belly','feet','armpits']) zonen[n] = { an: true, bedeckt: true };
@@ -167,7 +167,7 @@ async function rendereUndAnalysiere(stil, farben) {
       c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
       const dataUrl = await alsDataUrl(await c.convertToBlob({ type: 'image/jpeg', quality: 0.85 }));
       const roh = await api.runtime.sendMessage({ ziel: 'erkenner', typ: 'pruefe', id: 'ff-' + name, quelle: { art: 'daten', dataUrl },
-        breite: 0, hoehe: 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, stil }, rendern: true });
+        breite: 0, hoehe: 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, preset }, rendern: true });
       const a = JSON.parse(JSON.stringify(roh));
       if (!a.ok || a.flaechen.length === 0) return { keinBild: true, grund: 'Testbild ohne Flaechen (' + (a.ok ? 'leer' : a.fehler) + ')' };
       const box = [...a.flaechen].sort((p, q) => q.box[2] * q.box[3] - p.box[2] * p.box[3])[0].box.map(Math.round);
@@ -179,18 +179,20 @@ async function rendereUndAnalysiere(stil, farben) {
       const rb = Math.min(10, Math.max(2, Math.round(0.03 * Math.min(w, h))));
       const rand = rb + 3;
       const innen = ctx.getImageData(x + rand, y + rand, Math.max(1, w - 2 * rand), Math.max(1, h - 2 * rand)).data;
-      let treffer = 0, gesamt = 0;
+      let treffer = 0, gesamt = 0, dunkel = 0, wort = 0;
       for (let i = 0; i < innen.length; i += 4) {
         gesamt++;
+        if (innen[i] < 60 && innen[i+1] < 60 && innen[i+2] < 60) dunkel++;
+        if (Math.hypot(innen[i] - 255, innen[i+1] - 179, innen[i+2] - 211) < 45) wort++;
         if (farben.some((fa) => Math.hypot(innen[i] - fa[0], innen[i+1] - fa[1], innen[i+2] - fa[2]) < 70)) treffer++;
       }
       const streifen = ctx.getImageData(x, y + Math.round(h * 0.25), rb, Math.max(1, Math.round(h * 0.5))).data;
       const summe = [0, 0, 0]; let n = 0;
       for (let i = 0; i < streifen.length; i += 4) { summe[0] += streifen[i]; summe[1] += streifen[i+1]; summe[2] += streifen[i+2]; n++; }
-      return { name, flaechen: a.flaechen.length, render: a.ms.render, anteilPack: treffer / gesamt, rahmen: summe.map((s) => Math.round(s / n)), rahmenBreite: rb };
+      return { name, flaechen: a.flaechen.length, render: a.ms.render, dunkel: dunkel / gesamt, wort, anteilPack: treffer / gesamt, rahmen: summe.map((s) => Math.round(s / n)), rahmenBreite: rb };
     }`,
     basis,
-    stil,
+    preset,
     farben,
     TESTBILD,
   );
@@ -264,9 +266,9 @@ try {
   pruefe(!(await sichtbar('#neu')), 'Kaufblock weg, wenn das Pack da ist');
   const pack = await speicher('pack');
   pruefe(pack && pack.id === 'dummy' && pack.bilder === 6 && pack.groesse === bau.bytes.byteLength, `storage.local.pack stimmt (${JSON.stringify(pack)})`);
-  pruefe((await speicher('einstellungen'))?.stil === 'mia-patch', 'Stil steht auf mia-patch');
+  pruefe((await speicher('einstellungen'))?.preset === 'mia-wort', 'Preset steht auf mia-wort');
   const voll = await zaehleIdb();
-  pruefe(voll.dateien === 31 && voll.meta === 2, `IndexedDB: 31 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
+  pruefe(voll.dateien === 32 && voll.meta === 2, `IndexedDB: 32 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge, Woerter), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
 
   // 4. Seite neu oeffnen: Stand bleibt
   await schliesse();
@@ -276,7 +278,7 @@ try {
 
   // 4b. Neustart der Erweiterung per runtime.reload(): Pack, IndexedDB und Stil muessen bleiben
   const packVor = await speicher('pack');
-  const stilVor = (await speicher('einstellungen'))?.stil;
+  const stilVor = (await speicher('einstellungen'))?.preset;
   await imSeitenkontext(`setTimeout(() => api.runtime.reload(), 100); return true;`);
   const tReload = Date.now();
   let nachReload = null;
@@ -289,7 +291,7 @@ try {
       if (handles.length > 0) await driver.switchTo().window(handles[0]).catch(() => {});
       await oeffne('options.html');
       await bis('Seite nach Reload', textEnthaelt('#pack-status', 'Pack in place'), 8_000);
-      nachReload = { pack: await speicher('pack'), stil: (await speicher('einstellungen'))?.stil, idb: await zaehleIdb() };
+      nachReload = { pack: await speicher('pack'), stil: (await speicher('einstellungen'))?.preset, idb: await zaehleIdb() };
     } catch (e) {
       reloadFehler = String(e).slice(0, 160);
     }
@@ -300,19 +302,20 @@ try {
   } else {
     console.log(`firefox: nach runtime.reload() nach ${Date.now() - tReload} ms: Pack ${nachReload.pack?.id}, ${nachReload.idb.dateien} Dateien, Stil ${nachReload.stil}`);
     pruefe(JSON.stringify(nachReload.pack) === JSON.stringify(packVor), 'nach runtime.reload() ist storage.local.pack unveraendert');
-    pruefe(nachReload.idb.dateien === 31 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
-    pruefe(nachReload.stil === stilVor && stilVor === 'mia-patch', `nach runtime.reload() steht der Stil auf ${stilVor}`);
+    pruefe(nachReload.idb.dateien === 32 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
+    pruefe(nachReload.stil === stilVor && stilVor === 'mia-wort', `nach runtime.reload() steht das Preset auf ${stilVor}`);
   }
 
-  // 5. Erkenner: Mia-Patch und Mosaik
-  const patch = await rendereUndAnalysiere('mia-patch', bau.farben);
+  // 5. Erkenner: Schwarz mit Wort (mia-wort, die Dummy-Patches haben kein Gesicht) und Mosaik
+  const patch = await rendereUndAnalysiere('mia-wort', bau.farben);
   if (patch.keinBild) {
     if (OHNE_TESTBILDER) console.log(`firefox: AUSNAHME VEIL_OHNE_TESTBILDER=1: Render-Test uebersprungen (${patch.grund})`);
     else pruefe(false, `Render-Test braucht das Testbild: ${patch.grund}`);
   } else {
-    console.log(`firefox: Mia-Patch ${patch.name}: ${patch.flaechen} Flaechen, render ${patch.render} ms, ${(patch.anteilPack * 100).toFixed(0)} % Innenpixel aus dem Pack, Rahmen ${patch.rahmen} (Breite ${patch.rahmenBreite})`);
-    pruefe(patch.anteilPack > 0.8, `Mia-Patch: Innenpixel aus dem Pack (${patch.anteilPack})`);
-    pruefe(abstand(patch.rahmen, ROSA) < (patch.rahmenBreite >= 4 ? 90 : 120), `Mia-Patch: pinker Rahmen (${patch.rahmen})`);
+    console.log(`firefox: mia-wort ${patch.name}: ${patch.flaechen} Flaechen, render ${patch.render} ms, dunkel ${(patch.dunkel * 100).toFixed(0)} %, Wortpixel ${patch.wort}, Pack-Farben ${(patch.anteilPack * 100).toFixed(0)} %`);
+    pruefe(patch.dunkel > 0.6, `mia-wort: Koerper schwarz (${patch.dunkel})`);
+    pruefe(patch.wort > 40, `mia-wort: pinkes Wort auf dem Schwarz (${patch.wort})`);
+    pruefe(patch.anteilPack < 0.05, `mia-wort: keine Pack-Bilder auf Koerperstellen (${patch.anteilPack})`);
     const mosaik = await rendereUndAnalysiere('mosaik', bau.farben);
     console.log(`firefox: Mosaik: Rahmen ${mosaik.rahmen} (Breite ${mosaik.rahmenBreite}), ${(mosaik.anteilPack * 100).toFixed(0)} % Pack-Farben`);
     pruefe(mosaik.anteilPack < 0.3, `Mosaik: kaum Pack-Farben (${mosaik.anteilPack})`);
@@ -330,12 +333,12 @@ try {
   await driver.findElement(By.css('#entfernen-ja')).click();
   await bis('Pack entfernt', textEnthaelt('#pack-status', 'No pack yet'));
   pruefe((await speicher('pack')) === null, 'nach Entfernen kein storage.local.pack');
-  pruefe((await speicher('einstellungen'))?.stil === 'mosaik', 'nach Entfernen steht der Stil auf mosaik');
+  pruefe((await speicher('einstellungen'))?.preset === 'mosaik', 'nach Entfernen steht das Preset auf mosaik');
   const weg = await zaehleIdb();
   pruefe(weg.dateien === 0 && weg.meta === 0, `nach Entfernen ist IndexedDB leer (${JSON.stringify(weg)})`);
   if (!patch.keinBild) {
-    const zurueck = await rendereUndAnalysiere('mia-patch', bau.farben);
-    pruefe(!zurueck.keinBild && zurueck.anteilPack < 0.3, `ohne Pack faellt Mia-Patch auf Mosaik zurueck (${zurueck.anteilPack})`);
+    const zurueck = await rendereUndAnalysiere('mia-wort', bau.farben);
+    pruefe(!zurueck.keinBild && zurueck.anteilPack < 0.05 && zurueck.dunkel > 0.6, `ohne Pack: kein Pack-Bild, Koerper schwarz mit MIA (${zurueck.anteilPack}, ${zurueck.dunkel})`);
   }
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

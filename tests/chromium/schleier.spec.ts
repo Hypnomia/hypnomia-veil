@@ -262,7 +262,7 @@ for (const satz of ['sfw', 'nsfw'] as const) {
   });
 }
 
-test('g) Popup: Pause, Regler, Stil, Strict und Zonen schreiben in storage.local', async () => {
+test('g) Popup: Pause, Regler, Strict und Zonen schreiben in storage.local', async () => {
   const id = new URL(worker.url()).host;
   const popup = await context.newPage();
   await popup.setViewportSize({ width: 320, height: 700 });
@@ -285,9 +285,6 @@ test('g) Popup: Pause, Regler, Stil, Strict und Zonen schreiben in storage.local
   await popup.locator('#stimmung').fill('0.25');
   await expect.poll(async () => (await lese()).schwelle).toBe(0.25);
   await expect(popup.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.25));
-  // Stil
-  await popup.locator('input[name="stil"][value="blur"]').check({ force: true });
-  await expect.poll(async () => (await lese()).stil).toBe('blur');
   // Strict
   await popup.locator('#strict').check({ force: true });
   await expect.poll(async () => (await lese()).strict).toBe(true);

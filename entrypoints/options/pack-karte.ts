@@ -153,7 +153,7 @@ function baueKarte(stand: HTMLElement): void {
   entfernenFrage.append(
     e('p', {
       id: 'entfernen-text',
-      text: 'Remove the Mia Pack? My pictures, sounds and words go with it, and if Mia patch is your cover style, it goes back to Mosaic. Your settings stay. You can add it again whenever you like, as long as you keep the pack file.',
+      text: 'Remove the Mia Pack? My pictures, sounds and words go with it, and if a style with my face is your cover style, it goes back to Mosaic. Your settings stay. You can add it again whenever you like, as long as you keep the pack file.',
     }),
     entfernenKnoepfe,
   );
