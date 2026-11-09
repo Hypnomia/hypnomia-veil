@@ -105,7 +105,7 @@ import { neuerZustand, type Zustand } from './zustand';
 import { istKleinDargestellt, liegtImBereich, SichtBeobachter, vorrangStufe, waehleNachVorrang } from './vorrang';
 import { melde } from '../ereignisse';
 import { istEigeneWurzel } from './eigene';
-import { animationenIn, animationsZiel, hrefAnimiert, istSvgBild, svgAdresse, svgSignatur, wirdBereit, zeichnetNichts, zeigtBaldFassung } from './svg-bild';
+import { animationenIn, animationsZiel, hrefAnimiert, istFeImage, istSvgBild, svgAdresse, svgSignatur, wirdBereit, zeichnetNichts, zeigtBaldFassung } from './svg-bild';
 
 export interface KontextLeicht {
   readonly isValid: boolean;
@@ -653,7 +653,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
       el.removeAttribute(ATTR_NUR_HG);
       if (ATTR_MS) el.removeAttribute(ATTR_MS);
     }
-    sichtBeobachter?.observe(el); // mehrfaches observe desselben Elements ist unschaedlich
+    // Ein feImage hat keinen Kasten (0 x 0): der IntersectionObserver meldete nie "sichtbar", und die Messung in reihe() gilt unten als sichtbar und nah.
+    if (!istFeImage(el)) sichtBeobachter?.observe(el); // mehrfaches observe desselben Elements ist unschaedlich
     verfolgt.add(el);
     // Ein Video, das aus dem Dokument fiel und mit anderer Quelle zurueckkam (die Ereignisse kamen ausserhalb des Dokuments): neu bewerten.
     if (aktiv && z.art === 'video' && z.urteil !== null && z.adresse !== null) {
@@ -814,10 +815,18 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (z.art === 'video') z.adresse = videoAdresse(el as HTMLVideoElement) || z.adresse;
     // Groesse, Sichtbarkeit und Naehe nur beim Einreihen messen (ein Layout-Zugriff); danach fuehren die IntersectionObserver sie nach
     // (kein Layout je Auswahl). Vor der ersten Meldung eines Beobachters gilt die Messung.
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) z.klein = istKleinDargestellt(r, VORRANG_KLEIN_PX);
-    if (!z.sichtMeldung) z.sichtbar = liegtImBereich(r, innerHeight, innerWidth, 0);
-    if (!z.nahMeldung) z.nah = liegtImBereich(r, innerHeight, innerWidth, nahFaktor);
+    if (istFeImage(el)) {
+      // Nacht 18, N4: ein feImage hat keine Flaeche; das gefilterte Element bleibt aber bis zum Urteil hinter dem Platzhalter. Darum gilt es als
+      // sichtbar, nah und gross (erste Stufe), statt in der letzten Stufe hinter allen anderen Bildern zu warten.
+      z.sichtbar = true;
+      z.nah = true;
+      z.klein = false;
+    } else {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) z.klein = istKleinDargestellt(r, VORRANG_KLEIN_PX);
+      if (!z.sichtMeldung) z.sichtbar = liegtImBereich(r, innerHeight, innerWidth, 0);
+      if (!z.nahMeldung) z.nah = liegtImBereich(r, innerHeight, innerWidth, nahFaktor);
+    }
     wartend.add(el);
     starteNaechste();
   }

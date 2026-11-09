@@ -217,6 +217,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
   let wurzel: ShadowRoot | null = null;
   let menue: EtikettMenue | null = null;
   let druckAufHost = false; // der laufende Druck begann auf Mias Flaeche
+  let mausDruck = false; // seit dem letzten Tastendruck ging ein Zeiger-Druck auf Mias Flaeche voraus (ein Klick ohne ihn kommt von der Tastatur)
 
   // Fruehe Erfassung am Fenster ab document_start: Klicks und Tasten, die auf Mias Flaeche zielen, erreichen die Seite nie. Ohne Host kehrt
   // der Schutz sofort zurueck. Standardaktionen ausserhalb des Mia-Links (Seitenlinks, Kontextmenue auf der Kennzeichnung) werden verhindert.
@@ -224,7 +225,10 @@ export function starteWerbung(ctx: KontextLeicht): void {
     const h = host;
     if (!h) return;
     const typ = ev.type;
-    if (typ === 'pointerdown' || typ === 'mousedown') druckAufHost = ev.target === h;
+    if (typ === 'pointerdown' || typ === 'mousedown') {
+      druckAufHost = ev.target === h;
+      if (druckAufHost) mausDruck = true;
+    } else if (typ === 'keydown') mausDruck = false;
     if (ev.target !== h) {
       // Ein Druck ausserhalb schliesst das Menue.
       if (menue?.offen() && (typ === 'pointerdown' || typ === 'mousedown') && ev.isTrusted) menue.schliesse(false);
@@ -239,6 +243,7 @@ export function starteWerbung(ctx: KontextLeicht): void {
           ev,
           (k) => [...flaechen.values()].find((f) => f.ui?.badge === k)?.el.getBoundingClientRect().height ?? 0,
           (k) => [...flaechen.values()].find((f) => f.ui?.badge === k)?.nr ?? -1,
+          mausDruck,
         );
         if (TESTHAKEN) schreibeTest();
       } catch {
@@ -249,13 +254,17 @@ export function starteWerbung(ctx: KontextLeicht): void {
       const m = ev as MouseEvent;
       let imLink = false;
       try {
-        const innen = wurzel.elementFromPoint(m.clientX, m.clientY);
+        // Ein echter Klick per Tastatur (Enter auf dem fokussierten Link) hat keine Lage (Koordinaten 0; Firefox setzt dabei detail 1, Chrome 0)
+        // und keinen Druck davor: dann zaehlt der Fokus in der Wurzel. Ein Ereignis der Seite (nicht vertraut) bekommt diese Ausnahme nie.
+        const ohneLage = ev.isTrusted && typ === 'click' && !mausDruck && m.clientX === 0 && m.clientY === 0;
+        const innen = ohneLage ? wurzel.activeElement : wurzel.elementFromPoint(m.clientX, m.clientY);
         imLink = !!innen?.closest('a.l');
       } catch {
         imLink = false;
       }
       // Nur der Link von Mia darf etwas tun; alles andere auf der Flaeche (Kennzeichnung, Rand) loest nichts aus.
       if (!imLink && ev.cancelable) ev.preventDefault();
+      if (typ === 'click') mausDruck = false;
     }
   };
   for (const typ of [...KLICKS, ...LOESEN, ...TASTEN]) window.addEventListener(typ, schutz, { capture: true });

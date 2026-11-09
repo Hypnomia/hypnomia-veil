@@ -208,8 +208,8 @@ export class EtikettMenue {
 
   // Wertet ein echtes Ereignis aus, das auf Mias Host zielt (Aufruf aus dem Schutz in werbung.ts). Gibt zurueck, ob es das Etikett oder das
   // Menue betraf (dann bleibt die Standardaktion; das Ereignis erreicht die Seite ohnehin nie). `hoeheVon` liefert die Hoehe der Flaeche
-  // zu einem Etikett, `nrVon` ihre Nummer.
-  beiEreignis(ev: Event, hoeheVon: (k: HTMLButtonElement) => number, nrVon: (k: HTMLButtonElement) => number): boolean {
+  // zu einem Etikett, `nrVon` ihre Nummer. `mausDruck`: seit dem letzten Tastendruck ging ein Zeiger-Druck auf Mias Flaeche voraus.
+  beiEreignis(ev: Event, hoeheVon: (k: HTMLButtonElement) => number, nrVon: (k: HTMLButtonElement) => number, mausDruck = false): boolean {
     if (!ev.isTrusted) return false;
     const typ = ev.type;
     const maus = ev as MouseEvent;
@@ -218,7 +218,9 @@ export class EtikettMenue {
     try {
       if (mitLage) {
         // Ein Klick per Tastatur (Enter, Leertaste) hat keine Lage: dann zaehlt der Fokus.
-        const ohneLage = typ === 'click' && maus.detail === 0 && maus.clientX === 0 && maus.clientY === 0;
+        // Wie in werbung.ts (Pruefung N5, Nr. 4): Firefox setzt beim Tastatur-Klick detail 1, also zaehlt nur die fehlende Lage, und ohne
+        // Zeiger-Druck davor (Pruefung Nacharbeit, Nr. 7: ein echter Mausklick genau bei 0,0 zaehlt sonst als Tastatur-Klick).
+        const ohneLage = typ === 'click' && !mausDruck && maus.clientX === 0 && maus.clientY === 0;
         ziel = ohneLage ? this.opt.wurzel.activeElement : this.opt.wurzel.elementFromPoint(maus.clientX, maus.clientY);
       } else if (typ === 'keydown') {
         ziel = this.opt.wurzel.activeElement;

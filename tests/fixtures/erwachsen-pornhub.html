@@ -66,11 +66,22 @@
     <style>
       .hg-promo { width: 240px; height: 120px; background-image: url(/synthetisch/26.png); background-size: cover; }
       .thumb-widget-img { width: 240px; height: 180px; background-image: url(/synthetisch/27.png); background-size: cover; }
+      /* Live-Lauf 18 D: Hintergrund direkt am Band, flach (1000 x 40) wie bei xHamster */
+      .promoMessagePinned._22 { display: block; width: 1000px; height: 40px; background-image: url(/synthetisch/28.png); background-size: contain; }
     </style>
     <div class="x7f3a9"><iframe id="anzeige-srcdoc" srcdoc="<p>ad</p>" style="width: 300px; height: 250px; border: 0"></iframe></div>
     <iframe id="eigener-rahmen" src="/hello.html" style="width: 300px; height: 250px; border: 0"></iframe>
+    <iframe id="anzeige-srcdoc-kachel" srcdoc="<p>ad</p>" style="width: 232px; height: 231px; border: 0"></iframe>
+    <iframe id="anzeige-srcdoc-band" srcdoc="<p>ad</p>" style="width: 656px; height: 72px; border: 0"></iframe>
     <aside class="promoMessagePinned"><div id="anzeige-promo-hg" class="hg-promo"></div></aside>
+    <aside id="anzeige-promo-band" class="c33d4120 promoMessagePinned _22" data-role="bAk-Fvpromo"><a href="/ff/out?x=1">JOIN NOW</a></aside>
     <a class="thumb-widget" href="https://xhamsterlive.com/goto/x"><div class="thumb-widget-img-container"><div id="anzeige-cam-hg" class="img thumb-widget-img"></div></div></a>
+    <!-- Pruefung Nacharbeit, Nr. 1 und 2: Band, dessen Stylesheet erst spaet kommt; Band, das die Promo-Klasse erst spaet bekommt; ein Editor-Rahmen
+         ohne src (kein Werbe-Format) bleibt sichtbar. -->
+    <aside id="anzeige-promo-spaet" class="promoMessagePinned spaet9"><a href="/ff/out?x=2">JOIN</a></aside>
+    <aside id="anzeige-promo-klasse" class="band9"><a href="/ff/out?x=3">JOIN</a></aside>
+    <style>.band9 { display: block; width: 1000px; height: 40px; } .band9.promoTop { background-image: url(/synthetisch/30.png); }</style>
+    <iframe id="editor-rahmen" style="width: 600px; height: 200px; border: 0"></iframe>
     <div class="kopfleiste"><img id="kopf-bild" alt="Kopf" width="120" height="90" src="/synthetisch/23.png" /><span>Ads</span></div>
     <div class="kachel" style="width: 300px">
       <span>Anzeige</span>
@@ -79,6 +90,14 @@
     <div class="werbe-kachel" style="width: 300px; height: 250px; position: relative">
       <video id="anzeige-video" muted loop autoplay preload="none" width="300" height="250"></video>
     </div>
+    <script>
+      setTimeout(function () {
+        var st = document.createElement('style');
+        st.textContent = '.spaet9 { display: block; width: 1000px; height: 40px; background-image: url(/synthetisch/29.png); }';
+        document.head.appendChild(st);
+        document.getElementById('anzeige-promo-klasse').classList.add('promoTop');
+      }, 1500);
+    </script>
     <script>
       // Quelle der Anzeige: 1 s harmlose Farbflaeche, zur Laufzeit aufgenommen (blob:), damit ein Schleier ohne die Regel sie pruefen und freigeben koennte.
       (function () {

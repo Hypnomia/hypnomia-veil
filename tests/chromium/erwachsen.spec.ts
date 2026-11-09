@@ -281,16 +281,17 @@ for (const ort of SEITEN) {
       for (const id of ['anzeige-bild', 'anzeige-bild2']) await expect.poll(async () => istPackBild((await stand(s, [id]))[0]!), { timeout: 15_000 }).toBe(true);
       // Live-Lauf 18 C: Live-Cam-Kachel und Promo-Band sind Anzeigen; Werberahmen werden ausgeblendet, ein normaler Rahmen nicht
       for (const id of ['anzeige-cam', 'anzeige-promo']) await expect.poll(async () => istPackBild((await stand(s, [id]))[0]!), { timeout: 15_000 }).toBe(true);
-      const rahmen = () => s.evaluate(() => ['anzeige-rahmen', 'anzeige-rahmen2', 'normal-rahmen', 'anzeige-srcdoc', 'eigener-rahmen'].map((i) => getComputedStyle(document.getElementById(i)!).visibility));
-      await expect.poll(rahmen, { timeout: 10_000 }).toEqual(['hidden', 'hidden', 'visible', 'hidden', 'visible']);
+      const rahmen = () => s.evaluate(() => ['anzeige-rahmen', 'anzeige-rahmen2', 'normal-rahmen', 'anzeige-srcdoc', 'eigener-rahmen', 'anzeige-srcdoc-kachel', 'anzeige-srcdoc-band', 'editor-rahmen'].map((i) => getComputedStyle(document.getElementById(i)!).visibility));
+      await expect.poll(rahmen, { timeout: 10_000 }).toEqual(['hidden', 'hidden', 'visible', 'hidden', 'visible', 'hidden', 'hidden', 'visible']);
       // Stylesheet-Hintergruende in Anzeigen: ganz ausgeblendet (kein Bild mehr sichtbar)
-      const hg = () => s.evaluate(() => ['anzeige-promo-hg', 'anzeige-cam-hg'].map((i) => getComputedStyle(document.getElementById(i)!).backgroundImage.includes('/synthetisch/')));
-      await expect.poll(hg, { timeout: 15_000 }).toEqual([false, false]);
+      const hg = () => s.evaluate(() => ['anzeige-promo-hg', 'anzeige-cam-hg', 'anzeige-promo-band', 'anzeige-promo-spaet', 'anzeige-promo-klasse'].map((i) => getComputedStyle(document.getElementById(i)!).backgroundImage.includes('/synthetisch/')));
+      await expect.poll(hg, { timeout: 15_000 }).toEqual([false, false, false, false, false]);
       // Pause gibt die Werberahmen sofort zurueck, danach wieder ausgeblendet
       await setzeEinstellungen({ pause: true });
-      await expect.poll(rahmen, { timeout: 5000 }).toEqual(['visible', 'visible', 'visible', 'visible', 'visible']);
+      await expect.poll(rahmen, { timeout: 5000 }).toEqual(['visible', 'visible', 'visible', 'visible', 'visible', 'visible', 'visible', 'visible']);
+      await expect.poll(async () => (await hg())[2], { timeout: 5000 }).toBe(true); // Promoband hat sein Bild in der Pause zurueck
       await setzeEinstellungen({ pause: false });
-      await expect.poll(rahmen, { timeout: 10_000 }).toEqual(['hidden', 'hidden', 'visible', 'hidden', 'visible']);
+      await expect.poll(rahmen, { timeout: 10_000 }).toEqual(['hidden', 'hidden', 'visible', 'hidden', 'visible', 'hidden', 'hidden', 'visible']);
       // Die Anzeige hat erst nach gut 1 s eine Quelle (Aufnahme in der Seite); danach haette ein Schleier ohne die Regel sie geprueft.
       await expect.poll(() => s.evaluate(() => (document.getElementById('anzeige-video') as HTMLVideoElement).readyState >= 2), { timeout: 10_000 }).toBe(true);
       await abwarten(2500);

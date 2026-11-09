@@ -730,6 +730,39 @@ try {
   await setzeEinstellungen({ pause: false, kontrolle: KONTROLLE });
   console.log('firefox W: Etikett-Menue mit der Tastatur geprueft');
 
+  // 8e. Nacht N5: Enter auf Mias Werbelink oeffnet den Marken-Link wie ein Mausklick, die Seite darunter sieht weder Klick noch Taste
+  await driver.get(nachrichten);
+  await bisIds('Link-Tastatur: Werbung da', ERWARTET);
+  let linkTabs = 0;
+  for (let i = 1; i <= 120 && !linkTabs; i++) {
+    await taste(Key.TAB);
+    if ((await attrStand())?.menue?.fokus?.art === 'anderes') linkTabs = i;
+  }
+  pruefe(linkTabs > 0, `Tastatur: Mias Link per Tab erreicht (${linkTabs} Tabs)`);
+  await driver.executeScript(() => {
+    window.__seite = { klick: 0, tasten: 0 };
+    window.addEventListener('click', () => window.__seite.klick++, true);
+    window.addEventListener('keydown', () => window.__seite.tasten++, true);
+  });
+  const vorLink = await driver.getAllWindowHandles();
+  await taste(Key.ENTER);
+  let linkTab;
+  for (let i = 0; i < 100 && !linkTab; i++) {
+    linkTab = (await driver.getAllWindowHandles()).find((h) => !vorLink.includes(h));
+    if (!linkTab) await warte(100);
+  }
+  pruefe(!!linkTab && (await driver.getAllWindowHandles()).length === vorLink.length + 1, 'Tastatur: Enter auf Mias Link oeffnete genau einen neuen Tab');
+  if (linkTab) {
+    await driver.switchTo().window(linkTab);
+    const adr = await driver.getCurrentUrl().catch(() => '');
+    pruefe(adr.startsWith('https://') || adr === 'about:blank', `Tastatur: Tab mit Marken-Link (${adr.slice(0, 40)})`);
+    await driver.close();
+  }
+  await driver.switchTo().window(hauptFenster);
+  const gesehen = await driver.executeScript('return window.__seite;');
+  pruefe(gesehen.klick === 0 && gesehen.tasten === 0, `Tastatur: die Seite sah weder Klick noch Taste (${JSON.stringify(gesehen)})`);
+  console.log('firefox W: Enter auf Mias Werbelink geprueft');
+
   // 9. Pack entfernt
   await driver.get(nachrichten);
   await bisIds('vor dem Entfernen', ERWARTET);

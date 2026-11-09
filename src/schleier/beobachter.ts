@@ -4,10 +4,12 @@
 import { HG_SELEKTOR, TESTHAKEN, type Art } from './konstanten';
 import { sichereStil, versorgeWurzel, wurzelVon } from './shadow';
 import { eigeneSperreImTestAus, istEigeneWurzel } from './eigene';
+import { neutralisiereFilterBild } from './anwenden';
 import { istSvgBild } from './svg-bild';
 
 // svg image: Bilder in Inline-SVG (dieselbe Auswahl wie die Versteck-Regel in style.css); melde prueft den Namensraum noch einmal.
-const KANDIDAT = `img, video, canvas, svg image, ${HG_SELEKTOR}`;
+// svg feImage: Bilder in Filtern (Nacht 18, N4); sie laufen als Art svgbild mit.
+const KANDIDAT = `img, video, canvas, svg image, svg feImage, ${HG_SELEKTOR}`;
 // href, attributeName, id: SMIL-Animationen, die spaeter auf ein Bild in Inline-SVG umgelenkt werden oder dessen id treffen (svg-bild.ts).
 const ATTRIBUTE = ['src', 'srcset', 'style', 'class', 'href', 'attributeName', 'id'];
 // Elemente, die nie eine Shadow Root tragen oder fuer die sich die Suche nicht lohnt.
@@ -41,6 +43,7 @@ function artVon(el: Element): Exclude<Art, 'klasse'> {
     case 'canvas':
       return 'canvas';
     case 'image':
+    case 'feImage':
       return 'svgbild';
     default:
       return 'hintergrund';
@@ -147,7 +150,10 @@ export class Beobachter {
     if (!this.laeuft) return;
     const gesehen = new Set<Element>();
     for (const m of liste) if (m.attributeName === 'href' && m.target instanceof Element) gesehen.add(m.target);
-    for (const el of gesehen) this.ruf.geaendert(el, 'href');
+    for (const el of gesehen) {
+      neutralisiereFilterBild(el, false); // feImage: neue Quelle der Seite sofort verbergen, bevor irgendetwas gezeichnet wird
+      this.ruf.geaendert(el, 'href');
+    }
   }
 
   // Kandidat melden; ein Bild in Inline-SVG bekommt dabei seinen Attribut-Beobachter (mehrfaches observe desselben Elements ist unschaedlich).
@@ -156,6 +162,7 @@ export class Beobachter {
     if (art === 'svgbild') {
       if (!istSvgBild(el)) return;
       this.svgBeobachter.observe(el, { attributes: true });
+      neutralisiereFilterBild(el, true); // feImage: Platzhalter statt Quelle, bis das Urteil faellt (Hide-first ohne CSS, svg-bild.ts)
     }
     this.ruf.gefunden(el, art);
   }

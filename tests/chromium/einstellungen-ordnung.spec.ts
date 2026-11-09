@@ -130,6 +130,19 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
     await expect(seite.locator('#erw-an')).toBeVisible();
     await seite.locator('label.schalter:has(#erw-an)').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(false);
+    // Nacht N5 (Ursache des Firefox-Wacklers "Fokus liegt bei der Frage"): kommt das Pack, wandert die Pack-Karte; ein Fokus darin bleibt erhalten.
+    const fokusZiel = await seite.evaluate(() => {
+      const z = [...document.querySelectorAll<HTMLElement>('#stand button, #stand input, #stand a[href], #stand [tabindex]')].find((e) => e.getClientRects().length > 0);
+      if (!z) return null;
+      if (!z.id) z.id = 'fokus-probe';
+      z.focus();
+      return z.id;
+    });
+    expect(fokusZiel, 'fokussierbares Element in der Pack-Karte').not.toBeNull();
+    await schreibe(seite, { pack: packMit(['kontrolle:blitz', 'ton']) });
+    await expect.poll(() => seite.evaluate(() => document.getElementById('stand')!.previousElementSibling?.id)).toBe('ton');
+    expect(await seite.evaluate(() => document.activeElement?.id), 'Fokus nach dem Verschieben').toBe(fokusZiel);
+    await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
     // Mit Pack ist alles offen, ohne Knopf; weg mit dem Pack: die Karten, die man nicht selbst aufgeklappt hat, schliessen sich wieder.
     await schreibe(seite, { pack: packMit(['kontrolle:blitz', 'ton']) });
     await expect(seite.locator('#ton-an')).toBeVisible();

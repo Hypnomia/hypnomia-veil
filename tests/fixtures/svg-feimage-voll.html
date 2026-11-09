@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil feImage auf voller Seite</title>
+    <style>
+      body { margin: 0; padding: 8px; background: #fff; }
+      .raster { display: flex; flex-wrap: wrap; gap: 8px; }
+      .raster img { width: 200px; height: 200px; display: block; }
+      #oben { position: fixed; top: 0; right: 0; width: 200px; height: 200px; background: #fff; }
+    </style>
+  </head>
+  <body>
+    <!-- Runde 2, Fund 3: eine volle Seite (60 grosse Bilder; die Quelle des feImage hat einen eindeutigen Anhang, sonst kaeme das Urteil sofort aus dem Zwischenspeicher) und ein feImage, das nach dem Laden der Seite hinzukommt und oben im Sichtbereich liegt. Ein feImage
+         hat keinen Kasten (Groesse 0 x 0): ohne eigene Einstufung landet es in der letzten Vorrangstufe und wird nach allen Bildern beurteilt,
+         waehrend das gefilterte Element unsichtbar bleibt. window.__ordnung haelt die Reihenfolge der Urteile (Kennung, Zeit). -->
+    <div class="raster" id="raster"></div>
+    <script>
+      (function () {
+        window.__ordnung = [];
+        new MutationObserver(function (liste) {
+          liste.forEach(function (m) {
+            var u = m.target.getAttribute('data-veil');
+            if (u) window.__ordnung.push((m.target.id || m.target.localName) + ':' + u + '@' + Math.round(performance.now()));
+          });
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-veil'] });
+        var raster = document.getElementById('raster');
+        for (var i = 0; i < 60; i++) {
+          var img = document.createElement('img');
+          img.src = '/synthetisch/' + (10 + i) + '.png';
+          raster.appendChild(img);
+        }
+      })();
+    </script>
+    <div id="oben"></div>
+    <script>
+      // Das feImage kommt erst nach dem Laden der Seite (die Bilder stehen dann schon in der Warteschlange): es reiht sich hinter ihnen ein.
+      addEventListener('load', function () {
+        setTimeout(function () {
+          document.getElementById('oben').innerHTML =
+            '<svg width="200" height="200"><defs><filter id="f-voll" x="0" y="0" width="1" height="1"><feImage id="fe-voll" href="/testbild/nsfw/IMG_0260.jpg?voll=' + Date.now() + '" preserveAspectRatio="xMidYMid slice" /></filter></defs><rect width="200" height="200" fill="#c0c" filter="url(#f-voll)" /></svg>';
+        }, 800);
+      });
+    </script>
+  </body>
+</html>

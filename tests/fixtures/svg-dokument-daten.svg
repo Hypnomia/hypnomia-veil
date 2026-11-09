@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="620" height="220">
+  <!-- Eigenstaendiges SVG-Dokument (oben im Tab, in iframe oder object) mit Bildern aus data: und blob: (Nacht 18, Paket N4): dort braucht die
+       Pixelpruefung ein Canvas im HTML-Namensraum. Die Bilder legt ein Skript an, damit kein Testbild im Repo steht (aus dem Testserver gelesen).
+       Waechter wie in svg-dokument.svg: __svgAufblitzen = ohne Urteil sichtbar, __svgVerborgen = ohne Urteil verborgen. -->
+  <script><![CDATA[
+    window.__svgAufblitzen = 0;
+    window.__svgVerborgen = 0;
+    (function schritt() {
+      setTimeout(function () {
+        var wurzel = document.documentElement;
+        if (wurzel.getAttribute('data-veil-seite') === 'aus') return;
+        var bilder = document.querySelectorAll('image');
+        for (var i = 0; i < bilder.length; i++) {
+          if (bilder[i].getAttribute('data-veil') !== null) continue;
+          if (getComputedStyle(bilder[i]).opacity === '0') window.__svgVerborgen++;
+          else window.__svgAufblitzen++;
+        }
+      }, 0);
+      requestAnimationFrame(schritt);
+    })();
+    var SVG = 'http://www.w3.org/2000/svg';
+    function bild(id, href, x) {
+      var el = document.createElementNS(SVG, 'image');
+      el.setAttribute('id', id);
+      el.setAttribute('x', String(x));
+      el.setAttribute('y', '0');
+      el.setAttribute('width', '200');
+      el.setAttribute('height', '200');
+      el.setAttribute('href', href);
+      document.documentElement.appendChild(el);
+    }
+    fetch('/testbild/nsfw/IMG_0260.jpg')
+      .then(function (r) { return r.blob(); })
+      .then(function (b) {
+        bild('dd-blob', URL.createObjectURL(b), 0);
+        return new Promise(function (fertig) {
+          var leser = new FileReader();
+          leser.onload = function () { fertig(leser.result); };
+          leser.readAsDataURL(b);
+        });
+      })
+      .then(function (daten) {
+        bild('dd-data', daten, 210);
+        bild('dd-sfw', '/synthetisch/3.png', 420);
+        document.documentElement.setAttribute('data-bereit', '1');
+      });
+  ]]></script>
+</svg>

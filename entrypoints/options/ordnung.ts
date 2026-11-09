@@ -81,13 +81,36 @@ for (const { id, behalten } of ZU) {
 // ---------- Reihenfolge (Fund 4) ----------
 
 // Ohne Pack steht die Pack-Karte gleich nach "Covering" (der wichtigste naechste Schritt), mit Pack nach "Sound". Die Chips folgen.
-function ordne(): void {
+function ordne(): boolean {
   const stand = document.getElementById('stand');
   const chip = document.querySelector<HTMLAnchorElement>('#sprung a[href="#stand"]');
   const nach = mitPack ? document.getElementById('ton') : document.getElementById('covering');
   const chipNach = document.querySelector<HTMLAnchorElement>(mitPack ? '#sprung a[href="#ton"]' : '#sprung a[href="#covering"]');
+  // Nacht N5 (Wackler pack.test "Fokus liegt bei der Frage", Beleg: Mitschnitt unter Last): Ein Knoten, der im Baum verschoben wird, wird
+  // entfernt und neu eingesetzt, und der Fokus in ihm fiele auf body. Kam das Pack-Ereignis erst nach dem Fokus auf die Frage "Show my ads?"
+  // (Pack-Import, spaetes storage-Ereignis), ging der Fokus verloren. Darum den Fokus nach dem Verschieben zurueckgeben.
+  const aktiv = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const bewegt = [stand, chip].some((k) => !!k && !!aktiv && k.contains(aktiv));
   if (stand && nach && stand.previousElementSibling !== nach) nach.after(stand);
   if (chip && chipNach && chip.previousElementSibling !== chipNach) chipNach.after(chip);
+  if (bewegt && aktiv && aktiv.isConnected && document.activeElement !== aktiv) {
+    aktiv.focus({ preventScroll: true });
+    let ziel: HTMLElement = aktiv;
+    // Pruefung Nacharbeit, Nr. 6: liegt das Element jetzt in einem zugeklappten Teil, nimmt es keinen Fokus; dann die Kartenueberschrift.
+    if (document.activeElement !== aktiv) {
+      const kopf = aktiv.closest('section')?.querySelector<HTMLElement>('h2, h3');
+      if (kopf) {
+        if (!kopf.hasAttribute('tabindex')) kopf.tabIndex = -1;
+        kopf.focus({ preventScroll: true });
+        ziel = kopf;
+      }
+    }
+    // Pruefung N5, Nr. 1: liegt das Ziel nach dem Verschieben ausserhalb des Blicks, holen wir es so knapp wie moeglich herein.
+    const r = ziel.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) ziel.scrollIntoView({ block: 'nearest' });
+    return true;
+  }
+  return false;
 }
 
 // Sprung beim Oeffnen (Popup oeffnet "#stand" oder "#neu"): der Browser springt sofort, die Reihenfolge der Karten steht aber erst, wenn das
@@ -124,8 +147,8 @@ function setzePack(pack: PackKurz | null): void {
   packBekannt = true;
   mitPack = pack !== null;
   for (const z of zus) zeichneZu(z);
-  ordne();
-  halteAnker();
+  // Gab ordne() einen Fokus zurueck, rollt der Anker ihn nicht wieder weg (Pruefung Nacharbeit, Nr. 6).
+  if (!ordne()) halteAnker();
   // Testhaken (nur Testbau, ohne Wirkung): die Seite hat gelesen, ob ein Pack da ist, Zuklappen und Reihenfolge stehen.
   if (TESTHAKEN) document.body.setAttribute('data-veil-ordnung', 'bereit');
 }

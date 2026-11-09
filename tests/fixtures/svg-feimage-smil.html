@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil feImage mit SMIL</title>
+    <style>
+      body { margin: 0; padding: 8px; background: #fff; }
+      .reihe { display: flex; flex-wrap: wrap; gap: 8px; }
+      svg { display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- Runde 3, Fund 1: SMIL (set) wechselt die Quelle eines feImage nach 1 s auf ein Testbild mit Treffer, ohne ein Attribut zu aendern (nur animVal).
+         Gezeichnet wird animVal; der Platzhalter ersetzt nur baseVal. fe-smil: set als Kind des feImage. fe-smil-fern: set an anderer Stelle zielt per
+         href="#fe-smil-fern" auf das feImage. Ausgangsbild harmlos (synthetisch). Erwartet: nie das Testbild zu sehen, in der Pause schon. -->
+    <div class="reihe">
+      <svg id="s-fe-smil" width="200" height="200">
+        <defs>
+          <filter id="f-smil" x="0" y="0" width="1" height="1">
+            <feImage id="fe-smil" href="/synthetisch/5.png" preserveAspectRatio="xMidYMid slice"><set attributeName="href" to="/testbild/nsfw/IMG_0260.jpg" begin="1s" fill="freeze" /></feImage>
+          </filter>
+        </defs>
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-smil)" />
+      </svg>
+      <svg id="s-fe-smil-fern" width="200" height="200">
+        <defs>
+          <filter id="f-smil-fern" x="0" y="0" width="1" height="1"><feImage id="fe-smil-fern" href="/synthetisch/6.png" preserveAspectRatio="xMidYMid slice" /></filter>
+        </defs>
+        <set href="#fe-smil-fern" attributeName="href" to="/testbild/nsfw/IMG_0260.jpg" begin="1s" fill="freeze" />
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-smil-fern)" />
+      </svg>
+    </div>
+    <script>document.documentElement.dataset.feBereit = '1';</script>
+  </body>
+</html>

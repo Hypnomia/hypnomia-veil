@@ -39,6 +39,12 @@ const NIE_AUSBLENDEN = [
   'braintreegateway.com',
   'adyen.com',
 ];
+const LEER_MIN = { breite: 120, hoehe: 50 };
+// Anzeigen-Hintergruende (Live-Lauf 18 D, HOCH 1): Elemente mit Klasse "promo..." oder "native..." in einer Anzeige verlieren ihr Hintergrundbild
+// (inline und wichtig), unabhaengig davon, wie der Schleier sie bewertet hat (das xHamster-Promoband blieb live frei, obwohl die Regel im Test griff).
+// Immer, nicht erst wenn ein Bild berechnet ist (Pruefung Nacharbeit, Nr. 1): das Stylesheet der Seite kommt oft erst nach dem Pruefen, dann
+// bliebe das Band unmarkiert. Ohne Bild bewirkt "none" nichts. Grenze: Bilder an ::before und ::after sieht die Regel nicht.
+const HG_KANDIDATEN = '[class*="promo" i], [class*="native" i]';
 // Schmale Formate (Handy-Banner) nur fuer leere oder srcdoc-Rahmen, nie fuer fremde: dort passen sonst Zahlungs- und Anmeldefelder hinein.
 const SCHMAL = new Set(['320x50', '320x100', '468x60']);
 
@@ -60,6 +66,7 @@ export class AnzeigenRahmen {
   private beobachter: MutationObserver | null = null;
   private groesse: ResizeObserver | null = null;
   private readonly markiert = new Map<HTMLIFrameElement, Vorher>();
+  private readonly hgMarkiert = new Map<HTMLElement, Vorher>();
   // "Pause Mia" im Riegel oder in der Galerie: sofort alles zurueck, ohne auf den Speicher zu warten.
   private readonly lokalAb = beiLokalerPause(() => this.aktualisiere(false));
 
@@ -82,13 +89,17 @@ export class AnzeigenRahmen {
       if (host && NIE_AUSBLENDEN.some((h) => host === h || host.endsWith(`.${h}`))) return false;
       if (istWerbeAdresse(src, location.href) || passtWerbeName(f.getAttribute('id')) || passtWerbeName(f.getAttribute('name'))) return true;
       if (istAnzeige(f, location.href, { nurKennung: true })) return true;
-      const leer = f.hasAttribute('srcdoc') || !src || /^about:/i.test(src.trim());
+      const ohneSrc = !src || !src.trim();
+      const leer = f.hasAttribute('srcdoc') || (!ohneSrc && /^about:/i.test(src.trim()));
       const fremd = host !== null && domainVon(host) !== domainVon(location.hostname.toLowerCase());
-      if (!leer && !fremd) return false;
+      if (!leer && !fremd && !ohneSrc) return false;
       const r = f.getBoundingClientRect();
+      // Live-Lauf 18 D (MITTEL 2 und 3): srcdoc- und about:-Rahmen sind auf Erwachsenenseiten Anzeigen in jeder Groesse ab LEER_MIN
+      // (Redtube-Kachel 232 x 231, Pornhub-Band 656 x 72 passen in kein Normformat); Seiten fuellen eigene Inhalte nicht per srcdoc.
+      if (leer) return r.width >= LEER_MIN.breite && r.height >= LEER_MIN.hoehe;
+      // Rahmen ganz ohne src (Editoren, Hilfe-Chats schreiben so hinein; Pruefung Nacharbeit, Nr. 2) nur im Werbe-Format, wie vor Live-Lauf D.
       const format = formatFuer(Math.round(r.width), Math.round(r.height));
-      if (format === null) return false;
-      return leer || !SCHMAL.has(format);
+      return format !== null && (ohneSrc || !SCHMAL.has(format));
     } catch {
       return false;
     }
@@ -128,9 +139,51 @@ export class AnzeigenRahmen {
     this.pruefe(f);
   }
 
+  // ---------- Anzeigen-Hintergruende ----------
+  private pruefeHg(el: Element): void {
+    if (!this.an || !(el instanceof HTMLElement)) return;
+    let treffer = false;
+    try {
+      treffer = el.matches(HG_KANDIDATEN) && istAnzeige(el, location.href);
+    } catch {
+      treffer = false;
+    }
+    // Keine Anzeige (mehr), etwa nach Klassenwechsel: Bild zurueck (Pruefung Nacharbeit, Nr. 4).
+    if (!treffer) {
+      this.gibHg(el);
+      return;
+    }
+    if (!this.hgMarkiert.has(el)) {
+      const stil = new MutationObserver(() => this.versteckeHg(el));
+      stil.observe(el, { attributes: true, attributeFilter: ['style'] });
+      this.hgMarkiert.set(el, { wert: el.style.getPropertyValue('background-image'), prio: el.style.getPropertyPriority('background-image'), stil });
+    }
+    this.versteckeHg(el);
+  }
+
+  private versteckeHg(el: HTMLElement): void {
+    if (!this.an || !this.hgMarkiert.has(el)) return;
+    if (el.style.getPropertyValue('background-image') !== 'none' || el.style.getPropertyPriority('background-image') !== 'important') el.style.setProperty('background-image', 'none', 'important');
+  }
+
+  private gibHg(el: HTMLElement): void {
+    const v = this.hgMarkiert.get(el);
+    if (!v) return;
+    this.hgMarkiert.delete(el);
+    v.stil.disconnect();
+    if (v.wert) el.style.setProperty('background-image', v.wert, v.prio);
+    else el.style.removeProperty('background-image');
+  }
+
+  private sucheHg(n: Element): void {
+    this.pruefeHg(n);
+    for (const k of n.querySelectorAll(HG_KANDIDATEN)) this.pruefeHg(k);
+  }
+
   private starte(): void {
     const wurzel = document.documentElement;
     if (!wurzel) return;
+    this.sucheHg(wurzel);
     this.groesse = typeof ResizeObserver === 'function' ? new ResizeObserver((e) => { for (const x of e) if (x.target instanceof HTMLIFrameElement) this.pruefe(x.target); }) : null;
     for (const f of wurzel.querySelectorAll('iframe')) this.nimmAuf(f);
     this.beobachter = new MutationObserver((liste) => {
@@ -138,19 +191,27 @@ export class AnzeigenRahmen {
       for (const r of liste) {
         if (r.type === 'attributes') {
           if (r.target instanceof HTMLIFrameElement) this.pruefe(r.target);
+          else if (r.attributeName === 'class' && r.target instanceof Element) this.pruefeHg(r.target);
           continue;
         }
         for (const n of r.addedNodes) {
           if (n instanceof HTMLIFrameElement) this.nimmAuf(n);
-          else if (n instanceof Element) for (const f of n.querySelectorAll('iframe')) this.nimmAuf(f);
+          else if (n instanceof Element) {
+            for (const f of n.querySelectorAll('iframe')) this.nimmAuf(f);
+            this.sucheHg(n);
+          }
         }
         if (r.removedNodes.length) entfernt = true;
       }
       // Einmal je Rueckruf (nicht je Eintrag): entfernte Rahmen freigeben und nicht weiter beobachten (Runde 11, Nr. 12 und 13).
-      if (entfernt) for (const f of [...this.markiert.keys()]) if (!f.isConnected) this.gib(f);
+      if (entfernt) {
+        for (const f of [...this.markiert.keys()]) if (!f.isConnected) this.gib(f);
+        for (const el of [...this.hgMarkiert.keys()]) if (!el.isConnected) this.gibHg(el);
+      }
     });
     // Nur Struktur und die Rahmen-Merkmale; den Stil beobachtet je markiertem Rahmen ein eigener Beobachter.
-    this.beobachter.observe(wurzel, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcdoc', 'name', 'id'] });
+    // class dazu: Seiten setzen Promo-Klassen oft erst nach dem Einfuegen (der Rueckruf prueft nur Treffer auf HG_KANDIDATEN).
+    this.beobachter.observe(wurzel, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcdoc', 'name', 'id', 'class'] });
   }
 
   private stoppe(): void {
@@ -159,5 +220,6 @@ export class AnzeigenRahmen {
     this.groesse?.disconnect();
     this.groesse = null;
     for (const f of [...this.markiert.keys()]) this.gib(f);
+    for (const el of [...this.hgMarkiert.keys()]) this.gibHg(el);
   }
 }

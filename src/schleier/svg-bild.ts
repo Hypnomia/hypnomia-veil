@@ -6,17 +6,30 @@ export const XLINK = 'http://www.w3.org/1999/xlink';
 const SVG = 'http://www.w3.org/2000/svg';
 
 // Ein SVG-image (localName image im SVG-Namensraum). Ein HTML-Element namens image (createElement) ist keins.
-export function istSvgBild(el: Element): el is SVGImageElement {
-  return el.localName === 'image' && el.namespaceURI === SVG;
+// Dazu zaehlt das Bild eines Filters (feImage, Nacht 18 N4): gleiche Quelle (href, xlink:href), gleicher Weg durch den Schleier. Es hat keine
+// Flaeche und laesst sich nicht auf ein Canvas zeichnen; darum entfallen unten Bereitschaft, Pixelbestaetigung und Pixel lesen (siehe istFeImage).
+export function istSvgBild(el: Element): el is SVGImageElement | SVGFEImageElement {
+  return (el.localName === 'image' || el.localName === 'feImage') && el.namespaceURI === SVG;
+}
+
+export function istFeImage(el: Element): boolean {
+  return el.localName === 'feImage' && el.namespaceURI === SVG;
 }
 
 // SMIL kann die Quelle wechseln, ohne ein Attribut zu aendern (nur animVal, kein MutationRecord): ein harmloses Bild wuerde frei und zeigte
 // spaeter etwas anderes. Ein Bild, auf dessen href oder xlink:href eine Animation (set, animate) zielt, wird deshalb nie frei, sondern verdeckt
 // (wie ein bewegtes SVG beim Erkenner). Ziel einer Animation: ihr Elternelement oder das Element hinter href="#id" bzw. xlink:href="#id".
 const ANIMATION = 'set, animate';
+// Eine Animation auf href eines feImage wird entschaerft: SMIL aendert nur animVal, und gezeichnet wird animVal; der Platzhalter im href (baseVal)
+// haelt sie nicht auf (gemessen Nacht 18, N4: das Testbild erschien per set trotz Platzhalter). Der Schleier setzt attributeName auf einen
+// Blindnamen (die Animation trifft dann nichts) und merkt sich den echten; die Pause stellt ihn zurueck.
+export const ANIMATION_BLIND = 'data-veil-blind';
+export const animationsName = new WeakMap<Element, string>();
 export function animationsZiel(a: Element): Element | null {
   if ((a.localName !== 'set' && a.localName !== 'animate') || a.namespaceURI !== SVG) return null;
-  const name = (a.getAttribute('attributeName') ?? '').trim();
+  const roh = a.getAttribute('attributeName') ?? '';
+  // Eine entschaerfte Animation (anwenden.ts) traegt den Blindnamen; ihr eigentliches Ziel bleibt erkennbar.
+  const name = (roh === ANIMATION_BLIND ? (animationsName.get(a) ?? '') : roh).trim();
   if (name !== 'href' && name !== 'xlink:href') return null;
   const verweis = a.getAttribute('href') ?? a.getAttributeNS(XLINK, 'href');
   if (verweis === null) return a.parentElement;
@@ -29,6 +42,17 @@ export function animationsZiel(a: Element): Element | null {
 export function animationenIn(knoten: Element): Element[] {
   const aus = knoten.matches(ANIMATION) ? [knoten] : [];
   for (const a of knoten.querySelectorAll(ANIMATION)) aus.push(a);
+  return aus;
+}
+
+// Alle Animationen (set, animate), die href oder xlink:href dieses Elements treffen (Kind oder Verweis per #id), auch entschaerfte.
+export function animationenZu(el: Element): Element[] {
+  const aus: Element[] = [];
+  for (const k of el.children) if (animationsZiel(k) === el) aus.push(k);
+  if (el.id) {
+    const wurzel = el.getRootNode() as Document | ShadowRoot;
+    if (typeof wurzel.querySelectorAll === 'function') for (const a of wurzel.querySelectorAll(ANIMATION)) if (!aus.includes(a) && animationsZiel(a) === el) aus.push(a);
+  }
   return aus;
 }
 
@@ -54,6 +78,7 @@ function dekodiere(el: SVGImageElement): Promise<unknown> {
 // ("EncodingError: Invalid image request", die neue Anfrage steht noch nicht), feuert aber load. Deshalb gilt das Erste von beidem; ein
 // abgelehntes decode() wird bis zur Frist im Abstand von 50 ms wiederholt.
 export function wirdBereit(el: SVGImageElement, ms: number): Promise<boolean> {
+  if (istFeImage(el)) return Promise.resolve(true);
   return new Promise((fertig) => {
     let erledigt = false;
     const ende = (ok: boolean) => {
@@ -116,6 +141,9 @@ export function zeigtFassung(el: SVGImageElement, fassung: HTMLImageElement): bo
 
 // Wartet, bis zeigtFassung gilt: sofort, bei jedem load des Elements und alle 50 ms, hoechstens `ms`.
 export function zeigtBaldFassung(el: SVGImageElement, fassung: HTMLImageElement, ms: number): Promise<boolean> {
+  // Ein feImage laesst sich nicht auf ein Canvas zeichnen, die Pixelprobe geht nicht. Sicher ist es trotzdem: bis das Urteil faellt, steht der
+  // neutrale Platzhalter im href (filterVorab unten), und die Fassung ist vorab geladen und dekodiert; das Original zeigt sich nie.
+  if (istFeImage(el)) return Promise.resolve(true);
   return new Promise((fertig) => {
     let erledigt = false;
     const ende = (ok: boolean) => {
@@ -139,6 +167,7 @@ export function zeigtBaldFassung(el: SVGImageElement, fassung: HTMLImageElement,
 // true = das Element zeichnet (noch) nichts: ganz durchsichtig auf einer leeren Leinwand (nicht geladen, nicht dekodiert, widerrufene Quelle).
 // Dann darf aus seinen Pixeln kein Urteil werden. Ein wirklich ganz durchsichtiges Bild faellt mit darunter (zeigt ohnehin nichts).
 export function zeichnetNichts(el: SVGImageElement): boolean {
+  if (istFeImage(el)) return true; // nicht lesbar: dann nie frei aus den Pixeln, sondern verdeckt
   try {
     const k = leinwand();
     k.width = 16;
@@ -154,14 +183,38 @@ export function zeichnetNichts(el: SVGImageElement): boolean {
   }
 }
 
+// ---------- Filter-Bilder (feImage) vorab verbergen ----------
+
+// Hide-first fuer ein feImage ohne CSS: display none haelt das Filterbild in Chromium nicht zuverlaessig weg (gemessen Nacht 18, N4: ein per
+// Skript eingefuegtes feImage laedt und zeichnet trotz berechnetem display none, und mit der Erweiterungs-CSS galt das auch fuer
+// Markup-Elemente), opacity und visibility greifen am Filterprimitiv nicht. Darum ersetzt der Schleier den href eines gefundenen feImage sofort
+// (im Mikrotask der Beobachter, vor dem naechsten Zeichnen) durch einen neutralen grauen Platzhalter und merkt sich die Quelle der Seite hier.
+// Das gefilterte Element bleibt dabei sichtbar (der Filter laeuft mit dem Platzhalter weiter), ein Original zeigt sich nie vor dem Urteil.
+// Das Urteil setzt den href dann: frei = Original zurueck, zensiert = Fassung, verdeckt = Platzhalter bleibt (anwenden.ts).
+export const FILTER_PLATZHALTER =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADklEQVQI12NoAAMGCAUAKg4GAaW135oAAAAASUVORK5CYII=';
+export interface FilterQuelle {
+  href: string | null;
+  xlink: string | null;
+}
+// Merkt sich je neutralisiertem feImage die Quelle der Seite. Eintrag da = das Element zeigt (noch) den Platzhalter statt der Seitenquelle.
+export const filterVorab = new WeakMap<Element, FilterQuelle>();
+
+// Die Quelle der Seite: bei einem neutralisierten feImage der gemerkte Stand, sonst die Attribute.
+function quelleVon(el: Element): FilterQuelle {
+  return filterVorab.get(el) ?? { href: el.getAttribute('href'), xlink: el.getAttributeNS(XLINK, 'href') };
+}
+
 // Beide Quellen-Attribute: href (SVG 2, hat Vorrang) und xlink:href. Erkennt jede Aenderung der Seite, auch an der jeweils unwirksamen.
 export function svgSignatur(el: Element): string {
-  return `${el.getAttribute('href') ?? ''}|${el.getAttributeNS(XLINK, 'href') ?? ''}`;
+  const q = quelleVon(el);
+  return `${q.href ?? ''}|${q.xlink ?? ''}`;
 }
 
 // Die Quelle, die der Browser laedt (href.baseVal waehlt href vor xlink:href), aufgeloest gegen die Basis des Elements. '' = keine Quelle.
-export function svgAdresse(el: SVGImageElement): string {
-  const roh = el.href?.baseVal ?? el.getAttribute('href') ?? el.getAttributeNS(XLINK, 'href') ?? '';
+export function svgAdresse(el: Element): string {
+  const q = filterVorab.has(el) ? quelleVon(el) : null;
+  const roh = q ? (q.href ?? q.xlink ?? '') : ((el as SVGImageElement).href?.baseVal ?? el.getAttribute('href') ?? el.getAttributeNS(XLINK, 'href') ?? '');
   // Leer oder nur ein Verweis in dasselbe Dokument (#...): ein image zeigt dann nichts.
   if (!roh.trim() || roh.trim().startsWith('#')) return '';
   try {

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil SVG-Dokumente im Rahmen</title>
+    <style>body { margin: 0; padding: 8px; } iframe, object { display: block; border: 0; margin-bottom: 8px; width: 640px; height: 230px; }</style>
+  </head>
+  <body>
+    <!-- Eigenstaendige SVG-Dokumente als iframe und als object (Nacht 18, Paket N4): svg-dokument.svg (Bilder per http, href) und
+         svg-dokument-daten.svg (Bilder aus data: und blob:). Kennungen der Rahmen: f-http, f-daten, o-http, o-daten. -->
+    <iframe id="f-http" src="/svg-dokument.svg"></iframe>
+    <iframe id="f-daten" src="/svg-dokument-daten.svg"></iframe>
+    <object id="o-http" type="image/svg+xml" data="/svg-dokument.svg"></object>
+    <object id="o-daten" type="image/svg+xml" data="/svg-dokument-daten.svg"></object>
+  </body>
+</html>

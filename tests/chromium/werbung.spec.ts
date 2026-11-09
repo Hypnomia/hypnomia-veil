@@ -1303,6 +1303,86 @@ test('Tastatur: Etikett per Tab erreichbar, Enter und Leertaste oeffnen, Pfeile 
   }
 });
 
+// Nacht N5 (Folgepunkt aus N2): Tastatur-Klick auf Mias Werbelink. Enter auf dem Link oeffnet den Marken-Link wie ein Mausklick (nur https aus
+// links.json, ein Tab) und loest nie etwas der Seite darunter aus. Wo der Fokus liegt, zeigt die Testspur (`menue.fokus.art` 'anderes' = Mias Link).
+const linkMitFokus = async (s: Page): Promise<boolean> => (await spurVon(s))?.menue?.fokus?.art === 'anderes';
+async function tabBisLink(s: Page): Promise<number> {
+  for (let i = 1; i <= 120; i++) {
+    await s.keyboard.press('Tab');
+    await abwarten(60);
+    if (await linkMitFokus(s)) return i;
+  }
+  throw new Error('Mias Link per Tab nicht erreicht');
+}
+
+test('Tastatur: Enter auf Mias Werbelink oeffnet den Marken-Link wie ein Mausklick, die Seite darunter sieht nichts', async () => {
+  await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungGefragt: true } });
+  const s = await context.newPage();
+  const anfragen: string[] = [];
+  context.on('request', (r) => anfragen.push(r.url()));
+  try {
+    // Fall 1: Flaeche in einem Link der Seite (der haerteste Fall: darunter liegt ein echter Seitenlink)
+    await s.goto(lageSeite);
+    await warteAuf(s, ['a-link']);
+    await s.evaluate(() => document.getElementById('a-link')!.scrollIntoView({ block: 'center' }));
+    await abwarten(700);
+    const urlVorher = s.url();
+    const schritte = await tabBisLink(s);
+    // Zaehler erst nach dem Tabben (die Tab-Tasten davor gehoeren der Seite)
+    await s.evaluate(() => {
+      const z = ((window as any).__seite = { klick: 0, tasten: 0 });
+      window.addEventListener('click', () => z.klick++, true);
+      document.addEventListener('click', () => z.klick++, true);
+      window.addEventListener('keydown', () => z.tasten++, true);
+    });
+    anfragen.length = 0;
+    geoeffnet.length = 0;
+    const seiten = context.pages().length;
+    const neu = context.waitForEvent('page', { timeout: 10_000 });
+    await s.keyboard.press('Enter');
+    const tab = await neu;
+    await tab.waitForLoadState('domcontentloaded').catch(() => {});
+    console.log(`werbung: Enter auf Mias Link (nach ${schritte} Tabs) oeffnete ${tab.url()}`);
+    expect(LINKS.some((l) => tab.url().startsWith(l.replace(/\/$/, ''))), 'Adresse aus links.json').toBe(true);
+    expect(tab.url().startsWith('https://')).toBe(true);
+    await abwarten(800);
+    expect(geoeffnet.length, 'genau ein Abruf eines Marken-Links').toBe(1);
+    expect(geoeffnet[0]!.referer, 'kein Referer').toBeUndefined();
+    expect(context.pages().length).toBe(seiten + 1);
+    expect(anfragen.filter((u) => u.includes('werbung-ziel-seitenlink')), 'der Seitenlink darunter bleibt still').toEqual([]);
+    expect(s.url()).toBe(urlVorher);
+    expect(await s.evaluate(() => (window as any).__seite), 'die Seite sah weder Klick noch Taste').toEqual({ klick: 0, tasten: 0 });
+    await tab.close().catch(() => {});
+    // Leertaste auf einem Link tut nichts (kein Klick)
+    await s.bringToFront();
+    const vorLeertaste = context.pages().length;
+    geoeffnet.length = 0;
+    await s.keyboard.press('Space');
+    await abwarten(800);
+    expect(context.pages().length).toBe(vorLeertaste);
+    expect(geoeffnet.length).toBe(0);
+    expect(anfragen.filter((u) => u.includes('werbung-ziel-seitenlink'))).toEqual([]);
+
+    // Fall 2: freie Flaeche (Nachrichtenseite)
+    await s.goto(nachrichten);
+    await warteAuf(s, ERWARTET);
+    geoeffnet.length = 0;
+    await tabBisLink(s);
+    const neu2 = context.waitForEvent('page', { timeout: 10_000 });
+    await s.keyboard.press('Enter');
+    const tab2 = await neu2;
+    await tab2.waitForLoadState('domcontentloaded').catch(() => {});
+    expect(LINKS.some((l) => tab2.url().startsWith(l.replace(/\/$/, '')))).toBe(true);
+    await abwarten(500);
+    expect(geoeffnet.length).toBe(1);
+    await tab2.close().catch(() => {});
+  } finally {
+    context.removeAllListeners('request');
+    await setzeEinstellungen({ pause: false, kontrolle: KONTROLLE });
+    await s.close();
+  }
+});
+
 test('ohne Pack nach dem Entfernen: nichts mehr getauscht', async () => {
   const s = await context.newPage();
   await s.goto(nachrichten);

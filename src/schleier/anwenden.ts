@@ -3,7 +3,7 @@
 import { ATTR_MS, ATTR_NUR_HG, ATTR_URTEIL, TESTHAKEN, type Urteil } from './konstanten';
 import { freigabeGesperrt, testhakenAktiv } from './status';
 import type { BildOriginal, Zustand } from './zustand';
-import { svgSignatur } from './svg-bild';
+import { ANIMATION_BLIND, FILTER_PLATZHALTER, XLINK, animationenZu, animationsName, filterVorab, istFeImage, svgSignatur, type FilterQuelle } from './svg-bild';
 
 // Kennzeichen eines eingesetzten Vorschau-Bildes (Pack-Bild statt Seitenbild), neben data-veil="zensiert".
 export const ATTR_ERSETZT = 'data-veil-ersetzt';
@@ -65,6 +65,7 @@ export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number 
   if (z.art === 'klasse' && urteil === 'frei') return;
   // Testhaken "Freigabe sperren" (nur Testbau, nur Testhost): das Urteil gilt, aber das Element wird nie sichtbar.
   if (TESTHAKEN && freigabeGesperrt()) return;
+  if (istFeImage(el)) wendeFilterUrteilAn(el, z, urteil);
   el.setAttribute(ATTR_URTEIL, urteil);
   if (z.ersetzt && urteil === 'zensiert') el.setAttribute(ATTR_ERSETZT, '');
   // Zeitstempel nur im Testbau auf Testhosts.
@@ -171,19 +172,128 @@ export function setzeBildSofortNeu(el: HTMLImageElement, z: Zustand, bild: strin
 // dekodiert (schleier.ts, urteilZensiertSvg) und setzt das Urteil gleich danach.
 export function starteSvgTausch(el: Element, z: Zustand, bild: string): void {
   if (!z.svgOriginal) {
-    const href = el.getAttribute('href');
-    z.svgOriginal = { href: eigenesSrc(href) ? null : href };
+    // Ein neutralisiertes feImage (svg-bild.ts, filterVorab) zeigt den Platzhalter: die Quelle der Seite ist der gemerkte Stand.
+    const href = filterVorab.has(el) ? filterVorab.get(el)!.href : el.getAttribute('href');
+    z.svgOriginal = { href: eigenerHref(el, href) ? null : href };
   }
   merkeEigene(bild);
   z.eigen = bild;
+  // Ein neutralisiertes feImage bekommt die Fassung erst mit dem Urteil (wendeFilterUrteilAn): bei gesperrter Freigabe (Testhaken) bleibt es neutral.
+  if (istFeImage(el) && filterVorab.has(el)) {
+    z.signatur = svgSignatur(el);
+    return;
+  }
   el.setAttribute('href', bild);
+  if (istFeImage(el)) filterEigen.set(el, bild);
   z.signatur = svgSignatur(el);
+}
+
+// ---------- Filter-Bilder (feImage) neutralisieren und freigeben (svg-bild.ts) ----------
+
+// Der Wert, den die Erweiterung zuletzt selbst als href in ein feImage geschrieben hat (Fassung oder Platzhalter). Je Element statt ueber die
+// gemeinsame, bei 256 Eintraegen geleerte Menge eigeneUrls: sonst gaelte eine aeltere Fassung danach als Quelle der Seite.
+const filterEigen = new WeakMap<Element, string>();
+// Ist dieser href-Wert eigene Schreibung? Bei einem feImage je Element, sonst ueber eigeneUrls.
+function eigenerHref(el: Element, href: string | null): boolean {
+  if (!istFeImage(el)) return eigenesSrc(href);
+  return href !== null && (href === FILTER_PLATZHALTER || filterEigen.get(el) === href);
+}
+
+// Stand, den die Erweiterung selbst als Quelle zurueckgeschrieben hat (Freigabe, Pause): die Beobachter melden diese Schreibung, sie ist keine
+// Aenderung der Seite und darf nicht erneut verbergen.
+const filterZurueck = new WeakMap<Element, FilterQuelle>();
+
+// Ersetzt die Quelle eines feImage sofort durch den grauen Platzhalter und merkt sich die der Seite. Aufruf beim Finden (entdeckt = true, immer
+// neu verbergen) und bei jeder Attributaenderung (entdeckt = false: die eigene Rueckschreibung gilt nicht als Aenderung der Seite).
+export function neutralisiereFilterBild(el: Element, entdeckt: boolean): void {
+  if (!istFeImage(el)) return;
+  const href = el.getAttribute('href');
+  const xlink = el.getAttributeNS(XLINK, 'href');
+  const zurueck = filterZurueck.get(el);
+  if (zurueck && zurueck.href === href && zurueck.xlink === xlink) {
+    // Eigene Rueckschreibung. Beim Wiederfinden ohne Urteil (nach der Pause, das Urteil wurde dort geloescht) gilt die Quelle wieder als ungeprueft.
+    if (!entdeckt || el.hasAttribute(ATTR_URTEIL)) return;
+  }
+  filterZurueck.delete(el);
+  const vorab = filterVorab.get(el);
+  if (vorab && href === FILTER_PLATZHALTER) {
+    vorab.xlink = xlink; // xlink:href hat unter dem Platzhalter keine Wirkung, aber die Seite meint es als Quelle
+    return;
+  }
+  // Der eigene Tausch (zensiert, verdeckt) ist der Stand der Erweiterung, keine Quelle der Seite.
+  if (!vorab && eigenerHref(el, href)) return;
+  const roh = (href ?? xlink ?? '').trim();
+  if (!roh || roh.startsWith('#')) {
+    filterVorab.delete(el); // nichts zu verbergen (leer oder Verweis auf ein Element, das seine eigene Regel hat)
+    return;
+  }
+  filterVorab.set(el, { href, xlink });
+  filterZurueck.delete(el);
+  el.setAttribute('href', FILTER_PLATZHALTER);
+  entschaerfeAnimationen(el);
+}
+
+// SMIL auf href eines feImage entschaerfen (svg-bild.ts, ANIMATION_BLIND) und in der Pause wieder scharf stellen.
+function entschaerfeAnimationen(el: Element): void {
+  for (const a of animationenZu(el)) {
+    const name = a.getAttribute('attributeName');
+    if (name === null || name === ANIMATION_BLIND) continue;
+    animationsName.set(a, name);
+    a.setAttribute('attributeName', ANIMATION_BLIND);
+  }
+}
+function stelleAnimationenHer(el: Element): void {
+  let zurueck = false;
+  for (const a of animationenZu(el)) {
+    if (a.getAttribute('attributeName') !== ANIMATION_BLIND) continue;
+    const name = animationsName.get(a);
+    if (name !== undefined) a.setAttribute('attributeName', name);
+    animationsName.delete(a);
+    zurueck = true;
+  }
+  if (!zurueck) return;
+  // Eine schon gelaufene Animation (set mit fill freeze) wirkt nach dem Zurueckstellen des Namens nicht von selbst wieder (gemessen Chromium): die
+  // Zeitleiste auf die jetzige Zeit setzen wertet alle Animationen neu aus.
+  try {
+    const svg = (el as SVGElement).ownerSVGElement;
+    svg?.setCurrentTime(svg.getCurrentTime());
+  } catch {
+    // ohne SMIL-Zeitleiste nichts zu tun
+  }
+}
+
+// Quelle der Seite zurueckschreiben (frei, Pause) und den Eintrag loeschen.
+function stelleFilterBildHer(el: Element): void {
+  const vorab = filterVorab.get(el);
+  if (!vorab) return;
+  filterVorab.delete(el);
+  setzeAttribut(el, 'href', vorab.href);
+  filterZurueck.set(el, { href: vorab.href, xlink: vorab.xlink });
+}
+
+// Urteil an einem feImage: frei = Quelle der Seite zurueck, zensiert = die Fassung, verdeckt = der neutrale Platzhalter bleibt (das gefilterte
+// Element bleibt sichtbar, ein Originalbild nie).
+function wendeFilterUrteilAn(el: Element, z: Zustand, urteil: Urteil): void {
+  if (urteil === 'frei') {
+    stelleFilterBildHer(el);
+    z.signatur = svgSignatur(el);
+    return;
+  }
+  if (urteil === 'verdeckt') starteSvgTausch(el, z, FILTER_PLATZHALTER);
+  entschaerfeAnimationen(el); // eine spaeter eingefuegte oder umgelenkte Animation trifft das feImage erst jetzt
+  if (z.eigen && filterVorab.has(el)) {
+    filterVorab.delete(el);
+    el.setAttribute('href', z.eigen);
+    filterEigen.set(el, z.eigen);
+    z.signatur = svgSignatur(el);
+  }
 }
 
 // Original-href zurueck (null: Attribut weg, dann gilt wieder xlink:href der Seite).
 function setzeSvgOriginal(el: Element, z: Zustand): void {
   if (!z.svgOriginal) return;
   setzeAttribut(el, 'href', z.svgOriginal.href);
+  if (istFeImage(el)) filterZurueck.set(el, { href: el.getAttribute('href'), xlink: el.getAttributeNS(XLINK, 'href') });
   z.signatur = svgSignatur(el);
 }
 
@@ -240,6 +350,8 @@ export function stelleWiederHer(el: Element, z: Zustand): void {
     else if (z.hgOriginal.wert) el.style.setProperty('background-image', z.hgOriginal.wert, z.hgOriginal.prio);
     else el.style.removeProperty('background-image');
   }
+  stelleFilterBildHer(el);
+  if (istFeImage(el)) stelleAnimationenHer(el);
   setzeSvgOriginal(el, z);
   stelleErsetztWiederHer(el, z);
   z.bildOriginal = null;
@@ -310,7 +422,9 @@ export function vergiss(el: Element, z: Zustand, restore: boolean): void {
   else {
     // Bild in Inline-SVG: hat die Seite nur xlink:href geaendert, stuende die eigene Fassung als href noch da und verdeckte die neue Quelle
     // (href hat Vorrang). Eine noch eigene href geht deshalb auf das Original zurueck; eine von der Seite neu gesetzte bleibt.
-    if (z.svgOriginal && eigenesSrc(el.getAttribute('href'))) setzeAttribut(el, 'href', z.svgOriginal.href);
+    // Ein neutralisiertes feImage (filterVorab) haelt die neue Quelle der Seite selbst: der alte href darf nicht zurueckgeschrieben werden, sonst
+    // ueberschriebe der naechste Beobachtertakt die neue Quelle mit der alten.
+    if (z.svgOriginal && !(istFeImage(el) && filterVorab.has(el)) && eigenerHref(el, el.getAttribute('href'))) setzeAttribut(el, 'href', z.svgOriginal.href);
     stelleErsetztWiederHer(el, z);
     z.bildOriginal = null;
     z.hgOriginal = null;

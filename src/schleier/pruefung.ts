@@ -86,7 +86,9 @@ export function lesePixel(
   const b = Math.max(1, Math.round(breite * skala));
   const h = Math.max(1, Math.round(hoehe * skala));
   try {
-    const flaeche = document.createElement('canvas');
+    // Im HTML-Namensraum anlegen: in einem eigenstaendigen SVG-Dokument (XML, Tab, iframe, object) ergibt createElement('canvas') kein Canvas
+    // (Nacht 18, N4: data:- und blob:-Bilder dort blieben sonst immer verdeckt).
+    const flaeche = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas') as HTMLCanvasElement;
     flaeche.width = b;
     flaeche.height = h;
     const ctx = flaeche.getContext('2d');

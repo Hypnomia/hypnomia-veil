@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil feImage-Testseite</title>
+    <script src="/waechter.js"></script>
+    <script>
+      // Waechter fuer Filter-Bilder (<filter><feImage href="...">), Nacht 18 Paket N4: waechter.js kennt sie nicht. Nach dem Zeichnen jedes Frames
+      // (rAF, dann setTimeout) wird jedes feImage im Dokument und in offenen Shadow Roots geprueft: ohne Urteil (data-veil) darf es nicht mehr die
+      // Quelle der Seite tragen (href oder xlink:href), der Schleier ersetzt sie bis zum Urteil durch einen Platzhalter (svg-bild.ts). Ein feImage
+      // mit der Seitenquelle und ohne Urteil in einem gezeichneten Frame hat sein Bild ungeprueft gezeigt.
+      //   window.__feAufblitzen   feImage ohne Urteil mit Seitenquelle; window.__feWer: welche (Kennung und Zeit)
+      //   window.__feProben       Anzahl der Proben
+      // Waehrend die Seite aus ist (data-veil-seite="aus": Pause, Ausnahme) wird nicht geprueft.
+      (function () {
+        window.__feAufblitzen = 0;
+        window.__feProben = 0;
+        window.__feWer = [];
+        function sammle(wurzel, aus) {
+          var liste = wurzel.querySelectorAll('*');
+          for (var i = 0; i < liste.length; i++) if (liste[i].shadowRoot) sammle(liste[i].shadowRoot, aus);
+          var f = wurzel.querySelectorAll('feImage');
+          for (var j = 0; j < f.length; j++) aus.push(f[j]);
+        }
+        function probe() {
+          var html = document.documentElement;
+          if (!html || html.getAttribute('data-veil-seite') === 'aus') return;
+          var liste = [];
+          sammle(document, liste);
+          for (var i = 0; i < liste.length; i++) {
+            var el = liste[i];
+            window.__feProben++;
+            var quelle = window.__feQuellen && window.__feQuellen[el.id];
+            var href = el.getAttribute('href');
+            var offen = quelle !== undefined && (href === quelle || (href === null && el.getAttributeNS('http://www.w3.org/1999/xlink', 'href') === quelle));
+            if (el.getAttribute('data-veil') === null && offen) {
+              window.__feAufblitzen++;
+              if (window.__feWer.length < 50) window.__feWer.push((el.id || 'feImage') + ' @' + Math.round(performance.now()));
+            }
+          }
+        }
+        function schritt() {
+          setTimeout(probe, 0);
+          requestAnimationFrame(schritt);
+        }
+        requestAnimationFrame(schritt);
+      })();
+    </script>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; background: #fff; }
+      .reihe { display: flex; flex-wrap: wrap; gap: 8px; }
+      svg { display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- Filter-Bilder: jeder Filter holt sein Bild per feImage und fuellt damit ein 200 x 200 grosses Rechteck (x, y, width, height des Filters decken
+         das Rechteck ganz ab). Kennungen: fe-href, fe-xlink, fe-fremd (anderer Ursprung), fe-data, fe-blob, fe-shadow (in #wirt), fe-ref (feImage
+         zeigt per #id auf ein image in defs), fe-verdeckt (widerrufene blob:-Adresse, ueberlagert vom Quellbild), fe-sfw, fe-sfw-xlink (harmlos). Jedes Rechteck steckt in einem svg mit der Kennung s-<Kennung>.
+         Die Testbilder kommen vom Testserver aus ../05 Testbilder (nie im Repo). -->
+    <div class="reihe" id="reihe">
+      <svg id="s-fe-href" width="200" height="200">
+        <defs><filter id="f-href" x="0" y="0" width="1" height="1"><feImage id="fe-href" href="/testbild/nsfw/IMG_0260.jpg" preserveAspectRatio="xMidYMid slice" /></filter></defs>
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-href)" />
+      </svg>
+      <svg id="s-fe-xlink" width="200" height="200" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <defs><filter id="f-xlink" x="0" y="0" width="1" height="1"><feImage id="fe-xlink" xlink:href="/testbild/nsfw/IMG_0260.jpg" preserveAspectRatio="xMidYMid slice" /></filter></defs>
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-xlink)" />
+      </svg>
+      <svg id="s-fe-sfw" width="200" height="200">
+        <defs><filter id="f-sfw" x="0" y="0" width="1" height="1"><feImage id="fe-sfw" href="/synthetisch/1.png" preserveAspectRatio="xMidYMid slice" /></filter></defs>
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-sfw)" />
+      </svg>
+      <svg id="s-fe-sfw-xlink" width="200" height="200" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <defs><filter id="f-sfw-xlink" x="0" y="0" width="1" height="1"><feImage id="fe-sfw-xlink" xlink:href="/synthetisch/2.png" preserveAspectRatio="xMidYMid slice" /></filter></defs>
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-sfw-xlink)" />
+      </svg>
+      <svg id="s-fe-ref" width="200" height="200">
+        <defs>
+          <image id="bild-ref" width="200" height="200" href="/testbild/nsfw/IMG_0260.jpg" preserveAspectRatio="xMidYMid slice" />
+          <filter id="f-ref" x="0" y="0" width="1" height="1"><feImage id="fe-ref" href="#bild-ref" /></filter>
+        </defs>
+        <rect width="200" height="200" fill="#c0c" filter="url(#f-ref)" />
+      </svg>
+      <div id="wirt"></div>
+    </div>
+    <script>
+      (function () {
+        var SVG = 'http://www.w3.org/2000/svg';
+        var XLINK = 'http://www.w3.org/1999/xlink';
+        var reihe = document.getElementById('reihe');
+        // Fremder Ursprung: derselbe Testserver auf Port plus 2 (wie die anderen Testseiten), ohne CORS.
+        var fremd = 'http://127.0.0.1:' + (Number(location.port) + 2);
+        // Originale Quellen je Kennung (die Tests vergleichen nach der Pause damit).
+        window.__feQuellen = {
+          'fe-href': '/testbild/nsfw/IMG_0260.jpg',
+          'fe-xlink': '/testbild/nsfw/IMG_0260.jpg',
+          'fe-sfw': '/synthetisch/1.png',
+          'fe-sfw-xlink': '/synthetisch/2.png',
+        };
+        // Ein svg mit Filter und Rechteck, der Filter holt sein Bild per feImage.
+        function filterMit(id, href) {
+          var svg = document.createElementNS(SVG, 'svg');
+          svg.id = 's-' + id;
+          svg.setAttribute('width', '200');
+          svg.setAttribute('height', '200');
+          var defs = document.createElementNS(SVG, 'defs');
+          var filter = document.createElementNS(SVG, 'filter');
+          filter.id = 'f-' + id;
+          filter.setAttribute('x', '0');
+          filter.setAttribute('y', '0');
+          filter.setAttribute('width', '1');
+          filter.setAttribute('height', '1');
+          var fe = document.createElementNS(SVG, 'feImage');
+          fe.id = id;
+          fe.setAttribute('href', href);
+          fe.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+          filter.appendChild(fe);
+          defs.appendChild(filter);
+          var rect = document.createElementNS(SVG, 'rect');
+          rect.setAttribute('width', '200');
+          rect.setAttribute('height', '200');
+          rect.setAttribute('fill', '#c0c');
+          rect.setAttribute('filter', 'url(#f-' + id + ')');
+          svg.appendChild(defs);
+          svg.appendChild(rect);
+          window.__feQuellen[id] = href;
+          return svg;
+        }
+        reihe.appendChild(filterMit('fe-fremd', fremd + '/testbild/nsfw/IMG_0260.jpg'));
+        // Erzwungenes "verdeckt" (Runde 2): ein Filter, der sein feImage mit dem Quellbild ueberlagert (feBlend), damit das gefilterte Rechteck
+        // (magenta, 100 x 100 in der Mitte) auch ohne das Filterbild zu sehen sein muss. Die blob:-Adresse ist sofort widerrufen: nicht lesbar,
+        // also verdeckt. Erwartet: Rechteck sichtbar, an den Ecken der neutrale Platzhalter, nie ein Originalbild.
+        function filterVerdeckt(id, href) {
+          var svg = document.createElementNS(SVG, 'svg');
+          svg.id = 's-' + id;
+          svg.setAttribute('width', '200');
+          svg.setAttribute('height', '200');
+          var filter = document.createElementNS(SVG, 'filter');
+          filter.id = 'f-' + id;
+          filter.setAttribute('filterUnits', 'userSpaceOnUse');
+          filter.setAttribute('x', '0');
+          filter.setAttribute('y', '0');
+          filter.setAttribute('width', '200');
+          filter.setAttribute('height', '200');
+          var fe = document.createElementNS(SVG, 'feImage');
+          fe.id = id;
+          fe.setAttribute('href', href);
+          fe.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+          fe.setAttribute('result', 'b');
+          var mix = document.createElementNS(SVG, 'feBlend');
+          mix.setAttribute('in', 'SourceGraphic');
+          mix.setAttribute('in2', 'b');
+          mix.setAttribute('mode', 'normal');
+          filter.appendChild(fe);
+          filter.appendChild(mix);
+          var rect = document.createElementNS(SVG, 'rect');
+          rect.setAttribute('x', '50');
+          rect.setAttribute('y', '50');
+          rect.setAttribute('width', '100');
+          rect.setAttribute('height', '100');
+          rect.setAttribute('fill', '#c0c');
+          rect.setAttribute('filter', 'url(#f-' + id + ')');
+          svg.appendChild(filter);
+          svg.appendChild(rect);
+          window.__feQuellen[id] = href;
+          return svg;
+        }
+        // Offene Shadow Root mit einem Filter-Bild (Filter und Rechteck liegen in derselben Wurzel).
+        var wurzel = document.getElementById('wirt').attachShadow({ mode: 'open' });
+        wurzel.appendChild(filterMit('fe-shadow', '/testbild/nsfw/IMG_0260.jpg'));
+        // data: und blob: aus demselben Testbild.
+        fetch('/testbild/nsfw/IMG_0260.jpg')
+          .then(function (r) { return r.blob(); })
+          .then(function (b) {
+            reihe.appendChild(filterMit('fe-blob', URL.createObjectURL(b)));
+            var weg = URL.createObjectURL(b);
+            reihe.appendChild(filterVerdeckt('fe-verdeckt', weg));
+            URL.revokeObjectURL(weg);
+            return new Promise(function (fertig) {
+              var leser = new FileReader();
+              leser.onload = function () { fertig(leser.result); };
+              leser.readAsDataURL(b);
+            });
+          })
+          .then(function (daten) {
+            reihe.appendChild(filterMit('fe-data', daten));
+            document.documentElement.dataset.feBereit = '1';
+          });
+      })();
+    </script>
+  </body>
+</html>
