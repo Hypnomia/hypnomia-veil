@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   Rundlauf,
+  SPUR_ERBE_MAX,
+  SPUR_ERBE_S,
   SpurListe,
   boxenAnteil,
   darfFrei,
@@ -154,6 +156,218 @@ test('Spuren: Pause laesst das Alter nicht wachsen, Sprung zurueck loescht alle'
   assert.equal(sl.spuren.length, 1);
   sl.entferneAlte(2.0, 1.0); // Sprung nach hinten
   assert.equal(sl.spuren.length, 0);
+});
+
+// ---------- Erbe des Motivs (Wort und Mias Gesicht ueber eine neu angelegte Spur hinweg) ----------
+
+const zonenKasten = (zone, x, y, w, h, behandlung) => ({ zone, box: { x, y, w, h }, ...(behandlung ? { behandlung } : {}) });
+
+test('Erbe: Konstanten (2 s, hoechstens 16 Eintraege)', () => {
+  assert.equal(SPUR_ERBE_S, 2);
+  assert.equal(SPUR_ERBE_MAX, 16);
+});
+
+test('Erbe: ohne Vorgaenger ist das Motiv die Kennung', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(0, 0, 40, 40), kasten(200, 200, 40, 40)], 0, P);
+  for (const s of sl.spuren) assert.equal(s.motiv, s.id);
+});
+
+test('Erbe: Spur faellt weg (entferneAlte), neue Spur gleicher Zone in der Naehe erbt das Motiv; Box und Anzeige sind die der neuen Erkennung', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 5, P);
+  const alt = sl.spuren[0];
+  sl.entferneAlte(6.1, 1.0);
+  assert.equal(sl.spuren.length, 0);
+  assert.equal(sl.erbe.length, 1);
+  // etwas verschoben (die Bewegung waehrend der Luecke): neue Kennung, aber dasselbe Motiv
+  sl.ordneZu([kasten(130, 100, 40, 40)], 6.2, P);
+  const neu = sl.spuren[0];
+  assert.notEqual(neu.id, alt.id);
+  assert.equal(neu.motiv, alt.motiv);
+  assert.deepEqual(neu.box, { x: 130, y: 100, w: 40, h: 40 });
+  assert.equal(neu.anzeige, null);
+  assert.equal(neu.letzterTreffer, 6.2);
+  assert.equal(sl.erbe.length, 0, 'der Eintrag wird beim Erben entfernt');
+});
+
+test('Erbe: leere() (neue Szene) behaelt die Motive, vergiss() loescht sie', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 3, P);
+  const m = sl.spuren[0].motiv;
+  sl.leere();
+  assert.equal(sl.spuren.length, 0);
+  sl.ordneZu([kasten(102, 101, 40, 40)], 3.3, P);
+  assert.equal(sl.spuren[0].motiv, m);
+  assert.notEqual(sl.spuren[0].id, m);
+  const m2 = sl.spuren[0].motiv;
+  sl.leere();
+  sl.vergiss();
+  assert.equal(sl.erbe.length, 0);
+  sl.ordneZu([kasten(102, 101, 40, 40)], 3.4, P);
+  assert.notEqual(sl.spuren[0].motiv, m2);
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id);
+});
+
+test('Erbe: andere Zone erbt nicht', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([zonenKasten('breast', 100, 100, 40, 40)], 3, P);
+  sl.leere();
+  sl.ordneZu([zonenKasten('belly', 100, 100, 40, 40)], 3.2, P);
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id);
+});
+
+test('Erbe: andere wirksame Behandlung erbt nicht, gleiche wirksame (aus der Tabelle eingesetzt) schon', () => {
+  const sl = new SpurListe();
+  const PP = { ...P, preset: 'mosaik' };
+  sl.ordneZu([zonenKasten('breast', 100, 100, 40, 40, 'mosaik')], 3, PP);
+  sl.leere();
+  sl.ordneZu([zonenKasten('breast', 100, 100, 40, 40, 'blur')], 3.2, PP);
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id, 'mosaik und blur gehoeren nicht zusammen');
+  const sl2 = new SpurListe();
+  sl2.ordneZu([zonenKasten('breast', 100, 100, 40, 40, behandlungFuerZone('mosaik', 'breast'))], 3, PP);
+  const m = sl2.spuren[0].motiv;
+  sl2.leere();
+  // ohne `behandlung`: die Tabelle des Presets gilt, also dieselbe wirksame Behandlung
+  sl2.ordneZu([zonenKasten('breast', 101, 100, 40, 40)], 3.2, PP);
+  assert.equal(sl2.spuren[0].motiv, m);
+});
+
+test('Erbe: zu weit weg erbt nicht (keine Ueberlappung, Mittenabstand ueber der laengeren Seite der alten Box)', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 20)], 3, P);
+  sl.leere();
+  sl.ordneZu([kasten(141, 100, 40, 20)], 3.2, P); // Mitten 41 auseinander, laengere Seite 40, kein Schnitt
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id);
+  const sl2 = new SpurListe();
+  sl2.ordneZu([kasten(100, 100, 40, 20)], 3, P);
+  const m = sl2.spuren[0].motiv;
+  sl2.leere();
+  sl2.ordneZu([kasten(140, 100, 40, 20)], 3.2, P); // Mitten 40 auseinander: noch nah
+  assert.equal(sl2.spuren[0].motiv, m);
+});
+
+test('Erbe: zu alt (mehr als SPUR_ERBE_S Medienzeit seit dem letzten Treffer) erbt nicht, genau an der Grenze schon', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 3, P);
+  sl.leere();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 3 + SPUR_ERBE_S + 0.01, P);
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id);
+  const sl2 = new SpurListe();
+  sl2.ordneZu([kasten(100, 100, 40, 40)], 3, P);
+  const m = sl2.spuren[0].motiv;
+  sl2.leere();
+  sl2.ordneZu([kasten(100, 100, 40, 40)], 3 + SPUR_ERBE_S, P);
+  assert.equal(sl2.spuren[0].motiv, m);
+});
+
+test('Erbe: Zeitsprung rueckwaerts ueber SPUR_ERBE_S erbt nicht, ein kleiner schon', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 10, P);
+  sl.leere();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 10 - SPUR_ERBE_S - 0.5, P);
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id);
+  // ueber entferneAlte (Sprung zurueck loescht alle Spuren): der Eintrag ist sofort zu alt
+  const sl2 = new SpurListe();
+  sl2.ordneZu([kasten(100, 100, 40, 40)], 10, P);
+  sl2.entferneAlte(5, 1.0);
+  assert.equal(sl2.spuren.length, 0);
+  assert.equal(sl2.erbe.length, 0);
+  const sl3 = new SpurListe();
+  sl3.ordneZu([kasten(100, 100, 40, 40)], 10, P);
+  const m = sl3.spuren[0].motiv;
+  sl3.leere();
+  sl3.ordneZu([kasten(100, 100, 40, 40)], 9.5, P);
+  assert.equal(sl3.spuren[0].motiv, m);
+});
+
+test('Erbe: ein Eintrag wird nur einmal geerbt (naechste Mitte gewinnt), die zweite neue Spur bekommt ein eigenes Motiv', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 3, P);
+  const m = sl.spuren[0].motiv;
+  sl.leere();
+  sl.ordneZu([kasten(120, 100, 40, 40), kasten(104, 100, 40, 40)], 3.2, P);
+  const [weiter, naeher] = sl.spuren;
+  assert.equal(naeher.motiv, m, 'die naehere Erkennung erbt');
+  assert.equal(weiter.motiv, weiter.id, 'die weitere bekommt ein neues Motiv');
+  assert.notEqual(weiter.motiv, naeher.motiv);
+  // spaeter (Eintrag schon verbraucht) erbt niemand mehr dasselbe Motiv
+  sl.leere();
+  sl.ordneZu([kasten(104, 100, 40, 40), kasten(120, 100, 40, 40), kasten(112, 100, 40, 40)], 3.4, P);
+  const motive = sl.spuren.map((s) => s.motiv);
+  assert.equal(new Set(motive).size, motive.length, `doppeltes Motiv ${motive}`);
+});
+
+test('Erbe: zwei verlorene Spuren, zwei neue an denselben Stellen: jede erbt ihr eigenes Motiv', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(0, 0, 40, 40), kasten(300, 0, 40, 40)], 3, P);
+  const [a, b] = sl.spuren.map((s) => s.motiv);
+  sl.leere();
+  sl.ordneZu([kasten(302, 2, 40, 40), kasten(2, 2, 40, 40)], 3.2, P);
+  assert.equal(sl.spuren[0].motiv, b);
+  assert.equal(sl.spuren[1].motiv, a);
+});
+
+test('Erbe: ein Motiv, das eine lebende Spur traegt, wird nie geerbt (keine zwei Flaechen mit demselben Motiv)', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 3, P);
+  const lebend = sl.spuren[0];
+  // kuenstlicher Eintrag mit dem Motiv der lebenden Spur gleich daneben (der Normalfall erzeugt ihn nicht, der Schutz muss trotzdem greifen)
+  sl.gedaechtnis.push({ motiv: lebend.motiv, zone: 'breast', box: { x: 300, y: 100, w: 40, h: 40 }, zeit: 3 });
+  sl.ordneZu([kasten(100, 100, 40, 40), kasten(302, 100, 40, 40)], 3.1, P);
+  assert.equal(sl.spuren.length, 2);
+  const neu = sl.spuren.find((s) => s.id !== lebend.id);
+  assert.notEqual(neu.motiv, lebend.motiv);
+  assert.equal(neu.motiv, neu.id);
+});
+
+test('Erbe: das Gedaechtnis ist begrenzt (Anzahl und Alter)', () => {
+  const sl = new SpurListe();
+  for (let i = 0; i < SPUR_ERBE_MAX + 5; i++) {
+    sl.ordneZu([kasten(i * 100, 0, 40, 40)], 3, P);
+    sl.leere();
+  }
+  assert.equal(sl.erbe.length, SPUR_ERBE_MAX);
+  // die aeltesten fielen weg: die ersten Motive sind nicht mehr da
+  assert.ok(!sl.erbe.some((g) => g.box.x === 0));
+  sl.entferneAlte(3 + SPUR_ERBE_S + 0.1, 1.0);
+  assert.equal(sl.erbe.length, 0);
+});
+
+test('Erbe: Zuordnung bestehender Spuren und ihre Kennungen bleiben wie ohne Gedaechtnis', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(0, 0, 40, 40)], 3, P);
+  const s = sl.spuren[0];
+  sl.ordneZu([kasten(300, 0, 40, 40)], 3.1, P);
+  sl.leere();
+  sl.ordneZu([kasten(2, 0, 40, 40)], 3.2, P);
+  sl.ordneZu([kasten(4, 0, 40, 40)], 3.3, P);
+  assert.equal(sl.spuren.length, 1, 'die zugeordnete Spur bleibt eine');
+  assert.equal(sl.spuren[0].motiv, s.motiv);
+  assert.deepEqual(sl.spuren[0].box, { x: 4, y: 0, w: 40, h: 40 });
+});
+
+test('Erbe: NaN-Zeit wirft nicht und erbt nicht', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 40, 40)], 3, P);
+  const alt = sl.spuren[0];
+  sl.leere();
+  assert.doesNotThrow(() => sl.ordneZu([kasten(100, 100, 40, 40)], NaN, P));
+  assert.equal(sl.spuren.length, 1);
+  assert.equal(sl.spuren[0].motiv, sl.spuren[0].id);
+  assert.notEqual(sl.spuren[0].motiv, alt.motiv);
+});
+
+test('Erbe: Box mit Breite 0 wirft nicht', () => {
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(100, 100, 0, 40)], 3, P);
+  sl.leere();
+  assert.doesNotThrow(() => sl.ordneZu([kasten(110, 100, 40, 40)], 3, P));
+  assert.equal(sl.spuren.length, 1);
+  assert.ok(Number.isFinite(sl.spuren[0].motiv));
+  // Code: Ueberlappung 0, aber Mittenabstand (30) <= max(w, h) der alten Box (40): geerbt.
+  assert.equal(sl.erbe.length, 0);
+  assert.equal(sl.spuren[0].motiv, 1);
 });
 
 // ---------- Rand und Entspannen ----------

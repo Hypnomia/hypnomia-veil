@@ -1,5 +1,6 @@
 // Verwaltung der Zonen-Leinwaende eines Dokuments (Bauplan Video-Zonen, Auftrag V5): welches Video eine Leinwand bekommt (hoechstens eines je Dokument,
-// geeignet nach pruefeEignung), Aufnahme und Antwort der Pruefungen, Rueckfall auf Ganz-Verdecken und Wiederaufnahme, Mias Gesicht und Woerter der Presets je Spur.
+// geeignet nach pruefeEignung), Aufnahme und Antwort der Pruefungen, Rueckfall auf Ganz-Verdecken und Wiederaufnahme, Mias Gesicht und Woerter der Presets je Motiv
+// (Spur.motiv: gleich der Spur-Kennung oder geerbt von einer eben verlorenen Spur an derselben Stelle).
 // Die Steuerung des Urteils (data-veil, Zaehlung, Bremse) bleibt im Schleier (schleier.ts): hierher kommen nur Rueckrufe.
 
 import type { Einstellungen } from '../einstellungen';
@@ -77,7 +78,7 @@ export class VideoZonen {
   // Rueckfall wegen Langsamkeit: so lange zeigt das Etikett den Grund (bis zum Ende der Sperre).
   private readonly langsamBis = new WeakMap<HTMLVideoElement, number>();
   private readonly letzterWechsel = new WeakMap<HTMLVideoElement, number>();
-  // Mias Gesicht und Wort je Spur (Schluessel: Video und Spur). Verworfen bei jeder Aenderung von Preset, Themen, Gesichtsstand und Pack (vergissBilder).
+  // Mias Gesicht und Wort je Motiv (Schluessel: Video und Motiv). Verworfen bei jeder Aenderung von Preset, Themen, Gesichtsstand und Pack (vergissBilder).
   private readonly gesichter = new Map<string, GesichtsStand>();
   private readonly woerter = new Map<string, WortStand>();
   // Zaehlt jedes Verwerfen (vergissBilder): eine Lieferung aus einer alten Runde legt nichts mehr ab.
@@ -288,8 +289,8 @@ export class VideoZonen {
       bildBereit: () => h.bildBereit(el),
       freigabeReif: () => h.freigabeReif(el),
       sofort: () => h.sofort(el),
-      gesicht: (spurId) => this.gesicht(el, spurId),
-      wort: (spurId) => this.wort(el, spurId),
+      gesicht: (motiv) => this.gesicht(el, motiv),
+      wort: (motiv) => this.wort(el, motiv),
       beiStoerung: (grund) => this.faelleZurueck(el, grund),
       beiLangsam: () => this.faelleZurueck(el, 'langsam'),
       zaehler: h.zaehler,
@@ -298,8 +299,8 @@ export class VideoZonen {
 
   // ---------- Mias Gesicht und Woerter (Presets) ----------
 
-  private schluessel(el: HTMLVideoElement, spurId: number): string {
-    return `${kennungVon(el.currentSrc || el.src || 'video')}|${spurId}`;
+  private schluessel(el: HTMLVideoElement, motiv: number): string {
+    return `${kennungVon(el.currentSrc || el.src || 'video')}|${motiv}`;
   }
 
   private begrenze<T>(m: Map<string, T>): void {
@@ -313,11 +314,11 @@ export class VideoZonen {
     }
   }
 
-  // Mias Gesicht fuer (Video, Spur): stabil gewaehlt vom Erkenner (Schluessel). null, bis es geladen ist oder wenn keins zu haben ist (dann gilt die
+  // Mias Gesicht fuer (Video, Motiv): stabil gewaehlt vom Erkenner (Schluessel). null, bis es geladen ist oder wenn keins zu haben ist (dann gilt die
   // Koerper-Behandlung, nie eine offene Flaeche). Nach einem Fehler wird erst nach FEHLER_PAUSE_MS wieder gefragt.
-  private gesicht(el: HTMLVideoElement, spurId: number): { bild: ImageBitmap; ausschnitt: [number, number, number, number] } | null {
+  private gesicht(el: HTMLVideoElement, motiv: number): { bild: ImageBitmap; ausschnitt: [number, number, number, number] } | null {
     if (this.haken.packStand() <= 0) return null;
-    const schluessel = this.schluessel(el, spurId);
+    const schluessel = this.schluessel(el, motiv);
     const stand = this.gesichter.get(schluessel);
     if (stand && typeof stand === 'object' && 'bild' in stand) return stand;
     if (stand === 'laedt') return null;
@@ -356,9 +357,9 @@ export class VideoZonen {
     else bild.close();
   }
 
-  // Das Wort fuer (Video, Spur): gleiche Wahl wie bei Bildern (Hash der Spur, Themen aus den Einstellungen, ohne Pack "MIA"). null, bis die Schrift
+  // Das Wort fuer (Video, Motiv): gleiche Wahl wie bei Bildern (Hash des Motivs, Themen aus den Einstellungen, ohne Pack "MIA"). null, bis die Schrift
   // geladen ist (Schrift im Content-Script wie die anderen Seitenteile, src/oberflaeche/design/schrift.ts) und das Wort da ist: dann steht kein Wort da.
-  private wort(el: HTMLVideoElement, spurId: number): string | null {
+  private wort(el: HTMLVideoElement, motiv: number): string | null {
     // Ein Fehlschlag beim Laden der Schrift gilt nicht fuer immer: nach den Pausen von schrift-versuche.ts (2 s, 8 s, 30 s) kommt ein neuer Versuch, danach ist Schluss.
     // Bis dahin steht kein Wort da. Zwischen den Versuchen kostet das nur den Blick auf eine Zeit.
     if (this.schriftStand === 'neu' || (this.schriftStand === 'fehlt' && schriftVersuchMoeglich())) {
@@ -368,7 +369,7 @@ export class VideoZonen {
       });
     }
     if (this.schriftStand !== 'da') return null;
-    const schluessel = this.schluessel(el, spurId);
+    const schluessel = this.schluessel(el, motiv);
     const stand = this.woerter.get(schluessel);
     if (stand && typeof stand === 'object' && 'wort' in stand) return stand.wort;
     if (stand === 'laedt') return null;

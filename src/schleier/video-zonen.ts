@@ -186,6 +186,9 @@ export function stilFuerZone(preset: Preset, zone: Zone, l: ZonenLage): Zeichena
 
 export interface Spur {
   id: number;
+  // Schluessel fuer Mias Gesicht und das Wort dieser Flaeche. Ohne Erbe gleich `id`; entsteht die Spur kurz nach dem Verlust einer Spur an etwa derselben
+  // Stelle (gleiche Zone, gleiche wirksame Behandlung), traegt sie deren Motiv weiter (siehe SpurListe.ordneZu): dasselbe Wort, dasselbe Gesicht.
+  motiv: number;
   // Zone beim Anlegen (bleibt, damit ein gewaehltes Patch-Bild stabil bleibt).
   zone: Zone;
   // Verfolgte Zone ohne Rand, in Bildpunkten des Videos.
@@ -208,24 +211,70 @@ export interface SpurParameter {
   halten: number;
 }
 
+// Erbe des Motivs (Wort, Mias Gesicht): eine verlorene Spur bleibt so lange Medienzeit (ab ihrem letzten Treffer, in beide Richtungen) im Gedaechtnis.
+// 2 s decken den Verlust durch entferneAlte (Haltezeit 1 s) samt einer Antwort danach und eine neue Szene (Sprung, Sichtbarwerden, Groessenwechsel) samt
+// der Sofortpruefung; ein weiterer Sprung oder eine lange Luecke erbt nicht.
+export const SPUR_ERBE_S = 2;
+// Hoechstens so viele verlorene Spuren im Gedaechtnis (die aeltesten fallen zuerst weg).
+export const SPUR_ERBE_MAX = 16;
+
+// Eine verlorene Spur im Gedaechtnis: Motiv, Zone, Behandlung (wie an der Spur; die wirksame setzt ordneZu mit dem Preset ein), letzte Box, Medienzeit des letzten Treffers.
+export interface SpurErbe {
+  motiv: number;
+  zone: Zone;
+  behandlung?: Behandlung;
+  box: Rechteck;
+  zeit: number;
+}
+
+const boxMitte = (r: Rechteck): [number, number] => [r.x + r.w / 2, r.y + r.h / 2];
+
 export class SpurListe {
   spuren: Spur[] = [];
   private naechste = 1;
+  private gedaechtnis: SpurErbe[] = [];
 
+  // Verlorene Spuren, deren Motiv eine neue Spur an derselben Stelle erben kann (nur lesen, fuer die Einheitstests).
+  get erbe(): readonly SpurErbe[] {
+    return this.gedaechtnis;
+  }
+
+  // Neue Szene (Schnitt, Sprung, Sichtbarwerden, Groessenwechsel): alle Spuren fallen weg, ihre Motive bleiben kurz im Gedaechtnis.
   leere(): void {
+    for (const s of this.spuren) this.merke(s);
     this.spuren = [];
+  }
+
+  // Wirklich etwas anderes beginnt (andere Quelle): Spuren UND Gedaechtnis weg, kein Motiv wird mehr geerbt.
+  vergiss(): void {
+    this.spuren = [];
+    this.gedaechtnis = [];
+  }
+
+  private merke(s: Spur): void {
+    this.gedaechtnis.push({ motiv: s.motiv, zone: s.zone, ...(s.behandlung ? { behandlung: s.behandlung } : {}), box: { ...s.box }, zeit: s.letzterTreffer });
+    if (this.gedaechtnis.length > SPUR_ERBE_MAX) this.gedaechtnis.splice(0, this.gedaechtnis.length - SPUR_ERBE_MAX);
+  }
+
+  // Eintraege, die (Medienzeit, beide Richtungen) zu weit von `jetzt` liegen, kann niemand mehr erben.
+  private altern(jetzt: number): void {
+    this.gedaechtnis = this.gedaechtnis.filter((g) => Math.abs(jetzt - g.zeit) <= SPUR_ERBE_S);
   }
 
   // Erkennungen (schon auf den aktuellen Bildstand nachgefuehrt) den Spuren zuordnen: groesster IoU zuerst, mindestens `zuordnungIou`.
   // Zugeordnete Spuren nehmen die Erkennung als Box (die Spur wird nie kleiner als die Erkennung, geglaettet wird nur beim Zeigen), die Unsicherheit
   // beginnt neu. Nicht zugeordnete Erkennungen werden neue Spuren. `zeit` ist die Aufnahmezeit des geprueften Bildes.
+  // Eine neue Spur erbt das Motiv einer verlorenen Spur aus dem Gedaechtnis, wenn Zone und wirksame Behandlung gleich sind, die Medienzeit hoechstens
+  // SPUR_ERBE_S auseinander liegt und die Boxen nah sind (Ueberlappung oder Abstand der Mitten hoechstens die laengere Seite der alten Box). Die naechste
+  // Mitte gewinnt, jeder Eintrag wird nur einmal geerbt, ein Motiv einer lebenden Spur nie. Das Erbe aendert nur Wort und Gesicht, nie Box, Rand oder Ansicht.
   ordneZu(erkennungen: readonly ZoneBox[], zeit: number, p: SpurParameter, unsicherNeu = 0): Spur[] {
+    // Nur Flaechen gleicher Behandlung gehoeren zusammen (sonst nimmt ein Gesicht die Spur des Kopfes darum, bei niedriger Schwelle).
+    const wirksam = (zone: Zone, b?: Behandlung): Behandlung | undefined => b ?? (p.preset ? behandlungFuerZone(p.preset, zone) : undefined);
     const paare: Array<{ s: number; e: number; wert: number }> = [];
     this.spuren.forEach((s, si) => {
       erkennungen.forEach((e, ei) => {
-        // Nur Flaechen gleicher Behandlung gehoeren zusammen (sonst nimmt ein Gesicht die Spur des Kopfes darum, bei niedriger Schwelle).
-        const bs = s.behandlung ?? (p.preset ? behandlungFuerZone(p.preset, s.zone) : undefined);
-        const be = e.behandlung ?? (p.preset ? behandlungFuerZone(p.preset, e.zone) : undefined);
+        const bs = wirksam(s.zone, s.behandlung);
+        const be = wirksam(e.zone, e.behandlung);
         if (bs !== be) return;
         const w = iou(s.box, e.box);
         if (w >= p.zuordnungIou) paare.push({ s: si, e: ei, wert: w });
@@ -244,16 +293,54 @@ export class SpurListe {
       if (erkennungen[paar.e]!.ersatz !== undefined) s.ersatz = erkennungen[paar.e]!.ersatz;
       s.letzterTreffer = zeit;
     }
-    erkennungen.forEach((e, ei) => {
-      if (erkennungBelegt.has(ei)) return;
-      this.spuren.push({ id: this.naechste++, zone: e.zone, box: { ...e.box }, anzeige: null, unsicher: e.unsicher ?? unsicherNeu, letzterTreffer: zeit, ...(e.behandlung ? { behandlung: e.behandlung } : {}), ...(e.ersatz ? { ersatz: e.ersatz } : {}) });
-    });
+    const neue = erkennungen.map((_, ei) => ei).filter((ei) => !erkennungBelegt.has(ei));
+    // Erbe: alle passenden Paare (neue Erkennung, Eintrag), naechste Mitte zuerst; jede Erkennung und jeder Eintrag hoechstens einmal.
+    const erbe = new Map<number, number>();
+    if (neue.length && this.gedaechtnis.length) {
+      const lebend = new Set(this.spuren.map((s) => s.motiv));
+      const kandidaten: Array<{ e: number; g: number; abstand: number }> = [];
+      for (const ei of neue) {
+        const e = erkennungen[ei]!;
+        const be = wirksam(e.zone, e.behandlung);
+        const [ex, ey] = boxMitte(e.box);
+        this.gedaechtnis.forEach((g, gi) => {
+          if (g.zone !== e.zone || wirksam(g.zone, g.behandlung) !== be || lebend.has(g.motiv)) return;
+          if (!(Math.abs(zeit - g.zeit) <= SPUR_ERBE_S)) return;
+          const [gx, gy] = boxMitte(g.box);
+          const abstand = Math.hypot(ex - gx, ey - gy);
+          if (!(iou(g.box, e.box) > 0 || abstand <= Math.max(g.box.w, g.box.h))) return;
+          kandidaten.push({ e: ei, g: gi, abstand });
+        });
+      }
+      kandidaten.sort((a, b) => a.abstand - b.abstand);
+      const genommen = new Set<number>();
+      const motive = new Set<number>();
+      for (const k of kandidaten) {
+        const m = this.gedaechtnis[k.g]!.motiv;
+        if (erbe.has(k.e) || genommen.has(k.g) || motive.has(m)) continue;
+        erbe.set(k.e, m);
+        genommen.add(k.g);
+        motive.add(m);
+      }
+      if (genommen.size) this.gedaechtnis = this.gedaechtnis.filter((_, gi) => !genommen.has(gi));
+    }
+    for (const ei of neue) {
+      const e = erkennungen[ei]!;
+      const id = this.naechste++;
+      this.spuren.push({ id, motiv: erbe.get(ei) ?? id, zone: e.zone, box: { ...e.box }, anzeige: null, unsicher: e.unsicher ?? unsicherNeu, letzterTreffer: zeit, ...(e.behandlung ? { behandlung: e.behandlung } : {}), ...(e.ersatz ? { ersatz: e.ersatz } : {}) });
+    }
     return this.spuren;
   }
 
-  // Spuren ohne Treffer seit mehr als `halten` Sekunden Medienzeit fallen weg. Springt die Zeit zurueck (Sprung), fallen alle weg.
+  // Spuren ohne Treffer seit mehr als `halten` Sekunden Medienzeit fallen weg (ins Gedaechtnis). Springt die Zeit zurueck (Sprung), fallen alle weg.
   entferneAlte(jetzt: number, halten: number): void {
-    this.spuren = this.spuren.filter((s) => jetzt >= s.letzterTreffer && jetzt - s.letzterTreffer <= halten);
+    const bleiben: Spur[] = [];
+    for (const s of this.spuren) {
+      if (jetzt >= s.letzterTreffer && jetzt - s.letzterTreffer <= halten) bleiben.push(s);
+      else this.merke(s);
+    }
+    this.spuren = bleiben;
+    this.altern(jetzt);
   }
 }
 

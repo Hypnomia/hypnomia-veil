@@ -1013,6 +1013,9 @@ interface VideoBoxen {
   arten: string[];
   // Kennung der Spur je gemalter Flaeche (Testhaken), gleiche Reihenfolge wie `arten`; -1 bei Personen-Huellen
   ids: number[];
+  // Motiv je gemalter Flaeche (Schluessel fuer Wort und Mias Gesicht; gleich der Kennung oder von einer eben verlorenen Spur an derselben Stelle geerbt); -1 bei Personen-Huellen
+  motive: number[];
+  szene: number;
   // die wirklich gemalten Rechtecke (CSS-Pixel des Fensters), gleiche Reihenfolge wie `arten`
   flaechen: number[][];
   boxen: number[][];
@@ -1477,5 +1480,73 @@ test('P9 Rueckfall "ganzes Bild kurz Mosaik": bleibt Mosaik ohne Rahmen, auch mi
   console.log(`chromium: P9 ganzes Bild: ${JSON.stringify(gesehen)}`);
   expect(gesehen!.dunkel, 'das ganze Bild ist schwarz, es soll Mosaik sein').toBeLessThan(0.15);
   expect(gesehen!.rosa, 'Rahmen im ganzen Bild').toBeLessThan(20);
+  await s.close();
+});
+
+test('P10 Spur verloren und neu angelegt (neue Szene durch einen kleinen Sprung im stillen Bild): neue Kennung, dasselbe Motiv, also dasselbe Wort und Gesicht', async () => {
+  test.setTimeout(180_000);
+  await setze({ preset: 'mosaik', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1 });
+  const s = await oeffneBild('sfw', GESICHT, 'ohne=1&kurz=1');
+  await neuesVideo(s, { id: 'v1' });
+  // Sobald die Leinwand im stillen Abschnitt Zonen zeigt: in der Seite anhalten (im selben Augenblick, in dem die Zeit im Fenster liegt).
+  await wartePoll(async () => {
+    if ((await attr(s, 'v1', 'data-veil')) !== 'zensiert') return false;
+    const v = await lies(s);
+    if (!v || v.ansicht !== 'zonen' || v.arten.length === 0) return false;
+    return s.evaluate(() => {
+      const el = document.getElementById('v1') as HTMLVideoElement;
+      if (el.currentTime < 2.5 || el.currentTime > 5.0) return false;
+      el.pause();
+      return true;
+    });
+  }, 60_000);
+  // Ein ruhiger Stand: Zonen mit denselben Kennungen in zwei Lesungen nacheinander.
+  let vor: VideoBoxen | null = null;
+  await wartePoll(async () => {
+    const a = await lies(s);
+    await abwarten(300);
+    const b = await lies(s);
+    if (!a || !b || b.ansicht !== 'zonen' || b.arten.length === 0 || JSON.stringify(a.ids) !== JSON.stringify(b.ids)) return false;
+    vor = b;
+    return true;
+  }, 30_000);
+  const v0 = vor!;
+  expect(v0.motive, 'Testhaken ohne motive').toBeTruthy();
+  expect(v0.motive.length).toBe(v0.ids.length);
+  // Kleiner Sprung im stillen Bild: neue Szene, alle Spuren fallen weg, die naechste Antwort legt neue Spuren an derselben Stelle an.
+  await s.evaluate(() => {
+    const el = document.getElementById('v1') as HTMLVideoElement;
+    el.currentTime = Math.min(5.4, el.currentTime + 0.3);
+  });
+  let nach: VideoBoxen | null = null;
+  await wartePoll(async () => {
+    const v = await lies(s);
+    if (!v || v.szene <= v0.szene || v.ansicht !== 'zonen' || v.arten.length === 0 || v.ids.some((id) => v0.ids.includes(id))) return false;
+    nach = v;
+    return true;
+  }, 60_000);
+  const v1 = nach!;
+  // Paare: jede neue Flaeche mit der alten Flaeche derselben Art, deren Mitte am naechsten liegt (das Bild steht still: hoechstens ein paar Bildpunkte).
+  const paare: Array<{ alt: number; neu: number; abstand: number; motivAlt: number; motivNeu: number; idAlt: number; idNeu: number }> = [];
+  v1.flaechen.forEach((f, i) => {
+    let best = -1;
+    let dist = Infinity;
+    v0.flaechen.forEach((g, j) => {
+      if (v0.arten[j] !== v1.arten[i]) return;
+      const d = Math.hypot(f[0]! + f[2]! / 2 - (g[0]! + g[2]! / 2), f[1]! + f[3]! / 2 - (g[1]! + g[3]! / 2));
+      if (d < dist) {
+        dist = d;
+        best = j;
+      }
+    });
+    if (best >= 0 && dist <= 20) paare.push({ alt: best, neu: i, abstand: Math.round(dist), motivAlt: v0.motive[best]!, motivNeu: v1.motive[i]!, idAlt: v0.ids[best]!, idNeu: v1.ids[i]! });
+  });
+  console.log(`chromium: P10 Szene ${v0.szene} zu ${v1.szene}, Paare ${JSON.stringify(paare)}`);
+  expect(paare.length, `keine Flaeche an derselben Stelle (${JSON.stringify(v0.flaechen)} gegen ${JSON.stringify(v1.flaechen)})`).toBeGreaterThan(0);
+  for (const p of paare) {
+    expect(p.idNeu, 'die Spur ist neu angelegt').not.toBe(p.idAlt);
+    expect(p.motivNeu, 'Motiv (Wort, Gesicht) gewechselt').toBe(p.motivAlt);
+  }
+  expect(await sichtVerstoesse(s)).toEqual([]);
   await s.close();
 });

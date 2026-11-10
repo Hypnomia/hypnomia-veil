@@ -128,11 +128,11 @@ export interface LeinwandHaken {
   sofort(): void;
   // Die Hysterese des Taktes (video.ts) steht kurz vor der Freigabe (genug saubere Pruefungen in Folge)? Erst dann darf ein Bild ohne Spur klar bleiben.
   freigabeReif(): boolean;
-  // Mias Gesicht fuer diese Spur: Bild des Packs und Gesichtsausschnitt darin (null = noch nicht geladen oder keins zu haben, das Laden ist angestossen;
-  // dann gilt die Koerper-Behandlung). Stabil je Spur.
-  gesicht(spurId: number): { bild: CanvasImageSource; ausschnitt: [number, number, number, number] } | null;
-  // Das Wort dieser Spur fuer Behandlungen mit Wort (null = noch nicht geladen oder die Schrift fehlt: dann steht kein Wort da). Stabil je Spur.
-  wort(spurId: number): string | null;
+  // Mias Gesicht fuer dieses Motiv (Spur.motiv): Bild des Packs und Gesichtsausschnitt darin (null = noch nicht geladen oder keins zu haben, das Laden ist
+  // angestossen; dann gilt die Koerper-Behandlung). Stabil je Motiv, also auch ueber eine neu angelegte Spur an derselben Stelle hinweg.
+  gesicht(motiv: number): { bild: CanvasImageSource; ausschnitt: [number, number, number, number] } | null;
+  // Das Wort dieses Motivs fuer Behandlungen mit Wort (null = noch nicht geladen oder die Schrift fehlt: dann steht kein Wort da). Stabil je Motiv.
+  wort(motiv: number): string | null;
   // Die Leinwand kann nicht weiter malen: der Verwalter faellt auf Ganz-Verdecken zurueck.
   beiStoerung(grund: string): void;
   // Der Median der Rundlaeufe liegt ueber der Grenze: ganz verdecken.
@@ -670,6 +670,8 @@ export class ZonenVideo {
   private arten: string[] = [];
   private malRechtecke: Array<[number, number, number, number]> = [];
   private malIds: number[] = [];
+  // Motiv je gemalter Flaeche (Wort und Mias Gesicht), gleiche Reihenfolge wie `malIds`; -1 bei Personen-Huellen.
+  private malMotive: number[] = [];
 
   // Das Videobild (mit Untergrund und Spiegelung) auf die leere Leinwand malen.
   private zeichneVideo(m: Masse): void {
@@ -698,6 +700,7 @@ export class ZonenVideo {
     this.arten = [];
     this.malRechtecke = [];
     this.malIds = [];
+    this.malMotive = [];
     if (!this.videoGezeichnet) this.zeichneVideo(m);
     this.videoGezeichnet = false;
     const r = m.inhalt;
@@ -730,15 +733,15 @@ export class ZonenVideo {
         const rr = Zeichner.begrenze({ x, y, w, h }, c.width, c.height);
         if (!rr) continue;
         this.zeichner.flaeche(ctx, rr, art, { gesicht: null, wort: '' });
-        if (this.testAn) this.merkeGemalt(art, rr, -1);
+        if (this.testAn) this.merkeGemalt(art, rr, -1, -1);
       }
       return;
     }
     for (const { spur: s, rr } of liste) {
       const beh = wirksameBehandlung(preset, s.zone, s.behandlung);
-      const g = beh === 'mia-gesicht' ? this.h.gesicht(s.id) : null;
+      const g = beh === 'mia-gesicht' ? this.h.gesicht(s.motiv) : null;
       const gesichtPasst = !!g && patchPasst([0, 0, rr.w, rr.h], g.ausschnitt[2], g.ausschnitt[3], anzeige);
-      const wort = brauchtWort(preset, s.zone, s.behandlung, s.ersatz) ? this.h.wort(s.id) : null;
+      const wort = brauchtWort(preset, s.zone, s.behandlung, s.ersatz) ? this.h.wort(s.motiv) : null;
       const art = stilFuerZone(preset, s.zone, {
         behandlung: s.behandlung,
         ersatz: s.ersatz,
@@ -749,13 +752,14 @@ export class ZonenVideo {
       const ersatz = stilFuerZone(preset, s.zone, { behandlung: s.behandlung, ersatz: s.ersatz, gesichtPasst: false, wortDa: !!wort, wortPasst: wortPasst(rr.w, rr.h, anzeige) });
       const mittel: FlaechenMittel = { gesicht: art === 'mia-gesicht' ? g : null, wort: wort ?? '', ersatz };
       this.zeichner.flaeche(ctx, rr, art, mittel);
-      if (this.testAn) this.merkeGemalt(art, rr, s.id);
+      if (this.testAn) this.merkeGemalt(art, rr, s.id, s.motiv);
     }
   }
 
-  private merkeGemalt(art: string, rr: ZeichenRechteck, id: number): void {
+  private merkeGemalt(art: string, rr: ZeichenRechteck, id: number, motiv: number): void {
     this.arten.push(art);
     this.malIds.push(id);
+    this.malMotive.push(motiv);
     this.malRechtecke.push([rr.x, rr.y, rr.w, rr.h]);
   }
 
@@ -891,7 +895,7 @@ export class ZonenVideo {
     });
     // `flaechen`: die wirklich gemalten Rechtecke in CSS-Pixeln des Fensters (die Leinwand liegt auf dem Rechteck des Videos).
     const flaechen = this.malRechtecke.map((g) => [Math.round(r.left + g[0] / q), Math.round(r.top + g[1] / q), Math.round(g[2] / q), Math.round(g[3] / q)]);
-    const text = JSON.stringify({ ansicht: this.ansicht, grund: this.grund, szene: this.szene, arten: this.arten, ids: this.malIds, flaechen, boxen: liste, mt: Math.round(this.letzteMt * 1000) / 1000 });
+    const text = JSON.stringify({ ansicht: this.ansicht, grund: this.grund, szene: this.szene, arten: this.arten, ids: this.malIds, motive: this.malMotive, flaechen, boxen: liste, mt: Math.round(this.letzteMt * 1000) / 1000 });
     if (text === this.boxenText) return;
     this.boxenText = text;
     el.setAttribute(ATTR_VIDEO_BOXEN, text);
@@ -931,6 +935,8 @@ export class ZonenVideo {
     this.frist = null;
     for (const [ziel, name, fn] of this.hoerer) ziel.removeEventListener(name, fn);
     this.hoerer.length = 0;
+    // Reine Vorsorge: Der Verwalter legt nach dem Beenden ohnehin eine neue Leinwand mit neuer Spurliste an, kein Motiv geht an eine spaetere Leinwand weiter.
+    this.spuren.vergiss();
     sperrePip(this.el, false, 'zonen');
     this.host.remove();
     this.el.removeAttribute(ATTR_LEINWAND);

@@ -740,6 +740,56 @@ try {
     pruefe(g.rosa < 20, `Rahmen im ganzen Bild (${g.rosa})`);
   });
 
+  await test('P10 Spur verloren und neu angelegt (neue Szene durch einen kleinen Sprung im stillen Bild): neue Kennung, dasselbe Motiv, also dasselbe Wort und Gesicht', async () => {
+    await oeffneBild('sfw', GESICHT);
+    await setze({ preset: 'mosaik', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1, pause: false, video: 'zonen' });
+    await neuesVideo({ id: 'v1' });
+    // Sobald die Leinwand im stillen Abschnitt Zonen zeigt: in der Seite anhalten (im selben Augenblick, in dem die Zeit im Fenster liegt).
+    await bis('Zonen im stillen Abschnitt, angehalten', async () => {
+      if ((await attr('v1', 'data-veil')) !== 'zensiert') return false;
+      const v = await lies();
+      if (!v || v.ansicht !== 'zonen' || v.arten.length === 0) return false;
+      return driver.executeScript("const el = document.getElementById('v1'); if (el.currentTime < 2.5 || el.currentTime > 5.0) return false; el.pause(); return true;");
+    }, 90_000);
+    // Ein ruhiger Stand: Zonen mit denselben Kennungen in zwei Lesungen nacheinander.
+    const v0 = await bis('ruhiger Stand', async () => {
+      const a = await lies();
+      await warte(300);
+      const b = await lies();
+      if (!a || !b || b.ansicht !== 'zonen' || b.arten.length === 0 || JSON.stringify(a.ids) !== JSON.stringify(b.ids)) return null;
+      return b;
+    }, 30_000);
+    pruefe(Array.isArray(v0.motive) && v0.motive.length === v0.ids.length, `Testhaken ohne motive (${JSON.stringify(v0)})`);
+    // Kleiner Sprung im stillen Bild: neue Szene, alle Spuren fallen weg, die naechste Antwort legt neue Spuren an derselben Stelle an.
+    await driver.executeScript("const el = document.getElementById('v1'); el.currentTime = Math.min(5.4, el.currentTime + 0.3);");
+    const v1 = await bis('neue Spuren nach der neuen Szene', async () => {
+      const v = await lies();
+      if (!v || v.szene <= v0.szene || v.ansicht !== 'zonen' || v.arten.length === 0 || v.ids.some((id) => v0.ids.includes(id))) return null;
+      return v;
+    }, 60_000);
+    // Paare: jede neue Flaeche mit der alten Flaeche derselben Art, deren Mitte am naechsten liegt (das Bild steht still: hoechstens ein paar Bildpunkte).
+    const paare = [];
+    v1.flaechen.forEach((f, i) => {
+      let best = -1;
+      let dist = Infinity;
+      v0.flaechen.forEach((g, j) => {
+        if (v0.arten[j] !== v1.arten[i]) return;
+        const d = Math.hypot(f[0] + f[2] / 2 - (g[0] + g[2] / 2), f[1] + f[3] / 2 - (g[1] + g[3] / 2));
+        if (d < dist) {
+          dist = d;
+          best = j;
+        }
+      });
+      if (best >= 0 && dist <= 20) paare.push({ abstand: Math.round(dist), motivAlt: v0.motive[best], motivNeu: v1.motive[i], idAlt: v0.ids[best], idNeu: v1.ids[i] });
+    });
+    console.log(`firefox: P10 Szene ${v0.szene} zu ${v1.szene}, Paare ${JSON.stringify(paare)}`);
+    pruefe(paare.length > 0, `keine Flaeche an derselben Stelle (${JSON.stringify(v0.flaechen)} gegen ${JSON.stringify(v1.flaechen)})`);
+    for (const p of paare) {
+      pruefe(p.idNeu !== p.idAlt, `die Spur ist nicht neu angelegt (${JSON.stringify(p)})`);
+      pruefe(p.motivNeu === p.motivAlt, `Motiv (Wort, Gesicht) gewechselt (${JSON.stringify(p)})`);
+    }
+  });
+
   // Mit Pack: Mias Gesicht (Portraet-Patch aus den Testbildern, nie Mia), Woerter des Dummy-Packs
   const patchRoh = await fetch(`${basis}/testbild/sfw/${encodeURIComponent(PATCH_GESICHT)}`);
   if (patchRoh.ok) {
