@@ -191,6 +191,8 @@ export interface NachrichtErkennerPruefe {
   hoehe: number;
   einstellungen: PruefEinstellungen;
   rendern: boolean;
+  // Zonen-Video (Bauplan Video-Zonen): diese Pruefung geht in der Warteschlange des Erkenners vor (Interview Punkt 2: Sicherheit zuerst).
+  vorrang?: true;
 }
 // Phase 4: ein Bild aus dem Pack fuer das Content-Script (Pruefer-Fund 1, wie Mia-Patch Entscheidung 65): der Erkenner (Chrome Offscreen,
 // Firefox Hintergrund) liest das Bild aus IndexedDB und liefert eine verkleinerte Data-URL (laengste Seite hoechstens PACKBILD_MAX_SEITE,
@@ -205,9 +207,15 @@ export interface NachrichtErkennerPruefe {
 export interface NachrichtErkennerPackBild {
   ziel: 'erkenner';
   typ: 'packbild';
-  rolle: 'vorschau' | 'chibi' | 'werbung';
+  rolle: 'vorschau' | 'chibi' | 'werbung' | 'gesicht' | 'wort';
   schluessel: string;
   maxSeite?: number;
+  // Nur Rollen `gesicht` und `wort` (Preset-Behandlungen der Zonen-Videos): `importiert` des Packs, das der Absender kennt (wie bei `pruefe`), damit ein
+  // ersetztes Pack sofort neu gelesen wird. Wahl stabil je `schluessel` (Video und Spur). `gesicht`: ein Patch-Bild mit Gesicht (src/pack/patches.ts,
+  // waehleGesichtsPatch) mit laengster Seite hoechstens `maxSeite` und dem Gesichtsausschnitt in dessen Pixeln; ohne fertige Gesichtssuche `ok: false`.
+  // `wort`: ein Wort aus den gewaehlten `themen` (null = alle, [] = keins; wie bei `pruefe`), ohne Pack oder Woerter "MIA".
+  packStand?: number;
+  themen?: string[] | null;
   format?: WerbeFormat;
   // Phase 7 (Auftrag I2), nur Rolle `vorschau`: Masse der Zielflaeche in CSS-Pixeln (Wahl nach Seitenverhaeltnis) und die Intensitaet
   // `erwachsen.stufe`. Die Stufe schickt der Absender mit (das Content-Script liest `storage.local` ohnehin): das Chrome-Offscreen-Dokument
@@ -216,12 +224,15 @@ export interface NachrichtErkennerPackBild {
   hoehe?: number;
   stufe?: StufeWahl;
 }
+export const PACKBILD_MAX_SEITE_PATCH = 256;
 export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerGesichtsscan | NachrichtErkennerPruefe | NachrichtErkennerPackBild;
 export const PACKBILD_MAX_SEITE = 480;
 export const PACKBILD_MAX_SEITE_CHIBI = 512;
 export const PACKBILD_MAX_SEITE_WERBUNG = 970;
 export const PACKBILD_MAX_BYTES = 600_000;
-export interface AntwortPackBild { ok: true; dataUrl: string; breite: number; hoehe: number; name: string }
+export interface AntwortPackBild { ok: true; dataUrl: string; breite: number; hoehe: number; name: string; ausschnitt?: Box }
+// Rolle `wort`.
+export interface AntwortPackWort { ok: true; wort: string }
 
 // quelle: welches Modell den Treffer lieferte (fehlt = 320n). Gesichtszonen aus YuNet tragen 'yunet' (PHASE-2-BAUPLAN 10.4).
 // weiblich: Klasse einer Frau (nur 320n); Steigerung Stufe 4 verdeckt dann das ganze Bild.

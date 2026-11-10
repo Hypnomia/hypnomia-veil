@@ -6,6 +6,7 @@
 //   /synthetisch/<n>.png         Farbverlauf 640 x 480, zur Laufzeit erzeugt (n aendert die Farbe)
 //   /soll-zonen.json             Soll-Zonen aus ../05 Testbilder/
 //   /umleiten?ziel=<adresse>     302-Weiterleitung auf <adresse> (nur http://127.0.0.1 und http://localhost; Netzgrenze-Tests)
+//   /ablage/<name>               POST legt den Inhalt im Speicher ab (Videos der Zonen-Tests), GET liefert ihn (mit Range) aus; beide Ursprunge teilen den Speicher
 //   ?immer403=1                  jede Antwort 403; ?nurReferer=1: 403 ohne Referer von 127.0.0.1 oder localhost (Hotlink-Schutz)
 // Zweiter Ursprung: derselbe Server auf einem zweiten Port (fremde Bilder). Bilder mit ?cors=1 bekommen CORS-Kopfzeilen, ohne nicht.
 import { createServer } from 'node:http';
@@ -18,6 +19,9 @@ const fixtures = path.join(hier, 'fixtures');
 const testbilder = path.resolve(hier, '../../05 Testbilder');
 export const STANDARD_PORT = 47173;
 export const STANDARD_PORT_FREMD = 47175;
+
+// Ablage fuer Dateien, die ein Test zur Laufzeit hochlaedt (zum Beispiel die aufgenommenen Videos, damit sie auch vom zweiten Ursprung kommen koennen).
+const ablage = new Map();
 
 const ENDUNGEN = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const TYPEN = {
@@ -81,6 +85,28 @@ export function starteFixtureServer(port = STANDARD_PORT) {
       if (url.searchParams.get('nurReferer') === '1') {
         const referer = String(req.headers.referer ?? '');
         if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(referer)) return sende(res, 403, 'text/plain', 'verweigert: Referer fehlt');
+      }
+      const abl = /^\/ablage\/([\w.-]+)$/.exec(pfad);
+      if (abl) {
+        if (req.method === 'POST') {
+          const teile = [];
+          for await (const t of req) teile.push(t);
+          ablage.set(abl[1], { daten: Buffer.concat(teile), typ: String(req.headers['content-type'] ?? 'application/octet-stream') });
+          return sende(res, 204, 'text/plain', '', cors);
+        }
+        const datei = ablage.get(abl[1]);
+        if (!datei) throw new Error('nichts abgelegt');
+        const bereich = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+        if (bereich) {
+          const von = bereich[1] === '' ? 0 : Number(bereich[1]);
+          const bis = bereich[2] === '' ? datei.daten.length - 1 : Math.min(Number(bereich[2]), datei.daten.length - 1);
+          return sende(res, 206, datei.typ, datei.daten.subarray(von, bis + 1), {
+            'Content-Range': `bytes ${von}-${bis}/${datei.daten.length}`,
+            'Accept-Ranges': 'bytes',
+            ...cors,
+          });
+        }
+        return sende(res, 200, datei.typ, datei.daten, { 'Accept-Ranges': 'bytes', ...cors });
       }
       if (pfad === '/umleiten') {
         const ziel = url.searchParams.get('ziel') ?? '';

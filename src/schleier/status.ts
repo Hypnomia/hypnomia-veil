@@ -20,6 +20,34 @@ export interface StatusAnzeige extends Zaehlung {
   // Beginn der letzten 64 Video-Pruefungen (performance.now() des Content-Scripts, vom Content-Script selbst gestempelt) mit der Art:
   // erst = erste Pruefung eines Videos, takt = Nachpruefung.
   videoZeiten: Array<{ t: number; art: 'erst' | 'takt' }>;
+  // Zonen-Leinwand (Bauplan Video-Zonen): gemalte Bilder, davon ganz gedeckte (Mosaik ueber das ganze Bild), Pruefungen im Zonen-Modus,
+  // Rundlaeufe der letzten 64 Pruefungen in ms (Aufnahme des Bildes bis Antwort) und die Zeit fuer Malen plus Verfolgung (Summe und Anzahl der Bilder).
+  videoZonenBilder: number;
+  videoZonenGanz: number;
+  videoZonenPruefungen: number;
+  videoZonenRtt: number[];
+  videoZonenMs: number;
+  videoZonenMsBilder: number;
+  // Aufteilung der Zeit je Bild (Summen in ms): Graustufenbild und Daumen, Verfolgung der Spuren, Malen.
+  videoZonenMsGrau: number;
+  videoZonenMsVerfolgung: number;
+  videoZonenMsMalen: number;
+  // Ruckfaelle auf Ganz-Verdecken (Grund je Fall, die letzten 16).
+  videoZonenRueckfall: string[];
+}
+
+// Zaehler der Zonen-Leinwand, vom Status gehalten und von src/schleier/video-leinwand.ts beschrieben.
+export interface VideoZonenZaehler {
+  bilder: number;
+  ganz: number;
+  pruefungen: number;
+  rtt: number[];
+  ms: number;
+  msBilder: number;
+  msGrau: number;
+  msVerfolgung: number;
+  msMalen: number;
+  rueckfall: string[];
 }
 
 // Host des Dokumentursprungs. In about:blank-, blob:- und srcdoc-Frames ist location.hostname leer, window.origin traegt dort den vom
@@ -76,6 +104,7 @@ export class Status {
   videoPruefungen = 0;
   videoWechsel = 0;
   videoFristen = 0;
+  readonly zonen: VideoZonenZaehler = { bilder: 0, ganz: 0, pruefungen: 0, rtt: [], ms: 0, msBilder: 0, msGrau: 0, msVerfolgung: 0, msMalen: 0, rueckfall: [] };
   private videoZeiten: Array<{ t: number; art: 'erst' | 'takt' }> = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -120,6 +149,16 @@ export class Status {
       videoWechsel: this.videoWechsel,
       videoFristen: this.videoFristen,
       videoZeiten: this.videoZeiten,
+      videoZonenBilder: this.zonen.bilder,
+      videoZonenGanz: this.zonen.ganz,
+      videoZonenPruefungen: this.zonen.pruefungen,
+      videoZonenRtt: this.zonen.rtt,
+      videoZonenMs: Math.round(this.zonen.ms * 100) / 100,
+      videoZonenMsBilder: this.zonen.msBilder,
+      videoZonenMsGrau: Math.round(this.zonen.msGrau * 100) / 100,
+      videoZonenMsVerfolgung: Math.round(this.zonen.msVerfolgung * 100) / 100,
+      videoZonenMsMalen: Math.round(this.zonen.msMalen * 100) / 100,
+      videoZonenRueckfall: this.zonen.rueckfall,
     };
     wurzel.setAttribute(ATTR_STATUS, JSON.stringify(anzeige));
   }

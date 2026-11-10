@@ -17,6 +17,9 @@
 :is(img, video, canvas, svg image, [style*="background" i][style*="url(" i]):not([data-veil="frei"], [data-veil="zensiert"], [data-veil="verdeckt"], :root[data-veil-seite="aus"] *) { opacity: 0 !important; }
 /* Verdeckt: Blur, ausser bei Klassen-Hintergrund und grossen Containern (data-veil-hg): dort wurde nur der Hintergrund entfernt, kein Blur ueber Text und Inhalt. */
 [data-veil="verdeckt"][data-veil]:not([data-veil-hg], :root[data-veil-seite="aus"] *) { filter: blur(40px) !important; }
+/* Zonen-Leinwand (src/schleier/video-leinwand.ts): das Video selbst bleibt unsichtbar, eine Leinwand daneben zeigt das Bild mit den Zensurflaechen.
+   Pause und Ausnahme heben es auf wie alle anderen Regeln. */
+video[data-veil-leinwand]:not(:root[data-veil-seite="aus"] *) { opacity: 0 !important; }
 html[data-veil-strict]:not([data-veil-seite]) { opacity: 0 !important; }
 /* Lebenszeichen der Erweiterung: diese Manifest-CSS verschwindet, wenn die Erweiterung entfernt oder abgeschaltet wird. Der Haken fuer Shadow Roots in der
    Seitenwelt (entrypoints/wurzel-haken.content.ts) liest die Eigenschaft und wird ohne sie wirkungslos. */

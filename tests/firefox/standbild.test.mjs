@@ -305,8 +305,12 @@ try {
     await neuesVideo({ id: 'haupt' });
     await driver.executeScript(`const p = document.getElementById('player'); p.style.position = 'relative';
       const l = document.createElement('div'); l.id = 'leiste'; l.style.cssText = 'height:48px;background:rgb(0,0,255);position:relative;z-index:3'; l.textContent = 'Like'; p.appendChild(l); return true;`);
-    const a = await standbildBereit();
-    pruefe(nahe(a.r, a.vr), `Host liegt genau auf dem Video (${JSON.stringify([a.r, a.vr])})`);
+    await standbildBereit();
+    // Die Seite macht den Player hier erst nach dem Legen des Hosts zum Bezug (position: relative); der Lage-Takt (400 ms) zieht den Host nach.
+    const a = await bis('Host liegt genau auf dem Video', async () => {
+      const b = await standbild();
+      return b && nahe(b.r, b.vr) ? b : null;
+    }, 1500);
     const leisteOben = await driver.executeScript("return document.getElementById('leiste').getBoundingClientRect().y;");
     pruefe(a.r[1] + a.r[3] <= leisteOben + 1, 'Host deckt die Leiste nicht');
     pruefe(await hostOben(), 'Host oben ueber dem Video');

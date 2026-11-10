@@ -30,6 +30,8 @@
          Mediendatei im Repo): Abschnitt 1 neutral (Farbverlauf) 0 bis 3 s, Abschnitt 2 das Testbild ?bild=<name> aus dem Satz nsfw (vom
          Testserver, gleicher Ursprung) 3 bis 6 s, Abschnitt 3 neutral 6 bis 10 s. Die Aufnahme dauert 10 s und wird im localStorage
          abgelegt (Schluessel je Testbild), damit weitere Ladevorgaenge sofort starten. Erst danach steht data-film-bereit="1".
+         Mit ?modus=schnitt (V2, Schnitt-Sofortpruefung): wie Standard, aber ausserhalb des Treffers schneidet das Video alle 600 ms hart zwischen zwei
+         Farbverlaeufen (harmlose Schnitte), der Treffer beginnt mit einem harten Schnitt bei 3 s.
          Die Videos legt der Test selbst an: window.neuesVideo({ id, autoplay, abspielen, unten, preload, springe }); window.neueQuelle() liefert eine frische Adresse. Mit ?modus=spaet steht schon beim
          Parsen ein Autoplay-Video #spaet ohne Quelle da, die Quelle kommt 1,5 s nach load.
          Auf jedem Bild bewegt sich ein kleiner Punkt, damit der Browser auch im Treffer-Abschnitt laufend neue Einzelbilder liefert. -->
@@ -43,7 +45,7 @@
         var modus = param.get('modus') || '';
         var platz = document.getElementById('platz');
         var unten = document.getElementById('unten');
-        var SCHLUESSEL = 'video-lauf-1:' + bild + ':' + (modus === 'zuerst' ? 'zuerst' : 'standard');
+        var SCHLUESSEL = 'video-lauf-1:' + bild + ':' + (modus === 'zuerst' ? 'zuerst' : modus === 'schnitt' ? 'schnitt' : 'standard');
         // Standard: neutral 0 bis 3 s, Treffer 3 bis 6 s, neutral 6 bis 10 s. Mit ?modus=zuerst: Treffer 0 bis 1,5 s, neutral bis 6 s (Firefox springt in
         // Aufnahmen ohne Suchindex nur auf Schluesselbilder, meist das erste: dort liegt dann der Treffer).
         var TREFFER_VON = modus === 'zuerst' ? 0 : 3000;
@@ -92,7 +94,8 @@
             var zeichne = function () {
               var t = performance.now() - t0;
               if (t >= TREFFER_VON && t < TREFFER_BIS) g.drawImage(img, 0, 0, b, h);
-              else farbverlauf(g, b, h, (t / 25) % 360);
+              // ?modus=schnitt: ausserhalb des Treffers harmlose harte Schnitte (alle 600 ms zwischen zwei Farbverlaeufen), der Treffer kommt mit einem Schnitt bei 3 s
+              else farbverlauf(g, b, h, modus === 'schnitt' ? (Math.floor(t / 600) % 2 ? 40 : 220) : (t / 25) % 360);
               g.fillStyle = '#000';
               g.fillRect((t / 10) % (b - 8), h - 8, 8, 8);
               // Kennfeld oben links: rot im Treffer-Abschnitt, blau sonst (fuer treffersuche).

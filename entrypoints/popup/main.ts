@@ -13,6 +13,7 @@ import {
   STANDARD,
   STUFEN_WAHL,
   type Einstellungen,
+  type VideoModus,
   type StufeWahl,
   type Zone,
 } from '../../src/einstellungen';
@@ -79,6 +80,18 @@ const zonenHinweisZeile = el<HTMLParagraphElement>('zonen-hinweis');
 const presetBild = el<HTMLSpanElement>('preset-bild');
 const presetName = el<HTMLElement>('preset-name');
 const presetAendern = el<HTMLButtonElement>('preset-aendern');
+const videoSchalter = document.getElementById('video-zonen') as HTMLInputElement;
+const videoLangsam = document.getElementById('video-langsam') as HTMLParagraphElement;
+
+// Hinweis, wenn ein Video wegen Langsamkeit ganz verdeckt wurde (die Seite schreibt `videoLangsamUm`, hoechstens eine Minute alt).
+const LANGSAM_FRIST_MS = 60_000;
+function zeigeLangsam(zeit: unknown): void {
+  videoLangsam.hidden = !(typeof zeit === 'number' && Date.now() - zeit < LANGSAM_FRIST_MS);
+}
+void browser.storage.local.get('videoLangsamUm').then((a: Record<string, unknown>) => zeigeLangsam(a.videoLangsamUm), () => undefined);
+browser.storage.onChanged.addListener((aenderungen: Record<string, { newValue?: unknown }>, bereich: string) => {
+  if (bereich === 'local' && 'videoLangsamUm' in aenderungen) zeigeLangsam(aenderungen.videoLangsamUm?.newValue);
+});
 const packLink = el<HTMLButtonElement>('pack-link');
 const fehlerZeile = el<HTMLParagraphElement>('fehler');
 el<HTMLSpanElement>('ende-links').textContent = T.REGLER_ENDE_LINKS;
@@ -143,6 +156,7 @@ function zeichne(e: Einstellungen): void {
   zeigeStimmung(e.schwelle);
 
   zeichnePreset(e);
+  videoSchalter.checked = e.video === 'zonen';
   strict.checked = e.strict;
 
   for (const zone of ZONEN) {
@@ -443,6 +457,11 @@ stimmung.addEventListener('change', () => {
 });
 
 presetAendern.addEventListener('click', () => void oeffneOptionen('abschnitt-stil'));
+
+videoSchalter.addEventListener('change', () => {
+  const video: VideoModus = videoSchalter.checked ? 'zonen' : 'ganz';
+  void aendere(() => ({ video }));
+});
 
 strict.addEventListener('change', () => {
   const wert = strict.checked;

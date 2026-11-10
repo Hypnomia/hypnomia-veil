@@ -7,6 +7,7 @@
 // geschaltet, bis der Riegel `geloest` meldet. Je Video und Quelle gibt es ein Quiz. Pause gibt alles sofort frei.
 // Beobachter und Ereignis-Hoerer haengen nur, solange der Player aktiv ist (Pack, Freischaltung, Erwachsenenseite, keine Pause, keine Ausnahme,
 // keine Galerie des Komplett-Ersatzes, Quiz moeglich). Shadow Roots kommen ueber das Hinweis-Ereignis `veil-wurzel` des Hakens in der Seitenwelt.
+import { sperrePip as sperrePipGemeinsam } from '../schleier/pip-sperre';
 import { passtAusnahme } from '../../scripts/ausnahmen-muster.mjs';
 import { adapterFuer, istHoverVideo, istVorschau } from '../adapter';
 import { beiErwachsenStatus, erwachsenStatus, istErwachsenFuerQuiz } from '../adapter/status';
@@ -231,7 +232,6 @@ export function startePlayer(ctx: KontextLeicht): void {
   // Kandidaten: die Quiz-Ziele, dazu Adapter-Treffer ohne Quelle (preload none, Quelle kommt erst beim Abspielen) und, wenn nichts passt, das
   // groesste Video mit Poster. Ihre Flaeche ist die des Ankers (Adapter-Selektor, samt Poster-Ebenen der Seite), sonst die des Videos.
   const standbildVideos = new Set<HTMLVideoElement>();
-  const pipMerk = new WeakMap<HTMLVideoElement, boolean>();
   function standbildKandidaten(ziele: ReadonlySet<HTMLVideoElement>): Set<HTMLVideoElement> {
     const kand = new Set<HTMLVideoElement>(ziele);
     const alle = alleVideos().filter((v) => !ausgeschlossen(v));
@@ -259,20 +259,9 @@ export function startePlayer(ctx: KontextLeicht): void {
     return kand;
   }
   // Bild-in-Bild: ein Video unter dem Standbild darf nicht in ein eigenes Fenster gehen (dort laege das echte Bild offen). Der alte Wert kommt
-  // zurueck, sobald das Video kein Standbild mehr hat.
+  // zurueck, sobald das Video kein Standbild mehr hat. Gemeinsame Sperre in src/schleier/pip-sperre.ts (auch die Zonen-Leinwand sperrt).
   function sperrePip(v: HTMLVideoElement, an: boolean): void {
-    try {
-      if (an) {
-        if (!pipMerk.has(v)) pipMerk.set(v, v.disablePictureInPicture);
-        v.disablePictureInPicture = true;
-        if (document.pictureInPictureElement === v) void document.exitPictureInPicture().catch(() => {});
-      } else if (pipMerk.has(v)) {
-        v.disablePictureInPicture = pipMerk.get(v)!;
-        pipMerk.delete(v);
-      }
-    } catch {
-      // nicht steuerbar
-    }
+    sperrePipGemeinsam(v, an, 'standbild');
   }
   function pflegeStandbild(ziele?: ReadonlySet<HTMLVideoElement>): void {
     if (!lebt()) return;

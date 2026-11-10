@@ -84,6 +84,8 @@ export interface Zustand {
   // altes Bild. `schleife`: der letzte Sprung war der Umlauf bei loop und zaehlt nicht.
   sprung: number;
   schleife: boolean;
+  // Video: dieses Video hat schon einmal als neues "zensiert" gezaehlt (Steigerung, Ledger); eine neue Quelle setzt es zurueck.
+  videoGezaehlt: boolean;
   // Video: laufende Nachpruefung (Takt, Hysterese), null = keine.
   video: VideoLauf | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -127,6 +129,7 @@ export function neuerZustand(art: Art): Zustand {
     videoEcht: false,
     sprung: 0,
     schleife: false,
+    videoGezaehlt: false,
     video: null,
     timer: null,
     ersetzt: null,

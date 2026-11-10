@@ -14,6 +14,11 @@ export interface VideoGrenzen {
   freiNach: number;
   wechselMinMs: number;
   blitzSperreMs: number;
+  // Zonen-Video ("schnell"): kleinste Zeit zwischen zwei Pruefungen (die naechste startet sofort nach der Antwort, nur diese Untergrenze gegen
+  // Leerlauf-Schleifen). Optional, Standard 15 ms.
+  schnellMs?: number;
+  // Freie Videos: nach einem erkannten Schnitt fruehestens so lange nach der letzten Pruefung die Sofortpruefung (V2). Optional, Standard 300 ms.
+  schnittMinMs?: number;
 }
 
 export interface VideoHaken {
@@ -36,6 +41,10 @@ export interface VideoHaken {
   // Setzt das Urteil am Element (Attribut, Status) und zaehlt den Wechsel. Ist z.urteil noch leer, ist es das Erst-Urteil des Videos
   // (ein Wechsel nur, wenn das Attribut nicht schon so steht).
   wende(el: HTMLVideoElement, z: Zustand, urteil: VideoUrteil): void;
+  // Optional (V2): jedes gezeigte Bild eines laufenden freien Videos. true = Schnitt erkannt (Szenenwechsel), dann kommt die Sofortpruefung.
+  beiBild?(el: HTMLVideoElement, z: Zustand): boolean;
+  // Optional (Zonen-Leinwand): darf ein verdecktes Video jetzt frei werden? false haelt es verdeckt (Zonen-Video: erst nach 3 s Medienzeit ohne Treffer).
+  haelt?(el: HTMLVideoElement, z: Zustand): boolean;
 }
 
 // ---------- reine Logik ----------
@@ -141,6 +150,13 @@ export interface VideoLauf {
   tot: boolean;
   readonly rvfc: boolean;
   readonly hoerer: Array<[string, () => void]>;
+  // Zonen-Video: die naechste Pruefung startet mit dem naechsten Bild nach der Antwort (kein fester Takt, nicht im Budget). Der Bildtakt
+  // kommt dann von der Leinwand (`bildBereit`), nicht von diesem Modul.
+  schnell: boolean;
+  // Ein Schnitt wurde erkannt: die Sofortpruefung darf schon nach `schnittMinMs` statt nach `taktMs` folgen.
+  schnitt: boolean;
+  // Rueckrufschleife der Schnitterkennung (nur freie, laufende Videos mit rVFC).
+  waechterHandle: number | null;
 }
 
 export class VideoTakt {
@@ -208,12 +224,12 @@ export class VideoTakt {
   }
 
   // Startet eine Pruefung: Budget, Beginn und "unterwegs" gelten je Element. fn laeuft sofort (der Pixelzugriff geschieht im selben Takt).
-  private fuehreAus<T>(s: ElementStand, art: 'erst' | 'takt', fn: () => Promise<T>): Promise<T> {
+  private fuehreAus<T>(s: ElementStand, art: 'erst' | 'takt', fn: () => Promise<T>, imBudget = true): Promise<T> {
     const jetzt = performance.now();
     const nr = ++s.nr;
     s.unterwegs = true;
     s.letzterStart = jetzt;
-    this.budget.nimm(jetzt);
+    if (imBudget) this.budget.nimm(jetzt);
     this.haken.beiStart(art, jetzt);
     let p: Promise<T>;
     try {
@@ -270,6 +286,9 @@ export class VideoTakt {
       tot: false,
       rvfc: typeof (el as { requestVideoFrameCallback?: unknown }).requestVideoFrameCallback === 'function',
       hoerer: [],
+      schnell: false,
+      schnitt: false,
+      waechterHandle: null,
     };
     z.video = lauf;
     this.laeufe.add(lauf);
@@ -354,9 +373,72 @@ export class VideoTakt {
   }
 
   private beiZeit(lauf: VideoLauf): void {
-    if (lauf.tot || !lauf.armiert) return;
+    if (lauf.tot || !lauf.armiert || lauf.schnell) return;
+    // V2 ohne requestVideoFrameCallback (Firefox 128): die Schnitterkennung laeuft mit jedem timeupdate.
+    if (lauf.soll === 'frei' && this.haken.beiBild?.(lauf.el, lauf.z)) this.schnittMelden(lauf);
     if (performance.now() - lauf.stand.letzterStart < this.g.taktMs) return;
     this.alsFaellig(lauf, false);
+  }
+
+  // ---------- Zonen-Video und Schnitt ----------
+
+  // Das Video bekommt die Zonen-Leinwand (oder verliert sie): ab jetzt bestimmt der Bildtakt der Leinwand die Pruefungen (`bildBereit`).
+  setzeSchnell(el: HTMLVideoElement, an: boolean): void {
+    const lauf = [...this.laeufe].find((l) => l.el === el);
+    if (!lauf || lauf.schnell === an) return;
+    lauf.schnell = an;
+    this.entwaffne(lauf);
+    if (!an) this.plane(lauf);
+    else if (!lauf.laeuft) this.armiere(lauf);
+  }
+
+  // Die Leinwand hat das naechste Bild analysiert: eine Pruefung darf starten, wenn keine laeuft und die Untergrenze verstrichen ist.
+  bildBereit(el: HTMLVideoElement): void {
+    const lauf = [...this.laeufe].find((l) => l.el === el);
+    if (!lauf || lauf.tot || !lauf.schnell || !lauf.armiert || lauf.laeuft) return;
+    if (performance.now() - lauf.stand.letzterStart < (this.g.schnellMs ?? 15)) return;
+    this.alsFaellig(lauf, false);
+  }
+
+  // Steht die Hysterese kurz vor der Freigabe (frei, oder nur noch eine saubere Pruefung fehlt)? Fuer die Leinwand: ein Bild ohne Spur darf erst dann klar bleiben.
+  freigabeReif(el: HTMLVideoElement): boolean {
+    const lauf = [...this.laeufe].find((l) => l.el === el);
+    return !lauf || lauf.soll === 'frei' || lauf.sauber >= this.g.freiNach - 1;
+  }
+
+  // Sofortpruefung auf Wunsch der Leinwand (Schnitt, Sprung, Pause).
+  sofortFuer(el: HTMLVideoElement): void {
+    const lauf = [...this.laeufe].find((l) => l.el === el);
+    if (!lauf || lauf.tot) return;
+    this.alsFaellig(lauf, true);
+  }
+
+  // Schnitt in einem freien Video erkannt (V2): Sofortpruefung, fruehestens `schnittMinMs` nach der letzten Pruefung.
+  private schnittMelden(lauf: VideoLauf): void {
+    if (lauf.tot || lauf.schnell) return;
+    lauf.schnitt = true;
+    this.alsFaellig(lauf, true);
+  }
+
+  // Rueckrufschleife der Schnitterkennung: jedes gezeigte Bild eines laufenden, freien Videos (nur mit Rueckruf des Schleiers).
+  private starteWaechter(lauf: VideoLauf): void {
+    // Nur fuer freie Videos: ein verdecktes Video wird ohnehin laufend geprueft (und hat sein Urteil), die Daumen kosten sonst nur.
+    if (!this.haken.beiBild || !lauf.rvfc || lauf.waechterHandle !== null || lauf.schnell || lauf.soll !== 'frei') return;
+    const schritt = (): void => {
+      lauf.waechterHandle = null;
+      if (lauf.tot || !lauf.armiert || lauf.schnell || lauf.soll !== 'frei') return;
+      try {
+        if (this.haken.beiBild?.(lauf.el, lauf.z)) this.schnittMelden(lauf);
+        if (!lauf.tot && lauf.armiert && !lauf.schnell && lauf.soll === 'frei') lauf.waechterHandle = lauf.el.requestVideoFrameCallback(schritt);
+      } catch {
+        // Element weg oder Bild nicht lesbar: keine Schnitterkennung mehr, der Takt prueft weiter
+      }
+    };
+    try {
+      lauf.waechterHandle = lauf.el.requestVideoFrameCallback(schritt);
+    } catch {
+      lauf.waechterHandle = null;
+    }
   }
 
   // Ist das Video jetzt pruefbar? Im Takt nur, solange es laeuft; Sofortpruefungen gelten auch im Stand (seeked).
@@ -383,6 +465,8 @@ export class VideoTakt {
   // Schnittstelle (Firefox 128), auf das naechste timeupdate (beiZeit).
   private armiere(lauf: VideoLauf): void {
     lauf.armiert = true;
+    if (lauf.schnell) return; // Zonen-Video: der Bildtakt der Leinwand startet die Pruefungen (bildBereit)
+    this.starteWaechter(lauf);
     if (!lauf.rvfc) return;
     const warte = Math.max(0, lauf.stand.letzterStart + this.g.taktMs - performance.now());
     lauf.timer = setTimeout(() => {
@@ -417,6 +501,14 @@ export class VideoTakt {
       }
     }
     lauf.handle = null;
+    if (lauf.waechterHandle !== null) {
+      try {
+        lauf.el.cancelVideoFrameCallback(lauf.waechterHandle);
+      } catch {
+        // Element schon weg
+      }
+    }
+    lauf.waechterHandle = null;
   }
 
   private alsFaellig(lauf: VideoLauf, sofort: boolean): void {
@@ -457,7 +549,8 @@ export class VideoTakt {
         lauf.stand.nach = () => this.alsFaellig(lauf, false);
         continue;
       }
-      const fruehestens = lauf.stand.letzterStart + this.g.taktMs;
+      const abstand = lauf.schnell ? (this.g.schnellMs ?? 15) : lauf.schnitt ? (this.g.schnittMinMs ?? 300) : this.g.taktMs;
+      const fruehestens = lauf.stand.letzterStart + abstand;
       if (jetzt < fruehestens) {
         // Zu bald nach der letzten Pruefung dieses Videos: nie oefter als einmal je Taktzeit.
         this.faellig.delete(lauf);
@@ -469,7 +562,8 @@ export class VideoTakt {
         }
         continue;
       }
-      const w = this.budget.wartezeit(jetzt);
+      // Das Zonen-Video steht ausserhalb des Budgets (hoechstens eines je Dokument, es soll so oft pruefen, wie der Erkenner schafft).
+      const w = lauf.schnell ? 0 : this.budget.wartezeit(jetzt);
       if (w > 0) {
         wartezeit = wartezeit === 0 ? w : Math.min(wartezeit, w);
         continue; // bleibt faellig; dank der Sortierung kommt beim naechsten Platz das aelteste zuerst
@@ -494,6 +588,7 @@ export class VideoTakt {
     lauf.verfallen = false;
     lauf.sofortOffen = false;
     lauf.nochmal = false;
+    lauf.schnitt = false;
     const sprung = lauf.z.sprung;
     const generation = lauf.z.generation;
     // Frist: bleibt die Antwort ueber 2 Taktzeiten aus (haengender Erkenner), gilt das wie ein Fehler: sofort verdecken. Eine zweite
@@ -508,7 +603,7 @@ export class VideoTakt {
       lauf.sauber = neu.sauber;
       this.gleicheAn(lauf);
     }, this.g.taktMs * 2);
-    this.fuehreAus(lauf.stand, 'takt', () => this.haken.pruefe(lauf.el)).then(
+    this.fuehreAus(lauf.stand, 'takt', () => this.haken.pruefe(lauf.el), !lauf.schnell).then(
       (ergebnis) => this.fertig(lauf, ergebnis, sprung, generation),
       () => this.fertig(lauf, 'fehler', sprung, generation),
     );
@@ -527,17 +622,11 @@ export class VideoTakt {
     } else if (lauf.z.sprung !== sprung) {
       // Das Bild stammt von vor dem Sprung: ein Treffer (oder Fehler) gilt trotzdem, ein "sauber" wird verworfen. Danach neu pruefen.
       if (e !== 'sauber') {
-        const neu = entscheideHysterese(lauf, e, this.g.freiNach);
-        lauf.soll = neu.soll;
-        lauf.sauber = neu.sauber;
-        this.gleicheAn(lauf);
+        this.uebernimm(lauf, e);
       }
       lauf.nochmal = true;
     } else {
-      const neu = entscheideHysterese(lauf, e, this.g.freiNach);
-      lauf.soll = neu.soll;
-      lauf.sauber = neu.sauber;
-      this.gleicheAn(lauf);
+      this.uebernimm(lauf, e);
     }
     if (lauf.nochmal) {
       lauf.nochmal = false;
@@ -545,6 +634,20 @@ export class VideoTakt {
     } else {
       this.plane(lauf);
     }
+  }
+
+  // Hysterese anwenden und das Ergebnis zeigen. Haelt der Schleier das Video (Zonen-Leinwand: noch keine 3 s Medienzeit ohne Treffer), wird es
+  // nicht frei, auch wenn die saubere Folge schon reicht (der Zaehler bleibt eine Pruefung vor der Freigabe).
+  private uebernimm(lauf: VideoLauf, e: VideoErgebnis): void {
+    const neu = entscheideHysterese(lauf, e, this.g.freiNach);
+    if (neu.soll === 'frei' && lauf.soll === 'verdeckt' && this.haken.haelt?.(lauf.el, lauf.z)) {
+      lauf.soll = 'verdeckt';
+      lauf.sauber = Math.max(0, this.g.freiNach - 1);
+    } else {
+      lauf.soll = neu.soll;
+      lauf.sauber = neu.sauber;
+    }
+    this.gleicheAn(lauf);
   }
 
   // ---------- Urteilswechsel unter den Wechsel-Grenzen ----------
@@ -582,6 +685,7 @@ export class VideoTakt {
       if (lauf.soll === 'frei') this.letzteFreigabe = jetzt;
       this.haken.wende(lauf.el, lauf.z, lauf.soll);
       this.beiWechsel?.(lauf.el, lauf.z);
+      if (lauf.soll === 'frei' && lauf.armiert) this.starteWaechter(lauf); // frei geworden: ab jetzt Schnitterkennung (V2)
       return;
     }
     lauf.wechselTimer = setTimeout(() => {

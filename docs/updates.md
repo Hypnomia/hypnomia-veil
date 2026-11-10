@@ -8,6 +8,7 @@ New versions of me, and new versions of the Mia Pack. Your pack and your setting
 
 - New cover styles. With the Mia Pack, every face I cover becomes mine, and everything else gets black with my words, mosaic or blur. Without it: mosaic with words, censor bars, a black bar over the eyes, or the whole person in mosaic or blur.
 - My words come in topics from the Mia Pack. Pick one, a few, or all of them under **Cover style**.
+- Videos get my cover styles too, live while they play: I cover only the spots that need it and follow them frame by frame. When I can’t keep up, or the scene jumps, I cover the whole video for a moment. Prefer the whole video covered? Switch off **Only the naughty bits in videos** under **Cover style**.
 - On the adult sites I know, I now hide their ads completely while I swap the previews, and covered preview videos stay silent. Pause gives everything back at once.
 - Pictures inside SVG graphics go through my veil like any other picture.
 - My ad label and my ad links work with the Enter key too.

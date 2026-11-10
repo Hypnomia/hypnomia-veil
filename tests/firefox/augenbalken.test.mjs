@@ -296,7 +296,7 @@ try {
     pruefe(sonder.png.deckendTyp === 'data:image/jpeg' && sonder.png.mosaikTyp === 'data:image/jpeg', 'deckendes PNG und Mosaik bleiben JPEG');
   } else if (!OHNE_TESTBILDER) pruefe(false, 'Sonderfaelle brauchen das Testbild');
 
-  // 3c. Auf einer Seite: Bild mit Balken, Leinwand und Video ganz verdeckt, Pause gibt alles frei
+  // 3c. Auf einer Seite: Bild mit Balken, Canvas ganz verdeckt, Video mit Balken auf den Augen (Zonen-Leinwand), Pause gibt alles frei
   const optionenTab = await driver.getWindowHandle();
   await driver.switchTo().newWindow('tab');
   await driver.get(`${basis}/augenbalken.html`);
@@ -312,8 +312,15 @@ try {
       const i = document.getElementById('bild'); return [i.src.slice(0, 23), getComputedStyle(document.getElementById('leinwand')).filter, getComputedStyle(document.getElementById('film')).filter];`);
     console.log(`firefox: Eye bar auf der Seite: Bild ${await urteil('bild')} (${seite[0]}), Leinwand ${await urteil('leinwand')}, Video ${await urteil('film')}`);
     pruefe(seite[0] === 'data:image/jpeg;base64,', 'Seite: Bild traegt das Ergebnis mit Balken');
-    pruefe((await urteil('leinwand')) === 'verdeckt' && (await urteil('film')) === 'verdeckt', 'Seite: Leinwand und Video mit Gesicht ganz verdeckt');
-    pruefe(seite[1].includes('blur') && seite[2].includes('blur'), 'Seite: verdeckt heisst unscharf');
+    pruefe((await urteil('leinwand')) === 'verdeckt', 'Seite: Canvas mit Gesicht ganz verdeckt');
+    pruefe(seite[1].includes('blur'), 'Seite: verdeckt heisst unscharf');
+    await bis('Video zensiert', async () => (await urteil('film')) === 'zensiert', 40_000);
+    const arten = await bis('Balken im Video', async () => {
+      const roh = await driver.executeScript("return document.getElementById('film').getAttribute('data-veil-video-boxen')");
+      const a = roh ? JSON.parse(roh).arten : [];
+      return a.includes('balken') ? a : null;
+    }, 40_000);
+    pruefe(arten.every((a) => a === 'balken'), `Seite: im Video nur Balken (${arten})`);
     await hook({ pause: true });
     await bis('Pause gilt', async () => (await driver.executeScript('return document.documentElement.dataset.veilSeite ?? null')) === 'aus', 8000);
     const frei = await driver.executeScript(`return [document.getElementById('bild').src.startsWith('data:'), document.querySelectorAll('[data-veil]').length, ['bild','leinwand','film'].every((id) => getComputedStyle(document.getElementById(id)).filter === 'none')];`);

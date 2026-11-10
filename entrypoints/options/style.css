@@ -308,6 +308,12 @@ input[type='range'] {
   margin-top: 8px;
 }
 
+/* Der Schalter fuer Videos ist eine eigene Einstellung unter den Hinweisen zum Stil: etwas mehr Luft nach oben als bei den Schaltern in Reihe (die Seitenhoehe
+   hat eine Grenze, tests/chromium/einstellungen-ordnung.spec.ts, darum nur 4 px mehr). */
+#abschnitt-stil > .schalter {
+  margin-top: 12px;
+}
+
 .schalter input {
   position: absolute;
   opacity: 0;

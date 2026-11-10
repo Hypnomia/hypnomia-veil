@@ -12,6 +12,11 @@ export const ATTR_STRICT = 'data-veil-strict';
 // Die Namen der Testhaken stehen nur im Testbau im Bundle (der Ausdruck faellt ohne Schalter zu einer leeren Zeichenkette zusammen).
 export const ATTR_MS = TESTHAKEN ? 'data-veil-ms' : '';
 export const ATTR_STATUS = TESTHAKEN ? 'data-veil-status' : '';
+// Video unter einer Zonen-Leinwand: das Video selbst ist unsichtbar (opacity 0 per CSS), die Leinwand daneben zeigt das zensierte Bild.
+export const ATTR_LEINWAND = 'data-veil-leinwand';
+// Testhaken der Zonen-Leinwand (nur Testbau, nur Testhost): Ansicht des Videos (frei, zonen, mosaik, ganz) und die gezeigten Boxen (JSON).
+export const ATTR_VIDEO_MODUS = TESTHAKEN ? 'data-veil-video-modus' : '';
+export const ATTR_VIDEO_BOXEN = TESTHAKEN ? 'data-veil-video-boxen' : '';
 
 // Inline-Hintergrund (auch Kurzform `background: url(...)`): dieselbe Auswahl steht in entrypoints/content/style.css.
 // Die Gross-/Kleinschreibung im Attributwert ist egal (`i`). Den Wert liest der Schleier ueber die Langform background-image des Style-Objekts.
@@ -57,3 +62,37 @@ export const ADRESS_TAKT_MS = 400; // Abfrage der eigenen Adresse, nur ohne Navi
 export const TAUSCH_MAX_MS = 3000; // so lange darf das Laden des zensierten Bildes dauern, danach verdeckt
 export const STARTPHASE_NACH_LOAD_MS = 250;
 export const STARTPHASE_MAX_MS = 5000;
+
+// ---------- Videos bereichsweise zensieren (Bauplan Video-Zonen, Leinwand-Wiedergabe) ----------
+// Takt: nach der Antwort startet die naechste Pruefung sofort mit dem naechsten gezeigten Bild (Interview Punkt 2, "immer Maximum"). Es gibt nur
+// eine kleine Untergrenze gegen Leerlauf-Schleifen. Ein schnellerer Erkenner ergibt von selbst mehr Pruefungen je Sekunde, ohne Umbau.
+export const VIDEO_ZONEN_ABSTAND_MIN_MS = 15;
+export const VIDEO_ZONEN_RTT_GRENZE_MS = 260; // Median der letzten 5 Rundlaeufe darueber: sauberer Rueckfall auf ganz verdecken mit Etikett (die Boxen sind bis zu zwei Rundlaeufe plus ein Bild alt: 2 x 260 ms + 50 ms = 0,57 s unter alterMax 0,6 s)
+export const VIDEO_ZONEN_BILD_S = 0.05; // angenommene Bildzeit fuer die Rueckkehr zu den Zonen (rueckkehrOk)
+export const VIDEO_ZONEN_RTT_FENSTER = 5;
+export const VIDEO_ZONEN_ALTER_MAX_S = 0.6; // Boxen aelter als das (Medienzeit seit der letzten Antwort): ganzes Bild decken
+export const VIDEO_ZONEN_SPUR_HALTEN_S = 1.0; // eine Spur haelt so lange Medienzeit ohne Treffer
+export const VIDEO_ZONEN_ZUORDNUNG_IOU = 0.1;
+export const VIDEO_ZONEN_FREI_NACH_S = 3.0; // saubere Medienzeit, bis ein Zonen-Video wieder frei wird (zusaetzlich zu VIDEO_FREI_NACH Pruefungen)
+export const VIDEO_ZONEN_GANZ_ANTEIL = 0.6; // Boxen decken mehr als das vom Bild: ganzes Bild decken
+export const VIDEO_ZONEN_MAX_JE_DOKUMENT = 1;
+export const VIDEO_ZONEN_MIN_B = 200; // kleinere Flaechen (CSS px) gehen ganz verdeckt
+export const VIDEO_ZONEN_MIN_H = 150;
+export const VIDEO_ZONEN_LEINWAND_MAX_SEITE = 1920;
+// Bewegungsschaetzung je Bild (V3b): Graustufenbild dieser Breite, Suchfenster in Bildpunkten dieses Bildes.
+export const VIDEO_ZONEN_GRAU_B = 160;
+export const VIDEO_ZONEN_SUCH_BASIS = 4;
+export const VIDEO_ZONEN_SUCH_MAX = 14;
+export const VIDEO_ZONEN_SAD_UNSICHER = 22; // mittlere Abweichung (von 255) der besten Verschiebung, darueber gilt die Verfolgung als unsicher
+export const VIDEO_ZONEN_KONTRAST_MIN = 3; // flache Schablone: Verschiebung nicht verlaesslich
+export const VIDEO_ZONEN_RAND_BASIS = 0.01; // Sicherheitsrand der gezeigten Box bei sicherer Verfolgung: Anteil der laengeren Bildseite
+export const VIDEO_ZONEN_WACHSTUM_JE_S = 0.25; // bei unsicherer Verfolgung waechst die Box so schnell (Anteil der laengeren Bildseite je s Medienzeit)
+export const VIDEO_ZONEN_ENTSPANNEN_S = 0.12; // so schnell zieht sich eine zu grosse Box wieder zusammen (Zeitkonstante, nur Schrumpfen)
+// Szenenpruefung je gezeigtem Bild (Daumen 32 x 18, Leuchtdichte 0 bis 1).
+export const VIDEO_ZONEN_DAUMEN_B = 32;
+export const VIDEO_ZONEN_DAUMEN_H = 18;
+export const VIDEO_ZONEN_SZENE_SCHWELLE = 0.12; // mittlere Abweichung darueber: Schnitt, dieses Bild ganz decken
+export const VIDEO_ZONEN_ZELLE_SCHWELLE = 0.3; // Zellen mit mehr Abweichung zaehlen als stark veraendert
+export const VIDEO_ZONEN_ZELLEN_ANTEIL = 0.1; // so viele starke Zellen: nur Sofortpruefung, kein Ganz-Decken
+export const VIDEO_SCHNITT_MIN_MS = 300; // freie Videos: nach einem Schnitt fruehestens so lange nach der letzten Pruefung die Sofortpruefung
+export const VIDEO_SPRUNG_MEDIA_S = 0.75; // Sprung der Medienzeit (vor oder zurueck) ueber diesem Wert ohne Ereignis gilt als Sprung

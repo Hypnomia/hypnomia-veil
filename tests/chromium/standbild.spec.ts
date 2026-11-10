@@ -347,8 +347,12 @@ test('Adapter-Seite: Leiste neben dem Video bleibt sichtbar, Cookie-Dialog liegt
       leiste.textContent = 'Like';
       p.appendChild(leiste);
     });
-    const a = await standbildBereit(s);
-    expect(nahe(a.r, a.vr), 'Host liegt genau auf dem Video').toBe(true);
+    await standbildBereit(s);
+    // Die Seite macht den Player hier erst nach dem Legen des Hosts zum Bezug (position: relative); der Lage-Takt (400 ms) zieht den Host nach.
+    await expect
+      .poll(async () => { const b = (await standbild(s))!; return nahe(b.r, b.vr); }, { message: 'Host liegt genau auf dem Video', timeout: 1500, intervals: [100] })
+      .toBe(true);
+    const a = (await standbild(s))!;
     const leiste = await s.evaluate(() => {
       const r = document.getElementById('leiste')!.getBoundingClientRect();
       return { x: r.x, y: r.y, w: r.width, h: r.height };

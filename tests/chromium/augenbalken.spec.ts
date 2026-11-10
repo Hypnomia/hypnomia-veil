@@ -298,7 +298,7 @@ async function setze(einstellungen: Record<string, unknown>) {
 }
 const urteil = (seite: Page, id: string) => seite.evaluate((i) => document.getElementById(i)!.dataset.veil ?? '', id);
 
-test('Eye bar auf einer Seite: das Bild bekommt den Balken, Leinwand und Video mit Gesicht werden ganz verdeckt, die Pause gibt alles frei', async () => {
+test('Eye bar auf einer Seite: das Bild bekommt den Balken, die Canvas-Leinwand wird ganz verdeckt, das Video bekommt den Balken auf den Augen (Zonen-Leinwand), die Pause gibt alles frei', async () => {
   test.setTimeout(150_000);
   await brauchtBild('sfw', BILD_MIT_GESICHT);
   await setze({ preset: 'augenbalken', pause: false });
@@ -322,13 +322,20 @@ test('Eye bar auf einer Seite: das Bild bekommt den Balken, Leinwand und Video m
     console.log(`chromium: Eye bar auf der Seite: Bild zensiert, ${dunkel} schwarze Pixel (${((dunkel / (bildPixel.b * bildPixel.h)) * 100).toFixed(1)} %)`);
     expect(dunkel).toBeGreaterThan(5000);
     expect(dunkel / (bildPixel.b * bildPixel.h)).toBeLessThan(0.08); // ein Balken, kein ganzes Bild
-    // Leinwand und Video mit Gesicht: das Urteil heisst ganz verdeckt (Eye bar gilt hier noch nicht, die Hilfe sagt es)
+    // Canvas-Element mit Gesicht: ganz verdeckt (Eye bar gilt dort noch nicht). Video mit Gesicht: die Zonen-Leinwand legt den schwarzen Balken auf die Augen.
     await expect.poll(() => urteil(seite, 'leinwand'), { timeout: 30_000 }).not.toBe('');
-    await expect.poll(() => urteil(seite, 'film'), { timeout: 30_000 }).not.toBe('');
+    await expect.poll(() => urteil(seite, 'film'), { timeout: 30_000 }).toBe('zensiert');
     const medien = await seite.evaluate(() => ['leinwand', 'film'].map((id) => ({ id, urteil: document.getElementById(id)!.dataset.veil, filter: getComputedStyle(document.getElementById(id)!).filter, opacity: getComputedStyle(document.getElementById(id)!).opacity })));
-    console.log(`chromium: Eye bar Leinwand und Video: ${JSON.stringify(medien)}`);
-    for (const m of medien) expect(m.urteil, `${m.id} mit Gesicht ganz verdeckt`).toBe('verdeckt');
-    for (const m of medien) expect(m.filter).toContain('blur');
+    console.log(`chromium: Eye bar Canvas und Video: ${JSON.stringify(medien)}`);
+    expect(medien[0]!.urteil, 'Canvas mit Gesicht ganz verdeckt').toBe('verdeckt');
+    expect(medien[0]!.filter).toContain('blur');
+    expect(medien[1]!.opacity, 'das Video selbst ist unter der Leinwand unsichtbar').toBe('0');
+    await expect
+      .poll(async () => {
+        const roh = await seite.evaluate(() => document.getElementById('film')!.getAttribute('data-veil-video-boxen'));
+        return roh ? (JSON.parse(roh).arten as string[]) : [];
+      }, { timeout: 30_000, intervals: [150] })
+      .toContain('balken');
     // Pause: Bild frei (Original, keine Data-URL), Leinwand und Video ohne Urteil und ohne Filter
     await setze({ pause: true });
     await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.veilSeite ?? null), { timeout: 5000 }).toBe('aus');

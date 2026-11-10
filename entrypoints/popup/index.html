@@ -67,9 +67,19 @@
           <p id="abdeckung-kurz" class="hinweis"></p>
           <button id="aendern" class="klein textknopf" type="button" aria-expanded="false" aria-controls="abdeckung-gruppe">Change</button>
         </div>
+        <p id="video-langsam" class="hinweis" role="status" hidden>Too slow to follow closely here. I’m covering the whole video.</p>
       </section>
 
       <div id="abdeckung-gruppe" class="gruppe" hidden>
+        <section>
+          <label class="schalter">
+            <input id="video-zonen" type="checkbox" role="switch" />
+            <span class="regler" aria-hidden="true"></span>
+            <span class="text"><strong>Only the naughty bits in videos</strong><small>On: I watch along and cover only what you shouldn’t see, in your cover style (a little more battery). Off: the whole video.</small></span>
+          </label>
+
+        </section>
+
         <section aria-labelledby="stimmung-titel">
           <div class="kopf">
             <h2 id="stimmung-titel">Mia’s mood</h2>

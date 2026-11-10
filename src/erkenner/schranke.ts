@@ -4,17 +4,28 @@
 export class Schranke {
   private frei: number;
   private readonly wartende: Array<() => void> = [];
+  // So viele der vordersten Wartenden haben Vorrang.
+  private vorrangZahl = 0;
 
   constructor(plaetze: number) {
     this.frei = Math.max(1, Math.floor(plaetze));
   }
 
   // Wartet auf einen freien Platz und liefert die Funktion, die den Platz wieder abgibt (einmalig wirksam).
-  async betrete(): Promise<() => void> {
+  // `vorrang`: stellt sich vor alle Wartenden ohne Vorrang (hinter die schon wartenden mit Vorrang), ohne einen laufenden Platz zu verdraengen.
+  async betrete(vorrang = false): Promise<() => void> {
     if (this.frei > 0) {
       this.frei--;
     } else {
-      await new Promise<void>((weiter) => this.wartende.push(weiter));
+      await new Promise<void>((weiter) => {
+        if (vorrang) {
+          this.vorrangZahl++;
+          this.wartende.splice(this.vorrangZahl - 1, 0, () => {
+            this.vorrangZahl--;
+            weiter();
+          });
+        } else this.wartende.push(weiter);
+      });
     }
     let abgegeben = false;
     return () => {

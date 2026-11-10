@@ -401,6 +401,8 @@ test('Adapter-Selektor: nur das Video in #player wird gesperrt, ein groesseres d
 // Entscheidung 193 (Live-Lauf 18 B): ein vom Schleier verdecktes Vorschauvideo auf einer Erwachsenenseite gibt keinen Ton; Pause gibt ihn zurueck.
 test('Verdeckte Schleife mit Ton auf der Erwachsenenseite ist stumm, Pause gibt den Ton zurueck; das Hauptvideo bleibt unberuehrt', async () => {
   test.skip(!existsSync(path.resolve(wurzel, '../05 Testbilder/nsfw/IMG_0260.jpg')), 'ohne Testbilder');
+  // Das Beitragsvideo soll hier "verdeckt" sein (ganzes Video); mit der Zonen-Leinwand waere es "zensiert". Vorschau-Videos bleiben in beiden Modi ganz verdeckt.
+  await setzeEinstellungen({ video: 'ganz' });
   const s = await context.newPage();
   try {
     await s.goto(`http://pornhub.veil-erwachsen.test:${port}/erwachsen-ton.html`);

@@ -178,6 +178,7 @@ export async function sendePruefe(
   e: Einstellungen,
   rendern: boolean,
   packStand?: number,
+  vorrang = false,
 ): Promise<AntwortPruefe> {
   const id = `${idPraefix}-${++zaehler}`;
   const angepasst = zonenAnpassung?.(e) ?? null;
@@ -198,6 +199,7 @@ export async function sendePruefe(
       ...(angepasst?.ganzVerdecken ? { ganzVerdecken: true } : {}),
     },
     rendern,
+    ...(vorrang ? { vorrang: true as const } : {}),
   };
   // Zeitgrenze: ein haengender Erkenner (oder ein haengender Bildserver beim Nachladen) darf das Element nicht ewig offen halten.
   // Nach Ablauf gilt die Anfrage als Fehler; die Antwort, die vielleicht spaeter noch kommt, wird verworfen.

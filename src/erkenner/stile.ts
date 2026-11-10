@@ -72,7 +72,7 @@ function bildMass(q: CanvasImageSource): { b: number; h: number } {
 
 // Mias Gesicht: der Ausschnitt `a` (x, y, w, h im Patch-Bild) wird formatfuellend auf die Gesichtsflaeche gesetzt (bei `balken` gedreht
 // um die Mitte, sonst achsenparallel), mit abgerundeten Ecken und pinkem Rahmen. false, wenn nicht zu zeichnen (leer oder geschlossen).
-function zeichneGesicht(ctx: Kontext, f: Flaeche, patch: CanvasImageSource, a: Box): boolean {
+export function zeichneGesicht(ctx: Kontext, f: Pick<Flaeche, 'box' | 'balken'>, patch: CanvasImageSource, a: Box): boolean {
   const mitte = f.balken ? f.balken.mitte : ([f.box[0] + f.box[2] / 2, f.box[1] + f.box[3] / 2] as [number, number]);
   const w = f.balken ? f.balken.breite : f.box[2];
   const h = f.balken ? f.balken.hoehe : f.box[3];
@@ -115,7 +115,7 @@ function zeichneGesicht(ctx: Kontext, f: Flaeche, patch: CanvasImageSource, a: B
   }
 }
 
-type Kontext = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+export type Kontext = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
 function neueLeinwand(b: number, h: number): { leinwand: OffscreenCanvas; ctx: Kontext } {
   const leinwand = new OffscreenCanvas(Math.max(1, Math.round(b)), Math.max(1, Math.round(h)));
@@ -245,15 +245,16 @@ const WORT_BREITE = 0.8; // hoechstens 80 % der Breite der Flaeche
 const WORT_HOEHE = 0.5; // und hoechstens die Haelfte der Hoehe
 
 // Ein Wort waagerecht in die Mitte der Flaeche (Box). Auf Mosaik liegt eine dunkle Unterlage hinter dem Wort, damit es lesbar bleibt.
-function zeichneWort(ctx: Kontext, text: string, box: Box, aufMosaik: boolean): void {
+// `familie`: die Schrift (der Erkenner nennt `VEIL Wort`, die Videozensur im Content-Script die Seitenfamilie `VEIL Rounded <zufall>`, gleiche Datei).
+export function zeichneWort(ctx: Kontext, text: string, box: Box, aufMosaik: boolean, familie = WORT_FAMILIE): void {
   const [x, y, w, h] = box;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `800 100px "${WORT_FAMILIE}", "Arial Rounded MT Bold", system-ui, sans-serif`;
+  ctx.font = `800 100px "${familie}", "Arial Rounded MT Bold", system-ui, sans-serif`;
   const m = Math.max(1, ctx.measureText(text).width);
   const groesse = Math.max(6, Math.min((100 * w * WORT_BREITE) / m, h * WORT_HOEHE));
-  ctx.font = `800 ${groesse}px "${WORT_FAMILIE}", "Arial Rounded MT Bold", system-ui, sans-serif`;
+  ctx.font = `800 ${groesse}px "${familie}", "Arial Rounded MT Bold", system-ui, sans-serif`;
   const tb = ctx.measureText(text).width;
   const cx = x + w / 2;
   const cy = y + h / 2;

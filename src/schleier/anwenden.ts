@@ -55,7 +55,12 @@ export function setzeUrteilMelder(fn: ((el: Element, z: Zustand) => void) | null
 
 export function setzeUrteil(el: Element, z: Zustand, urteil: Urteil, ms: number | null): void {
   // Eingesetzte Vorschauen sind keine Treffer: nicht fuer die Steigerung melden, aber kennzeichnen (Freilegen unterscheidet sie).
-  if (urteil === 'zensiert' && z.urteil !== 'zensiert' && !z.ersetzt) beiNeuemZensiert?.(el);
+  // Ein Video zaehlt nur beim ersten Mal (Zonen-Leinwand, Rueckfall auf ganz und zurueck waeren sonst jedes Mal ein neues "zensiert"); eine neue Quelle
+  // (Zuruecksetzen in schleier.ts vergiss) beginnt neu.
+  if (urteil === 'zensiert' && z.urteil !== 'zensiert' && !z.ersetzt && !(z.art === 'video' && z.videoGezaehlt)) {
+    if (z.art === 'video') z.videoGezaehlt = true;
+    beiNeuemZensiert?.(el);
+  }
   z.urteil = urteil;
   z.urteilMs = ms;
   beiUrteilAenderung?.(el, z);

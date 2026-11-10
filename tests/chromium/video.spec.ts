@@ -62,7 +62,8 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   test.skip(!bilderDa, 'VEIL_OHNE_TESTBILDER=1');
   await worker.evaluate(async () => {
-    await (globalThis as any).chrome.storage.local.remove('einstellungen');
+    // Diese Faelle pruefen das Verhalten "ganzes Video" (Blur, Hysterese, Takt); die Zonen-Leinwand hat eigene Faelle (video-zonen.spec.ts).
+    await (globalThis as any).chrome.storage.local.set({ einstellungen: { video: 'ganz' } });
   });
 });
 
@@ -492,5 +493,58 @@ test('p) vorlaeufig verdecktes Video: das echte Urteil "verdeckt" ist kein Wechs
   await abwarten(2500);
   expect(await urteil(seite, 'vl')).toBe('verdeckt');
   expect(await wechselZahl(seite)).toBe(1);
+  await seite.close();
+});
+
+// V1 (Video-Zonen): geschuetzte Wiedergabe (EME) gilt als nicht lesbar. drawImage liefert dort schwarze Bilder, die Pruefung sah nichts und gaebe das
+// Video frei. Der Test haengt dem Element echte MediaKeys (ClearKey) an, bevor es Daten bekommt: das Video muss ganz verdeckt werden, obwohl sein Bild
+// harmlos ist. (Ein selbst gesetzter Wert auf dem Element waere in der Welt des Content-Scripts nicht sichtbar.)
+test('q) DRM (mediaKeys gesetzt): nie frei, ganz verdeckt', async () => {
+  test.setTimeout(90_000);
+  const seite = await oeffne();
+  const ok = await seite.evaluate(async () => {
+    try {
+      const v = document.createElement('video');
+      v.id = 'drm';
+      v.muted = true;
+      v.loop = true;
+      const zugang = await navigator.requestMediaKeySystemAccess('org.w3.clearkey', [
+        { initDataTypes: ['webm', 'keyids'], videoCapabilities: [{ contentType: 'video/webm; codecs="vp8"' }] },
+      ]);
+      await v.setMediaKeys(await zugang.createMediaKeys());
+      document.getElementById('platz')!.appendChild(v);
+      v.src = (window as any).neueQuelle();
+      void v.play().catch(() => {});
+      return (v as any).mediaKeys != null;
+    } catch {
+      return false;
+    }
+  });
+  expect(ok, 'ClearKey in diesem Browser nicht verfuegbar').toBe(true);
+  await expect.poll(() => urteil(seite, 'drm'), { timeout: 20_000 }).toBe('verdeckt');
+  await abwarten(2500);
+  expect(await urteil(seite, 'drm')).toBe('verdeckt');
+  const folge = await wechsel(seite, 'drm');
+  expect(folge.filter((w) => w.v === 'frei').length, JSON.stringify(folge.map((w) => [w.v, w.ct]))).toBe(0);
+  await seite.close();
+});
+
+// V2 (Video-Zonen): Schnitt-Sofortpruefung auch bei freien Videos. ?modus=schnitt: harmlose harte Schnitte alle 600 ms, der Treffer beginnt mit einem
+// Schnitt bei 3 s. Ohne V2 haette das freie Video bis zur naechsten Takt-Pruefung (bis 1 s) offen gelegen.
+test('r) Schnitt-Sofortpruefung: Schnitt bis verdeckt im Median unter 400 ms, harmlose Schnitte hoechstens 2,1 Pruefungen je s', async () => {
+  test.setTimeout(150_000);
+  const seite = await oeffne('schnitt');
+  await neuesVideo(seite, { id: 'sn', autoplay: true });
+  const p0 = await pruefungen(seite);
+  const t0 = Date.now();
+  const verdeckt = async () => (await wechsel(seite, 'sn')).filter((w) => w.v === 'verdeckt' && w.ct >= 2.9 && w.ct < 4.5).length;
+  await expect.poll(verdeckt, { timeout: 100_000, intervals: [500] }).toBeGreaterThanOrEqual(3);
+  const rate = ((await pruefungen(seite)) - p0) / ((Date.now() - t0) / 1000);
+  const delta = (await wechsel(seite, 'sn')).filter((w) => w.v === 'verdeckt' && w.ct >= 2.9 && w.ct < 4.5).map((w) => w.ct - 3).sort((a, b) => a - b);
+  const med = delta[delta.length >> 1]!;
+  console.log(`chromium: Schnitt bis verdeckt ${delta.map((d) => d.toFixed(2)).join(', ')} s (Median ${med.toFixed(2)} s), ${rate.toFixed(2)} Pruefungen je s mit harmlosen Schnitten`);
+  expect(med).toBeLessThan(0.4);
+  expect(rate).toBeLessThanOrEqual(2.1);
+  expect(rate).toBeGreaterThan(0.5);
   await seite.close();
 });

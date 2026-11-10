@@ -20,7 +20,8 @@ const url = (seite: string) => `chrome-extension://${id}/${seite}`;
 // Nacht N2: Grenze gegen Rueckschritte bei 360 x 780 (vorher 5,36 Bildschirme).
 // Zensur-Presets: elf kompakte Karten (zwei je Zeile, Figur und Name) statt drei Knoepfen: gemessen 5,35 Bildschirme, Grenze von 5 auf 5,45
 // (Runde 3: 5,7).
-const GRENZE_360 = 5.45;
+// Echtzeit-Videozensur: Schalter "Video" (Zonen oder ganz) unter Cover style, gemessen 5,46 Bildschirme (4257 px), Grenze 5,5.
+const GRENZE_360 = 5.5;
 const FERTIG = { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } };
 
 test.describe.configure({ mode: 'serial' });

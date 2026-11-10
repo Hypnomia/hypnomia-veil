@@ -11,6 +11,7 @@ import {
   ladeEinstellungen,
   waehlePreset,
   type Einstellungen,
+  type VideoModus,
   type Zone,
 } from '../../src/einstellungen';
 import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_WORT_OHNE_PACK, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
@@ -49,6 +50,7 @@ const stimmung = el<HTMLInputElement>('stimmung');
 const stimmungWert = el<HTMLOutputElement>('stimmung-wert');
 const strict = el<HTMLInputElement>('strict');
 const zonenListe = el<HTMLUListElement>('zonen');
+const videoSchalter = el<HTMLInputElement>('video-zonen');
 const stilHinweis = el<HTMLParagraphElement>('stil-hinweis');
 const packHinweisZeile = el<HTMLParagraphElement>('preset-pack-hinweis');
 const zonenHinweisZeile = el<HTMLParagraphElement>('zonen-hinweis');
@@ -192,6 +194,7 @@ function zeichne(e: Einstellungen, erzwingen = false): void {
   zeigeStimmung(e.schwelle);
 
   zeichnePreset(e);
+  videoSchalter.checked = e.video === 'zonen';
   strict.checked = e.strict;
 
   for (const zone of ZONEN) {
@@ -265,6 +268,11 @@ stimmung.addEventListener('input', () => {
 stimmung.addEventListener('change', () => {
   const wert = Number(stimmung.value);
   void aendere(() => ({ schwelle: wert }));
+});
+
+videoSchalter.addEventListener('change', () => {
+  const video: VideoModus = videoSchalter.checked ? 'zonen' : 'ganz';
+  void aendere(() => ({ video }));
 });
 
 strict.addEventListener('change', () => {

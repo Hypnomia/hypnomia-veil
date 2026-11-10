@@ -110,6 +110,16 @@ export function ganzesBildBehandlung(preset: Preset): Behandlung {
   return k === null || k === 'mia-gesicht' || k === 'balken' ? 'mosaik' : k;
 }
 
+// Behandlung einer Flaeche der Zone `zone` im Preset, aus der Tabelle (die Videozensur nimmt sie, wenn eine Flaeche keine eigene Behandlung traegt;
+// der Erkenner setzt `behandlung` nach derselben Regel, siehe berechneFlaechen in src/erkenner/zonen.ts): Augenbalken immer Balken, Zensurbalken
+// auf den Augen Balken, Gesicht nach `gesicht`, alles andere nach `koerper`. Ohne Eintrag (Gesicht oder Koerper null) Mosaik, nie "nichts".
+export function behandlungFuerZone(preset: Preset, zone: string): Behandlung {
+  const d = PRESETS[preset];
+  if (d.augen === 'nur-balken') return 'balken';
+  if (zone === 'eyes' && d.augen === 'balken-immer') return 'balken';
+  return (zone === 'face' ? d.gesicht : d.koerper) ?? 'mosaik';
+}
+
 // Zonen, die ein Preset wirklich auswertet (statt der Schalter): Augenbalken nur Augen; Zensurbalken die Schalter plus Augen.
 // Andere Presets: die Schalter unveraendert (dasselbe Objekt).
 export function zonenFuerPreset<T extends { an: boolean; bedeckt?: boolean }>(preset: Preset | undefined, zonen: Record<string, T>): Record<string, T> {
@@ -237,6 +247,8 @@ export function personenGruppen(
   zaehlt: readonly boolean[],
   breite: number,
   hoehe: number,
+  // Rand um die Huelle als Anteil der laengeren Huellenseite. Die Videozensur fasst schon fertige Huellen (mit Rand) je Bild neu zusammen und nimmt 0.
+  personRand = PERSON_RAND,
 ): [number, number, number, number][] {
   const n = boxen.length;
   const eltern = boxen.map((_, i) => i);
@@ -277,7 +289,7 @@ export function personenGruppen(
       x2 = Math.max(x2, x + w);
       y2 = Math.max(y2, y + h);
     }
-    const d = PERSON_RAND * Math.max(x2 - x1, y2 - y1);
+    const d = personRand * Math.max(x2 - x1, y2 - y1);
     const bx1 = Math.max(0, Math.floor(x1 - d));
     const by1 = Math.max(0, Math.floor(y1 - d));
     const bx2 = Math.min(breite, Math.ceil(x2 + d));

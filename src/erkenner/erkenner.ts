@@ -379,7 +379,7 @@ function fehlerAntwort(id: string, fehler: string, status?: number): AntwortPrue
 // Eine Pruefung auf einem der freien Plaetze; die Wartezeit davor fliesst in `ms.warte` ein.
 export async function pruefe(n: NachrichtErkennerPruefe, herkunft?: string): Promise<AntwortPruefe> {
   const vorSchranke = jetzt();
-  const abgeben = await schranke.betrete();
+  const abgeben = await schranke.betrete(n.vorrang === true);
   try {
     return await pruefeAufPlatz(n, jetzt() - vorSchranke, herkunft);
   } finally {

@@ -14,14 +14,18 @@ import {
   PACKBILD_MAX_BYTES,
   PACKBILD_MAX_SEITE,
   PACKBILD_MAX_SEITE_CHIBI,
+  PACKBILD_MAX_SEITE_PATCH,
   PACKBILD_MAX_SEITE_WERBUNG,
   type AntwortFehler,
   type AntwortPackBild,
+  type AntwortPackWort,
   type NachrichtErkennerPackBild,
 } from '../nachrichten';
 import { horchePackGeaendert, leseDatei, leseMeta, mitLesePlatz } from '../pack/db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from '../pack/format';
-import { hashe } from '../pack/patches';
+import { hashe, waehleGesichtsPatch } from '../pack/patches';
+import { ladeWoerter } from '../pack/woerter';
+import { MAX_THEMEN, waehleWort } from '../presets.ts';
 import { waehleVorschauNamen } from '../pack/wahl';
 import { STUFEN_WAHL, type StufeWahl } from '../einstellungen';
 import { formatMasse, WERBE_FORMATE, type Freischaltung, type PackMeta, type WerbeFormat } from '../pack/vertrag';
@@ -215,9 +219,49 @@ function begrenze(wunsch: number | undefined, standard: number): number {
   return typeof wunsch === 'number' && Number.isFinite(wunsch) ? Math.min(standard, Math.max(32, Math.round(wunsch))) : standard;
 }
 
-export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<AntwortPackBild | AntwortFehler> {
+// Mias Gesicht fuer Zonen-Videos: das stabil gewaehlte Patch-Bild MIT Gesicht (src/pack/patches.ts waehleGesichtsPatch, nur mit Freischaltung
+// stil:mia-patch) auf hoechstens `maxSeite` verkleinert als JPEG, dazu der Gesichtsausschnitt in den Pixeln des gelieferten Bildes. Bleibt je Schluessel
+// gleich, solange das Pack gleich bleibt. Ist die Gesichtssuche noch nicht fertig, ist es `ok: false` (die Suche wird dabei angestossen).
+async function liefereGesicht(n: NachrichtErkennerPackBild): Promise<AntwortPackBild | AntwortFehler> {
+  const wahl = await waehleGesichtsPatch(n.schluessel, typeof n.packStand === 'number' ? n.packStand : undefined);
+  if (!wahl) return fehler('kein Patch-Bild mit Gesicht');
+  try {
+    const q = wahl.bild as { width?: number; height?: number };
+    const b = q.width ?? 0;
+    const h = q.height ?? 0;
+    if (!(b > 0 && h > 0)) return fehler('Patch-Bild ohne Masse');
+    const maxSeite = begrenze(n.maxSeite, PACKBILD_MAX_SEITE_PATCH);
+    const skala = Math.min(1, maxSeite / Math.max(b, h));
+    const zb = Math.max(1, Math.round(b * skala));
+    const zh = Math.max(1, Math.round(h * skala));
+    const leinwand = document.createElement('canvas');
+    leinwand.width = zb;
+    leinwand.height = zh;
+    const ctx = leinwand.getContext('2d');
+    if (!ctx) return fehler('kein 2D-Kontext');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(wahl.bild, 0, 0, zb, zh);
+    const [ax, ay, aw, ah] = wahl.ausschnitt;
+    return { ok: true, dataUrl: leinwand.toDataURL('image/jpeg', 0.85), breite: zb, hoehe: zh, name: wahl.name, ausschnitt: [ax * skala, ay * skala, aw * skala, ah * skala] };
+  } catch (e) {
+    return fehler(String((e as Error)?.message ?? e));
+  } finally {
+    wahl.freigeben();
+  }
+}
+
+// Ein Wort fuer eine Spur eines Zonen-Videos: gleiche Wahl wie bei Bildern (src/presets.ts waehleWort, stabil per Hash des Schluessels).
+async function liefereWort(n: NachrichtErkennerPackBild): Promise<AntwortPackWort | AntwortFehler> {
+  const datei = await ladeWoerter(typeof n.packStand === 'number' ? n.packStand : undefined).catch(() => null);
+  const themen = Array.isArray(n.themen) ? n.themen.filter((t): t is string => typeof t === 'string').slice(0, MAX_THEMEN) : null;
+  return { ok: true, wort: waehleWort(n.schluessel, datei, themen) };
+}
+
+export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<AntwortPackBild | AntwortPackWort | AntwortFehler> {
   try {
     if (typeof n.schluessel !== 'string' || n.schluessel.length === 0 || n.schluessel.length > 2048) return fehler('Schluessel fehlt oder ist zu lang');
+    if (n.rolle === 'gesicht') return await liefereGesicht(n);
+    if (n.rolle === 'wort') return await liefereWort(n);
     let m = await ladeMeta();
     // Kein Pack oder keine Freischaltung kann auch ein veralteter Stand sein (die Meldung ueber ein neues Pack kommt nicht immer an):
     // einmal frisch lesen, bevor die Antwort negativ ausfaellt.

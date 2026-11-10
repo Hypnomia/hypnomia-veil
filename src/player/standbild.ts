@@ -17,6 +17,7 @@ import { SEITEN_TEXT } from '../oberflaeche/design/familie';
 import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { spiralAuge } from '../oberflaeche/design/motive';
 import { eigeneWurzel } from '../schleier/eigene';
+import { legeAufRechteck, istFestPositioniert, zIndexFuerStandbild, Z_DECKEL } from '../schleier/lage';
 
 // Testhaken nur im Testbau: ohne Schalter faellt das Attribut samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN_S: boolean = import.meta.env.WXT_TESTHAKEN === '1';
@@ -24,7 +25,6 @@ const ATTR_STANDBILD = TESTHAKEN_S ? 'data-veil-standbild' : '';
 const ATTR_GELADEN = TESTHAKEN_S ? 'data-veil-standbild-geladen' : '';
 
 const LAGE_TAKT_MS = 400;
-const Z_DECKEL = 9999; // hoechster z-index des Hosts: nie ueber Dialoge und Leisten der Seite ausserhalb des Players (K2, zweite Lesung)
 const SCHLUESSEL_MAX = 512;
 // Session 16 (UX 8b Nr. 20): kleines Etikett mit Spiral-Auge oben links, damit das Standbild als Mias Deckel erkennbar ist und sagt, dass erst
 // das Quiz kommt. Kein Knopf: der Host laesst alle Klicks zum Player der Seite durch (Abspielen oeffnet den Riegel mit "Pause Mia").
@@ -300,75 +300,20 @@ export class Standbild {
     }
   }
 
-  // z-index des Hosts: um eins ueber dem hoechsten numerischen z-index von Video und (beim Anker) den positionierten Nachfahren des Ankers, damit
-  // weder ein Video mit eigenem z-index noch eine Poster-Ebene des Players darueber malt. Ein Video ohne z-index ergibt 0.
+  // z-index des Hosts (Rechnung in src/schleier/lage.ts).
   private zFuer(v: HTMLVideoElement, f: Flaeche): number {
-    let z = 0;
-    const lies = (el: Element): void => {
-      try {
-        const n = parseInt(getComputedStyle(el).zIndex, 10);
-        if (Number.isFinite(n) && n > z) z = n;
-      } catch {
-        // Element weg
-      }
-    };
-    lies(v);
-    if (f.deckt !== v) {
-      // Nur Nachfahren, deren Rechteck die Videoflaeche schneidet (Poster-Ebenen, Huellen): Bedienleisten daneben und Teile der Seite zaehlen nicht.
-      let vr: DOMRect;
-      try {
-        vr = v.getBoundingClientRect();
-      } catch {
-        return Math.min(z + 1, Z_DECKEL);
-      }
-      let i = 0;
-      for (const el of f.deckt.querySelectorAll('*')) {
-        if (el === f.host || el === v) continue;
-        if (++i > 400) break;
-        const r = el.getBoundingClientRect();
-        if (r.right <= vr.left || r.left >= vr.right || r.bottom <= vr.top || r.top >= vr.bottom) continue;
-        lies(el);
-      }
-      // Auch Vorfahren des Videos bis zum Anker (positionierte Huellen mit z-index).
-      for (let p: Element | null = v.parentElement; p && p !== f.deckt; p = p.parentElement) lies(p);
-    }
-    return Math.min(z + 1, Z_DECKEL);
+    return zIndexFuerStandbild(v, f.deckt, f.host);
   }
 
-  // Legt den Host auf die Flaeche des Videos (getBoundingClientRect, damit Transform, translate(-50%), Skalierung und fixed stimmen): der
-  // Bezugspunkt des Hosts wird gemessen, indem er mit bekannter Groesse auf 0/0 liegt. Stimmt die Lage schon, kostet es nur zwei Messungen.
+  // Legt den Host auf die Flaeche des Videos (Rechnung in src/schleier/lage.ts). Gedeckt wird nur die Videoflaeche (Bedienleisten und Knoepfe
+  // daneben im Anker bleiben sichtbar); der Host steht im Anker, damit sein z-index ueber dessen Poster-Ebenen liegt (K2, zweite Lesung, Fund 1).
   private lege(v: HTMLVideoElement, f: Flaeche, zwingen = false): void {
     if (!v.isConnected || !f.deckt.isConnected) return;
-    // Gedeckt wird nur die Videoflaeche (Bedienleisten und Knoepfe daneben im Anker bleiben sichtbar); der Host steht im Anker, damit sein
-    // z-index ueber dessen Poster-Ebenen liegt (K2, zweite Lesung, Fund 1).
     const t = v.getBoundingClientRect();
     if (!(t.width > 0 && t.height > 0)) return;
-    const s = f.host.style;
-    const h = f.host.getBoundingClientRect();
-    const nah = (a: number, b: number) => Math.abs(a - b) < 0.5;
-    if (!zwingen && nah(t.left, h.left) && nah(t.top, h.top) && nah(t.width, h.width) && nah(t.height, h.height)) return;
     // Im Anker (positioniert, auch fest oder klebend) ist der Anker der Bezug: absolute. Als Geschwister eines festen Videos: fixed.
     // Klebende Videos folgen ueber den Rollen-Horcher.
-    let fest = false;
-    if (f.deckt === v) {
-      try {
-        fest = getComputedStyle(v).position === 'fixed';
-      } catch {
-        fest = false;
-      }
-    }
-    s.setProperty('position', fest ? 'fixed' : 'absolute', 'important');
-    s.setProperty('left', '0', 'important');
-    s.setProperty('top', '0', 'important');
-    s.setProperty('width', '100px', 'important');
-    s.setProperty('height', '100px', 'important');
-    const m = f.host.getBoundingClientRect();
-    const sx = m.width > 0 ? m.width / 100 : 1;
-    const sy = m.height > 0 ? m.height / 100 : 1;
-    s.setProperty('left', `${(t.left - m.left) / sx}px`, 'important');
-    s.setProperty('top', `${(t.top - m.top) / sy}px`, 'important');
-    s.setProperty('width', `${t.width / sx}px`, 'important');
-    s.setProperty('height', `${t.height / sy}px`, 'important');
+    legeAufRechteck(f.host, t, f.deckt === v && istFestPositioniert(v), zwingen);
   }
 
   private entferne(v: HTMLVideoElement): void {

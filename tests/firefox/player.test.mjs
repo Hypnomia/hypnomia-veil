@@ -342,6 +342,8 @@ try {
   // Entscheidung 193 (Live-Lauf 18 B, in Firefox gefunden): verdecktes Vorschauvideo mit Ton auf der Erwachsenenseite ist stumm, Pause gibt den Ton zurueck.
   await fall('Verdeckte Schleife mit Ton auf der Erwachsenenseite ist stumm, Pause gibt den Ton zurueck', async () => {
     if (!existsSync(path.resolve(wurzel, '../05 Testbilder/nsfw/IMG_0260.jpg'))) return console.log('firefox player: Ton-Fall uebersprungen (ohne Testbilder)');
+    // Das Beitragsvideo soll hier "verdeckt" sein (ganzes Video); mit der Zonen-Leinwand waere es "zensiert". Vorschau-Videos bleiben in beiden Modi ganz verdeckt.
+    await einstellungenAendern({ video: 'ganz' });
     await driver.get(`http://pornhub.veil-erwachsen.test:${port}/erwachsen-ton.html`);
     await bis('Ton-Video bereit', () => driver.executeScript(() => document.documentElement.dataset.tonBereit === '1'), 30_000);
     const zustand = (id) => driver.executeScript((i) => { const v = document.getElementById(i); return { veil: v.getAttribute('data-veil'), muted: v.muted }; }, id);
@@ -353,7 +355,7 @@ try {
     pruefe((await zustand('haupt')).muted === false, 'Hauptvideo behaelt den Ton');
     await einstellungenAendern({ pause: true });
     await bis('Ton zurueck nach Pause', async () => (await ton()).muted === false, 5000);
-    await einstellungenAendern({ pause: false });
+    await einstellungenAendern({ pause: false, video: 'zonen' });
   });
 
   await fall('Adapter-Selektor: nur das Video in #player gesperrt, groesseres daneben laeuft frei', async () => {

@@ -12,6 +12,11 @@ export const BEDECKBARE_ZONEN: ReadonlySet<Zone> = new Set<Zone>(['breast', 'gen
 import { nutztMiasGesicht, STANDARD_PRESET, THEMA_ID_MUSTER, MAX_THEMEN, istPreset, presetAusStil, zonenFuerPreset as zonenFuerPresetAllgemein, type Preset } from './presets.ts';
 export { PRESET_IDS, type Preset } from './presets.ts';
 
+// Videos (Bauplan Video-Zonen): 'zonen' = laufende Videos werden nur an den erkannten Stellen verdeckt (Leinwand-Wiedergabe, Stil wie bei Bildern),
+// 'ganz' = das ganze Video unscharf wie bisher. Standard 'zonen'; ist ein Video nicht dafuer geeignet, gilt fuer dieses Video 'ganz'.
+export type VideoModus = 'zonen' | 'ganz';
+export const VIDEO_MODI: readonly VideoModus[] = ['zonen', 'ganz'];
+
 export interface ZonenEinstellung {
   an: boolean;
   bedeckt?: boolean;
@@ -25,6 +30,7 @@ export interface Einstellungen {
   preset: Preset;
   // Wort-Themen der Presets mit Woertern (Kennungen aus dem Pack). null: alle Themen des Packs (Standard), []: keins, dann steht "MIA" da.
   woerterThemen: string[] | null;
+  video: VideoModus;
   rand: number;
   zonen: Record<Zone, ZonenEinstellung>;
   ausnahmen: string[];
@@ -140,6 +146,7 @@ export const STANDARD: Einstellungen = {
   schwelle: 0.1,
   preset: STANDARD_PRESET,
   woerterThemen: null,
+  video: 'zonen',
   rand: 0.15,
   zonen: {
     eyes: { an: false },
@@ -213,6 +220,7 @@ export function vervollstaendige(roh: unknown): Einstellungen {
     woerterThemen: Array.isArray(r.woerterThemen)
       ? [...new Set(r.woerterThemen.filter((t): t is string => typeof t === 'string' && THEMA_ID_MUSTER.test(t)))].slice(0, MAX_THEMEN)
       : null,
+    video: VIDEO_MODI.includes(r.video as VideoModus) ? (r.video as VideoModus) : STANDARD.video,
     rand: begrenze(r.rand, 0, 0.5, STANDARD.rand),
     zonen,
     ausnahmen: Array.isArray(r.ausnahmen)

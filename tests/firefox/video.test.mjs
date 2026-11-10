@@ -85,6 +85,8 @@ function freigabeAbstaende(eintraege) {
 async function oeffne(modus = '') {
   await driver.get(`${basis}/video-lauf.html?bild=${encodeURIComponent(BILD)}${modus ? `&modus=${modus}` : ''}`);
   await bis('Film bereit', () => driver.executeScript('return document.documentElement.dataset.filmBereit ?? null'), 40_000);
+  // Diese Faelle pruefen das Verhalten "ganzes Video" (Blur, Hysterese, Takt); die Zonen-Leinwand hat eigene Faelle (video-zonen.test.mjs).
+  await setze({ video: 'ganz' });
 }
 
 const neuesVideo = (opt) => driver.executeScript('window.neuesVideo(arguments[0])', opt);
@@ -274,14 +276,14 @@ try {
     await oeffne();
     await neuesVideo({ id: 'g1' });
     await bis('frei', async () => (await urteil('g1')) === 'frei', 30_000);
-    await setze({ pause: true });
+    await setze({ video: 'ganz', pause: true });
     await bis('Pause gilt', async () => (await attribut('data-veil-seite')) === 'aus', 5000);
     await warte(500);
     const p0 = await pruefungen();
     await warte(3500);
     pruefe((await pruefungen()) === p0, 'Pruefungen waehrend der Pause');
     pruefe((await driver.executeScript("return document.getElementById('g1').hasAttribute('data-veil')")) === false, 'data-veil nach Pause');
-    await setze({ pause: false });
+    await setze({ video: 'ganz', pause: false });
     await bis('Urteil nach Pause', async () => /^(frei|verdeckt)$/.test(await urteil('g1')), 30_000);
     await bis('Takt laeuft wieder', async () => (await pruefungen()) - p0 >= 3, 10_000);
   });
@@ -395,12 +397,12 @@ try {
     await bis('haengende Nachpruefung gestartet', async () => (await pruefungen()) > p0, 5000);
     await driver.executeScript("document.getElementById('w1').src = window.neueQuelle()");
     await warte(300);
-    await setze({ pause: true });
+    await setze({ video: 'ganz', pause: true });
     await bis('Pause gilt', async () => (await attribut('data-veil-seite')) === 'aus', 5000);
     const p1 = await pruefungen();
     await warte(4000);
     pruefe((await pruefungen()) === p1, 'Pruefung nach der Pause');
-    await setze({ pause: false }); // die Einstellungen bleiben im Browser stehen: fuer die folgenden Faelle zuruecknehmen
+    await setze({ video: 'ganz', pause: false }); // die Einstellungen bleiben im Browser stehen: fuer die folgenden Faelle zuruecknehmen
     await bis('Pause aus', async () => (await attribut('data-veil-seite')) === null, 5000);
   });
 

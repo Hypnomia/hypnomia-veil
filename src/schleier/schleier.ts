@@ -43,6 +43,10 @@ import { SteigerungMelder } from './steigerung-melder';
 import { setzeUrteilMelder, setzeZensiertMelder } from './anwenden';
 import { setzePresetAnpassung, setzeZonenAnpassung } from './pruefung';
 import { AdressBeobachter } from './adresse';
+import { GrauLeser, daumenAusGrau, vergleicheDaumen } from './daumen';
+import { istDrm } from './pip-sperre';
+import { VideoZonen } from './video-zonen-verwalter';
+import { setzeMalenAus, setzeRvfcAus } from './video-leinwand';
 import { Beobachter } from './beobachter';
 import {
   ATTR_MS,
@@ -67,7 +71,14 @@ import {
   VIDEO_LAENGSTE_SEITE,
   VIDEO_NACHFRIST_AUTOPLAY_MS,
   VIDEO_NACHFRIST_MS,
+  VIDEO_SCHNITT_MIN_MS,
   VIDEO_TAKT_MS,
+  VIDEO_ZONEN_ABSTAND_MIN_MS,
+  VIDEO_ZONEN_DAUMEN_B,
+  VIDEO_ZONEN_DAUMEN_H,
+  VIDEO_ZONEN_ZELLE_SCHWELLE,
+  VIDEO_ZONEN_ZELLEN_ANTEIL,
+  VIDEO_ZONEN_SZENE_SCHWELLE,
   VIDEO_WECHSEL_MIN_MS,
   VORRANG_KLEIN_PX,
   VORRANG_NAH_FAKTOR,
@@ -180,6 +191,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
   let zweiterVersuchMs = ZWEITER_VERSUCH_MS;
   // Testhaken: kuenstliche Verzoegerung der Video-Antwort in ms (0 = keine), gesetzt ueber das Ereignis veil-test.
   let videoVerzoegerungMs = 0;
+  // Testhaken: jede Video-Antwort gilt als sauber (keine Flaechen), auch wenn der Erkenner etwas fand.
+  let erzwungenSauber = false;
   // Eingebettete Frames: Adresse des Tabs (eigene Ausnahmen gelten je Tab). null = unbekannt, dann zaehlt nur die eigene Adresse.
   const istRahmen = (() => {
     try {
@@ -222,6 +235,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
         status.plane();
       },
       angezeigt: (el, z) => videoAngezeigt(el, z),
+      beiBild: (el) => schnittBeiBild(el),
+      haelt: (el) => zonen.haelt(el),
       beendet: (_el, z) => {
         // Der Lauf endete, bevor sein Erst-Urteil gezeigt wurde (Element entfernt): das Video muss beim Wiedereinhaengen neu bewertet werden.
         z.eingereiht = false;
@@ -232,16 +247,22 @@ export function starteSchleier(ctx: KontextLeicht): void {
         if (aktiv) bewerte(el, z);
       },
       wende: (el, z, urteil: VideoUrteil) => {
+        // Frei: die Zonen-Leinwand (falls da) geht zuerst weg, das Video zeigt sich dann selbst.
+        if (urteil === 'frei') zonen.beende(el);
         if (z.urteil === null) {
           // Erst-Urteil: wie jedes Urteil (Zeit fuer sichtbarFreiMs, Zaehlung).
           if (urteil === 'frei') {
             letzteVideoFreigabe = performance.now();
             urteilFrei(el, z);
-          } else urteilVerdeckt(el, z);
+          } else if (!zonen.versuche(el, z)) urteilVerdeckt(el, z);
           return;
         }
         // Wechsel im Takt: urteilMs und data-veil-ms bleiben, wie sie waren.
         if (urteil === 'frei') letzteVideoFreigabe = performance.now();
+        else if (el.getAttribute(ATTR_URTEIL) === 'frei') {
+          // Frei, dann Treffer: sofort verdeckt (Blur), die Zonen erst nach der Bremse (VIDEO_WECHSEL_MIN_MS und Dokument-Bremse, zaehlt wie eine Freigabe).
+          zonen.merkeWechsel(el);
+        } else if (zonen.versuche(el, z)) return; // Zonen-Leinwand statt Blur (zeigt das Urteil selbst)
         setzeUrteil(el, z, urteil, z.urteilMs);
         status.videoWechsel++;
         status.plane();
@@ -253,8 +274,85 @@ export function starteSchleier(ctx: KontextLeicht): void {
       freiNach: VIDEO_FREI_NACH,
       wechselMinMs: VIDEO_WECHSEL_MIN_MS,
       blitzSperreMs: BLITZ_SPERRE_MS,
+      schnellMs: VIDEO_ZONEN_ABSTAND_MIN_MS,
+      schnittMinMs: VIDEO_SCHNITT_MIN_MS,
     },
   );
+
+  // Schnitterkennung bei freien, laufenden Videos (V2): jedes gezeigte Bild als Daumen 32 x 18, bei einem Szenenwechsel kommt die Sofortpruefung.
+  // Je Video ein Leser (die Leinwand wechselt sonst bei jedem Video mit anderer Groesse) und nur jedes zweite Bild: halbe Kosten, die Sofortpruefung kommt
+  // dadurch hoechstens ein Bild spaeter.
+  const schnittLeser = new WeakMap<HTMLVideoElement, GrauLeser>();
+  const schnittDaumen = new WeakMap<HTMLVideoElement, Float32Array>();
+  const schnittBild = new WeakMap<HTMLVideoElement, number>();
+  function schnittBeiBild(el: HTMLVideoElement): boolean {
+    if (unlesbareVideos.has(el) || el.readyState < 2 || !(el.videoWidth > 0) || el.srcObject || istDrm(el) || !pixelLesenErlaubt(videoAdresse(el))) return false;
+    const n = (schnittBild.get(el) ?? 0) + 1;
+    schnittBild.set(el, n);
+    if (n % 2 === 0) return false;
+    let leser = schnittLeser.get(el);
+    if (!leser) {
+      leser = new GrauLeser(VIDEO_ZONEN_DAUMEN_B);
+      schnittLeser.set(el, leser);
+    }
+    const g = leser.lies(el);
+    if (!g) {
+      // Nicht lesbar (verschmutzt): wie beim Pruefen merken, der Takt entscheidet; kein Daumen mehr, kein Vergleich mit einem alten Bild.
+      unlesbareVideos.add(el);
+      schnittDaumen.delete(el);
+      return false;
+    }
+    const d = daumenAusGrau(g, VIDEO_ZONEN_DAUMEN_B, VIDEO_ZONEN_DAUMEN_H);
+    const alt = schnittDaumen.get(el);
+    schnittDaumen.set(el, d);
+    if (!alt) return false;
+    return vergleicheDaumen(alt, d, { szene: VIDEO_ZONEN_SZENE_SCHWELLE, zelle: VIDEO_ZONEN_ZELLE_SCHWELLE, anteil: VIDEO_ZONEN_ZELLEN_ANTEIL }).art !== 'keiner';
+  }
+
+  // Hover-Vorschau oder Anzeigen-Video einer Erwachsenenseite, nie im Player (Entscheidung 193): gibt keinen Ton und bekommt nie Zonen.
+  function istVorschauVideo(v: HTMLVideoElement): boolean {
+    const adapter = adapterFuer(erwachsenStatus().liste);
+    const imPlayer = (adapter.player ?? []).some((sel) => {
+      try {
+        return !!v.closest(sel);
+      } catch {
+        return false;
+      }
+    });
+    // ueber Shadow-Grenzen wie versteckeVideo (Pruefung Runde 9, B: Hover-Video in einer Shadow Root mit dem Link am Host)
+    return !imPlayer && (istHoverVideo(Vorschau.ueberSchatten(v), adapter) || istAnzeige(v, location.href));
+  }
+
+  // Videos, deren Pixel sich nicht lesen liessen (fremde Quelle ohne CORS, verschmutzte Leinwand): nie Zonen-Leinwand, ganz verdeckt mit Etikett.
+  const unlesbareVideos = new WeakSet<HTMLVideoElement>();
+
+  // Zonen-Leinwaende (Bauplan Video-Zonen): hoechstens eine je Dokument, Steuerung des Urteils bleibt hier (zeigeCover).
+  const zonen: VideoZonen = new VideoZonen({
+    lebt,
+    aktiv: () => aktiv,
+    einstellungen: () => einstellungen,
+    preset: () => presetFuerPackKurz(einstellungen?.preset ?? 'mosaik', packKurz),
+    woerterThemen: () => einstellungen?.woerterThemen ?? null,
+    packStand: () => packKurz?.importiert ?? 0,
+    zustand: (el) => zustaende.get(el),
+    sichtbar: (el, z) => sichtbarJetzt(el, z),
+    lesbar: (el) => !unlesbareVideos.has(el) && !el.srcObject && !istDrm(el) && pixelLesenErlaubt(videoAdresse(el)),
+    hatSpiegel: (el) => spiegel.spiegelDes(el).length > 0,
+    vorschau: (el) => aktiv && erwachsenStatus().liste !== null && istVorschauVideo(el),
+    anzeige: (el) => istAnzeige(el, location.href),
+    setzeSchnell: (el, an) => video.setzeSchnell(el, an),
+    bildBereit: (el) => video.bildBereit(el),
+    freigabeReif: (el) => video.freigabeReif(el),
+    sofort: (el) => video.sofortFuer(el),
+    zeigeZonen: (el, z) => zeigeCover(el, z, 'zensiert'),
+    zeigeGanz: (el, z) => zeigeCover(el, z, 'verdeckt'),
+    dokumentBremseOk: () => performance.now() - letzteVideoFreigabe >= BLITZ_SPERRE_MS,
+    meldeLangsam: () => {
+      // Hinweis fuer das Popup (Zeitstempel, nur obere Seite): "Too slow to follow closely here."
+      if (!istRahmen) void browser.storage.local.set({ videoLangsamUm: Date.now() }).catch(() => {});
+    },
+    zaehler: status.zonen,
+  });
 
   // Spiegel-Leinwaende (PHASE-3-BAUPLAN S1 bis S7): eine Leinwand direkt neben einem Video, die es ueberdeckt, wird nie selbst geprueft und
   // folgt dem Urteil ihres Videos (spiegel.ts). Die Wechsel im Takt gehen im selben Augenblick mit; Freigaben ausserhalb eines Video-Wechsels
@@ -302,7 +400,10 @@ export function starteSchleier(ctx: KontextLeicht): void {
     { minKante: MIN_KANTE, wechselMinMs: VIDEO_WECHSEL_MIN_MS, blitzSperreMs: BLITZ_SPERRE_MS, aufraeumMs: AUFRAEUM_VERZOEGERUNG_MS },
   );
   video.beiWechsel = (el) => spiegel.angleichen(el);
-  video.beiErgebnis = (el) => spiegel.pruefeNachbarn(el);
+  video.beiErgebnis = (el, z) => {
+    spiegel.pruefeNachbarn(el);
+    zonen.abgleichen(el, z);
+  };
 
   // Vorschau-Tausch und Erkennen am Inhalt (Auftrag E, vorschau.ts): die Steuerung bleibt hier, die Klasse bekommt ihre Zugriffe als Rueckrufe.
   // Live-Lauf 18 C: Werberahmen auf Erwachsenenseiten als Ganzes ausblenden (nur im Vorschau-Tausch, nie in der Pause).
@@ -397,7 +498,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
       status.videoWechsel++;
     }
     video.beende(z);
+    if (z.art === 'video') zonen.beende(el as HTMLVideoElement);
     z.videoEcht = false;
+    z.videoGezaehlt = false; // vergiss gilt einer neuen Quelle, einer neuen Bewertung oder der Pause: das Video darf neu zaehlen
     vergissElement(el, z, restore);
     // Spiegel (S3): wird das Video zurueckgesetzt, gehen seine Leinwaende mit zurueck; eine zurueckgesetzte Leinwand wird neu zugeordnet.
     if (z.art === 'video') spiegel.angleichen(el as HTMLVideoElement);
@@ -487,10 +590,11 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // Was ein Video gerade zeigt: das Attribut data-veil (frei, verdeckt), sonst verborgen. Mit gesperrter Freigabe (Testhaken) setzt der Schleier
   // nie ein Attribut, dann gilt das Urteil im Zustand.
+  // "zensiert" (Zonen-Leinwand) ist fuer den Takt "verdeckt": das Video ist bedeckt, nur anders.
   function videoAngezeigt(el: HTMLVideoElement, z: Zustand): VideoUrteil | null {
-    if (TESTHAKEN && freigabeGesperrt()) return z.urteil === 'frei' || z.urteil === 'verdeckt' ? z.urteil : null;
+    if (TESTHAKEN && freigabeGesperrt()) return z.urteil === 'frei' || z.urteil === 'verdeckt' ? z.urteil : z.urteil === 'zensiert' ? 'verdeckt' : null;
     const a = el.getAttribute(ATTR_URTEIL);
-    return a === 'frei' || a === 'verdeckt' ? a : null;
+    return a === 'frei' ? 'frei' : a === 'verdeckt' || a === 'zensiert' ? 'verdeckt' : null;
   }
 
   // Jedes Urteil eines Videos, das die Anzeige aendert, ist ein Wechsel: fuer die Bremse merken, fuer den Testhaken zaehlen. Steht das Attribut
@@ -526,7 +630,27 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (nurHintergrundVerdecken(el, z)) verdeckeNurHintergrund(el as HTMLElement, z);
     if (z.art === 'video') zaehleVideoWechsel(el as HTMLVideoElement, z, 'verdeckt');
     setzeUrteil(el, z, 'verdeckt', status.seitStart());
-    if (z.art === 'video') spiegel.beiVideoUrteil(el as HTMLVideoElement);
+    if (z.art === 'video') {
+      spiegel.beiVideoUrteil(el as HTMLVideoElement);
+      zonen.etikett(el as HTMLVideoElement, z);
+    }
+    nachUrteil();
+  }
+
+  // Ein Video ist bedeckt: "zensiert" (Zonen-Leinwand, das Video selbst unsichtbar) oder "verdeckt" (ganz, Blur). Der Wechsel zwischen beiden zaehlt
+  // wie ein Urteilswechsel (Bremse, Testhaken).
+  function zeigeCover(el: HTMLVideoElement, z: Zustand, art: 'zensiert' | 'verdeckt'): void {
+    z.eingereiht = false;
+    const vorher = el.getAttribute(ATTR_URTEIL);
+    zaehleVideoWechsel(el, z, 'verdeckt');
+    if ((vorher === 'verdeckt' || vorher === 'zensiert') && vorher !== art) {
+      video.merkeWechsel(el);
+      status.videoWechsel++;
+    }
+    if (vorher !== art) letzteVideoFreigabe = Math.max(letzteVideoFreigabe, performance.now());
+    setzeUrteil(el, z, art, z.urteilMs ?? status.seitStart());
+    spiegel.beiVideoUrteil(el);
+    zonen.etikett(el, z);
     nachUrteil();
   }
 
@@ -1059,14 +1183,28 @@ export function starteSchleier(ctx: KontextLeicht): void {
   // Firefox: nur data:- und blob:-Videos werden gelesen; http(s)-Quellen, srcObject (MediaStream) und leere Adresse sind 'unlesbar'.
   async function pruefeVideoBild(el: HTMLVideoElement): Promise<VideoErgebnis | 'unlesbar'> {
     const e = einstellungen;
+    // Geschuetzte Wiedergabe (EME): die Pixel sind schwarz, die Pruefung sah nichts. Nie lesbar, also ganz verdecken (V1).
+    if (istDrm(el)) return 'unlesbar';
+    // Zonen-Leinwand: das Bild der Pruefung wird als Aufnahme festgehalten (im selben Augenblick wie das Lesen der Pixel), die Boxen der Antwort
+    // werden spaeter auf den dann gezeigten Bildstand nachgefuehrt.
+    const aufn = zonen.aufnahme(el);
     const px = !el.srcObject && pixelLesenErlaubt(videoAdresse(el)) ? lesePixel(el, el.videoWidth, el.videoHeight, VIDEO_LAENGSTE_SEITE) : null;
-    if (!px || !e) return 'unlesbar';
+    if (!px || !e) {
+      unlesbareVideos.add(el);
+      return 'unlesbar';
+    }
+    unlesbareVideos.delete(el);
     // Testhaken: kuenstlich verzoegerte Antwort (haengender Erkenner), nur im Testbau, per veil-test gesetzt.
     if (TESTHAKEN && videoVerzoegerungMs > 0) await new Promise<void>((fertig) => setTimeout(fertig, videoVerzoegerungMs));
-    if (!(await wecke(lebt))) return 'fehler';
-    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, px.breite, px.hoehe, e, false, packStandFuer(e));
+    if (!(await wecke(lebt))) {
+      zonen.beiAntwort(el, aufn, null);
+      return 'fehler';
+    }
+    const a = await sendePruefe({ art: 'daten', dataUrl: px.dataUrl }, px.breite, px.hoehe, e, false, packStandFuer(e), zonen.hat(el));
+    const flaechen = TESTHAKEN && erzwungenSauber && a.ok ? [] : a.ok ? a.flaechen : [];
+    zonen.beiAntwort(el, aufn, a.ok ? { flaechen, breite: a.breite, hoehe: a.hoehe } : null);
     if (!a.ok) return 'fehler';
-    return a.flaechen.length ? 'treffer' : 'sauber';
+    return flaechen.length ? 'treffer' : 'sauber';
   }
 
   async function pruefeVideo(el: HTMLVideoElement, z: Zustand): Promise<Ergebnis> {
@@ -1709,7 +1847,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function pruefRelevant(e: Einstellungen): string {
     const preset = presetFuerPackKurz(e.preset, packKurz);
     // gesichterStand: Mias Gesicht nur nach der Gesichtssuche (bis dahin bekamen Pruefungen den Ersatz): wenn sie fertig meldet, bewerten offene Seiten neu
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, PRESETS[preset].gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe()]);
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, PRESETS[preset].gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
   }
 
   // Zeit der letzten Meldung "Gesichtssuche fertig" (storage.local.gesichterStand), 0 = keine
@@ -1736,6 +1874,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     pruefStand = stand;
     epoche++;
     speicher.leere();
+    zonen.vergissBilder(); // Preset, Themen, Gesichtsstand oder Pack: Mias Gesicht und Woerter der Video-Leinwaende neu waehlen
     return warSchonDa;
   }
 
@@ -1780,6 +1919,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     }
     verfolgt.clear();
     video.stoppAlle();
+    zonen.alleBeenden();
     sichtBeobachter?.disconnect();
     schalteWurzelStile(true);
     wendeWurzelAttributeAn();
@@ -1848,6 +1988,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
         einstellungen?: unknown;
         zweiterVersuchMs?: unknown;
         videoVerzoegerungMs?: unknown;
+        ohneRvfc?: unknown;
+        malenAus?: unknown;
+        erzwingeSauber?: unknown;
         pruefVerzoegerungMs?: unknown;
         warteschlangeHalt?: unknown;
         erkennerStatus?: unknown;
@@ -1855,6 +1998,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
       } | null;
       if (typeof d?.zweiterVersuchMs === 'number' && d.zweiterVersuchMs >= 0) zweiterVersuchMs = d.zweiterVersuchMs;
       if (typeof d?.videoVerzoegerungMs === 'number' && d.videoVerzoegerungMs >= 0) videoVerzoegerungMs = d.videoVerzoegerungMs;
+      if (typeof d?.malenAus === 'boolean') setzeMalenAus(d.malenAus); // Zonen-Leinwand malt nichts (Frist fuer das erste Bild)
+      if (typeof d?.erzwingeSauber === 'boolean') erzwungenSauber = d.erzwingeSauber; // Erkenner meldet jedes Video-Bild als sauber (Hysterese-Tests)
+      if (typeof d?.ohneRvfc === 'boolean') setzeRvfcAus(d.ohneRvfc); // Zonen-Leinwand: rAF-Pfad erzwingen (Firefox 128)
       // Vorrang-Tests: kuenstlich langsamer Erkenner (Bilder, Hintergruende) und angehaltene Warteschlange (Ende des Halts startet die Auswahl).
       if (typeof d?.pruefVerzoegerungMs === 'number' && d.pruefVerzoegerungMs >= 0) pruefVerzoegerungMs = d.pruefVerzoegerungMs;
       if (typeof d?.warteschlangeHalt === 'boolean') {
@@ -1909,18 +2055,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   // Entscheidung 193: verdeckte Vorschau- und Anzeigen-Videos auf Erwachsenenseiten der Liste geben keinen Ton. Nie ein Video im Player.
   const tonDeckel = new TonDeckel(
     () => aktiv && erwachsenStatus().liste !== null,
-    (v) => {
-      const adapter = adapterFuer(erwachsenStatus().liste);
-      const imPlayer = (adapter.player ?? []).some((sel) => {
-        try {
-          return !!v.closest(sel);
-        } catch {
-          return false;
-        }
-      });
-      // ueber Shadow-Grenzen wie versteckeVideo (Pruefung Runde 9, B: Hover-Video in einer Shadow Root mit dem Link am Host)
-      return !imPlayer && (istHoverVideo(Vorschau.ueberSchatten(v), adapter) || istAnzeige(v, location.href));
-    },
+    (v) => istVorschauVideo(v),
   );
   setzeUrteilMelder((el, z) => {
     freilegen.beiUrteil(el, z);
@@ -1982,6 +2117,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     beobachter.stopp();
     klassen.stopp();
     video.stoppAlle();
+    zonen.alleBeenden();
     sichtBeobachter?.disconnect();
     for (const t of timer) clearTimeout(t);
     timer.clear();
