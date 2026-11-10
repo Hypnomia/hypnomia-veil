@@ -1,4 +1,5 @@
 # Safety
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/safety.webp (16:9), Loop 02 Assets Mia/veil-docs/loops/safety.mp4 (10 s, ohne Ton) -->
 
 This page is plain on purpose. Read it once before you hand me the reins.
 

@@ -1,4 +1,5 @@
 # Install me in Edge
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/install-edge.webp (16:9) -->
 
 Edge takes the same package as Chrome. I’m not in the Edge Add-ons store, so you load me by hand, once.
 

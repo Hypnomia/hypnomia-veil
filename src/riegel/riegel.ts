@@ -5,7 +5,7 @@
 // Alle sichtbaren Texte sind Entwuerfe (Texter liest gegen); Pack-Texte laufen nur ueber `textContent`.
 import { beiEinstellungsAenderung, ladeEinstellungen } from '../einstellungen';
 import type { AntwortPackBild, AntwortPackDaten, NachrichtErkennerPackBild, NachrichtHintergrundHilfe, NachrichtHintergrundPackDaten, NachrichtHintergrundPause } from '../nachrichten';
-import type { ChibiPose } from '../chibi';
+import { chibiSchluessel, passtZurPose, QUIZ_GRUNDPOSE, type ChibiPose, type QuizPose } from '../chibi';
 import { begrenzeAufgabe, spiralePeriodeS, WECHSEL_SPERRE_MS, WechselSperre } from '../quiz/grenzen';
 import { brauchtWarnung, istWahlRichtig, mischeReihenfolge, neuerSitzungsZustand, pruefeTippen, QuizSitzung, zaehleZulaessige, type Lage } from '../quiz/logik';
 import { istFreigeschaltet, ladePackKurz } from '../pack/vertrag';
@@ -139,21 +139,29 @@ function oeffneHilfe(e: Event): void {
   }
 }
 
-const chibiCache = new Map<string, Promise<string | null>>();
-function ladeChibi(pose: ChibiPose): Promise<string | null> {
-  let p = chibiCache.get(pose);
+// Schluessel: Pose oder `quiz-<zustand>#<nummer>` (src/chibi.ts). Die Antwort traegt den Dateinamen, damit der Riegel weiss, ob ein Quiz-Bild
+// oder die Grundpose kam. Gemerkt werden nur Grundposen: ein Quiz-Schluessel kommt nie wieder, sein Eintrag wuerde nur Speicher halten
+// (Pruefer-Fund Session 19); die Dateien selbst merkt sich der Erkenner.
+const chibiCache = new Map<string, Promise<{ url: string; name: string } | null>>();
+function ladeChibi(schluessel: string): Promise<{ url: string; name: string } | null> {
+  const merken = !schluessel.includes('#');
+  let p = merken ? chibiCache.get(schluessel) : undefined;
   if (!p) {
-    const n: NachrichtErkennerPackBild = { ziel: 'erkenner', typ: 'packbild', rolle: 'chibi', schluessel: pose };
+    const n: NachrichtErkennerPackBild = { ziel: 'erkenner', typ: 'packbild', rolle: 'chibi', schluessel };
     const frage = Promise.resolve()
       .then(() => browser.runtime.sendMessage(n) as Promise<AntwortPackBild | { ok: false } | undefined>)
-      .then((a) => (a && a.ok === true && typeof a.dataUrl === 'string' && a.dataUrl.startsWith('data:image/') ? a.dataUrl : null))
+      .then((a) =>
+        a && a.ok === true && typeof a.dataUrl === 'string' && a.dataUrl.startsWith('data:image/') ? { url: a.dataUrl, name: typeof a.name === 'string' ? a.name : '' } : null,
+      )
       .catch(() => null);
     const frist = new Promise<null>((ok) => setTimeout(() => ok(null), 5000));
     p = Promise.race([frage, frist]);
-    chibiCache.set(pose, p);
-    p.then((u) => {
-      if (!u) chibiCache.delete(pose);
-    });
+    if (merken) {
+      chibiCache.set(schluessel, p);
+      p.then((b) => {
+        if (!b) chibiCache.delete(schluessel);
+      });
+    }
   }
   return p;
 }
@@ -422,7 +430,11 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     let zustand = 'start';
     let aktuelleFrage: Frage | null = null;
     let aufgabenZustand = '';
-    let chibiPose: ChibiPose = 'sprechblase';
+    // Pose im Abbild: die Grundpose, sobald sie angefordert ist; die Quiz-Pose erst, wenn das Pack wirklich ein Quiz-Bild geliefert hat.
+    let chibiPose: ChibiPose | QuizPose = 'sprechblase';
+    let reaktionNr = Math.floor(Math.random() * 1_000_000); // Quiz-Posen: je Aufruf eine neue Nummer, damit die stabile Wahl andere Bilder trifft
+    let poseLauf = 0;
+    let poseBehalten = false; // nach einer falschen Antwort bleibt das Falsch-Bild bei der naechsten Frage stehen
     let abbildOffen = false;
 
     function abbild(): unknown {
@@ -554,13 +566,17 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
     function setzeSatz(gruppe: SatzGruppe): void {
       satzFeld.textContent = saetze.hole(gruppe);
     }
-    function setzePose(pose: ChibiPose): void {
-      chibiPose = pose;
-      ladeChibi(pose).then((url) => {
-        if (beendet || chibiPose !== pose) return;
-        if (url) {
-          chibiBild.src = url;
-          chibiBild.dataset.pose = pose; // UX-Pruefung 8b Nr. 3: die gemalte leere Blase der Pose sprechblase schneidet das CSS ab
+    function setzePose(pose: ChibiPose | QuizPose): void {
+      const grund: ChibiPose = pose in QUIZ_GRUNDPOSE ? QUIZ_GRUNDPOSE[pose as QuizPose] : (pose as ChibiPose);
+      const schluessel = grund === pose ? pose : chibiSchluessel(pose, ++reaktionNr);
+      const lauf = ++poseLauf;
+      chibiPose = grund;
+      ladeChibi(schluessel).then((bild) => {
+        if (beendet || poseLauf !== lauf) return;
+        if (bild) {
+          chibiPose = grund !== pose && passtZurPose(bild.name, pose) ? pose : grund;
+          chibiBild.src = bild.url;
+          chibiBild.dataset.pose = chibiPose; // UX-Pruefung 8b Nr. 3: die gemalte leere Blase der Pose sprechblase schneidet das CSS ab
           chibiBild.hidden = false;
         } else chibiBild.hidden = true;
         schreibe();
@@ -883,7 +899,8 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
       }
       zustand = 'frage';
       ansage.textContent = frage.frage;
-      setzePose('sprechblase');
+      if (!poseBehalten) setzePose('quiz-frage');
+      poseBehalten = false;
       schreibe();
       if (frage.art === 'aufgabe') {
         const sicher = begrenzeAufgabe(frage.aufgabe.typ, frage.aufgabe.param);
@@ -907,7 +924,7 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
           zustand = 'richtig';
           melde({ art: 'quiz-richtig' });
           setzeSatz('richtig');
-          setzePose('jubeln');
+          setzePose('quiz-richtig');
           tint('richtig');
           schreibe();
           await warte(opt.richtigMs ?? RICHTIG_MS);
@@ -918,14 +935,16 @@ function zeige(opt: RiegelOptionen, sitzung: QuizSitzung, ersteFrage: Frage, tex
           zustand = 'verweigert';
           melde({ art: 'quiz-verweigert' });
           setzeSatz('verweigert');
-          setzePose('schmollen');
+          setzePose('quiz-falsch');
           tint('falsch');
           schreibe();
           await warte(opt.verweigertMs ?? VERWEIGERT_MS);
         } else {
-          // Falsch: sofort die naechste Frage, keine Wartezeit.
+          // Falsch: sofort die naechste Frage, keine Wartezeit. Das Falsch-Bild bleibt wie der Falsch-Satz bei der naechsten Frage stehen.
           melde({ art: 'quiz-falsch' });
           setzeSatz('falsch');
+          setzePose('quiz-falsch');
+          poseBehalten = true;
           tint('falsch');
         }
         frage = sitzung.naechste();

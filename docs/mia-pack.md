@@ -1,4 +1,5 @@
 # The Mia Pack
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/mia-pack.webp (16:9), Loop 02 Assets Mia/veil-docs/loops/mia-pack.mp4 (10 s, ohne Ton) -->
 
 The free extension is me dressed for the office. The **Mia Pack** is me off duty.
 

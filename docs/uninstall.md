@@ -1,4 +1,5 @@
 # Uninstall
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/uninstall.webp (16:9) -->
 
 Uninstalling works the normal way, any time. No lock, no trick, no last word from me. You don’t need to pause me first.
 

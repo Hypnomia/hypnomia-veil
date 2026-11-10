@@ -1,4 +1,5 @@
 # Install me on Android (beta)
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/install-firefox-android.webp (16:9) -->
 
 Firefox for Android, version 128 or newer. Android is in **beta**: I’ve been tested in an Android emulator, and real phones vary. Tell me on [Discord](https://discord.gg/2C8YAwDkat) how it goes.
 

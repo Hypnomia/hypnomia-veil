@@ -169,7 +169,7 @@ try {
   console.log(`firefox echt: Import in ${Date.now() - t0} ms (mit Lizenz und Klick)`);
   const m = await metaUndZahl();
   console.log(`firefox echt: ${m.id} ${m.version}, ${m.frei.length} Freischaltungen, ${m.dateien} Eintraege, ${m.gespeichert} gespeichert, Rollen ${JSON.stringify(m.rollen)}, Vorschau mit Massen ${m.masse}`);
-  pruefe(m.frei.length === 17, `alle 17 Freischaltungen aktiv (${m.frei.length})`);
+  pruefe(m.frei.length === 18, `alle 18 Freischaltungen aktiv (${m.frei.length})`); // seit Pack 0.8.0 mit zensur:woerter
   pruefe(m.dateien > 150 && m.gespeichert === m.dateien, 'alle Dateien gespeichert');
   pruefe(m.masse === (m.rollen['vorschau:tease'] ?? 0) + (m.rollen['vorschau:hot'] ?? 0) + (m.rollen['vorschau:explicit'] ?? 0), 'jede Vorschau hat Masse');
 
@@ -201,6 +201,17 @@ try {
   const c = await sendeAnErkenner({ ziel: 'erkenner', typ: 'packbild', rolle: 'chibi', schluessel: 'thron' });
   console.log(`firefox echt: Chibi thron ${c?.name} ${c?.breite}x${c?.hoehe}`);
   pruefe(c?.ok === true && c.name === 'chibi/thron.webp', 'Chibi thron kommt aus dem Pack');
+  // Pack 0.9: Quiz-Reaktionen `chibi/quiz-<zustand>-NN.webp`, die Nummer im Schluessel wechselt das Bild
+  for (const zustand of ['frage', 'richtig', 'falsch']) {
+    const namen = new Set();
+    for (let i = 1; i <= 8; i++) {
+      const q = await sendeAnErkenner({ ziel: 'erkenner', typ: 'packbild', rolle: 'chibi', schluessel: `quiz-${zustand}#${i}` });
+      pruefe(q?.ok === true && String(q.name).startsWith(`chibi/quiz-${zustand}-`), `quiz-${zustand}#${i} aus dem Pack (${q?.name ?? q?.fehler})`);
+      namen.add(q?.name);
+    }
+    console.log(`firefox echt: quiz-${zustand}: ${namen.size} verschiedene Bilder bei 8 Nummern`);
+    pruefe(namen.size > 1, `quiz-${zustand}: die Nummer wechselt das Bild`);
+  }
   pruefe((m.rollen['ton'] ?? 0) === 5, 'fuenf Klaenge im Pack');
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

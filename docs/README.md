@@ -1,4 +1,5 @@
 # HYPNOMIA VEIL: help
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/readme.webp (16:9), Loop 02 Assets Mia/veil-docs/loops/readme.mp4 (10 s, ohne Ton) -->
 
 You found my help pages. Good. Everything you need to set me up, keep me running and switch me off is here.
 

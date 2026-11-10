@@ -131,6 +131,8 @@ export function lies(quelle: string): Block[] {
       schliesseListe();
       continue;
     }
+    // HTML-Kommentar auf einer Zeile (z. B. der Vermerk, welches lokale Bild zur Seite gehoert): nie anzeigen, nie in die Suche.
+    if (/^<!--.*-->$/.test(zeile.trim())) continue;
     const kopf = /^(#{1,3})\s+(.+)$/.exec(zeile);
     if (kopf) {
       schliesseAbsatz();

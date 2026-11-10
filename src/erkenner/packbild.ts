@@ -5,11 +5,12 @@
 //   Seitenverhaeltnis der Flaeche, dann stabil per Hash des Schluessels (Quelladresse); Logik in src/pack/wahl.ts. Der Zwischenspeicher
 //   (`fertig`) haelt das Ergebnis je Datei und Kantenlaenge: weil die Wahl von Stufe und Klasse vor dem Nachschlagen laeuft, landet ein
 //   Stufenwechsel von selbst bei anderen Dateien, ohne dass alte Eintraege das falsche Bild liefern koennten.
-// - Chibi: Schluessel = Pose. Mit `chibi:pack` ein passendes Pack-Chibi (passtZurPose), sonst das Demo-Chibi `/chibi/<pose>.webp` aus der
-//   Erweiterung, fehlt beides `ok: false`. Chibis behalten ihre Transparenz (WebP oder PNG).
+// - Chibi: Schluessel = Pose, bei Quiz-Posen `quiz-<zustand>#<nummer>` (src/chibi.ts liesChibiSchluessel). Mit `chibi:pack` ein passendes
+//   Pack-Chibi (passtZurPose; Quiz-Pose zuerst, dann ihre Grundpose), sonst das Demo-Chibi `/chibi/<grundpose>.webp` aus der Erweiterung,
+//   fehlt beides `ok: false`. Chibis behalten ihre Transparenz (WebP oder PNG).
 // Das Ergebnis je Datei bleibt im Speicher (kleine Menge), der Meta-Stand wird hoechstens einmal je Sekunde gelesen und bei einer Meldung
 // ueber ein geaendertes Pack sofort neu.
-import { CHIBI_DEMO_ORDNER, CHIBI_POSEN, passtZurPose, type ChibiPose } from '../chibi';
+import { CHIBI_DEMO_ORDNER, liesChibiSchluessel, passtZurPose, type ChibiPose } from '../chibi';
 import {
   PACKBILD_MAX_BYTES,
   PACKBILD_MAX_SEITE,
@@ -304,15 +305,18 @@ export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<Ant
       return a ?? fehler('kein Werbebild lesbar');
     }
     if (n.rolle === 'chibi') {
-      const pose = (CHIBI_POSEN as readonly string[]).includes(n.schluessel) ? (n.schluessel as ChibiPose) : null;
-      if (!pose) return fehler('unbekannte Pose');
+      const gelesen = liesChibiSchluessel(n.schluessel);
+      if (!gelesen) return fehler('unbekannte Pose');
       const maxSeite = begrenze(n.maxSeite, PACKBILD_MAX_SEITE_CHIBI);
       if (m && frei(m, 'chibi:pack')) {
-        const namen = m.dateien.filter((d) => d.rolle === 'chibi' && d.typ.startsWith('image/') && passtZurPose(d.name, pose)).map((d) => d.name).sort();
-        const a = await ausPack(namen, pose, maxSeite, true);
-        if (a) return a;
+        // Quiz-Pose zuerst (viele Bilder, Wahl per ganzem Schluessel mit Nummer), dann die Grundpose aus dem Pack (Wahl stabil je Pose wie bisher).
+        for (const pose of gelesen.pose === gelesen.grund ? [gelesen.grund] : [gelesen.pose, gelesen.grund]) {
+          const namen = m.dateien.filter((d) => d.rolle === 'chibi' && d.typ.startsWith('image/') && passtZurPose(d.name, pose)).map((d) => d.name).sort();
+          const a = await ausPack(namen, pose === gelesen.grund ? gelesen.grund : n.schluessel, maxSeite, true);
+          if (a) return a;
+        }
       }
-      return (await demoChibi(pose, maxSeite)) ?? fehler('kein Chibi fuer diese Pose');
+      return (await demoChibi(gelesen.grund, maxSeite)) ?? fehler('kein Chibi fuer diese Pose');
     }
     return fehler('unbekannte Rolle');
   } catch (e) {

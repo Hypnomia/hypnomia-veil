@@ -1,4 +1,5 @@
 # Updates
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/updates.webp (16:9) -->
 
 New versions of me, and new versions of the Mia Pack. Your pack and your settings stay through every update of the extension.
 

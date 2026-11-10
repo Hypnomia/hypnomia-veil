@@ -16,6 +16,10 @@ test('Bloecke: Ueberschriften, Absaetze, Listen, Fortsetzungszeilen', () => {
   assert.equal(b[2].anker, 'steps');
   assert.equal(titel(b, 'x'), 'Title');
   assert.equal(titel(lies('nur Text'), 'ersatz'), 'ersatz');
+  // HTML-Kommentar auf einer Zeile (Vermerk zum lokalen Bild, Session 19): weder Absatz noch Suchtext
+  const k = lies('# Title\n<!-- Nur lokal: Bild x.webp -->\nText\n\n<!-- noch einer -->\n- a');
+  assert.deepEqual(k.map((x) => x.art), ['ueberschrift', 'absatz', 'liste']);
+  assert.equal(reinerText(k[1].inhalt), 'Text');
 });
 
 test('Inline: fett, kursiv, code, Links; unpaarige Zeichen bleiben Text', () => {

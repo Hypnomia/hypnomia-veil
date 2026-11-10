@@ -1,4 +1,5 @@
 # How I work
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/how-i-work.webp (16:9) -->
 
 What I do with your pages, and how you steer me. Most of it needs the [Mia Pack](mia-pack.md), every part has its own switch, and [Pause](pause.md) stops all of it at once.
 

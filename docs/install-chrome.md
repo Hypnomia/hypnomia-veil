@@ -1,4 +1,5 @@
 # Install me in Chrome
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/install-chrome.webp (16:9) -->
 
 I’m not in the Chrome Web Store, so you bring me in by hand. It takes two minutes, and you only do it once.
 

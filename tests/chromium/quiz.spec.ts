@@ -347,7 +347,7 @@ test('falsche Antwort: sofort neue Frage ohne Wartezeit, Riegel bleibt offen', a
     const b = await bis(s, (x) => x.zustand === 'frage' && x.frage.id !== 'test-w1' && x.satz === texte.gruppen.falsch![0], 3000);
     const ms = Date.now() - t0;
     expect(ms).toBeLessThan(1500);
-    expect(b.chibiPose).toBe('sprechblase');
+    expect(b.chibiPose).toBe('schmollen'); // Pack 0.9: das Falsch-Bild bleibt bei der naechsten Frage stehen (Dummy-Pack ohne Quiz-Bilder: Grundpose)
     // Bildschirmleser: die neue Frage steht in einem hoeflichen Live-Bereich
     expect(b.ansageLive).toBe('polite');
     expect(b.ansage).toBe(b.frage.text);

@@ -198,8 +198,9 @@ export interface NachrichtErkennerPruefe {
 // Firefox Hintergrund) liest das Bild aus IndexedDB und liefert eine verkleinerte Data-URL (laengste Seite hoechstens PACKBILD_MAX_SEITE,
 // hoechstens PACKBILD_MAX_BYTES Zeichen). Wahl: stabil je `schluessel` (z. B. Adresse des Vorschaubilds, Pose des Chibis), immer
 // dasselbe Bild fuer denselben Schluessel. Vorschau nur mit Freischaltung `erwachsen:vorschau` im Meta (die Galerie liest ihre Bilder selbst), sonst
-// `ok: false`. Chibi: `schluessel` ist die Pose (src/chibi.ts); mit `chibi:pack` ein passendes Pack-Chibi, sonst das Demo-Chibi aus
-// `/chibi/<pose>.webp`, fehlt beides `ok: false`. Chibis behalten Transparenz (WebP oder PNG), Vorschau als JPEG.
+// `ok: false`. Chibi: `schluessel` ist die Pose (src/chibi.ts), bei Quiz-Reaktionen `quiz-<zustand>#<nummer>` (die Nummer wechselt je Frage);
+// mit `chibi:pack` ein passendes Pack-Chibi (Quiz-Pose, sonst ihre Grundpose), sonst das Demo-Chibi aus `/chibi/<grundpose>.webp`, fehlt
+// beides `ok: false`. Chibis behalten Transparenz (WebP oder PNG), Vorschau als JPEG.
 // Handler: src/erkenner/packbild.ts (Auftrag E; Chibi-Zweig nutzt Auftrag Q fuer den Riegel).
 // Phase 5 (Auftrag W): Rolle `werbung` nur mit `kontrolle:werbung` im Meta; `format` ist das Format der Flaeche, gewaehlt wird stabil per
 // Schluessel unter den Werbebildern dieses Formats (fehlt es, unter dem naechstliegenden Seitenverhaeltnis); JPEG oder WebP ohne Transparenz,

@@ -1,4 +1,5 @@
 # Pause
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/pause.webp (16:9), Loop 02 Assets Mia/veil-docs/loops/pause.mp4 (10 s, ohne Ton) -->
 
 Pausing me is always allowed and never costs a thing. No quiz, no waiting, no penalty. One tap, and I let go of every page at once.
 

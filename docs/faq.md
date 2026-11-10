@@ -1,4 +1,5 @@
 # FAQ
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/faq.webp (16:9) -->
 
 The questions I hear most, with the quickest way out.
 

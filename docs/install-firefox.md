@@ -1,4 +1,5 @@
 # Install me in Firefox
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/install-firefox.webp (16:9) -->
 
 Firefox on a computer, version 128 or newer. My Firefox file is signed by Mozilla, so Firefox accepts it without tricks, and it keeps me up to date by itself.
 

@@ -328,7 +328,7 @@ try {
     const t0 = Date.now();
     await klickeAuf(a.antworten.find((b) => b.text === 'beta'));
     const b = await abbildBis('neue Frage', (x) => x.zustand === 'frage' && x.frage.id !== 'test-w1' && x.satz === texte.falsch[0], 3000);
-    pruefe((await ergebnis()) === null && b.chibiPose === 'sprechblase', 'Riegel bleibt offen');
+    pruefe((await ergebnis()) === null && b.chibiPose === 'schmollen', 'Riegel bleibt offen, Falsch-Bild bleibt stehen (Dummy-Pack: Grundpose)');
     pruefe(b.ansageLive === 'polite' && b.ansage === b.frage.text, `neue Frage im Live-Bereich ${JSON.stringify([b.ansageLive, b.ansage])}`);
     console.log(`firefox quiz: falsch, neue Frage ${b.frage.id} nach ${Date.now() - t0} ms (Klick bis Abbild, mit WebDriver-Aufruf)`);
   });

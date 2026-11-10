@@ -72,7 +72,7 @@ test('echtes Pack: Import, Freischaltungen, Dateien', async () => {
       }),
   );
   console.log(`chromium echt: ${m.id} ${m.version}, ${m.frei.length} Freischaltungen, ${m.dateien} Eintraege, ${m.gespeichert} gespeichert, ${JSON.stringify(m.rollen)}`);
-  expect(m.frei.length).toBe(17);
+  expect(m.frei.length).toBe(18); // seit Pack 0.8.0 mit zensur:woerter
   expect(m.dateien).toBeGreaterThan(150);
   expect(m.gespeichert).toBe(m.dateien);
   expect(m.rollen.ton).toBe(5);
@@ -107,4 +107,15 @@ test('echtes Pack: Vorschau nie schaerfer als die Stufe, 16:9 bekommt Querbilder
   // Die Pose thron gibt es nur im Pack (die Demo hat schild, sprechblase, arme, nein, jubeln, schmollen)
   const c = await ausWorker({ ziel: 'erkenner', typ: 'packbild', rolle: 'chibi', schluessel: 'thron' });
   expect(c?.ok && c.name === 'chibi/thron.webp').toBe(true);
+  // Pack 0.9: Quiz-Reaktionen `chibi/quiz-<zustand>-NN.webp`, die Nummer im Schluessel wechselt das Bild
+  for (const zustand of ['frage', 'richtig', 'falsch']) {
+    const namen = new Set<string>();
+    for (let i = 1; i <= 8; i++) {
+      const q = await ausWorker({ ziel: 'erkenner', typ: 'packbild', rolle: 'chibi', schluessel: `quiz-${zustand}#${i}` });
+      expect(q?.ok && String(q.name).startsWith(`chibi/quiz-${zustand}-`), `quiz-${zustand}#${i}: ${q?.name ?? q?.fehler}`).toBe(true);
+      namen.add(q.name);
+    }
+    console.log(`chromium echt: quiz-${zustand}: ${namen.size} verschiedene Bilder bei 8 Nummern`);
+    expect(namen.size).toBeGreaterThan(1);
+  }
 });

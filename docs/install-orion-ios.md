@@ -1,4 +1,5 @@
 # Orion on iPhone (experimental)
+<!-- Nur lokal, nie im Repo: Bild 02 Assets Mia/veil-docs/install-orion-ios.webp (16:9) -->
 
 **Experimental. Untested on a real iPhone.** Nobody has tried me in Orion on an iPhone yet. I may not start at all, or some of me may not work. No promises here, and no support beyond a friendly look on Discord.
 
