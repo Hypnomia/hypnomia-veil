@@ -552,7 +552,8 @@ export class ZonenVideo {
       if (g) return this.stoerung(g);
     }
     const sprungZahl = this.h.sprungZaehler();
-    const mt = typeof meta?.mediaTime === 'number' ? meta.mediaTime : zeitOhneRueckfall(el.currentTime, this.letzteMt, VIDEO_UHR_RUECK_S, sprungZahl !== this.letzteSprungZahl);
+    const sprungOffen = sprungZahl !== this.letzteSprungZahl;
+    const mt = typeof meta?.mediaTime === 'number' ? meta.mediaTime : zeitOhneRueckfall(el.currentTime, this.letzteMt, VIDEO_UHR_RUECK_S, sprungOffen);
     const anders = !(mt === this.letzteMt) || this.ring.length === 0;
     if (!anders && !this.schmutzig) return;
     // Jeder Durchgang, der malt, wird auch analysiert: die Medienzeit allein erkennt ein neues Bild nicht verlaesslich (Firefox 128 meldet in requestAnimationFrame
@@ -563,10 +564,8 @@ export class ZonenVideo {
     let grund: 'sprung' | 'schnitt' = 'sprung';
     let sofort = false;
     if (neuesBild) {
-      if (sprungZahl !== this.letzteSprungZahl) {
-        this.letzteSprungZahl = sprungZahl;
-        szeneNeu = true;
-      } else if (Number.isFinite(this.letzteMt) && istSprung(this.letzteMt, mt, VIDEO_SPRUNG_MEDIA_S, VIDEO_UHR_RUECK_S)) szeneNeu = true;
+      if (sprungOffen) szeneNeu = true;
+      else if (Number.isFinite(this.letzteMt) && istSprung(this.letzteMt, mt, VIDEO_SPRUNG_MEDIA_S, VIDEO_UHR_RUECK_S)) szeneNeu = true;
     }
     let grau: GrauBild | null = null;
     let daumen: Float32Array | null = null;
@@ -593,6 +592,8 @@ export class ZonenVideo {
         } else if (b.art === 'sofort') sofort = true;
       }
       if (szeneNeu) this.neueSzene();
+      // Der gemeldete Sprung gilt erst als verbraucht, wenn die neue Szene begonnen hat; ein Durchgang, der vorher endet (keine Masse), laesst ihn offen.
+      this.letzteSprungZahl = sprungZahl;
       const dt = Number.isFinite(this.letzteMt) ? mt - this.letzteMt : 0;
       const vorher = this.ring[this.ring.length - 1];
       this.ring.push({ nr: ++this.bildNr, szene: this.szene, mt, grau });
