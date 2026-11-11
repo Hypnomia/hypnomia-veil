@@ -18,6 +18,7 @@ import { ladeSeitenSchriften } from '../oberflaeche/design/schrift';
 import { spiralAuge } from '../oberflaeche/design/motive';
 import { eigeneWurzel } from '../schleier/eigene';
 import { legeAufRechteck, istFestPositioniert, zIndexFuerStandbild, Z_DECKEL } from '../schleier/lage';
+import { lagewecker, merkeEigenenHost, schattenWurzelnVon } from '../schleier/lagewecker-seite';
 
 // Testhaken nur im Testbau: ohne Schalter faellt das Attribut samt Code beim Bauen weg (Release-Pruefung).
 const TESTHAKEN_S: boolean = import.meta.env.WXT_TESTHAKEN === '1';
@@ -51,6 +52,8 @@ interface Flaeche {
   zuletztZ: number;
   // Nur dunkler Deckel ohne Bild (wartendes Video, dessen Bild fehlt oder scheiterte).
   deckelNur: boolean;
+  // Abmeldung beim Lagewecker (src/schleier/lagewecker.ts).
+  abmelden: (() => void) | null;
 }
 
 export interface StandbildQuelle {
@@ -235,6 +238,7 @@ export class Standbild {
   private baue(v: HTMLVideoElement, deckt: Element): Flaeche {
     const host = document.createElement('div');
     hosts.add(host);
+    merkeEigenenHost(host);
     for (const ref of stehende) if (!ref.deref()?.isConnected) stehende.delete(ref); // Lesung Nr. 4: kein Wachsen auf langen Seiten
     stehende.add(new WeakRef(host));
     const s = host.style;
@@ -280,7 +284,7 @@ export class Standbild {
     huelle.className = 'h';
     huelle.append(etikett);
     wurzel.append(bild, huelle);
-    const f: Flaeche = { host, bild, blatt, stil, beob: null, stand: '', generation: this.naechsteGeneration++, deckt, zuletztZ: Number.NaN, deckelNur: false };
+    const f: Flaeche = { host, bild, blatt, stil, beob: null, stand: '', generation: this.naechsteGeneration++, deckt, zuletztZ: Number.NaN, deckelNur: false, abmelden: null };
     try {
       f.beob = new ResizeObserver(() => this.lege(v, f));
       f.beob.observe(deckt);
@@ -288,6 +292,21 @@ export class Standbild {
     } catch {
       f.beob = null;
     }
+    // Lagewecker: verschiebt sich das Video ohne Groessenwechsel (Seite macht den Player zum Bezug, Inhalt darueber waechst, CSS-Uebergang),
+    // liegt der Host im selben Bild wieder richtig. Je Bild, solange wach: das Video frisch beobachten (nie den Host, der aendert im Rueckruf seine
+    // Groesse), der ResizeObserver meldet sich nach dem Layout desselben Bildes und legt dort. Ohne ResizeObserver: direkt im rAF legen.
+    f.abmelden = lagewecker().melde(
+      {
+        lebt: () => this.q.lebt() && this.flaechen.get(v) === f,
+        jeBild: () => {
+          if (f.beob) {
+            f.beob.unobserve(v);
+            f.beob.observe(v);
+          } else this.lege(v, f);
+        },
+      },
+      schattenWurzelnVon(v),
+    );
     return f;
   }
 
@@ -321,6 +340,8 @@ export class Standbild {
     if (!f) return;
     this.flaechen.delete(v);
     f.generation = -1;
+    f.abmelden?.();
+    f.abmelden = null;
     try {
       f.beob?.disconnect();
     } catch {

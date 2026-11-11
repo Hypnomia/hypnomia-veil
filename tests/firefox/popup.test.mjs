@@ -336,6 +336,8 @@ try {
   await driver.executeScript(`location.hash = '';`);
   await driver.switchTo().window(popup2).catch(() => {});
   const popup3 = await oeffne('popup.html');
+  // Erst warten, bis Popup 3 gezeichnet ist: ein Skript, das waehrend des Ladens laeuft, wird verworfen und liefert still null (das Pack bliebe ungesetzt).
+  await bis('Popup 3 gezeichnet', async () => (await text('#status')).length > 0);
   await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch'], bilder: 3, groesse: 100, importiert: 1 } });`);
   await bis('Knopf mit Pack', async () => (await text('#pack-link')) === T.PACK_KNOPF_MIT);
   await driver.findElement(By.css('#pack-link')).click();

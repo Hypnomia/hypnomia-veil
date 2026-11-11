@@ -45,6 +45,7 @@ import {
 import { daumenAusGrau, GrauLeser, vergleicheDaumen, type GrauBild } from './daumen';
 import { eigeneWurzel } from './eigene';
 import { istFestPositioniert, legeAufRechteck, zIndexFuerLeinwand } from './lage';
+import { lagewecker, merkeEigenenHost, schattenWurzelnVon } from './lagewecker-seite';
 import { sperrePip } from './pip-sperre';
 import { testhakenAktiv, type VideoZonenZaehler } from './status';
 import {
@@ -95,6 +96,9 @@ const SAUBER_SCHRITT_S = 0.25; // hoechstens so viel Medienzeit zaehlt eine einz
 const ERSTES_BILD_FRIST_MS = 700; // ohne gemaltes Bild nach so langer Zeit gilt die Leinwand als gestoert
 const LAGE_TAKT_MS = 400;
 const ZAEHLER_LISTE = 64;
+// Testhaken nur im Testbau: Zahl der Bilder, die mit geleerter Leinwand gemalt wurden (Leinwandgroesse neu gesetzt, danach bis zum Ende unseres
+// letzten Rueckrufs vor dem Malen, der ResizeObserver-Phase, kein Videobild gezeichnet). Am Video, geschrieben nur bei Aenderung.
+const ATTR_VIDEO_LEER = TESTHAKEN ? 'data-veil-video-leer' : '';
 
 // Ein aufgenommenes Bild, auf das sich eine Antwort des Erkenners bezieht.
 export interface Aufnahme {
@@ -212,6 +216,12 @@ export class ZonenVideo {
   private handleArt: 'rvfc' | 'raf' | null = null;
   private letzteEignung = 0;
   private lageTimer: ReturnType<typeof setInterval> | null = null;
+  // Lagewecker (lagewecker.ts): ResizeObserver auf dem Video fuer einen Rueckruf nach dem Layout desselben Bildes, Abmeldung.
+  private beob: ResizeObserver | null = null;
+  private weckerAb: (() => void) | null = null;
+  // Leinwand geleert (Groesse neu gesetzt) und seither kein Videobild gezeichnet; Zahl der so gemalten Bilder (Testhaken).
+  private leinwandLeer = false;
+  private leereBilder = 0;
   private masse: Masse | null = null;
   private frist: ReturnType<typeof setTimeout> | null = null;
   private zuletztZ = '';
@@ -237,6 +247,7 @@ export class ZonenVideo {
     // Host als Geschwister direkt hinter dem Video: Inline-Stile mit !important (CSSOM), Klicks gehen ans Video.
     const host = document.createElement('div');
     this.host = host;
+    merkeEigenenHost(host);
     const s = host.style;
     for (const [n, w] of [
       ['all', 'initial'],
@@ -291,7 +302,55 @@ export class ZonenVideo {
       if (document.visibilityState === 'visible') this.neueSzene();
     });
     this.lageTimer = setInterval(() => this.pflege(), LAGE_TAKT_MS);
+    // Lagewecker: verschiebt sich das Video ohne Groessenwechsel und ohne neues Bild (Pause), liegt der Host im selben Bild wieder richtig.
+    // Je Bild, solange wach: das Video frisch beobachten, der Rueckruf kommt nach dem Layout desselben Bildes und legt dort (nie den Host beobachten).
+    try {
+      this.beob = new ResizeObserver(() => this.lageNachLayout());
+      this.beob.observe(el);
+    } catch {
+      this.beob = null;
+    }
+    this.weckerAb = lagewecker().melde(
+      {
+        lebt: () => !this.tot && this.h.lebt(),
+        jeBild: () => {
+          if (this.beob) {
+            this.beob.unobserve(el);
+            this.beob.observe(el);
+          } else this.lageNachLayout();
+        },
+      },
+      schattenWurzelnVon(el),
+    );
     this.setzeModus();
+  }
+
+  // Lage nach dem Layout (ResizeObserver, danach malt der Browser) oder im rAF. Nur die Lage geaendert: Host legen, nicht malen. Groesse geaendert
+  // und das Video laeuft: nur den Host legen (die Leinwand waechst per CSS mit), Masse und Leinwandgroesse bleiben; das naechste verarbeite rechnet
+  // neu und malt im selben Aufruf. Sonst wuerde hier die Leinwand geleert und erst ein Bild spaeter gemalt. Groesse geaendert und das Video steht:
+  // Masse neu und im selben Rueckruf malen (kein planeMalen, das malte erst im naechsten Bild). Nichts hier aendert eine beobachtete Groesse.
+  private lageNachLayout(): void {
+    if (this.tot || document.hidden) return;
+    const el = this.el;
+    if (!el.isConnected) return;
+    const rect = el.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0)) return;
+    const alt = this.masse?.rect;
+    const groesseGleich = !!alt && Math.abs(alt.width - rect.width) < 0.5 && Math.abs(alt.height - rect.height) < 0.5;
+    if (groesseGleich) {
+      this.pruefeLage();
+    } else if (!el.paused && !el.ended) {
+      legeAufRechteck(this.host, rect, istFestPositioniert(el));
+    } else {
+      this.pruefeLage();
+      this.schmutzig = true;
+      try {
+        this.verarbeite(undefined);
+      } catch (e) {
+        this.stoerung(`Fehler ${(e as Error)?.message ?? e}`);
+      }
+    }
+    this.zaehleLeer();
   }
 
   // Nach dem Eintragen beim Verwalter: das erste Bild sofort (das Video steht oft schon), dann laeuft die Rueckrufschleife. Eine Stoerung dabei
@@ -692,6 +751,14 @@ export class ZonenVideo {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.el, r.x, r.y, r.w, r.h);
     ctx.restore();
+    this.leinwandLeer = false;
+  }
+
+  // Testhaken: endet ein Rueckruf der ResizeObserver-Phase (danach malt der Browser) mit geleerter Leinwand, zeigt dieses Bild sie leer.
+  private zaehleLeer(): void {
+    if (!this.testAn || !ATTR_VIDEO_LEER || !this.leinwandLeer || this.tot) return;
+    this.leereBilder++;
+    this.el.setAttribute(ATTR_VIDEO_LEER, String(this.leereBilder));
   }
 
   private malen(m: Masse, vb: number, vh: number): void {
@@ -814,6 +881,7 @@ export class ZonenVideo {
     const cb = Math.max(1, Math.round(cssB * q));
     const ch = Math.max(1, Math.round(cssH * q));
     if (this.leinwand.width !== cb || this.leinwand.height !== ch) {
+      this.leinwandLeer = true;
       this.leinwand.width = cb;
       this.leinwand.height = ch;
       this.schmutzig = true;
@@ -929,6 +997,14 @@ export class ZonenVideo {
       }
     }
     this.handle = null;
+    this.weckerAb?.();
+    this.weckerAb = null;
+    try {
+      this.beob?.disconnect();
+    } catch {
+      // egal
+    }
+    this.beob = null;
     if (this.lageTimer) clearInterval(this.lageTimer);
     this.lageTimer = null;
     if (this.frist) clearTimeout(this.frist);
@@ -942,5 +1018,6 @@ export class ZonenVideo {
     this.el.removeAttribute(ATTR_LEINWAND);
     if (ATTR_VIDEO_MODUS) this.el.removeAttribute(ATTR_VIDEO_MODUS);
     if (ATTR_VIDEO_BOXEN) this.el.removeAttribute(ATTR_VIDEO_BOXEN);
+    if (ATTR_VIDEO_LEER) this.el.removeAttribute(ATTR_VIDEO_LEER);
   }
 }

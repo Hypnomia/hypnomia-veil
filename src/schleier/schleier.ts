@@ -345,7 +345,12 @@ export function starteSchleier(ctx: KontextLeicht): void {
     freigabeReif: (el) => video.freigabeReif(el),
     sofort: (el) => video.sofortFuer(el),
     zeigeZonen: (el, z) => zeigeCover(el, z, 'zensiert'),
-    zeigeGanz: (el, z) => zeigeCover(el, z, 'verdeckt'),
+    // Rueckfall der Leinwand: der Grund steht schon im Zaehler (stoerung), Urteil und Status werden zugleich sichtbar (Testhaken; ausserhalb des
+    // Testbaus tut schreibe nichts). Sonst sah ein Test unter Last das Urteil 'verdeckt' vor dem gedrosselten Status (30 ms) mit dem Grund.
+    zeigeGanz: (el, z) => {
+      zeigeCover(el, z, 'verdeckt');
+      status.schreibe();
+    },
     dokumentBremseOk: () => performance.now() - letzteVideoFreigabe >= BLITZ_SPERRE_MS,
     meldeLangsam: () => {
       // Hinweis fuer das Popup (Zeitstempel, nur obere Seite): "Too slow to follow closely here."

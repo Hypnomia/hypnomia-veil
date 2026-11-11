@@ -29,12 +29,14 @@ export function sperrePip(v: HTMLVideoElement, an: boolean, wer = 'standbild'): 
         sperren.set(v, s);
       }
       s.halter.add(wer);
-      v.disablePictureInPicture = true;
+      // Nur schreiben, wenn der Wert nicht schon stimmt: jedes Setzen erzeugt einen Mutationssatz am Video, und der Takt sperrt alle 400 ms erneut
+      // (sonst hielte das den Lagewecker, src/schleier/lagewecker.ts, dauernd wach).
+      if (v.disablePictureInPicture !== true) v.disablePictureInPicture = true;
       beendePip(v);
     } else if (s) {
       s.halter.delete(wer);
       if (s.halter.size === 0) {
-        v.disablePictureInPicture = s.vorher;
+        if (v.disablePictureInPicture !== s.vorher) v.disablePictureInPicture = s.vorher;
         sperren.delete(v);
       }
     }

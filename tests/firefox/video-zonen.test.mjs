@@ -369,6 +369,112 @@ try {
     await warteZonen();
   });
 
+  // Lagewecker (src/schleier/lagewecker.ts): in der Pause kommt kein neues Bild; macht die Seite den Behaelter dann zum Bezug, liegt der Host der
+  // Leinwand spaetestens im zweiten Bild wieder genau auf dem Video, ohne auf den Lage-Takt (400 ms) zu warten. Gemessen im rAF des dritten Bildes danach.
+  await test('F Leinwand in der Pause: Behaelter wird Bezug, Host spaetestens im zweiten Bild genau auf dem Video', async () => {
+    await oeffne();
+    await driver.executeScript(`window.__fehler = []; addEventListener('error', (e) => window.__fehler.push(String(e.message || e.type)));
+      document.getElementById('platz').style.cssText = 'position:static;margin-left:40px;margin-top:24px'; return true;`);
+    await neuesVideo({ id: 'v1' });
+    await warteZonen();
+    await driver.executeScript("document.getElementById('v1').pause(); return true;");
+    await warte(1500);
+    const m = await driver.executeAsyncScript(
+      `const fertig = arguments[arguments.length - 1];
+       const v = document.getElementById('v1'); const host = v.nextElementSibling;
+       const abw = () => { const h = host.getBoundingClientRect(); const r = v.getBoundingClientRect();
+         return Math.max(Math.abs(h.x - r.x), Math.abs(h.y - r.y), Math.abs(h.width - r.width), Math.abs(h.height - r.height)); };
+       const vorher = abw();
+       document.getElementById('platz').style.position = 'relative';
+       const bilder = [];
+       const weg = abw(); // sofort nach der Aenderung im selben Task: kein Takt kann dazwischen legen
+     const schritt = () => { bilder.push(abw()); if (bilder.length < 3) requestAnimationFrame(schritt); else fertig({ vorher, bilder, weg, pausiert: v.paused }); };
+       requestAnimationFrame(schritt);`,
+    );
+    console.log(`firefox video-zonen F: vorher ${m.vorher}, Bild 1..3 ${m.bilder.join(' ')}`);
+    pruefe(m.pausiert, 'Video pausiert');
+    pruefe(m.vorher <= 0.5, `vorher genau (${m.vorher})`);
+    pruefe(m.weg > 2, `die Aenderung legt Host und Video auseinander (${m.weg})`);
+    pruefe(m.bilder[2] <= 0.5, `Host im zweiten Bild genau auf dem Video (${m.bilder.join(' ')})`);
+    const f = await driver.executeScript('return window.__fehler || null;');
+    pruefe(Array.isArray(f) && f.length === 0, `kein error am Fenster (${JSON.stringify(f)})`);
+    pruefe((await attr('v1', 'data-veil-leinwand')) !== null, 'Leinwand liegt noch');
+  });
+
+  // Lagewecker, Ruhe mit stehender Leinwand: Video in Pause, Zonen-Leinwand aktiv. 1,5 s nach dem letzten Anlass schlaeft der Wecker und sein
+  // Bildzaehler steht (Testhaken data-veil-lagewecker): eigene Takt-Schreiber auf dem Video duerfen ihn nicht wach halten.
+  await test('H Ruhe mit stehender Leinwand: der Lagewecker schlaeft', async () => {
+    await oeffne();
+    await neuesVideo({ id: 'v1' });
+    await warteZonen();
+    await driver.executeScript("document.getElementById('v1').pause(); return true;");
+    await warte(1000);
+    // Ein Anlass der Seite weckt ihn sicher einmal; danach muss er von selbst wieder einschlafen.
+    await driver.executeScript("document.body.setAttribute('data-anlass', '1'); return true;");
+    await warte(1500);
+    const lies = async () => JSON.parse((await driver.executeScript("return document.documentElement.getAttribute('data-veil-lagewecker')")) ?? 'null');
+    const w1 = await lies();
+    await warte(1500);
+    const w2 = await lies();
+    console.log(`firefox video-zonen H: ${JSON.stringify([w1, w2])}`);
+    pruefe((await attr('v1', 'data-veil-leinwand')) !== null, 'Leinwand liegt');
+    pruefe((w1?.bilder ?? 0) > 0, `der Anlass hat den Wecker geweckt (${JSON.stringify(w1)})`);
+    pruefe(w1?.wach === false && w2?.wach === false, `Wecker schlaeft 1,5 s nach dem Anlass bei stehender Leinwand (${JSON.stringify([w1, w2])})`);
+    pruefe(w2?.bilder === w1?.bilder, `Bildzaehler steht (${JSON.stringify([w1, w2])})`);
+  });
+
+  // Groessen-Uebergang des Videos (640 x 360 nach 480 x 270 in 300 ms), in Pause und laufend: je Bild nie leer gemalt (Testhaken data-veil-video-leer),
+  // Host hoechstens 1 px neben dem Video. Gemessen in der ResizeObserver-Phase: Firefox ruft die Beobachter der Seite vor denen des Content-Scripts,
+  // darum misst ein MutationObserver am Host neu, wenn unser Legen danach im selben Bild kam (Video-Rechteck unveraendert). Der Vergleich im naechsten
+  // rAF taugt bei laufendem Video nicht: der Bild-Rueckruf (rvfc, vor dem rAF) legt den Host dann schon fuer das naechste Bild.
+  for (const art of ['Pause', 'laufend']) {
+    await test(`G Groessen-Uebergang ${art}: Leinwand nie leer gemalt, Host hoechstens 1 px neben dem Video`, async () => {
+      await oeffne();
+      await driver.executeScript(`window.__fehler = []; addEventListener('error', (e) => window.__fehler.push(String(e.message || e.type))); return true;`);
+      await neuesVideo({ id: 'v1' });
+      await warteZonen();
+      if (art === 'Pause') {
+        await driver.executeScript("document.getElementById('v1').pause(); return true;");
+        await warte(600);
+      }
+      const m = await driver.executeAsyncScript(
+        `const fertig = arguments[arguments.length - 1];
+         const v = document.getElementById('v1'); const host = v.nextElementSibling;
+         const leer0 = Number(v.getAttribute('data-veil-video-leer') || 0);
+         const werte = []; let wert = null; let gemalt = null;
+         const abw = (r) => { const h = host.getBoundingClientRect();
+           return Math.max(Math.abs(h.x - r.x), Math.abs(h.y - r.y), Math.abs(h.width - r.width), Math.abs(h.height - r.height)); };
+         const ro = new ResizeObserver(() => { gemalt = v.getBoundingClientRect(); wert = abw(gemalt); });
+         const mo = new MutationObserver(() => { if (!gemalt) return; const r = v.getBoundingClientRect();
+           if (Math.abs(r.x - gemalt.x) + Math.abs(r.y - gemalt.y) + Math.abs(r.width - gemalt.width) + Math.abs(r.height - gemalt.height) < 0.01) wert = abw(r); });
+         mo.observe(host, { attributes: true });
+         let laeuft = true;
+         v.addEventListener('transitionend', () => (laeuft = false));
+         v.style.transition = 'width 300ms linear, height 300ms linear';
+         void v.offsetWidth;
+         v.style.width = '480px'; v.style.height = '270px';
+         let nach = 0;
+         const schritt = () => {
+           if (wert !== null) werte.push(wert);
+           wert = null; gemalt = null;
+           ro.unobserve(v); ro.observe(v);
+           if (!laeuft && ++nach > 3) return mo.disconnect(), fertig({ bilder: werte.length, max: Math.max(...werte), leer: Number(v.getAttribute('data-veil-video-leer') || 0) - leer0,
+             breite: Math.round(v.getBoundingClientRect().width), pausiert: v.paused });
+           requestAnimationFrame(schritt);
+         };
+         requestAnimationFrame(schritt);`,
+      );
+      console.log(`firefox video-zonen G ${art}: ${JSON.stringify(m)}`);
+      pruefe(m.pausiert === (art === 'Pause'), `Pause-Zustand (${m.pausiert})`);
+      pruefe(m.breite === 480 && m.bilder > 8, `Uebergang gelaufen (${JSON.stringify(m)})`);
+      pruefe(m.leer === 0, `leer gemalte Bilder (${m.leer})`);
+      pruefe(m.max <= 1, `groesste Abweichung Host gegen Video (${m.max})`);
+      const f = await driver.executeScript('return window.__fehler || null;');
+      pruefe(Array.isArray(f) && f.length === 0, `kein error am Fenster (${JSON.stringify(f)})`);
+      pruefe((await attr('v1', 'data-veil-leinwand')) !== null, 'Leinwand liegt noch');
+    });
+  }
+
   await test('z12 video ganz: wie heute, nie Leinwand', async () => {
     await oeffne();
     await setze({ video: 'ganz' });

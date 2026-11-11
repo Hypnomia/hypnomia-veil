@@ -666,6 +666,156 @@ test('R7 Seite haengt das Video in einen anderen Container um: der Host zieht mi
   await s.close();
 });
 
+// Lagewecker (src/schleier/lagewecker.ts): in der Pause kommt kein neues Bild; macht die Seite den Behaelter dann zum Bezug, liegt der Host der Leinwand
+// spaetestens im zweiten Bild wieder genau auf dem Video, ohne auf den Lage-Takt (400 ms) zu warten. Gemessen im rAF des dritten Bildes nach der Aenderung.
+test('F Leinwand in der Pause: Behaelter wird Bezug, der Host liegt spaetestens im zweiten Bild genau auf dem Video', async () => {
+  const s = await oeffne();
+  await s.evaluate(() => {
+    (window as any).__fehler = [];
+    addEventListener('error', (e) => (window as any).__fehler.push(String((e as ErrorEvent).message ?? e.type)));
+    // Behaelter mit Abstand, zunaechst ohne Bezug: der Host richtet sich am Dokument aus.
+    document.getElementById('platz')!.style.cssText = 'position:static;margin-left:40px;margin-top:24px';
+  });
+  await neuesVideo(s);
+  await warteZonen(s);
+  await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).pause());
+  await abwarten(1500);
+  const m = await s.evaluate(async () => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    const host = v.nextElementSibling as HTMLElement;
+    const abw = () => {
+      const h = host.getBoundingClientRect();
+      const r = v.getBoundingClientRect();
+      return Math.max(Math.abs(h.x - r.x), Math.abs(h.y - r.y), Math.abs(h.width - r.width), Math.abs(h.height - r.height));
+    };
+    const vorher = abw();
+    document.getElementById('platz')!.style.position = 'relative';
+    // Abweichung sofort nach der Aenderung, im selben Task (erzwungenes Layout): kein Takt kann dazwischen legen, anders als bis zum ersten Bild.
+    const weg = abw();
+    const bilder: number[] = [];
+    await new Promise<void>((fertig) => {
+      const schritt = () => {
+        bilder.push(abw());
+        if (bilder.length < 3) requestAnimationFrame(schritt);
+        else fertig();
+      };
+      requestAnimationFrame(schritt);
+    });
+    return { vorher, bilder, weg, pausiert: v.paused };
+  });
+  console.log(`chromium video-zonen F: vorher ${m.vorher}, Bild 1..3 ${m.bilder.join(' ')}`);
+  expect(m.pausiert).toBe(true);
+  expect(m.vorher).toBeLessThanOrEqual(0.5);
+  expect(m.weg, 'die Aenderung legt Host und Video wirklich auseinander').toBeGreaterThan(2);
+  expect(m.bilder[2], 'Host im zweiten Bild genau auf dem Video').toBeLessThanOrEqual(0.5);
+  expect(await s.evaluate(() => (window as any).__fehler), 'kein error am Fenster').toEqual([]);
+  expect(await attr(s, 'v1', 'data-veil-leinwand')).not.toBeNull();
+  await s.close();
+});
+
+// Lagewecker, Ruhe mit stehender Leinwand: Video in Pause, Zonen-Leinwand aktiv. 1,5 s nach dem letzten Anlass schlaeft der Wecker und sein Bildzaehler
+// steht (Testhaken data-veil-lagewecker): eigene Takt-Schreiber auf dem Video (Bild-in-Bild-Sperre) duerfen ihn nicht wach halten.
+test('H Ruhe mit stehender Leinwand: der Lagewecker schlaeft', async () => {
+  const s = await oeffne();
+  await neuesVideo(s);
+  await warteZonen(s);
+  await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).pause());
+  await abwarten(1000);
+  // Ein Anlass der Seite weckt ihn sicher einmal; danach muss er von selbst wieder einschlafen.
+  await s.evaluate(() => document.body.setAttribute('data-anlass', '1'));
+  await abwarten(1500);
+  const lies = () => s.evaluate(() => JSON.parse(document.documentElement.getAttribute('data-veil-lagewecker') ?? 'null'));
+  const w1 = await lies();
+  await abwarten(1500);
+  const w2 = await lies();
+  console.log(`chromium video-zonen H: ${JSON.stringify([w1, w2])}`);
+  expect(await attr(s, 'v1', 'data-veil-leinwand')).not.toBeNull();
+  expect(w1?.bilder ?? 0, 'der Anlass hat den Wecker geweckt').toBeGreaterThan(0);
+  expect(w1?.wach, 'Wecker schlaeft 1,5 s nach dem Anlass bei stehender Leinwand').toBe(false);
+  expect(w2?.wach).toBe(false);
+  expect(w2?.bilder, 'Bildzaehler steht').toBe(w1?.bilder);
+  await s.close();
+});
+
+// Groessen-Uebergang des Videos (640 x 360 nach 480 x 270 in 300 ms), einmal in Pause, einmal laufend: je Bild ist die Leinwand nie leer gemalt
+// (Testhaken data-veil-video-leer) und der Host liegt hoechstens 1 px neben dem Video. Laeuft das Video, legt schon der Bild-Rueckruf (rvfc, vor dem
+// rAF) den Host fuer das naechste Bild; der Vergleich im naechsten rAF taugt dann nicht. Gemessen wird darum in der ResizeObserver-Phase: ein Beobachter
+// der Seite misst Host gegen Video. Chromium ruft ihn nach unserem (spaeter angelegt); Firefox ruft die Beobachter der Seite vor denen des Content-Scripts.
+// Darum misst zusaetzlich ein MutationObserver am Host neu, wenn unser Legen nach dem Rueckruf der Seite im selben Bild kam (Video-Rechteck unveraendert).
+async function groessenUebergang(s: Page) {
+  return s.evaluate(async () => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    const host = v.nextElementSibling as HTMLElement;
+    const leer0 = Number(v.getAttribute('data-veil-video-leer') ?? 0);
+    const werte: number[] = [];
+    let wert: number | null = null;
+    let gemalt: DOMRect | null = null;
+    const abw = (r: DOMRect) => {
+      const h = host.getBoundingClientRect();
+      return Math.max(Math.abs(h.x - r.x), Math.abs(h.y - r.y), Math.abs(h.width - r.width), Math.abs(h.height - r.height));
+    };
+    const ro = new ResizeObserver(() => {
+      gemalt = v.getBoundingClientRect();
+      wert = abw(gemalt);
+    });
+    const mo = new MutationObserver(() => {
+      if (!gemalt) return;
+      const r = v.getBoundingClientRect();
+      if (Math.abs(r.x - gemalt.x) + Math.abs(r.y - gemalt.y) + Math.abs(r.width - gemalt.width) + Math.abs(r.height - gemalt.height) < 0.01) wert = abw(r);
+    });
+    mo.observe(host, { attributes: true });
+    let laeuft = true;
+    v.addEventListener('transitionend', () => (laeuft = false));
+    v.style.transition = 'width 300ms linear, height 300ms linear';
+    void v.offsetWidth;
+    v.style.width = '480px';
+    v.style.height = '270px';
+    let nach = 0;
+    await new Promise<void>((fertig) => {
+      const schritt = () => {
+        if (wert !== null) werte.push(wert);
+        wert = null;
+        gemalt = null;
+        ro.unobserve(v);
+        ro.observe(v);
+        if (!laeuft && ++nach > 3) {
+          mo.disconnect();
+          return fertig();
+        }
+        requestAnimationFrame(schritt);
+      };
+      requestAnimationFrame(schritt);
+    });
+    const leer = Number(v.getAttribute('data-veil-video-leer') ?? 0) - leer0;
+    return { bilder: werte.length, max: Math.max(...werte), leer, breite: Math.round(v.getBoundingClientRect().width), pausiert: v.paused };
+  });
+}
+for (const art of ['Pause', 'laufend'] as const) {
+  test(`G Groessen-Uebergang ${art}: Leinwand nie leer gemalt, Host hoechstens 1 px neben dem Video`, async () => {
+    const s = await oeffne();
+    await s.evaluate(() => {
+      (window as any).__fehler = [];
+      addEventListener('error', (e) => (window as any).__fehler.push(String((e as ErrorEvent).message ?? e.type)));
+    });
+    await neuesVideo(s);
+    await warteZonen(s);
+    if (art === 'Pause') {
+      await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).pause());
+      await abwarten(600);
+    }
+    const m = await groessenUebergang(s);
+    console.log(`chromium video-zonen G ${art}: ${JSON.stringify(m)}`);
+    expect(m.pausiert).toBe(art === 'Pause');
+    expect(m.breite).toBe(480);
+    expect(m.bilder).toBeGreaterThan(8);
+    expect(m.leer, 'leer gemalte Bilder').toBe(0);
+    expect(m.max, 'groesste Abweichung Host gegen Video').toBeLessThanOrEqual(1);
+    expect(await s.evaluate(() => (window as any).__fehler), 'kein error am Fenster').toEqual([]);
+    expect(await attr(s, 'v1', 'data-veil-leinwand')).not.toBeNull();
+    await s.close();
+  });
+}
+
 // Kleiner Ablauf fuer die Randfaelle: Aufnahme, Video starten, bis zur Zonen-Leinwand warten.
 async function startePruefling(abfrage = '', opt: Record<string, unknown> = { id: 'v1' }, vorher?: (s: Page) => Promise<unknown>) {
   const s = await oeffne(abfrage);
