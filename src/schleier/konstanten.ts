@@ -96,3 +96,4 @@ export const VIDEO_ZONEN_ZELLE_SCHWELLE = 0.3; // Zellen mit mehr Abweichung zae
 export const VIDEO_ZONEN_ZELLEN_ANTEIL = 0.1; // so viele starke Zellen: nur Sofortpruefung, kein Ganz-Decken
 export const VIDEO_SCHNITT_MIN_MS = 300; // freie Videos: nach einem Schnitt fruehestens so lange nach der letzten Pruefung die Sofortpruefung
 export const VIDEO_SPRUNG_MEDIA_S = 0.75; // Sprung der Medienzeit (vor oder zurueck) ueber diesem Wert ohne Ereignis gilt als Sprung
+export const VIDEO_UHR_RUECK_S = 0.1; // die Uhr (currentTime) darf so weit hinter der Bildzeit des letzten Bildes liegen, ohne dass es ein Sprung ist (Firefox nach einer Pause: 4 bis 11 ms)

@@ -984,6 +984,30 @@ try {
     });
   } else if (OHNE_TESTBILDER) console.log('firefox: AUSNAHME VEIL_OHNE_TESTBILDER=1: P3 und P4 uebersprungen');
   else fehlerListe.push(`Testbild ${PATCH_GESICHT} fehlt`);
+
+  await test('N5 Pause, Einzelbild zurueck (0,05 s, Sprung-Ereignis): die Leinwand verarbeitet den Sprung als neue Szene', async () => {
+    await oeffneBild('sfw', GESICHT);
+    await setze({ preset: 'mosaik', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1, pause: false, video: 'zonen' });
+    await neuesVideo({ id: 'v1' });
+    await bis('Zonen im stillen Abschnitt, angehalten', async () => {
+      if ((await attr('v1', 'data-veil')) !== 'zensiert') return false;
+      const v = await lies();
+      if (!v || v.ansicht !== 'zonen' || v.arten.length === 0) return false;
+      return driver.executeScript("const el = document.getElementById('v1'); if (el.currentTime < 2.5 || el.currentTime > 5.0) return false; el.pause(); return true;");
+    }, 90_000);
+    const v0 = await bis('ruhiger Stand', async () => {
+      const a = await lies();
+      await warte(300);
+      const b = await lies();
+      if (!a || !b || b.ansicht !== 'zonen' || b.arten.length === 0 || JSON.stringify(a.ids) !== JSON.stringify(b.ids)) return null;
+      return b;
+    }, 30_000);
+    await driver.executeScript("const el = document.getElementById('v1'); el.currentTime = el.currentTime - 0.05;");
+    await bis('neue Szene nach dem Schritt zurueck', async () => {
+      const v = await lies();
+      return !!v && v.szene > v0.szene;
+    }, 30_000);
+  });
   await rm(ordner, { recursive: true, force: true });
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

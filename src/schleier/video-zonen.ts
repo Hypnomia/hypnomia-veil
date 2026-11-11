@@ -472,6 +472,15 @@ export function fruehestensAnsicht(ziel: Ansicht, letzterWechsel: number, minMs:
   return ziel === 'ganz' ? Number.NEGATIVE_INFINITY : letzterWechsel + minMs;
 }
 
+// Medienzeit eines Durchgangs ohne Bildzeit (Pause, Takt): die Uhr. Liegt sie hoechstens `toleranz` hinter der Bildzeit des letzten Bildes (`letzteMt`),
+// gilt die Bildzeit, sonst fiele die Zeit zurueck und entferneAlte verwuerfe alle Spuren. Ist ein Sprung gemeldet (`sprungOffen`: seeking oder seeked noch nicht
+// verarbeitet), kommt immer die Uhr zurueck: ein gemeldeter Sprung ist nie ein Rueckfall der Uhr, der Durchgang muss ihn als neue Szene sehen. Weiter zurueck bleibt die Uhr: das ist ein echter Rueckwaertssprung.
+export function zeitOhneRueckfall(uhr: number, letzteMt: number, toleranz: number, sprungOffen: boolean): number {
+  if (sprungOffen || !Number.isFinite(uhr) || !Number.isFinite(letzteMt)) return uhr;
+  const d = letzteMt - uhr;
+  return d > 0 && d <= toleranz ? letzteMt : uhr;
+}
+
 // Beobachtete saubere Medienzeit nach einer Antwort: ein Treffer setzt sie auf 0; sonst waechst sie um den Abstand zur vorigen Antwort derselben Szene
 // (`letzteMt` unendlich negativ = erste Antwort der Szene: 0), hoechstens um `maxSchritt`. Eine Luecke der Medienzeit (Sprung, Hintergrund-Tab,
 // weggescrollt) zaehlt damit nie als sauber.
@@ -602,10 +611,10 @@ export function matrixDreht(transform: string | null | undefined): boolean {
 
 // Hat sich die Abspielposition zwischen zwei gezeigten Bildern sprunghaft geaendert (ohne dass ein Ereignis es gemeldet haette)? Normal ist ein
 // kleiner Schritt nach vorn (auch ein paar Bilder uebersprungen); ein Schritt ueber `grenze` Sekunden oder nach hinten ist ein Sprung.
-export function istSprung(vorher: number, jetzt: number, grenze: number): boolean {
+export function istSprung(vorher: number, jetzt: number, grenze: number, rueck = 0.1): boolean {
   if (!Number.isFinite(vorher) || !Number.isFinite(jetzt)) return true;
   const d = jetzt - vorher;
-  // Rueckwaerts bis 0,1 s ist kein Sprung: die Zeit stammt mal aus requestVideoFrameCallback (Bild), mal aus currentTime (Uhr), sie weichen um ein bis zwei Bilder ab.
+  // Rueckwaerts bis `rueck` (Standard 0,1 s, der Aufrufer reicht VIDEO_UHR_RUECK_S) ist kein Sprung: die Zeit stammt mal aus requestVideoFrameCallback (Bild), mal aus currentTime (Uhr), sie weichen um ein bis zwei Bilder ab.
   // Echte Spruenge meldet ausserdem der Zaehler der seeking- und seeked-Ereignisse.
-  return d > grenze || d < -0.1;
+  return d > grenze || d < -rueck;
 }

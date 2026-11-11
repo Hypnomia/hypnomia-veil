@@ -1700,3 +1700,40 @@ test('P10 Spur verloren und neu angelegt (neue Szene durch einen kleinen Sprung 
   expect(await sichtVerstoesse(s)).toEqual([]);
   await s.close();
 });
+
+test('N5 Pause, Einzelbild zurueck (0,05 s, Sprung-Ereignis): die Leinwand verarbeitet den Sprung als neue Szene', async () => {
+  test.setTimeout(180_000);
+  await setze({ preset: 'mosaik', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1 });
+  const s = await oeffneBild('sfw', GESICHT, 'ohne=1&kurz=1');
+  await neuesVideo(s, { id: 'v1' });
+  await wartePoll(async () => {
+    if ((await attr(s, 'v1', 'data-veil')) !== 'zensiert') return false;
+    const v = await lies(s);
+    if (!v || v.ansicht !== 'zonen' || v.arten.length === 0) return false;
+    return s.evaluate(() => {
+      const el = document.getElementById('v1') as HTMLVideoElement;
+      if (el.currentTime < 2.5 || el.currentTime > 5.0) return false;
+      el.pause();
+      return true;
+    });
+  }, 60_000);
+  let vor: VideoBoxen | null = null;
+  await wartePoll(async () => {
+    const a = await lies(s);
+    await abwarten(300);
+    const b = await lies(s);
+    if (!a || !b || b.ansicht !== 'zonen' || b.arten.length === 0 || JSON.stringify(a.ids) !== JSON.stringify(b.ids)) return false;
+    vor = b;
+    return true;
+  }, 30_000);
+  const v0 = vor!;
+  await s.evaluate(() => {
+    const el = document.getElementById('v1') as HTMLVideoElement;
+    el.currentTime = el.currentTime - 0.05;
+  });
+  await wartePoll(async () => {
+    const v = await lies(s);
+    return !!v && v.szene > v0.szene;
+  }, 30_000);
+  await s.close();
+});

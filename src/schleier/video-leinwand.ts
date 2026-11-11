@@ -40,6 +40,7 @@ import {
   VIDEO_ZONEN_ZELLEN_ANTEIL,
   VIDEO_ZONEN_ZUORDNUNG_IOU,
   VIDEO_SPRUNG_MEDIA_S,
+  VIDEO_UHR_RUECK_S,
   VIDEO_WECHSEL_MIN_MS,
 } from './konstanten';
 import { daumenAusGrau, GrauLeser, vergleicheDaumen, type GrauBild } from './daumen';
@@ -59,6 +60,7 @@ import {
   inhaltsRechteck,
   istObjektPassung,
   istSprung,
+  zeitOhneRueckfall,
   kantenZuRechteck,
   parsePosition,
   rueckkehrOk,
@@ -549,7 +551,8 @@ export class ZonenVideo {
       const g = this.h.eignung();
       if (g) return this.stoerung(g);
     }
-    const mt = typeof meta?.mediaTime === 'number' ? meta.mediaTime : el.currentTime;
+    const sprungZahl = this.h.sprungZaehler();
+    const mt = typeof meta?.mediaTime === 'number' ? meta.mediaTime : zeitOhneRueckfall(el.currentTime, this.letzteMt, VIDEO_UHR_RUECK_S, sprungZahl !== this.letzteSprungZahl);
     const anders = !(mt === this.letzteMt) || this.ring.length === 0;
     if (!anders && !this.schmutzig) return;
     // Jeder Durchgang, der malt, wird auch analysiert: die Medienzeit allein erkennt ein neues Bild nicht verlaesslich (Firefox 128 meldet in requestAnimationFrame
@@ -559,12 +562,11 @@ export class ZonenVideo {
     let szeneNeu = false;
     let grund: 'sprung' | 'schnitt' = 'sprung';
     let sofort = false;
-    const sprungZahl = this.h.sprungZaehler();
     if (neuesBild) {
       if (sprungZahl !== this.letzteSprungZahl) {
         this.letzteSprungZahl = sprungZahl;
         szeneNeu = true;
-      } else if (Number.isFinite(this.letzteMt) && istSprung(this.letzteMt, mt, VIDEO_SPRUNG_MEDIA_S)) szeneNeu = true;
+      } else if (Number.isFinite(this.letzteMt) && istSprung(this.letzteMt, mt, VIDEO_SPRUNG_MEDIA_S, VIDEO_UHR_RUECK_S)) szeneNeu = true;
     }
     let grau: GrauBild | null = null;
     let daumen: Float32Array | null = null;

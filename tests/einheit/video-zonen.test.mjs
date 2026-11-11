@@ -27,6 +27,7 @@ import {
   ersatzFuer,
   wirksameBehandlung,
   suchRadius,
+  zeitOhneRueckfall,
   zielKanten,
 } from '../../src/schleier/video-zonen.ts';
 import { daumenAusGrau, grauAusRgba, vergleicheDaumen } from '../../src/schleier/daumen.ts';
@@ -954,4 +955,56 @@ test('SchriftVersuche: nach einem Fehlschlag Wiederholung nach 2 s, 8 s, 30 s, d
   w.meldeFehl(0);
   w.meldeOk();
   assert.equal(w.darfVersuchen(1), true);
+});
+
+// ---------- Uhr hinter der Bildzeit (Pause) ----------
+
+const uhrToleranz = () => {
+  const text = readFileSync(new URL('../../src/schleier/konstanten.ts', import.meta.url), 'utf8');
+  return Number(/export const VIDEO_UHR_RUECK_S = ([0-9.]+)/.exec(text)[1]);
+};
+
+test('zeitOhneRueckfall: Uhr knapp hinter der Bildzeit gibt die Bildzeit, sonst die Uhr', () => {
+  const tol = uhrToleranz();
+  assert.equal(tol, 0.1);
+  assert.equal(zeitOhneRueckfall(3.289, 3.293, tol, false), 3.293); // 4 ms
+  assert.equal(zeitOhneRueckfall(3.282, 3.293, tol, false), 3.293); // 11 ms
+  assert.equal(zeitOhneRueckfall(1.5, 1.625, 0.125, false), 1.625); // genau Toleranz (exakt darstellbare Zahlen)
+  assert.equal(zeitOhneRueckfall(1.5625, 1.625, 0.125, false), 1.625);
+  assert.equal(zeitOhneRueckfall(3.3, 3.293, tol, false), 3.3); // Uhr davor
+  assert.equal(zeitOhneRueckfall(3.293, 3.293, tol, false), 3.293); // gleich
+  assert.equal(zeitOhneRueckfall(3.1, 3.293, tol, false), 3.1); // mehr als Toleranz dahinter
+  assert.equal(zeitOhneRueckfall(1.0, 1.126, 0.125, false), 1.0);
+  assert.equal(zeitOhneRueckfall(3.289, Number.NaN, tol, false), 3.289); // nicht endlicher Bezug
+  assert.equal(zeitOhneRueckfall(3.289, Number.NEGATIVE_INFINITY, tol, false), 3.289);
+  assert.equal(zeitOhneRueckfall(3.289, Number.POSITIVE_INFINITY, tol, false), 3.289);
+  assert.ok(Number.isNaN(zeitOhneRueckfall(Number.NaN, 3.293, tol, false))); // nicht endliche Uhr durchreichen
+  assert.equal(zeitOhneRueckfall(Number.POSITIVE_INFINITY, 3.293, tol, false), Number.POSITIVE_INFINITY);
+});
+
+test('zeitOhneRueckfall: bei offenem Sprung immer die Uhr', () => {
+  assert.equal(zeitOhneRueckfall(3.253, 3.293, 0.1, true), 3.253); // 40 ms hinter der Bildzeit, Sprung gemeldet
+  assert.equal(zeitOhneRueckfall(3.253, 3.293, 0.1, false), 3.293);
+});
+
+test('Spuren: zurueckgefallene Uhr in der Pause verwirft die Spur nicht, ein echter Rueckwaertssprung schon', () => {
+  const tol = uhrToleranz();
+  const sl = new SpurListe();
+  sl.ordneZu([kasten(0, 0, 20, 20)], 3.293, P);
+  sl.entferneAlte(zeitOhneRueckfall(3.289, 3.293, tol, false), 1.0);
+  assert.equal(sl.spuren.length, 1);
+  // Gegenprobe: der Schutz gegen Rueckspruenge selbst ist unveraendert
+  sl.entferneAlte(3.289, 1.0);
+  assert.equal(sl.spuren.length, 0);
+  // echter Sprung weit zurueck bleibt ein Sprung, auch durch die Funktion
+  const s2 = new SpurListe();
+  s2.ordneZu([kasten(0, 0, 20, 20)], 3.293, P);
+  s2.entferneAlte(zeitOhneRueckfall(1.0, 3.293, tol, false), 1.0);
+  assert.equal(s2.spuren.length, 0);
+});
+
+test('istSprung: Rueckwaertsgrenze ist die Uhr-Toleranz', () => {
+  const tol = uhrToleranz();
+  assert.equal(istSprung(3.293, 3.293 - tol + 0.001, 0.75), false);
+  assert.equal(istSprung(3.293, 3.293 - tol - 0.001, 0.75), true);
 });
