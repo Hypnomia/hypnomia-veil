@@ -13,7 +13,7 @@ Keep my icon where you can see it. My popup holds **Pause Mia**, and I want that
 
 ## Cover styles
 
-Your cover style is how I cover what I find. Pick it under **Cover style** in **All settings**; **Change style** in my popup takes you straight there. The styles come in three groups, and each card shows a little figure with what I do to it.
+Your cover style is how I cover what I find. Pick it under **Cover style** in **All settings**; **Change style** in my popup takes you straight there. The styles come in four groups, and each card shows a little figure with what I do to it.
 
 **With my face** needs the Mia Pack. When you pick one, I switch **Face** on under **What I cover**, and every face I find becomes mine, cut to fit and tilted with the head when I can tell. Switch Face off again and I leave it off. While Face is on, **Eyes** and **Mouth** add nothing on top. **Head**, if you switched it on, still gets the same cover as everything else, with my face over the middle. Everything else you switched on gets the rest of the name:
 
@@ -21,6 +21,8 @@ Your cover style is how I cover what I find. Pick it under **Cover style** in **
 - **My face, mosaic**, **My face, mosaic, words**, **My face, blur:** mosaic, mosaic with a word, or blur.
 
 With **Face** off, faces stay as they are, and Eyes and Mouth get the same as everything else. If none of the pictures in your pack shows my face clearly enough, faces get the same cover as everything else too.
+
+**With my stickers** needs the Mia Pack too, in a version that has my stickers in it. Everything you switched on gets a solid pastel patch with a little sticker of me in the middle, and with **My face, stickers** every face becomes mine first. The patch always covers the whole spot, even while the sticker loads or when the spot is too small for one.
 
 **Classic** works without the pack.
 

@@ -7,7 +7,8 @@ import type { Einstellungen } from '../einstellungen';
 import type { AntwortFehler, AntwortPackBild, AntwortPackWort, NachrichtErkennerPackBild } from '../nachrichten';
 import { ladeSeitenSchriften, schriftVersuchMoeglich } from '../oberflaeche/design/schrift';
 import { waehleWort, type Preset } from '../presets';
-import { PACKBILD_MAX_SEITE_PATCH } from '../nachrichten';
+import { PACKBILD_MAX_SEITE_PATCH, PACKBILD_MAX_SEITE_STICKER } from '../nachrichten';
+import { ordneNeu, stickerFarbe } from '../sticker';
 import { ANTWORT_MAX_MS, VIDEO_WECHSEL_MIN_MS, VIDEO_ZONEN_GRAU_B, VIDEO_ZONEN_MAX_JE_DOKUMENT, VIDEO_ZONEN_MIN_B, VIDEO_ZONEN_MIN_H } from './konstanten';
 import { GrauLeser } from './daumen';
 import { istDrm } from './pip-sperre';
@@ -68,6 +69,7 @@ function kennungVon(adresse: string): string {
 }
 
 type GesichtsStand = 'laedt' | { fehlerBis: number } | { bild: ImageBitmap; ausschnitt: [number, number, number, number] };
+type StickerStand = 'laedt' | { fehlerBis: number } | { bild: ImageBitmap };
 type WortStand = 'laedt' | { fehlerBis: number } | { wort: string };
 
 export class VideoZonen {
@@ -81,6 +83,8 @@ export class VideoZonen {
   // Mias Gesicht und Wort je Motiv (Schluessel: Video und Motiv). Verworfen bei jeder Aenderung von Preset, Themen, Gesichtsstand und Pack (vergissBilder).
   private readonly gesichter = new Map<string, GesichtsStand>();
   private readonly woerter = new Map<string, WortStand>();
+  // Sticker je Motiv (eigene Ablage mit Obergrenze BILDER_MAX, geschlossen bei Verdraengung und in vergissBilder).
+  private readonly sticker_ = new Map<string, StickerStand>();
   // Zaehlt jedes Verwerfen (vergissBilder): eine Lieferung aus einer alten Runde legt nichts mehr ab.
   private runde = 0;
   private schriftStand: 'neu' | 'laedt' | 'da' | 'fehlt' = 'neu';
@@ -291,6 +295,7 @@ export class VideoZonen {
       sofort: () => h.sofort(el),
       gesicht: (motiv) => this.gesicht(el, motiv),
       wort: (motiv) => this.wort(el, motiv),
+      sticker: (motiv) => this.sticker(el, motiv),
       beiStoerung: (grund) => this.faelleZurueck(el, grund),
       beiLangsam: () => this.faelleZurueck(el, 'langsam'),
       zaehler: h.zaehler,
@@ -320,7 +325,10 @@ export class VideoZonen {
     if (this.haken.packStand() <= 0) return null;
     const schluessel = this.schluessel(el, motiv);
     const stand = this.gesichter.get(schluessel);
-    if (stand && typeof stand === 'object' && 'bild' in stand) return stand;
+    if (stand && typeof stand === 'object' && 'bild' in stand) {
+      ordneNeu(this.gesichter, schluessel); // zuletzt benutzt: nicht als aeltestes verdraengen
+      return stand;
+    }
     if (stand === 'laedt') return null;
     if (stand && performance.now() < stand.fehlerBis) return null;
     this.gesichter.set(schluessel, 'laedt');
@@ -354,6 +362,51 @@ export class VideoZonen {
     }
     // Nur ablegen, wenn der Eintrag noch der laufende ist (vergissBilder leert die Ablage, dann gilt diese Lieferung nicht mehr).
     if (gilt()) meine.set(schluessel, { bild, ausschnitt: [ausschnitt[0]!, ausschnitt[1]!, ausschnitt[2]!, ausschnitt[3]!] });
+    else bild.close();
+  }
+
+  // Pastellfarbe (sofort, aus dem Schluessel) und Sticker fuer (Video, Motiv): der Erkenner waehlt den Sticker stabil je Schluessel. Das Bild ist null, bis es
+  // geladen ist oder wenn keins zu haben ist (kein Pack, keine Sticker, Fehler); nach einem Fehler wird erst nach FEHLER_PAUSE_MS wieder gefragt. Die Flaeche
+  // wird in jedem Fall gemalt: der Wechsel "ohne Sticker" zu "mit Sticker" geschieht je Motiv hoechstens einmal je Ladevorgang (S6).
+  private sticker(el: HTMLVideoElement, motiv: number): { farbe: string; bild: CanvasImageSource | null } {
+    const schluessel = this.schluessel(el, motiv);
+    const farbe = stickerFarbe(schluessel);
+    if (this.haken.packStand() <= 0) return { farbe, bild: null };
+    const stand = this.sticker_.get(schluessel);
+    if (stand && typeof stand === 'object' && 'bild' in stand) {
+      ordneNeu(this.sticker_, schluessel); // zuletzt benutzt: nicht als aeltestes verdraengen
+      return { farbe, bild: stand.bild };
+    }
+    if (stand === 'laedt') return { farbe, bild: null };
+    if (stand && performance.now() < stand.fehlerBis) return { farbe, bild: null };
+    this.sticker_.set(schluessel, 'laedt');
+    this.begrenze(this.sticker_);
+    void this.ladeSticker(schluessel);
+    return { farbe, bild: null };
+  }
+
+  private async ladeSticker(schluessel: string): Promise<void> {
+    const meine = this.sticker_;
+    const runde = this.runde;
+    const gilt = (): boolean => runde === this.runde && meine.get(schluessel) === 'laedt';
+    const fehler = (): void => {
+      if (gilt()) meine.set(schluessel, { fehlerBis: performance.now() + FEHLER_PAUSE_MS });
+    };
+    const a = await this.frage({ ziel: 'erkenner', typ: 'packbild', rolle: 'sticker', schluessel, maxSeite: PACKBILD_MAX_SEITE_STICKER, packStand: this.haken.packStand() });
+    if (!a || a.ok !== true || !('dataUrl' in a) || !a.dataUrl.startsWith('data:image/')) return fehler();
+    // Als ImageBitmap aus den Bytes (nie Image mit data:-Adresse), wie bei Mias Gesicht: die Leinwand bleibt lesbar (Firefox) und die CSP der Seite bleibt aussen.
+    let bild: ImageBitmap;
+    try {
+      const komma = a.dataUrl.indexOf(',');
+      const typ = /^data:([^;,]+)/.exec(a.dataUrl)?.[1] ?? 'image/png';
+      const roh = atob(a.dataUrl.slice(komma + 1));
+      const bytes = new Uint8Array(roh.length);
+      for (let i = 0; i < roh.length; i++) bytes[i] = roh.charCodeAt(i);
+      bild = await createImageBitmap(new Blob([bytes], { type: typ }));
+    } catch {
+      return fehler();
+    }
+    if (gilt()) meine.set(schluessel, { bild });
     else bild.close();
   }
 
@@ -426,5 +479,7 @@ export class VideoZonen {
     for (const g of this.gesichter.values()) if (typeof g === 'object' && 'bild' in g) g.bild.close();
     this.gesichter.clear();
     this.woerter.clear();
+    for (const s of this.sticker_.values()) if (typeof s === 'object' && 'bild' in s) s.bild.close();
+    this.sticker_.clear();
   }
 }

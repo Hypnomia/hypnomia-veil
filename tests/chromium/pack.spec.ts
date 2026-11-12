@@ -142,7 +142,7 @@ const speicher = (seite: Page, schluessel: string) =>
   seite.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as Record<string, any>)[k], schluessel);
 
 // Dateien im Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte.
-const DUMMY_DATEIEN = 32; // Phase 5: dazu 10 Werbebilder, Session 11: dazu 5 Klaenge (Auftrag T), Zensur-Presets: dazu die Wort-Themen
+const DUMMY_DATEIEN = 35; // Phase 5: dazu 10 Werbebilder, Session 11: dazu 5 Klaenge (Auftrag T), Zensur-Presets: dazu die Wort-Themen, Sticker-Zensur: dazu 3 Sticker
 
 // Anzahl Dateien in der Pack-Datenbank, direkt aus IndexedDB (Seite am Erweiterungs-Ursprung).
 function zaehleIdb(seite: Page): Promise<{ dateien: number; meta: number }> {
@@ -208,7 +208,7 @@ test('Einstellungsseite: ohne Pack leerer Stand, die Presets mit meinem Gesicht 
     await expect(seite.locator('#pack-daten')).toBeHidden();
     await expect(seite.locator('#entfernen')).toBeHidden();
     await expect(seite.locator('#lizenz-block')).toBeHidden();
-    for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur']) await expect(seite.locator(`#preset-${id}`)).toBeDisabled();
+    for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur', 'mia-sticker', 'sticker']) await expect(seite.locator(`#preset-${id}`)).toBeDisabled();
     await expect(seite.locator('#preset-mosaik')).toBeChecked();
 
     // Popup: Mia-Preset gespeichert, aber ohne Pack gilt Mosaik, mit Hinweis auf das Pack
@@ -269,7 +269,7 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
     expect(pack).toMatchObject({ id: 'dummy', version: '0.0.1', bilder: 6, vorschau: 4, chibis: 3, werbung: 10, groesse: packBytes });
     expect(pack.freischaltungen).toContain('stil:mia-patch');
     expect(pack.freischaltungen).toContain('zensur:woerter');
-    expect(pack.freischaltungen).toHaveLength(18); // Session 11: dazu ton. Phase 5: dazu kontrolle:werbung, blitz, leerlauf (Session 9), tabtitel, cursor, meldungen, zeitplan, besuche (Session 10); Zensur-Presets: zensur:woerter
+    expect(pack.freischaltungen).toHaveLength(19); // Session 11: dazu ton. Phase 5: dazu kontrolle:werbung, blitz, leerlauf (Session 9), tabtitel, cursor, meldungen, zeitplan, besuche (Session 10); Zensur-Presets: zensur:woerter; Sticker-Zensur: zensur:sticker
     expect(typeof pack.importiert).toBe('number');
     const einstellungen = await speicher(seite, 'einstellungen');
     expect(einstellungen.preset).toBe('mia-wort'); // erstes Pack mit Freischaltung: das Preset mit meinem Gesicht und Woertern
@@ -458,6 +458,7 @@ test('Entfernen mit Rueckfrage: Pack weg, Preset Mosaik, Erkenner zeichnet ohne 
     // Einstellungsseite: Mia-Presets wieder gesperrt, Mosaik gewaehlt.
     await seite.goto(optionsUrl());
     await expect(seite.locator('#preset-mia-wort')).toBeDisabled();
+    await expect(seite.locator('#preset-sticker')).toBeDisabled();
     await expect(seite.locator('#preset-mosaik')).toBeChecked();
   } finally {
     await seite.close();
@@ -541,8 +542,8 @@ test('Pack ersetzen: zweiter Import ersetzt das erste Pack, der Erkenner liest d
     // Zweites Pack mit einem Patch mit Gesicht ersetzt das erste (gleiche Titelzeile, andere Pack-ID).
     await importiere(warmPfad, 'Dummy');
     expect((await speicher(seite, 'pack')).id).toBe('warm');
-    // Warmes Dummy-Pack: Lizenz, 3 Patches plus einer mit Gesicht, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge, Woerter.
-    expect(await zaehleIdb(seite)).toEqual({ dateien: 30, meta: 2 });
+    // Warmes Dummy-Pack: Lizenz, 3 Patches plus einer mit Gesicht, 4 Vorschau-Bilder, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge, Woerter, 3 Sticker.
+    expect(await zaehleIdb(seite)).toEqual({ dateien: 33, meta: 2 });
     // Die Gesichtssuche in den Patch-Bildern laeuft im Hintergrund (nie in der Pruefung); der Test wartet auf sie
     const scan = await ausWorker({ ziel: 'erkenner', typ: 'gesichtsscan' });
     expect(scan.fertig && scan.mit === 1).toBe(true);

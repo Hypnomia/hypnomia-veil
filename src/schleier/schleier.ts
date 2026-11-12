@@ -1844,7 +1844,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (einstellungen) wendeEinstellungenAn(einstellungen);
   });
   // Presets, die das Pack brauchen (Mias Gesicht) oder Woerter nutzen: dann gehoert das Pack zum Pruefstand.
-  const nutztPack = (e: Einstellungen): boolean => PRESETS[e.preset].braucht === 'pack' || PRESETS[e.preset].woerter;
+  const nutztPack = (e: Einstellungen): boolean => PRESETS[e.preset].braucht !== null || PRESETS[e.preset].woerter;
   // packStand fuer die Anfrage an den Erkenner: nur bei Presets, die das Pack nutzen (importiert des Packs, sonst 0), sonst weggelassen.
   function packStandFuer(e: Einstellungen): number | undefined {
     return nutztPack(e) ? (packKurz?.importiert ?? 0) : undefined;

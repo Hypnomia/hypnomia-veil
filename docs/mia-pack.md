@@ -7,6 +7,8 @@ The free extension is me dressed for the office. The **Mia Pack** is me off duty
 
 One file ending in `.miapack`. It holds my pictures, sounds and words, and nothing else: no code, no account, no key. Importing it unlocks the rest of me: my own patch as cover style, my adult-site tricks, my quiz, my ads (only if you say yes), flash words, my spiral, sounds and the other bits of control. Every part has its own switch in the settings.
 
+From version 1.0 on, the pack also holds 63 little stickers of me, for the cover styles under **With my stickers**.
+
 The pack stays on your device. It never leaves your browser.
 
 ## Getting it

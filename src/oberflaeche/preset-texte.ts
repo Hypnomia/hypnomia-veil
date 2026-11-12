@@ -3,6 +3,7 @@ import { PERSON_GRENZE, PRESETS, type Preset } from '../presets.ts';
 import type { PackKurz } from '../pack/vertrag';
 import {
   HINWEIS_PACK_OHNE_PATCH,
+  HINWEIS_PACK_OHNE_STICKER,
   HINWEIS_MIA_PACK_FEHLT,
   HINWEIS_ZONEN_AUGENBALKEN,
   HINWEIS_ZONEN_MIA,
@@ -20,10 +21,14 @@ export function presetSatz(gilt: Preset, mitPack: boolean, gesichtBilder: number
   return d.satz;
 }
 
-// Hinweis zum Pack unter der Wahl, wenn die Presets mit meinem Gesicht gesperrt sind; sonst ''.
-export function packHinweis(mitPatch: boolean, pack: PackKurz | null | undefined): string {
-  if (mitPatch) return '';
-  return pack ? HINWEIS_PACK_OHNE_PATCH : HINWEIS_MIA_PACK_FEHLT;
+// Hinweis zum Pack unter der Wahl, wenn Presets gesperrt sind (mit meinem Gesicht: kein Patch-Bild im Pack; mit Stickern: keine Sticker im Pack); sonst ''.
+// Fehlt das Pack ganz, sagt ein Satz alles. `braucht`: das gewaehlte Preset (PRESETS[p].braucht), dann steht nur der Hinweis dazu (Popup); ohne Angabe
+// stehen beide, wo beide zutreffen (Einstellungsseite und Einstieg zeigen alle Karten).
+export function packHinweis(mitPatch: boolean, pack: PackKurz | null | undefined, mitSticker = true, braucht?: 'pack' | 'sticker' | null): string {
+  if (braucht === 'pack') mitSticker = true;
+  else if (braucht === 'sticker') mitPatch = true;
+  if (!pack && !(mitPatch && mitSticker)) return HINWEIS_MIA_PACK_FEHLT;
+  return [mitPatch ? '' : HINWEIS_PACK_OHNE_PATCH, mitSticker ? '' : HINWEIS_PACK_OHNE_STICKER].filter((t) => t !== '').join(' ');
 }
 
 // Hinweis bei "What I cover" je Preset; '' wenn die Schalter ganz normal gelten.

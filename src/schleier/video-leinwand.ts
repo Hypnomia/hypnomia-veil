@@ -139,6 +139,9 @@ export interface LeinwandHaken {
   gesicht(motiv: number): { bild: CanvasImageSource; ausschnitt: [number, number, number, number] } | null;
   // Das Wort dieses Motivs fuer Behandlungen mit Wort (null = noch nicht geladen oder die Schrift fehlt: dann steht kein Wort da). Stabil je Motiv.
   wort(motiv: number): string | null;
+  // Pastellfarbe und Sticker dieses Motivs (Sticker-Zensur): die Farbe ist sofort da (stabil je Video und Motiv), das Bild null, bis der Sticker geladen
+  // ist oder wenn keiner zu haben ist (das Laden ist angestossen; die Flaeche steht dann ohne Sticker, nie offen).
+  sticker(motiv: number): { farbe: string; bild: CanvasImageSource | null };
   // Die Leinwand kann nicht weiter malen: der Verwalter faellt auf Ganz-Verdecken zurueck.
   beiStoerung(grund: string): void;
   // Der Median der Rundlaeufe liegt ueber der Grenze: ganz verdecken.
@@ -820,7 +823,10 @@ export class ZonenVideo {
         wortPasst: wortPasst(rr.w, rr.h, anzeige),
       });
       const ersatz = stilFuerZone(preset, s.zone, { behandlung: s.behandlung, ersatz: s.ersatz, gesichtPasst: false, wortDa: !!wort, wortPasst: wortPasst(rr.w, rr.h, anzeige) });
-      const mittel: FlaechenMittel = { gesicht: art === 'mia-gesicht' ? g : null, wort: wort ?? '', ersatz };
+      // Sticker (auch als Ersatz fuer Mias Gesicht): Farbe sofort, Bild sobald da. Erst die Flaeche, dann der Sticker (Zeichner.flaeche).
+      const brauchtSticker = art === 'sticker' || (art === 'mia-gesicht' && ersatz === 'sticker');
+      const stk = brauchtSticker ? this.h.sticker(s.motiv) : null;
+      const mittel: FlaechenMittel = { gesicht: art === 'mia-gesicht' ? g : null, wort: wort ?? '', ersatz, ...(stk ? { sticker: { farbe: stk.farbe, bild: stk.bild, anzeige } } : {}) };
       this.zeichner.flaeche(ctx, rr, art, mittel);
       if (this.testAn) this.merkeGemalt(art, rr, s.id, s.motiv);
     }

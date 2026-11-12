@@ -167,6 +167,16 @@ try {
   );
   await bis('Mia-Preset gilt', async () => (await text('#preset-name')) === 'My face, black, words');
   pruefe((await text('#pack-hinweis')).includes('I choose my face from'), 'Satz nennt die Herkunft des Gesichts');
+  // Pack mit Patch-Bildern, aber ohne Sticker: ein Sticker-Preset ist gesperrt, das Popup nennt nur den Sticker-Satz (nicht zusaetzlich den Patch-Satz)
+  await setzePreset('sticker');
+  await bis('Sticker gesperrt, Mosaik gilt', async () => (await text('#preset-name')) === 'Mosaic' && (await text('#pack-hinweis')).includes('no stickers of me yet'));
+  pruefe(!(await text('#pack-hinweis')).includes('no pictures of my face'), 'Popup: bei einem Sticker-Preset nur der Sticker-Hinweis');
+  await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch', 'zensur:sticker'], bilder: 3, sticker: 3, groesse: 100, importiert: 1 } });`);
+  await bis('Sticker-Preset gilt', async () => (await text('#preset-name')) === 'Stickers');
+  pruefe((await text('#pack-hinweis')).includes('A pastel patch over everything I cover'), 'Popup: Satz des Sticker-Presets');
+  await setzePreset('mia-wort');
+  await imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: ['stil:mia-patch'], bilder: 3, groesse: 100, importiert: 1 } });`);
+  await bis('Mia-Preset wieder', async () => (await text('#preset-name')) === 'My face, black, words');
 
   // Pack weg: das Popup zeigt wieder das wirksame Preset (Mosaik)
   await imSeitenkontext(`await api.storage.local.remove('pack');`);

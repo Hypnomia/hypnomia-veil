@@ -114,8 +114,9 @@ function beobachteNeu(): void {
 
 function zeichnePreset(e: Einstellungen): void {
   const frei = istFreigeschaltet(pack, 'stil:mia-patch');
+  const mitSticker = istFreigeschaltet(pack, 'zensur:sticker');
   const gilt = presetFuerPackKurz(e.preset, pack);
-  karten.aktualisiere(e.preset, frei);
+  karten.aktualisiere(e.preset, frei, mitSticker);
   stilHinweis.textContent = presetSatz(gilt, frei, gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset: gerade eingeschaltet (kurz), oder Face steht aus (bewusst oder Altbestand): sagen, was dann gilt
   const mia = PRESETS[gilt].gesicht === 'mia-gesicht';
@@ -126,8 +127,9 @@ function zeichnePreset(e: Einstellungen): void {
   const keins = frei && PRESETS[gilt].gesicht === 'mia-gesicht' && gesichter?.fertig === true && gesichter.gesamt > 0 && gesichter.mit === 0;
   keinGesichtZeile.hidden = !keins;
   keinGesichtZeile.textContent = keins ? HINWEIS_KEIN_GESICHT : '';
-  packHinweisZeile.textContent = packHinweis(frei, pack);
-  packHinweisZeile.hidden = frei;
+  const packText = packHinweis(frei, pack, mitSticker);
+  packHinweisZeile.textContent = packText;
+  packHinweisZeile.hidden = packText === '';
   const zh = zonenHinweis(gilt);
   zonenHinweisZeile.hidden = zh === '';
   zonenHinweisZeile.textContent = zh;

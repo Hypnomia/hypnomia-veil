@@ -156,8 +156,8 @@ const textEnthaelt = (css, teil) => async () => (await text(css)).includes(teil)
 
 
 const TITEL = 'Dummy pack (synthetic pictures)';
-const DATEIEN = 32;
-const DATEIEN_OHNE_TON = 27; // ohne die 5 Klaenge: andere Zahl, damit die Zahl der Dateien etwas aussagt
+const DATEIEN = 35; // inklusive 3 Sticker
+const DATEIEN_OHNE_TON = 30; // ohne die 5 Klaenge: andere Zahl, damit die Zahl der Dateien etwas aussagt
 // Klick mit Scrollen in die Mitte (die feste Sprungleiste verdeckt sonst Elemente am oberen Rand)
 const klick = async (css) => {
   const e = await driver.findElement(By.css(css));
@@ -443,7 +443,7 @@ try {
   pruefe(busy.gesperrt && busy.meldung === TEXT_BESCHAEFTIGT, `waehrend des Imports: Abbrechen gesperrt, Wurf bekommt den Satz (${json(busy)})`);
   await bis('Version 1.1.0 nach Doppelklick', textEnthaelt('#pack-version', '1.1.0'));
   const mb = await leseMetaIdb();
-  pruefe(mb?.version === '1.1.0' && mb.dateienImMeta === DATEIEN_OHNE_TON && (await zaehleIdb()).dateien === DATEIEN_OHNE_TON, 'Doppelklick: genau ein Import, Stand 1.1.0 mit 26 Dateien');
+  pruefe(mb?.version === '1.1.0' && mb.dateienImMeta === DATEIEN_OHNE_TON && (await zaehleIdb()).dateien === DATEIEN_OHNE_TON, 'Doppelklick: genau ein Import, Stand 1.1.0 mit 30 Dateien');
   console.log('firefox: Wurf und Doppelklick waehrend des Imports abgewiesen, ein Import');
 
   // 5. Lizenz nicht lesbar: Satz statt leerem Kasten

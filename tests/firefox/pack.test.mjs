@@ -268,7 +268,7 @@ try {
   pruefe(pack && pack.id === 'dummy' && pack.bilder === 6 && pack.groesse === bau.bytes.byteLength, `storage.local.pack stimmt (${JSON.stringify(pack)})`);
   pruefe((await speicher('einstellungen'))?.preset === 'mia-wort', 'Preset steht auf mia-wort');
   const voll = await zaehleIdb();
-  pruefe(voll.dateien === 32 && voll.meta === 2, `IndexedDB: 32 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge, Woerter), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
+  pruefe(voll.dateien === 35 && voll.meta === 2, `IndexedDB: 35 Dateien (Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, Quiz, Texte, 5 Klaenge, Woerter, 3 Sticker), 2 Meta-Eintraege (${JSON.stringify(voll)})`);
 
   // 4. Seite neu oeffnen: Stand bleibt
   await schliesse();
@@ -302,7 +302,7 @@ try {
   } else {
     console.log(`firefox: nach runtime.reload() nach ${Date.now() - tReload} ms: Pack ${nachReload.pack?.id}, ${nachReload.idb.dateien} Dateien, Stil ${nachReload.stil}`);
     pruefe(JSON.stringify(nachReload.pack) === JSON.stringify(packVor), 'nach runtime.reload() ist storage.local.pack unveraendert');
-    pruefe(nachReload.idb.dateien === 32 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
+    pruefe(nachReload.idb.dateien === 35 && nachReload.idb.meta === 2, `nach runtime.reload() ist IndexedDB unveraendert (${JSON.stringify(nachReload.idb)})`);
     pruefe(nachReload.stil === stilVor && stilVor === 'mia-wort', `nach runtime.reload() steht das Preset auf ${stilVor}`);
   }
 

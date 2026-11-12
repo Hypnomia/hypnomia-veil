@@ -435,7 +435,8 @@ function seite3(): Seite {
   zeichne = (e, p) => {
       if (ruhig) ruhig.feld.checked = e.ruhig;
       const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
-      karten.aktualisiere(e.preset, patchFrei);
+      const stickerFrei = istFreigeschaltet(p, 'zensur:sticker');
+      karten.aktualisiere(e.preset, patchFrei, stickerFrei);
       const wirksam = presetFuerPackKurz(e.preset, p);
       if (patchFrei && !beobachtet) {
         beobachtet = beobachteGesichter((st) => {
@@ -444,8 +445,9 @@ function seite3(): Seite {
         });
       }
       satz.textContent = presetSatz(wirksam, patchFrei, patchFrei && gesichter?.fertig ? gesichter.mit : null);
-      sperre.textContent = packHinweisText(patchFrei, p);
-      sperre.hidden = patchFrei;
+      const sperreText = packHinweisText(patchFrei, p, stickerFrei);
+      sperre.textContent = sperreText;
+      sperre.hidden = sperreText === '';
       // Hinweise der Zonen (Balken-Presets) und zu Face: gerade eingeschaltet (kurz), oder spaeter wieder aus (dann sagt es der Hinweis)
       const zh = zonenHinweis(wirksam);
       zonenText.textContent = zh;

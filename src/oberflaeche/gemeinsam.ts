@@ -19,7 +19,9 @@ export const HINWEIS_PACK_OHNE_PATCH = 'This Mia Pack has no pictures of my face
 export const HINWEIS_ZONEN_AUGENBALKEN = 'Eye bar covers only the eyes. Your other zones rest until you pick another style.';
 export const HINWEIS_ZONEN_ZENSURBALKEN = 'Censor bars always black out the eyes. Your zones decide what else turns black.';
 export const HINWEIS_ZONEN_MIA = 'My face only goes where Face is on. While it is, Eyes and Mouth add nothing on top.';
-export const HINWEIS_MIA_PACK_FEHLT = 'The styles with my face need the Mia Pack. Once it’s in, every face I cover becomes mine.';
+export const HINWEIS_MIA_PACK_FEHLT = 'The styles with my face and my stickers need the Mia Pack. Once it’s in, everything I cover can carry a bit of me.';
+// Sticker-Zensur (STICKER-BAUPLAN, Text aus STICKER-TEXTE.md): Pack ohne Sticker, die Sticker-Karten bleiben gesperrt.
+export const HINWEIS_PACK_OHNE_STICKER = 'This Mia Pack has no stickers of me yet, so the styles with my stickers stay locked. The newest pack has them.';
 export const HINWEIS_KEINE_WOERTER = 'No topic picked, so I just write MIA.';
 export const HINWEIS_KEIN_GESICHT = 'None of the pictures in this pack shows my face clearly enough, so faces get the same cover as everything else.';
 export const HINWEIS_WORT_OHNE_PACK = 'Without the Mia Pack, my word is MIA.';

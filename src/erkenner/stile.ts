@@ -1,9 +1,10 @@
 // Rendern der Zensur auf einem Canvas: je Flaeche eine Behandlung (src/presets.ts): Pixel-Mosaik (mit pinkem Rahmen), Blur, Schwarz,
-// Wort (auf Schwarz oder auf Mosaik), schwarzer Augenbalken oder Mias Gesicht (Ausschnitt aus einem Patch-Bild des Mia Packs, nur wo
-// er zur Flaeche passt, mit pinkem Rahmen). Ausgabe als JPEG-Data-URL (PNG, wenn die Quelle Durchsichtiges hat und nur Balken oder Schwarz kommen).
+// Wort (auf Schwarz oder auf Mosaik), schwarzer Augenbalken, Mias Gesicht (Ausschnitt aus einem Patch-Bild des Mia Packs, nur wo
+// er zur Flaeche passt, mit pinkem Rahmen) oder Sticker (deckende Pastell-Flaeche mit Rahmen, darauf mittig ein Sticker des Packs). Ausgabe als JPEG-Data-URL (PNG, wenn die Quelle Durchsichtiges hat und nur Balken oder Schwarz kommen).
 
 import { FARBEN, WERTE } from '../oberflaeche/design/werte.ts';
 import { ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
+import { stickerFarbe, stickerPasst, stickerRechteck } from '../sticker.ts';
 import type { Box, Flaeche } from '../nachrichten';
 
 const JPEG_QUALITAET = 0.85;
@@ -237,6 +238,41 @@ export function kannAlpha(typ: string): boolean {
   return /^image\/(png|apng|webp|gif|avif|svg\+xml)/i.test(typ);
 }
 
+// Sticker (STICKER-BAUPLAN): erst die deckende Pastell-Flaeche ueber genau die Box, die `schwarz` decken wuerde, dann der pinke Rahmen, dann (nur wenn
+// ein Sticker da ist und die Flaeche gross genug) der Sticker mittig, Seitenverhaeltnis bleibt. Sicherheit (Regeln S1 und S2): die Flaeche hat Alpha 1,
+// `source-over`, keinen Clip und haengt an nichts vom Sticker; das Zeichnen des Stickers kann sie nie loeschen oder durchsichtig machen (nur `drawImage`
+// mit `source-over`, kein `clearRect`, kein `destination-out`). Scheitert der Sticker (geschlossenes Bitmap), bleibt die Flaeche stehen.
+// `farbe`: Hex-Farbe der Flaeche (src/sticker.ts stickerFarbe). `anzeigeSkala`: Darstellungsgroesse durch Arbeitsbild, wie bei `patchPasst`.
+export function zeichneSticker(ctx: Kontext, box: Box, farbe: string, sticker: CanvasImageSource | null | undefined, anzeigeSkala = 1): void {
+  const [x, y, w, h] = box;
+  ctx.save();
+  try {
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = farbe;
+    ctx.fillRect(x, y, w, h);
+  } finally {
+    ctx.restore();
+  }
+  zeichneRahmen(ctx, box);
+  if (!sticker || !stickerPasst(box, anzeigeSkala)) return;
+  const m = bildMass(sticker);
+  const r = stickerRechteck(box, m.b, m.h, rahmenBreite(w, h));
+  if (!r) return;
+  ctx.save();
+  try {
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sticker, r[0], r[1], r[2], r[3]);
+  } catch {
+    // Geschlossenes oder sonst unzeichenbares Bitmap: die Flaeche steht schon, ohne Sticker.
+  } finally {
+    ctx.restore();
+  }
+}
+
 // Familie der Wort-Schrift (der Erkenner registriert sie per FontFace aus public/schrift/rounded-800.woff2, siehe erkenner.ts) und Farbe.
 export const WORT_FAMILIE = 'VEIL Wort';
 const WORT_FARBE = FARBEN['rosa-300'];
@@ -292,11 +328,15 @@ export interface RenderOptionen {
   gesichter?: readonly (GesichtsBild | null)[];
   // Je Flaeche: das Wort fuer Behandlungen mit Wort ('' oder fehlend: kein Wort).
   woerter?: readonly string[];
+  // Je Flaeche: der Sticker fuer `sticker` (auch als Ersatz fuer Mias Gesicht), null wenn keiner zu haben ist (dann steht die Flaeche ohne Sticker).
+  sticker?: readonly (CanvasImageSource | null)[];
+  // Je Flaeche: der Schluessel, der die Pastellfarbe bestimmt (`kennung|zone|box`, wie bei Gesicht und Wort); fehlt er, gilt `zone|box`.
+  stickerSchluessel?: readonly string[];
 }
 
 // Zeichnet das Bild in Zielgroesse, legt die Zensur auf alle Flaechen und liefert ein JPEG als Data-URL.
 // Behandlung je Flaeche: `f.behandlung`, fehlt sie die des Presets fuer ein ganzes Bild. `mia-gesicht` ohne passenden Patch (keiner da,
-// Patch-Passt-Regel nicht erfuellt) wird `f.ersatz` (sonst Mosaik); Behandlungen mit Wort ohne Wort oder auf zu kleiner Flaeche
+// Patch-Passt-Regel nicht erfuellt) wird `f.ersatz` (sonst Mosaik, bei Mia und Sticker der Sticker mit Pastell-Flaeche); Behandlungen mit Wort ohne Wort oder auf zu kleiner Flaeche
 // (src/presets.ts wortPasst) werden ihre Variante ohne Wort.
 export async function rendereZensur(
   quelle: CanvasImageSource,
@@ -337,6 +377,9 @@ export async function rendereZensur(
       case 'mosaik-wort':
         zeichneMosaik(ctx, quelle, f.box);
         zeichneWort(ctx, wort, f.box, true);
+        return;
+      case 'sticker':
+        zeichneSticker(ctx, f.box, stickerFarbe(optionen.stickerSchluessel?.[i] ?? `${f.zone}|${f.box.join(',')}`), optionen.sticker?.[i] ?? null, optionen.anzeigeSkala);
         return;
       default:
         zeichneMosaik(ctx, quelle, f.box);

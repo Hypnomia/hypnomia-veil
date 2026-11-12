@@ -182,8 +182,10 @@ test('Fund 4: die Pack-Karte steht ohne Pack nach Covering, mit Pack nach Sound;
 const SCHIRM_1280 = 900;
 // Zensur-Presets: elf kompakte Karten (Figur und Name) in drei Gruppen statt drei Knoepfen kosten Platz (gemessen 3,21 Bildschirme zu 900 px, 3,62
 // zu 800 px); die Grenzen liegen knapp darueber (900 px: 3,3, 800 px: 3,7), vorher in Runde 3 waren sie 3,4 und 3,8.
-const GRENZE_800 = 3.7;
-const GRENZE_900 = 3.3;
+// Sticker-Zensur: dazu die Gruppe "With my stickers" mit zwei Karten (gemessen 3058 px = 3,40 Bildschirme zu 900 px, 3,82 zu 800 px); Grenzen mit kleiner
+// Reserve: 900 px: 3,45, 800 px: 3,9 (Obergrenze der Leitung fuer 900 px: 3,5).
+const GRENZE_800 = 3.9;
+const GRENZE_900 = 3.45;
 test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280, mit der Pack-Karte', async () => {
   const seite = await frischeSeite(1280, SCHIRM_1280);
   try {

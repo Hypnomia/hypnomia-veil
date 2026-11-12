@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { PRESETS, PRESET_IDS } from '../../src/presets';
 import { PERSON_GRENZE } from '../../src/presets';
-import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_MIA_PACK_FEHLT, HINWEIS_WORT_OHNE_PACK, HINWEIS_ZONEN_AUGENBALKEN, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam';
+import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_MIA_PACK_FEHLT, HINWEIS_PACK_OHNE_STICKER, HINWEIS_WORT_OHNE_PACK, HINWEIS_ZONEN_AUGENBALKEN, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam';
 import { PACK_HINWEIS_BIS_DAHIN } from '../../entrypoints/popup/texte';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -223,20 +223,20 @@ test.afterAll(async () => {
 
 // ---------- Oberflaeche ohne Pack ----------
 
-test('Einstellungsseite ohne Pack: elf Karten in drei Gruppen, Mia-Presets gesperrt, Wahl gespeichert, Hinweise je Preset', async () => {
+test('Einstellungsseite ohne Pack: dreizehn Karten in vier Gruppen, Mia- und Sticker-Presets gesperrt, Wahl gespeichert, Hinweise je Preset', async () => {
   const seite = await context.newPage();
   try {
     await seite.goto(optionsUrl());
     const karten = seite.locator('#preset-karten input[name="preset"]');
-    await expect(karten).toHaveCount(11);
+    await expect(karten).toHaveCount(13);
     expect(await karten.evaluateAll((l) => l.map((f) => (f as HTMLInputElement).value))).toEqual([...PRESET_IDS]);
-    await expect(seite.locator('#preset-karten .preset-gruppe')).toHaveCount(3);
-    expect(await seite.locator('#preset-karten .preset-gruppe-titel').allTextContents()).toEqual(['With my face', 'Classic', 'Whole person']);
+    await expect(seite.locator('#preset-karten .preset-gruppe')).toHaveCount(4);
+    expect(await seite.locator('#preset-karten .preset-gruppe-titel').allTextContents()).toEqual(['With my face', 'With my stickers', 'Classic', 'Whole person']);
     // jede Karte hat eine Vorschau (SVG) und einen Namen
-    await expect(seite.locator('#preset-karten .preset-bild svg')).toHaveCount(11);
+    await expect(seite.locator('#preset-karten .preset-bild svg')).toHaveCount(13);
     for (const id of PRESET_IDS) {
       await expect(seite.locator(`#preset-${id}`).locator('xpath=..').locator('strong')).toHaveText(PRESETS[id].name);
-      const gesperrt = PRESETS[id].gruppe === 'mia';
+      const gesperrt = PRESETS[id].braucht !== null;
       if (gesperrt) await expect(seite.locator(`#preset-${id}`)).toBeDisabled();
       else await expect(seite.locator(`#preset-${id}`)).toBeEnabled();
     }
@@ -475,7 +475,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
   } finally {
     await seiteA.close();
   }
-  // Radiogruppe: eine Gruppe fuer alle Karten, die drei Gruppen darin sind benannte Gruppen (Barrierefreiheit)
+  // Radiogruppe: eine Gruppe fuer alle Karten, die vier Gruppen darin sind benannte Gruppen (Barrierefreiheit)
   const seiteB = await context.newPage();
   try {
     await seiteB.goto(optionsUrl());
@@ -484,10 +484,11 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
     expect(await seiteB.locator('#preset-karten [role="radiogroup"]').count()).toBe(0);
     expect(await seiteB.locator('#preset-karten [role="group"]').evaluateAll((l) => l.map((e) => [e.getAttribute('aria-labelledby'), document.getElementById(e.getAttribute('aria-labelledby')!)?.textContent]))).toEqual([
       ['preset-gruppe-mia', 'With my face'],
+      ['preset-gruppe-sticker', 'With my stickers'],
       ['preset-gruppe-klassisch', 'Classic'],
       ['preset-gruppe-person', 'Whole person'],
     ]);
-    expect(await seiteB.locator('#preset-karten input[name="preset"]').count()).toBe(11);
+    expect(await seiteB.locator('#preset-karten input[name="preset"]').count()).toBe(13);
     // Kein Gesicht in den Patch-Bildern dieses Packs (synthetisch): ehrlicher Hinweis nach fertigem Scan
     await expect(seiteB.locator('#preset-kein-gesicht')).toHaveText(HINWEIS_KEIN_GESICHT, { timeout: 15_000 });
     // Wort-Presets zeigen ohne Chips (hier: mit Pack gibt es Chips) keine Zeile "ohne Pack"
@@ -886,4 +887,420 @@ test('Gesichtssuche fertig: offene Seiten mit einem Mia-Preset bewerten neu (Sta
     await seite.close();
   }
   await entfernePack();
+});
+
+// Entfernt ein vorhandenes Pack, tut nichts ohne Pack (entfernePack wartet sonst auf einen versteckten Knopf).
+async function raeumePack(): Promise<void> {
+  const seite = await context.newPage();
+  try {
+    await seite.goto(optionsUrl());
+    await expect(seite.locator('#pack-status')).not.toBeEmpty();
+    if (await seite.locator('#entfernen').isVisible()) {
+      await seite.locator('#entfernen').click();
+      await seite.locator('#entfernen-ja').click();
+    }
+    await expect(seite.locator('#pack-status')).toContainText('No pack yet');
+  } finally {
+    await seite.close();
+  }
+}
+
+// ---------- Sticker-Zensur (STICKER-BAUPLAN Stufe A) ----------
+// Farben aus werte.ts (rosa-200, lav-200, pfirsich-200) und die drei synthetischen Sticker des Dummy-Packs (Gruen, Blau, Tuerkis, DUMMY_STICKER).
+const PASTELL = [[255, 211, 230], [226, 215, 255], [255, 220, 199]];
+const STICKER_FARBEN = [[20, 200, 90], [30, 70, 235], [0, 210, 210]];
+const abstandFarbe = (p: number[], q: number[]): number => Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!, p[2]! - q[2]!);
+// Abstand eines Punktes zur Strecke a bis b (Kantenglaettung und JPEG mischen zwei Farben entlang einer Strecke)
+function abstandStrecke(p: number[], a: number[], b: number[]): number {
+  const d = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!];
+  const l2 = d[0]! ** 2 + d[1]! ** 2 + d[2]! ** 2;
+  const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0]! - a[0]!) * d[0]! + (p[1]! - a[1]!) * d[1]! + (p[2]! - a[2]!) * d[2]!) / l2));
+  return abstandFarbe(p, [a[0]! + t * d[0]!, a[1]! + t * d[1]!, a[2]! + t * d[2]!]);
+}
+// Zaehlt ein Pixel als gedeckt: ein Pastellton, der pinke Rahmen, ein Stickerton oder eine Mischung davon (Kanten, JPEG).
+function istGedeckt(p: number[]): boolean {
+  if (PASTELL.some((q) => abstandFarbe(p, q) < 16)) return true;
+  if (abstandFarbe(p, ROSA_RAHMEN) < 60) return true;
+  if (STICKER_FARBEN.some((q) => abstandFarbe(p, q) < 45)) return true;
+  for (const q of PASTELL) {
+    for (const s of [...STICKER_FARBEN, ROSA_RAHMEN]) if (abstandStrecke(p, q, s) < 30) return true;
+  }
+  return false;
+}
+function pixelAn(aus: Pixel, x: number, y: number): number[] {
+  const i = (y * aus.b + x) * 3;
+  return [aus.daten[i]!, aus.daten[i + 1]!, aus.daten[i + 2]!];
+}
+// Anteil gedeckter Pixel in der Box (`inset` Pixel nach innen: die Kanten gegen das unveraenderte Bild sind JPEG-Mischung).
+function deckung(aus: Pixel, box: Box, inset = 3): number {
+  const [bx, by, bw, bh] = box;
+  let n = 0;
+  let ok = 0;
+  for (let y = by + inset; y < by + bh - inset; y++) {
+    for (let x = bx + inset; x < bx + bw - inset; x++) {
+      n++;
+      if (istGedeckt(pixelAn(aus, x, y))) ok++;
+    }
+  }
+  return n === 0 ? 1 : ok / n;
+}
+// Pixel in der Box, die einem der Stickertoene nahe sind (nur der Sticker hat so satte Farben).
+function stickerPixel(aus: Pixel, box: Box): number {
+  const [bx, by, bw, bh] = box;
+  let n = 0;
+  for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) if (STICKER_FARBEN.some((q) => abstandFarbe(pixelAn(aus, x, y), q) < 45)) n++;
+  return n;
+}
+function mitteFarbe(aus: Pixel, box: Box): number[] {
+  const cx = Math.round(box[0] + box[2] / 2);
+  const cy = Math.round(box[1] + box[3] / 2);
+  const summe = [0, 0, 0];
+  let n = 0;
+  for (let y = cy - 2; y <= cy + 2; y++) {
+    for (let x = cx - 2; x <= cx + 2; x++) {
+      const p = pixelAn(aus, x, y);
+      for (let k = 0; k < 3; k++) summe[k]! += p[k]!;
+      n++;
+    }
+  }
+  return summe.map((s) => s / n);
+}
+// Pruefung einer Antwort mit Sticker-Flaechen: jede Flaeche ganz gedeckt, ausserhalb unveraendert. Flaechen mit kuerzerer Seite ab 24 px (Anzeige gleich
+// Arbeitsbild) haben in der Mitte eine Stickerfarbe (mit `ohneSticker` nirgends eine), kleinere nur Pastell. Liefert die Zahl der Flaechen mit Sticker.
+async function pruefeStickerFlaechen(orig: Pixel, a: any, name: string, optionen: { ohneSticker?: boolean; behandlung?: string } = {}): Promise<number> {
+  expect(a.ok, `${name}: ${a.fehler}`).toBe(true);
+  const flaechen = (a.flaechen as Flaeche[]).filter((f) => (optionen.behandlung ? f.behandlung === optionen.behandlung : true));
+  expect(flaechen.length, `${name}: Flaechen`).toBeGreaterThanOrEqual(1);
+  const aus = await rohPixel(ausDataUrl(a.bild));
+  let mitSticker = 0;
+  for (const f of flaechen) {
+    const d = deckung(aus, f.box);
+    const sp = stickerPixel(aus, f.box);
+    const mitte = mitteFarbe(aus, f.box);
+    console.log(`chromium: ${name} ${f.zone} ${f.box}: Deckung ${(d * 100).toFixed(2)} %, Stickerpixel ${sp}, Mitte ${mitte.map(Math.round)}`);
+    expect(d, `${name} ${f.zone} ${f.box}: Flaeche ganz gedeckt`).toBeGreaterThanOrEqual(0.99);
+    const kurz = Math.min(f.box[2], f.box[3]);
+    if (optionen.ohneSticker || kurz < 24) {
+      expect(sp, `${name} ${f.zone}: kein Sticker`).toBe(0);
+    } else if (kurz >= 40) {
+      expect(STICKER_FARBEN.some((q) => abstandFarbe(mitte, q) < 60), `${name} ${f.zone} ${f.box}: Stickerfarbe in der Mitte ${mitte.map(Math.round)}`).toBe(true);
+      mitSticker++;
+    }
+  }
+  // ausserhalb aller Flaechen unveraendert
+  const aussenWerte = aussen(orig, aus, (a.flaechen as Flaeche[]).map((f) => f.box));
+  expect(aussenWerte.mittel, `${name}: ausserhalb unveraendert`).toBeLessThan(4);
+  return mitSticker;
+}
+
+test('Sticker: jede Flaeche ganz von Pastell gedeckt, Stickerfarbe in der Mitte, ausserhalb unveraendert, stabil je Bild; Gesicht und Koerper', async () => {
+  test.setTimeout(240_000);
+  await raeumePack();
+  const { bytes } = await baueDummy();
+  await importiere(bytes, 'dummy-sticker.miapack');
+  // Koerper: alle Koerperzonen, Preset sticker
+  const { quelle, orig } = await kleinBild('nsfw', BILD_KOERPER);
+  const koerper = await ausWorker(nachricht(quelle, BEDECKBAR, 'sticker'));
+  for (const f of koerper.flaechen as Flaeche[]) expect(f.behandlung).toBe('sticker');
+  const mit = await pruefeStickerFlaechen(orig, koerper, 'sticker Koerper', { behandlung: 'sticker' });
+  expect(mit, 'mindestens eine Flaeche traegt einen Sticker').toBeGreaterThanOrEqual(1);
+  // stabil je Bild und Flaeche: dieselbe Anfrage liefert dieselben Bytes (Farbe und Sticker wechseln nicht)
+  const nochmal = await ausWorker(nachricht(quelle, BEDECKBAR, 'sticker'));
+  expect(nochmal.bild).toBe(koerper.bild);
+  // Gesicht: Face an, eigene Flaeche mit sticker
+  const gesicht = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'sticker'));
+  const fg = (gesicht.flaechen as Flaeche[]).find((x) => x.zone === 'face')!;
+  expect(fg.behandlung).toBe('sticker');
+  await pruefeStickerFlaechen(await rohPixel(await brauchtBild('sfw', BILD_GESICHT)), gesicht, 'sticker Gesicht', { behandlung: 'sticker' });
+  // Face aus: das Gesicht bleibt, wie es war (keine Face-Flaeche, ausserhalb der Flaechen unveraendert)
+  const aus = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['breast'], 'sticker'));
+  expect((aus.flaechen as Flaeche[]).some((x) => x.zone === 'face')).toBe(false);
+});
+
+test('Sticker: die Pastellfarbe ist je Flaeche stabil und kommt nur aus den drei Toenen; mia-sticker: Gesicht Mias Gesicht oder Sticker, Koerper Sticker', async () => {
+  test.setTimeout(240_000);
+  // Das Pack aus dem vorigen Test steht noch (Dummy-Patches ohne Gesicht): mia-sticker gibt dem Gesicht den Ersatz sticker
+  const gesicht = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'mia-sticker'));
+  expect(gesicht.ok, gesicht.fehler).toBe(true);
+  const fg = (gesicht.flaechen as Flaeche[]).find((x) => x.zone === 'face')!;
+  expect(fg.behandlung).toBe('mia-gesicht');
+  expect(fg.ersatz).toBe('sticker');
+  const origG = await rohPixel(await brauchtBild('sfw', BILD_GESICHT));
+  // keine Gesichter in den Dummy-Patches: das Gesicht traegt Pastell mit Sticker
+  await pruefeStickerFlaechen(origG, gesicht, 'mia-sticker Rueckfall Gesicht');
+  // Koerper mit mia-sticker: Sticker
+  const { quelle, orig } = await kleinBild('nsfw', BILD_KOERPER);
+  const koerper = await ausWorker(nachricht(quelle, BEDECKBAR, 'mia-sticker'));
+  for (const f of koerper.flaechen as Flaeche[]) expect(f.behandlung).toBe('sticker');
+  await pruefeStickerFlaechen(orig, koerper, 'mia-sticker Koerper', { behandlung: 'sticker' });
+  // Farben: mehrere Flaechen und Bilder, nur Pastellton in den Ecken der Innenflaeche, mehr als ein Ton ueber viele Bilder
+  const toene = new Set<string>();
+  for (const [satz, name] of [['sfw', BILD_GESICHT], ['nsfw', BILD_KOERPER]] as const) {
+    for (const preset of ['sticker', 'mia-sticker']) {
+      const a = await ausWorker(nachricht(urlQuelle(satz, name), BEDECKBAR.concat(['face', 'eyes']), preset));
+      const aus = await rohPixel(ausDataUrl(a.bild));
+      for (const f of a.flaechen as Flaeche[]) {
+        if (f.behandlung !== 'sticker' || Math.min(f.box[2], f.box[3]) < 60) continue;
+        const p = pixelAn(aus, f.box[0] + 14, f.box[1] + 14); // innen am Rahmen (hoechstens 10 px) vorbei, im Pastell
+        const ton = PASTELL.findIndex((q) => abstandFarbe(p, q) < 16);
+        expect(ton, `${satz}/${name} ${preset} ${f.zone}: Pastellton in der Ecke ${p}`).toBeGreaterThanOrEqual(0);
+        toene.add(String(ton));
+      }
+    }
+  }
+  console.log(`chromium: Sticker-Toene gesehen: ${[...toene].sort().join(',')}`);
+  expect(toene.size).toBeGreaterThanOrEqual(2);
+  // Mias Gesicht aus einem Patch mit Gesicht: das Gesicht bleibt Mias Gesicht (pinker Rahmen), Sticker nur als Ersatz
+  await raeumePack();
+  const patch = await sharp(await brauchtBild('sfw', PATCH_GESICHT)).resize({ width: 800 }).jpeg({ quality: 90 }).toBuffer();
+  const mitGesicht = await baueDummy({ extraPatches: [{ name: 'patch/mit-gesicht.jpg', typ: 'image/jpeg', daten: new Uint8Array(patch) }] });
+  await importiere(mitGesicht.bytes, 'dummy-sticker-mia.miapack');
+  const scan = await ausWorker({ ziel: 'erkenner', typ: 'gesichtsscan' });
+  expect(scan.mit).toBe(1);
+  const g2 = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'mia-sticker'));
+  const fg2 = (g2.flaechen as Flaeche[]).find((x) => x.zone === 'face')!;
+  expect(fg2.behandlung).toBe('mia-gesicht');
+  const aus2 = await rohPixel(ausDataUrl(g2.bild));
+  const s2 = stat(origG, aus2, fg2.box, Math.round(Math.min(fg2.box[2], fg2.box[3]) * 0.15));
+  console.log(`chromium: mia-sticker mit Patch-Gesicht ${fg2.box}: Abweichung ${s2.mittel.toFixed(1)}, Rahmenpixel ${stat(origG, aus2, fg2.box, 0).rahmen}`);
+  expect(s2.mittel).toBeGreaterThan(20);
+  expect(stat(origG, aus2, fg2.box, 0).rahmen).toBeGreaterThan(Math.round(Math.min(fg2.box[2], fg2.box[3]) * 0.5));
+  expect(stickerPixel(aus2, fg2.box), 'Mias Gesicht traegt keinen Sticker').toBe(0);
+  await raeumePack();
+});
+
+test('Sticker auf kleiner Flaeche (Anzeige unter 24 px): nur Pastell, kein Sticker, die Flaeche deckt trotzdem', async () => {
+  test.setTimeout(150_000);
+  await raeumePack();
+  const { bytes } = await baueDummy();
+  await importiere(bytes, 'dummy-sticker-klein.miapack');
+  const original = await brauchtBild('sfw', BILD_GESICHT);
+  const meta = await sharp(original).metadata();
+  const orig = await rohPixel(original);
+  // 20 mal kleiner angezeigt als gross: die Gesichtsbox (um 250 px) ist angezeigt unter 24 px
+  const klein = await ausWorker({ ...nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'sticker'), breite: Math.round(meta.width! / 20), hoehe: Math.round(meta.height! / 20) });
+  expect(klein.ok, klein.fehler).toBe(true);
+  const f = (klein.flaechen as Flaeche[]).find((x) => x.zone === 'face')!;
+  const aus = await rohPixel(ausDataUrl(klein.bild));
+  expect(Math.min(f.box[2], f.box[3]) / 20, 'angezeigt kleiner als 24 px').toBeLessThan(24);
+  expect(deckung(aus, f.box)).toBeGreaterThanOrEqual(0.99);
+  expect(stickerPixel(aus, f.box), 'kein Sticker auf der kleinen Flaeche').toBe(0);
+  const normal = await ausWorker({ ...nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'sticker'), breite: meta.width, hoehe: meta.height });
+  expect(stickerPixel(await rohPixel(ausDataUrl(normal.bild)), f.box), 'voll angezeigt: mit Sticker').toBeGreaterThan(200);
+  expect(aussen(orig, aus, [f.box]).mittel).toBeLessThan(4);
+});
+
+test('Sticker kaputt (nicht dekodierbar): die Flaeche deckt trotzdem, ohne Sticker (Hide-first)', async () => {
+  test.setTimeout(150_000);
+  await raeumePack();
+  const { bytes } = await baueDummy({ stickerKaputt: true });
+  await importiere(bytes, 'dummy-sticker-kaputt.miapack');
+  const seite = await context.newPage();
+  try {
+    await seite.goto(optionsUrl());
+    expect((await speicher(seite, 'pack')).freischaltungen).toContain('zensur:sticker');
+    await expect(seite.locator('#preset-sticker')).toBeEnabled();
+  } finally {
+    await seite.close();
+  }
+  const original = await brauchtBild('sfw', BILD_GESICHT);
+  const a = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'sticker'));
+  expect(a.ok, a.fehler).toBe(true);
+  const f = (a.flaechen as Flaeche[]).find((x) => x.zone === 'face')!;
+  const aus = await rohPixel(ausDataUrl(a.bild));
+  console.log(`chromium: Sticker kaputt ${f.box}: Deckung ${(deckung(aus, f.box) * 100).toFixed(2)} %, Stickerpixel ${stickerPixel(aus, f.box)}`);
+  expect(deckung(aus, f.box)).toBeGreaterThanOrEqual(0.99);
+  expect(stickerPixel(aus, f.box)).toBe(0);
+  expect(aussen(await rohPixel(original), aus, [f.box]).mittel).toBeLessThan(4);
+  await raeumePack();
+});
+
+test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup nennt Mosaic, die Seite zeigt Mosaik; Pack entfernt: Mosaik', async () => {
+  test.setTimeout(180_000);
+  await raeumePack();
+  const { bytes } = await baueDummy({ ohneSticker: true });
+  await importiere(bytes, 'dummy-ohne-sticker.miapack');
+  const seite = await context.newPage();
+  try {
+    await seite.goto(optionsUrl());
+    for (const id of PRESET_IDS) {
+      if (PRESETS[id].gruppe === 'sticker') await expect(seite.locator(`#preset-${id}`)).toBeDisabled();
+      else await expect(seite.locator(`#preset-${id}`)).toBeEnabled();
+    }
+    await expect(seite.locator('#preset-pack-hinweis')).toBeVisible();
+    await expect(seite.locator('#preset-pack-hinweis')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+    expect((await speicher(seite, 'pack')).sticker).toBe(0);
+    // ein gespeichertes Sticker-Preset (z. B. nach dem Ersetzen durch ein Pack ohne Sticker): gilt Mosaik, Popup sagt es
+    await setzeEinst(seite, { preset: 'sticker', pause: false, zonen: zonenNur(['face']) });
+    await seite.reload();
+    await expect(seite.locator('#preset-mosaik')).toBeChecked();
+    await expect(seite.locator('#preset-sticker')).not.toBeChecked();
+    const popup = await context.newPage();
+    try {
+      await popup.goto(popupUrl());
+      await expect(popup.locator('#preset-name')).toHaveText(PRESETS.mosaik.name);
+      await expect(popup.locator('#pack-hinweis')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+    } finally {
+      await popup.close();
+    }
+    // Seite: das Bild wird Mosaik (pinker Rahmen, kein Pastell, kein Sticker)
+    const gesicht = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'mosaik'));
+    const box = (gesicht.flaechen as Flaeche[]).find((x) => x.zone === 'face')!.box;
+    const bild = await context.newPage();
+    try {
+      await bild.goto(`${basis}/augenbalken.html`);
+      await expect.poll(() => bild.evaluate(() => document.getElementById('bild')!.dataset.veil ?? ''), { timeout: 40_000 }).toBe('zensiert');
+      const pixel = await seitenBildPixel(bild);
+      console.log(`chromium: Pack ohne Sticker, Preset sticker gespeichert: Seite zeigt Deckung ${(deckung(pixel, box) * 100).toFixed(1)} %, Stickerpixel ${stickerPixel(pixel, box)}`);
+      expect(deckung(pixel, box), 'Mosaik, nicht Pastell').toBeLessThan(0.8);
+      expect(stickerPixel(pixel, box)).toBe(0);
+      mosaikNachweis(await rohPixel(await brauchtBild('sfw', BILD_GESICHT)), pixel, box, 'Pack ohne Sticker, Seite');
+    } finally {
+      await bild.close();
+    }
+    await setzeEinst(seite, { preset: 'mosaik' });
+  } finally {
+    await seite.close();
+  }
+  // Pack mit Stickern, Sticker-Preset gewaehlt, Pack entfernt: Preset zurueck auf Mosaik, Karten gesperrt
+  await raeumePack();
+  const { bytes: mit } = await baueDummy();
+  await importiere(mit, 'dummy-mit-sticker-entfernen.miapack');
+  const s2 = await context.newPage();
+  try {
+    await s2.goto(optionsUrl());
+    await expect(s2.locator('#preset-sticker')).toBeEnabled();
+    await expect(s2.locator('#preset-pack-hinweis')).toBeHidden();
+    await s2.locator('label:has(#preset-sticker)').click();
+    await expect.poll(async () => (await speicher(s2, 'einstellungen')).preset).toBe('sticker');
+    await expect(s2.locator('#stil-hinweis')).toHaveText(PRESETS.sticker.satz);
+    await s2.locator('label:has(#preset-mia-sticker)').click();
+    await expect.poll(async () => (await speicher(s2, 'einstellungen')).preset).toBe('mia-sticker');
+    expect((await speicher(s2, 'einstellungen')).zonen.face.an, 'mia-sticker schaltet Face ein').toBe(true);
+    await expect(s2.locator('#stil-hinweis')).toContainText('I choose my face from');
+    await s2.locator('label:has(#preset-sticker)').click();
+    await expect.poll(async () => (await speicher(s2, 'einstellungen')).preset).toBe('sticker');
+    // Popup mit Sticker-Preset: Name, Satz, Vorschau
+    const popup = await context.newPage();
+    try {
+      await popup.goto(popupUrl());
+      await expect(popup.locator('#preset-name')).toHaveText(PRESETS.sticker.name);
+      await expect(popup.locator('#pack-hinweis')).toHaveText(PRESETS.sticker.satz);
+      await expect(popup.locator('#preset-bild svg')).toHaveCount(1);
+    } finally {
+      await popup.close();
+    }
+  } finally {
+    await s2.close();
+  }
+  await raeumePack();
+  const s3 = await context.newPage();
+  try {
+    await s3.goto(optionsUrl());
+    await expect.poll(async () => (await speicher(s3, 'einstellungen')).preset).toBe('mosaik');
+    await expect(s3.locator('#preset-mosaik')).toBeChecked();
+    await expect(s3.locator('#preset-sticker')).toBeDisabled();
+    await expect(s3.locator('#preset-mia-sticker')).toBeDisabled();
+    await expect(s3.locator('#preset-pack-hinweis')).toHaveText(HINWEIS_MIA_PACK_FEHLT);
+  } finally {
+    await s3.close();
+  }
+});
+
+// Mosaik-Nachweis (wie in den anderen Faellen): die Flaeche weicht im Kern vom Original ab (kein offenes Bild) und traegt den pinken Mosaik-Rahmen.
+function mosaikNachweis(orig: Pixel, pixel: Pixel, box: Box, name: string): void {
+  const inset = Math.round(Math.min(box[2], box[3]) * 0.15);
+  const kern = stat(orig, pixel, box, inset);
+  const ganz = stat(orig, pixel, box, 0);
+  console.log(`chromium: ${name}: Abweichung im Kern ${kern.mittel.toFixed(1)}, Rahmenpixel ${ganz.rahmen}`);
+  expect(kern.mittel, `${name}: Flaeche weicht vom Original ab`).toBeGreaterThan(8);
+  expect(ganz.rahmen, `${name}: pinker Mosaik-Rahmen`).toBeGreaterThan(Math.round(Math.min(box[2], box[3]) * 0.9));
+}
+
+// Pixel des zensierten Bildes (#bild) einer Fixture-Seite, als RGB wie `rohPixel`.
+async function seitenBildPixel(seite: Page): Promise<Pixel> {
+  const roh = await seite.evaluate(async () => {
+    const el = document.getElementById('bild') as HTMLImageElement;
+    const b = await createImageBitmap(await (await fetch(el.src)).blob());
+    const c = new OffscreenCanvas(b.width, b.height);
+    const g = c.getContext('2d')!;
+    g.drawImage(b, 0, 0);
+    const d = g.getImageData(0, 0, b.width, b.height).data;
+    const rgb = new Uint8Array(b.width * b.height * 3);
+    for (let i = 0, j = 0; i < d.length; i += 4, j += 3) {
+      rgb[j] = d[i]!;
+      rgb[j + 1] = d[i + 1]!;
+      rgb[j + 2] = d[i + 2]!;
+    }
+    return { b: b.width, h: b.height, daten: Array.from(rgb) };
+  });
+  return { daten: Buffer.from(roh.daten), b: roh.b, h: roh.h };
+}
+
+test('Sticker auf einer Seite: das Bild wird mit Pastell und Sticker gedeckt; der Wechsel auf ein Pack ohne Sticker macht es zu Mosaik', async () => {
+  test.setTimeout(200_000);
+  await raeumePack();
+  const { bytes } = await baueDummy();
+  await importiere(bytes, 'dummy-seite-sticker.miapack');
+  const hilf = await context.newPage();
+  const bild = await context.newPage();
+  try {
+    await hilf.goto(optionsUrl());
+    await setzeEinst(hilf, { preset: 'sticker', pause: false, zonen: zonenNur(['face']) });
+    const gesicht = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'sticker'));
+    const box = (gesicht.flaechen as Flaeche[]).find((x) => x.zone === 'face')!.box;
+    await bild.goto(`${basis}/augenbalken.html`);
+    await expect.poll(() => bild.evaluate(() => document.getElementById('bild')!.dataset.veil ?? ''), { timeout: 40_000 }).toBe('zensiert');
+    const pixel = await seitenBildPixel(bild);
+    console.log(`chromium: Seite mit Sticker: Deckung ${(deckung(pixel, box) * 100).toFixed(2)} %, Stickerpixel ${stickerPixel(pixel, box)}`);
+    expect(deckung(pixel, box)).toBeGreaterThanOrEqual(0.99);
+    expect(stickerPixel(pixel, box)).toBeGreaterThan(200);
+    // Das Pack wird durch eines ohne Sticker ersetzt: die Seite bewertet neu und zeigt Mosaik (das Preset steht weiter auf sticker)
+    const { bytes: ohne } = await baueDummy({ ohneSticker: true, version: '0.0.2' });
+    const pfad = path.join(ordner, 'dummy-seite-ohne.miapack');
+    await writeFile(pfad, ohne);
+    await hilf.locator('#datei').setInputFiles(pfad);
+    await hilf.locator('#annehmen').click();
+    await expect(hilf.locator('#meldung')).toContainText('The pack is in');
+    await expect.poll(async () => (await speicher(hilf, 'pack')).sticker, { timeout: 20_000 }).toBe(0);
+    await expect.poll(async () => deckung(await seitenBildPixel(bild), box), { timeout: 60_000, intervals: [500] }).toBeLessThan(0.8);
+    expect(stickerPixel(await seitenBildPixel(bild), box)).toBe(0);
+    mosaikNachweis(await rohPixel(await brauchtBild('sfw', BILD_GESICHT)), await seitenBildPixel(bild), box, 'Pack ersetzt durch eines ohne Sticker, Seite');
+    expect((await speicher(hilf, 'einstellungen')).preset, 'Einstellung bleibt, wirksam ist Mosaik').toBe('sticker');
+  } finally {
+    await setzeEinst(hilf, { preset: 'mosaik' });
+    await hilf.close();
+    await bild.close();
+  }
+  await raeumePack();
+});
+
+test('Sticker nach einem Dekodierfehler: der naechste Sticker kommt (Stickerfarbe in der Mitte), auch bei jedem weiteren Schluessel', async () => {
+  test.setTimeout(240_000);
+  await raeumePack();
+  const { bytes } = await baueDummy({ stickerTeilweise: true });
+  await importiere(bytes, 'dummy-sticker-teilweise.miapack');
+  const { stickerStart } = await import('../../src/sticker');
+  const original = await rohPixel(await brauchtBild('sfw', BILD_GESICHT));
+  const basisUrl = `${basis}/testbild/sfw/${encodeURIComponent(BILD_GESICHT)}`;
+  const erste = await ausWorker({ ...nachricht({ art: 'url', url: `${basisUrl}?salz=0`, referer: '' }, ['face'], 'sticker') });
+  expect(erste.ok, erste.fehler).toBe(true);
+  const box = (erste.flaechen as Flaeche[]).find((x) => x.zone === 'face')!.box;
+  // Namen im Pack, sortiert: dummy-1, dummy-2, kaputt-1 (Index 2). Zwei Schluessel, deren Wahl beim kaputten Sticker beginnt.
+  const salze: number[] = [];
+  for (let i = 1; i < 400 && salze.length < 2; i++) if (stickerStart(`${basisUrl}?salz=${i}|face|${box.join(',')}`, 3) === 2) salze.push(i);
+  expect(salze.length).toBe(2);
+  const GUT = [[20, 200, 90], [30, 70, 235]];
+  for (const salz of salze) {
+    const a = await ausWorker(nachricht({ art: 'url', url: `${basisUrl}?salz=${salz}`, referer: '' }, ['face'], 'sticker'));
+    expect(a.ok, a.fehler).toBe(true);
+    const f = (a.flaechen as Flaeche[]).find((x) => x.zone === 'face')!;
+    const aus = await rohPixel(ausDataUrl(a.bild));
+    const mitte = mitteFarbe(aus, f.box);
+    console.log(`chromium: Sticker nach Dekodierfehler (Salz ${salz}): Mitte ${mitte.map(Math.round)}, Deckung ${(deckung(aus, f.box) * 100).toFixed(2)} %`);
+    expect(GUT.some((q) => abstandFarbe(mitte, q) < 60), `ein guter Sticker in der Mitte (${mitte.map(Math.round)})`).toBe(true);
+    expect(deckung(aus, f.box)).toBeGreaterThanOrEqual(0.99);
+    expect(aussen(original, aus, [f.box]).mittel).toBeLessThan(4);
+  }
+  await raeumePack();
 });

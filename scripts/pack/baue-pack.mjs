@@ -2,10 +2,10 @@
 //   npm run pack:bau -- --quelle <ordner> --aus <datei>   Ordner mit pack.json und den Dateien
 //   npm run pack:dummy [-- --aus <datei> --version <x.y.z> --id <kennung>]                  Dummy-Pack nur aus synthetischen Bildern (Standard .output-pack/dummy.miapack)
 // pack.json: { "id", "version", "titel", "mindestVeil"?, "freischaltungen": ["stil:mia-patch", ...], "lizenz": "<Name der Lizenzdatei>",
-//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung"|"ton"|"woerter",
+//              "dateien": [{ "name", "datei"?, "typ"?, "rolle"?: "patch"|"lizenz"|"vorschau"|"quiz"|"texte"|"chibi"|"werbung"|"ton"|"woerter"|"sticker",
 //                            "stufe"?: "tease"|"hot"|"explicit", "format"?: "300x250"|... }] }
 //              (vorschau braucht eine Stufe, werbung ein Format aus WERBE_FORMATE, quiz, texte und woerter hoechstens einmal (woerter: { "themen": [{ "id", "titel", "woerter": [...] }] }, Freischaltung zensur:woerter); ton ist ein Audio
-//               .ogg, .mp3 oder .wav bis 1 MB, Name ohne Ordner und Endung aus quiz, richtig, falsch, verweigert, trigger)
+//               .ogg, .mp3 oder .wav bis 1 MB, Name ohne Ordner und Endung aus quiz, richtig, falsch, verweigert, trigger; sticker sind Bilder mit Transparenz, Freischaltung zensur:sticker)
 // `datei` ist der Pfad unter dem Quellordner (Standard: gleich `name`), `typ` wird sonst aus der Endung geschlossen.
 // Die Ausgabe landet nie im Repo: erlaubt sind Orte ausserhalb des Repos und Ordner `.output*` darin (ignoriert).
 // Mia-Bilder liest nur der echte Bau (spaeter aus dem Assets-Ordner neben dem Repo); das Dummy-Pack erzeugt seine Bilder zur Laufzeit.
@@ -166,6 +166,42 @@ export const DUMMY_WERBUNG = [
   { format: '970x250', farben: [[220, 20, 40], [40, 40, 40]] },
 ];
 
+// Sticker-Zensur (STICKER-BAUPLAN): drei synthetische Sticker mit durchsichtigem Grund, je eine satte Farbe weit weg von Pastell (Flaeche) und vom
+// pinken Rahmen: Gruen, Blau und Tuerkis. Eine gefuellte Scheibe (Mitte immer deckend in der Farbe), verschiedene Seitenverhaeltnisse (quadratisch,
+// quer, hoch), damit Tests das Einpassen pruefen koennen. Rein synthetisch.
+export const DUMMY_STICKER = [
+  { farbe: [20, 200, 90], breite: 256, hoehe: 256 },
+  { farbe: [30, 70, 235], breite: 320, hoehe: 240 },
+  { farbe: [0, 210, 210], breite: 240, hoehe: 320 },
+];
+
+async function dummySticker({ farbe, breite, hoehe }) {
+  const { default: sharp } = await import('sharp');
+  const px = Buffer.alloc(breite * hoehe * 4);
+  const rx = breite / 2;
+  const ry = hoehe / 2;
+  for (let y = 0; y < hoehe; y++) {
+    for (let x = 0; x < breite; x++) {
+      const i = (y * breite + x) * 4;
+      const drin = ((x + 0.5 - rx) / (rx * 0.9)) ** 2 + ((y + 0.5 - ry) / (ry * 0.9)) ** 2 < 1;
+      px[i] = farbe[0];
+      px[i + 1] = farbe[1];
+      px[i + 2] = farbe[2];
+      px[i + 3] = drin ? 255 : 0;
+    }
+  }
+  return new Uint8Array(await sharp(px, { raw: { width: breite, height: hoehe, channels: 4 } }).webp({ lossless: true }).toBuffer());
+}
+
+// Ein nicht dekodierbarer Sticker (Hide-first-Test): gueltiger Kopf und Signatur eines WebP-Bildes (Masse stehen im Kopf, das Pack besteht
+// seine Pruefung), aber die Bilddaten dahinter sind zerstoert, createImageBitmap scheitert.
+async function kaputterSticker() {
+  const gut = await dummySticker(DUMMY_STICKER[0]);
+  const kaputt = gut.slice();
+  for (let i = 40; i < kaputt.length; i++) kaputt[i] = 0xff;
+  return kaputt;
+}
+
 function lizenzTextDummy() {
   try {
     return readFileSync(path.join(wurzel, 'LIZENZ-MIA-INHALTE.md'), 'utf8');
@@ -182,7 +218,7 @@ export const DUMMY_FARBEN_WARM = [
 ];
 
 // Baut das Dummy-Pack im Speicher. Liefert die Bytes und die verwendeten Farben (Tests pruefen Pixel dagegen).
-// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`, `opts.grosseVorschau: n`: n grosse Vorschau-Bilder (1 bis 2 MB) statt der vier Standard-Bilder, `opts.vorschauSatz: 'stufen'`: Vorschau-Bilder je Stufe und Format (DUMMY_STUFEN_BILDER) statt der vier Standard-Bilder.
+// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`, `opts.grosseVorschau: n`: n grosse Vorschau-Bilder (1 bis 2 MB) statt der vier Standard-Bilder, `opts.vorschauSatz: 'stufen'`: Vorschau-Bilder je Stufe und Format (DUMMY_STUFEN_BILDER) statt der vier Standard-Bilder, `opts.ohneSticker`: ohne Sticker und Freischaltung `zensur:sticker` (wie ein Pack vor 1.0), `opts.stickerTeilweise`: zwei gute und ein kaputter Sticker, `opts.stickerKaputt`: statt der drei Sticker eine einzige nicht dekodierbare Datei `sticker/kaputt-1.webp` (Freischaltung bleibt; Hide-first-Test).
 export async function baueDummyPack(opts = {}) {
   const paare = opts.farben ?? DUMMY_FARBEN;
   const dateien = [{ name: 'lizenz.txt', typ: 'text/plain', daten: new TextEncoder().encode(lizenzTextDummy()), rolle: 'lizenz' }];
@@ -234,6 +270,15 @@ export async function baueDummyPack(opts = {}) {
     const json = (x) => new TextEncoder().encode(JSON.stringify(x, null, 1));
     dateien.push({ name: 'quiz.json', typ: 'application/json', daten: json(opts.quiz ?? DUMMY_QUIZ), rolle: 'quiz' });
     dateien.push({ name: 'texte.json', typ: 'application/json', daten: json(opts.texte ?? DUMMY_TEXTE), rolle: 'texte' });
+    // Sticker-Zensur: drei Sticker (`opts.ohneSticker` laesst sie samt Freischaltung weg, `opts.stickerKaputt` ersetzt sie durch eine kaputte Datei).
+    if (!opts.ohneSticker) {
+      if (opts.stickerTeilweise) {
+        // zwei gute Sticker und ein kaputter (`sticker/kaputt-1.webp`, sortiert zuletzt): nach dem Dekodierfehler kommt der naechste
+        for (let i = 0; i < 2; i++) dateien.push({ name: `sticker/dummy-${i + 1}.webp`, typ: 'image/webp', daten: await dummySticker(DUMMY_STICKER[i]), rolle: 'sticker' });
+        dateien.push({ name: 'sticker/kaputt-1.webp', typ: 'image/webp', daten: await kaputterSticker(), rolle: 'sticker' });
+      } else if (opts.stickerKaputt) dateien.push({ name: 'sticker/kaputt-1.webp', typ: 'image/webp', daten: await kaputterSticker(), rolle: 'sticker' });
+      else for (let i = 0; i < DUMMY_STICKER.length; i++) dateien.push({ name: `sticker/dummy-${i + 1}.webp`, typ: 'image/webp', daten: await dummySticker(DUMMY_STICKER[i]), rolle: 'sticker' });
+    }
     // Zensur-Presets: Wort-Themen (`opts.ohneWoerter` laesst sie samt Freischaltung weg).
     if (!opts.ohneWoerter) {
       const daten = json(opts.woerter ?? DUMMY_WOERTER);
@@ -268,6 +313,7 @@ export async function baueDummyPack(opts = {}) {
             'kontrolle:besuche',
             ...(opts.ohneTon ? [] : ['ton']),
             ...(opts.ohneWoerter ? [] : ['zensur:woerter']),
+            ...(opts.ohneSticker ? [] : ['zensur:sticker']),
           ]
         : ['stil:mia-patch'],
     },

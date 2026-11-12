@@ -28,12 +28,12 @@ const SHA_MUSTER = /^[0-9a-f]{64}$/;
 const TYPEN: readonly PackDateiEintrag['typ'][] = ['image/webp', 'image/jpeg', 'image/png', 'text/plain', 'application/json', 'audio/ogg', 'audio/mpeg', 'audio/wav'];
 // Audio-Typen: nur in der Rolle `ton`, Signaturpruefung statt Massen, kein UTF-8.
 const AUDIO_TYPEN: readonly PackDateiEintrag['typ'][] = ['audio/ogg', 'audio/mpeg', 'audio/wav'];
-const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton', 'woerter'] as const satisfies readonly Rolle[];
+const ROLLEN = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton', 'woerter', 'sticker'] as const satisfies readonly Rolle[];
 type _RollenVollstaendig = Exclude<Rolle, (typeof ROLLEN)[number]> extends never ? true : never;
 const _rollenVollstaendig: _RollenVollstaendig = true;
 void _rollenVollstaendig;
 // Bild-Rollen und JSON-Rollen (JSON: hoechstens eine Datei, Typ application/json, muss als JSON lesbar sein).
-const BILD_ROLLEN: readonly Rolle[] = ['patch', 'vorschau', 'chibi', 'werbung'];
+const BILD_ROLLEN: readonly Rolle[] = ['patch', 'vorschau', 'chibi', 'werbung', 'sticker'];
 const JSON_ROLLEN: readonly Rolle[] = ['quiz', 'texte', 'woerter'];
 // Kopie von TON_NAMEN aus src/ton/vertrag.ts (Typpruefung unten): nur diese Namen sind Klaenge, der Rest der Rolle `ton` wird verworfen.
 const TON_NAMEN = ['quiz', 'richtig', 'falsch', 'verweigert', 'trigger'] as const satisfies readonly TonName[];
@@ -68,6 +68,7 @@ const BEKANNTE_FREISCHALTUNGEN = [
   'kontrolle:besuche',
   'ton',
   'zensur:woerter',
+  'zensur:sticker',
 ] as const satisfies readonly Freischaltung[];
 // Kopie von BENOETIGT aus vertrag.ts: welche Rolle eine Freischaltung braucht (null = keine Datei).
 const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
@@ -89,6 +90,7 @@ const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:besuche': 'texte',
   ton: 'ton',
   'zensur:woerter': 'woerter',
+  'zensur:sticker': 'sticker',
 };
 type _Vollstaendig = Exclude<Freischaltung, (typeof BEKANNTE_FREISCHALTUNGEN)[number]> extends never ? true : never;
 const _vollstaendig: _Vollstaendig = true;

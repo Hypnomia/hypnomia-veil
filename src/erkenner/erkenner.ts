@@ -4,7 +4,8 @@
 
 import * as ort from 'onnxruntime-web/wasm';
 import { vervollstaendige, zonenFuerPreset, type Einstellungen } from '../einstellungen';
-import { PRESETS, ganzesBildBehandlung, hatWort, nutztMiasGesicht, waehleWort } from '../presets.ts';
+import { PRESETS, ganzesBildBehandlung, hatWort, nutztMiasGesicht, nutztSticker, waehleWort } from '../presets.ts';
+import { holeJeFlaeche, stickerPasst } from '../sticker.ts';
 import type {
   AntwortErkennerStatus,
   AntwortPruefe,
@@ -20,6 +21,7 @@ import { dekodiereBild, ersatzBildFuerBewegtesSvg, svgMitBewegung } from './deko
 import { Schranke } from './schranke';
 import { WORT_FAMILIE, hatTransparenz, kannAlpha, rendereZensur, type GesichtsBild } from './stile';
 import { ladeWoerter } from '../pack/woerter';
+import { waehleSticker } from '../pack/sticker';
 import {
   ladeYunetSitzung,
   yunetLauf,
@@ -65,6 +67,36 @@ async function gesichterFuer(
     if (wahl) frei.push(wahl.freigeben);
   }
   return { bilder, freigeben: () => frei.forEach((x) => x()) };
+}
+
+// Zu jeder Flaeche, die mit Sticker enden kann (Behandlung `sticker`, oder Mias Gesicht mit Ersatz `sticker`), ein Sticker aus dem Pack (Wahl
+// stabil je Bild und Flaeche, derselbe Schluessel wie beim Gesicht) und der Schluessel fuer die Pastellfarbe. Flaechen, die zu klein fuer einen Sticker
+// sind (src/sticker.ts stickerPasst), laden keinen. `null` an einer Stelle: dort ist keiner zu haben (kein Pack, ohne `zensur:sticker`, nicht
+// dekodierbar): die Flaeche steht ohne Sticker, sie wird trotzdem gemalt (Hide-first). Dazu die Rueckgabe der geliehenen Bilder (nach dem Rendern aufrufen).
+async function stickerFuer(
+  kennung: string,
+  flaechen: readonly Flaeche[],
+  packStand: number | undefined,
+  anzeigeSkala: number,
+): Promise<{ bilder: (CanvasImageSource | null)[]; schluessel: string[]; freigeben: () => void }> {
+  const frei: (() => void)[] = [];
+  const schluessel = flaechen.map((f) => `${kennung}|${f.zone}|${f.box.join(',')}`);
+  const kannSticker = (f: Flaeche): boolean => f.behandlung === 'sticker' || (f.behandlung === 'mia-gesicht' && f.ersatz === 'sticker');
+  // Nach dem ersten Lesefehler oder der ersten Zeitueberschreitung der Pack-Datenbank wird fuer diese Pruefung nichts weiter angefordert (holeJeFlaeche).
+  const bilder = await holeJeFlaeche<CanvasImageSource>(
+    flaechen.length,
+    (i) => kannSticker(flaechen[i]!) && stickerPasst(flaechen[i]!.box, anzeigeSkala),
+    async (i) => {
+      try {
+        const r = await waehleSticker(schluessel[i]!, packStand);
+        if (r.wahl) frei.push(r.wahl.freigeben);
+        return { wert: r.wahl ? r.wahl.bild : null, fehler: r.fehler };
+      } catch {
+        return { wert: null, fehler: true }; // nie ein Fehler fuer die Pruefung: die Flaeche steht ohne Sticker
+      }
+    },
+  );
+  return { bilder, schluessel, freigeben: () => frei.forEach((x) => x()) };
 }
 
 // Wort-Schrift (public/schrift/rounded-800.woff2) einmal je Dokument registrieren. `wortSchriftFertig` wird erst nach dem Laden gesetzt. Scheitert das
@@ -459,15 +491,22 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
       const packStand = typeof stand === 'number' ? stand : undefined;
       const kennung = bildKennung(n);
       const gesichter = nutztMiasGesicht(e.preset) ? await gesichterFuer(kennung, flaechen, packStand) : null;
+      // Darstellungsgroesse zu Arbeitsbild (fuer Mindestgroessen); Balken-Presets: PNG, wenn die Quelle Durchsichtiges hat.
+      const anzeigeSkala = n.breite > 0 && n.hoehe > 0 ? Math.min(n.breite / arbeit.breite, n.hoehe / arbeit.hoehe) : 1;
+      let sticker: Awaited<ReturnType<typeof stickerFuer>> | null = null;
+      try {
+        sticker = nutztSticker(e.preset) ? await stickerFuer(kennung, flaechen, packStand, anzeigeSkala) : null;
+      } catch {
+        sticker = null;
+      }
       try {
         const woerter = await woerterFuer(kennung, flaechen, e.woerterThemen, packStand, e.preset);
-        // Darstellungsgroesse zu Arbeitsbild (fuer Mindestgroessen); Balken-Presets: PNG, wenn die Quelle Durchsichtiges hat.
-        const anzeigeSkala = n.breite > 0 && n.hoehe > 0 ? Math.min(n.breite / arbeit.breite, n.hoehe / arbeit.hoehe) : 1;
         const nurSchwarz = def.augen !== 'wie-koerper';
         const png = nurSchwarz && !bewegtesSvg && kannAlpha(blob.type) && hatTransparenz(arbeit.quelle, arbeit.breite, arbeit.hoehe);
-        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.preset, { anzeigeSkala, png, gesichter: gesichter?.bilder, woerter });
+        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.preset, { anzeigeSkala, png, gesichter: gesichter?.bilder, woerter, sticker: sticker?.bilder, stickerSchluessel: sticker?.schluessel });
       } finally {
         gesichter?.freigeben();
+        sticker?.freigeben();
       }
     }
     const tRender = jetzt();

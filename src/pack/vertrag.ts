@@ -3,7 +3,7 @@
 // Ablage: Dateien in IndexedDB (Erweiterungs-Ursprung, `unlimitedStorage`, Entscheidung 25), eine kleine Kurzfassung
 // in storage.local unter `pack`, damit Popup und Content-Script ohne IndexedDB wissen, was freigeschaltet ist.
 
-import { OHNE_PACK_PRESET, PRESETS, type Preset } from '../presets.ts';
+import { OHNE_PACK_PRESET, PRESETS, packGenuegt, type Preset } from '../presets.ts';
 import type { SatzGruppe } from '../quiz/vertrag';
 
 // ---------- Ablage ----------
@@ -45,6 +45,8 @@ export const GESICHTER_STAND_SCHLUESSEL = 'gesichterStand';
 //   ton                 kurze Klaenge zu Quiz und Blitzwoertern (Rolle `ton`, mindestens eine Audio-Datei mit Namen aus TON_NAMEN)
 // Zensur-Presets (ZENSUR-PRESETS-BAUPLAN):
 //   zensur:woerter      Woerter fuer die Presets mit Wort (Rolle `woerter`, JSON, Schema src/presets.ts pruefeWoerter)
+// Sticker-Zensur (STICKER-BAUPLAN):
+//   zensur:sticker      Sticker auf der Pastell-Flaeche der Presets `sticker` und `mia-sticker` (Rolle `sticker`, Bilder mit Transparenz)
 export const FREISCHALTUNGEN = [
   'stil:mia-patch',
   'erwachsen:vorschau',
@@ -64,6 +66,7 @@ export const FREISCHALTUNGEN = [
   'kontrolle:besuche',
   'ton',
   'zensur:woerter',
+  'zensur:sticker',
 ] as const;
 export type Freischaltung = (typeof FREISCHALTUNGEN)[number];
 
@@ -74,9 +77,10 @@ export type Stufe = 'tease' | 'hot' | 'explicit';
 // (WebP mit Transparenz, Name enthaelt die Pose, siehe src/chibi.ts). `werbung`: Mias Werbebild fuer den Werbe-Tausch (Phase 5, Feld
 // `format` Pflicht). `ton` (Phase 6): kurzer Klang als Audio (ogg, mp3 oder wav, hoechstens 1 MB), der Dateiname ohne Ordner und Endung muss
 // in TON_NAMEN (src/ton/vertrag.ts) stehen, sonst verwirft der Import die Datei; Audio gibt es nur in dieser Rolle und diese Rolle nur als Audio.
+// `sticker` (Sticker-Zensur): kleines Bild mit Transparenz (WebP oder PNG), das mittig auf der Pastell-Flaeche sitzt.
 // Unbekannte Rollen verwirft der Import (die Datei bleibt ohne Rolle).
-export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung' | 'ton' | 'woerter';
-export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton', 'woerter'];
+export type Rolle = 'patch' | 'lizenz' | 'vorschau' | 'quiz' | 'texte' | 'chibi' | 'werbung' | 'ton' | 'woerter' | 'sticker';
+export const ROLLEN: readonly Rolle[] = ['patch', 'lizenz', 'vorschau', 'quiz', 'texte', 'chibi', 'werbung', 'ton', 'woerter', 'sticker'];
 
 // Werbeformate (Breite x Hoehe in CSS-Pixeln) fuer die Rolle `werbung`: jedes Werbebild nennt sein Format. Der Werbe-Tausch waehlt fuer eine
 // Flaeche das Format, das ihr am naechsten kommt (Auftrag W).
@@ -110,6 +114,7 @@ export const BENOETIGT: Readonly<Record<Freischaltung, Rolle | null>> = {
   'kontrolle:besuche': 'texte',
   ton: 'ton',
   'zensur:woerter': 'woerter',
+  'zensur:sticker': 'sticker',
 };
 
 // Freischaltungen, die zusaetzlich eine Satz-Gruppe in der Texte-Datei brauchen (mindestens ein gueltiger Satz nach `pruefeTexte`).
@@ -192,6 +197,7 @@ export interface PackKurz {
   vorschau: number;
   chibis: number;
   werbung: number; // Phase 5: Anzahl Werbebilder (fehlt bei aelteren Importen, dann 0)
+  sticker: number; // Sticker-Zensur: Anzahl Sticker (fehlt bei Packs ohne Sticker und aelteren Importen, dann 0)
   groesse: number;
   importiert: number;
 }
@@ -200,9 +206,10 @@ export function istFreigeschaltet(pack: PackKurz | null | undefined, f: Freischa
   return !!pack && Array.isArray(pack.freischaltungen) && pack.freischaltungen.includes(f);
 }
 
-// Preset, das tatsaechlich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), sonst Mosaik (Demo: Klassisch und Ganze Person).
+// Preset, das tatsaechlich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), Sticker-Presets nur mit Stickern im Pack
+// (`zensur:sticker`), sonst Mosaik (Demo: Klassisch und Ganze Person).
 export function presetFuerPackKurz(preset: Preset, pack: PackKurz | null | undefined): Preset {
-  return PRESETS[preset].braucht === 'pack' && !istFreigeschaltet(pack, 'stil:mia-patch') ? OHNE_PACK_PRESET : preset;
+  return packGenuegt(PRESETS[preset].braucht, istFreigeschaltet(pack, 'stil:mia-patch'), istFreigeschaltet(pack, 'zensur:sticker')) ? preset : OHNE_PACK_PRESET;
 }
 
 // Liest die Kurzfassung aus storage.local (Popup, Optionsseite, Content-Script).
@@ -223,5 +230,6 @@ export function kurzAusRoh(roh: unknown): PackKurz | null {
     vorschau: zahl(p.vorschau),
     chibis: zahl(p.chibis),
     werbung: zahl(p.werbung),
+    sticker: zahl(p.sticker),
   };
 }

@@ -205,7 +205,7 @@ try {
   // Seite 3
   await bisSchritt('interview-3');
   pruefe((await eigenschaft('#iv-preset-mia-wort', 'disabled')) === true && (await sichtbar('#iv-stil-sperre')), 'ohne Pack: Presets mit meinem Gesicht gesperrt mit Hinweis');
-  pruefe((await driver.findElements(By.css('#iv-preset-karten input[name="iv-preset"]'))).length === 11, 'Seite 3 zeigt elf Preset-Karten');
+  pruefe((await driver.findElements(By.css('#iv-preset-karten input[name="iv-preset"]'))).length === 13, 'Seite 3 zeigt dreizehn Preset-Karten');
   await klick('#iv-preset-blur');
   await bis('preset blur', async () => (await einst()).preset === 'blur');
   // Mit Pack: ein Mia-Preset schaltet Face ein (Entscheidung der Inhaberin), mit kurzem Hinweis; Radiogruppe mit Ueberschrift

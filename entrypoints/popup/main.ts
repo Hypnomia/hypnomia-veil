@@ -25,7 +25,7 @@ import * as T from './texte';
 import { FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../../src/pack/vertrag';
-import { PRESETS } from '../../src/presets';
+import { PRESETS, packGenuegt } from '../../src/presets';
 import { presetVorschau } from '../../src/oberflaeche/presets-ansicht';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
@@ -190,13 +190,14 @@ let aktuellE: Einstellungen | null = null;
 function zeichnePreset(e: Einstellungen): void {
   aktuellE = e;
   const frei = istFreigeschaltet(pack, 'stil:mia-patch');
+  const mitSticker = istFreigeschaltet(pack, 'zensur:sticker');
   const gilt = presetFuerPackKurz(e.preset, pack);
   presetBild.innerHTML = presetVorschau(gilt, 'popup');
   presetName.textContent = PRESETS[gilt].name;
-  // Sperre der Mia-Presets: der Hinweis auf das Pack hat Vorrang, sonst der Satz zum Preset.
-  const gesperrt = PRESETS[e.preset].braucht === 'pack' && !frei;
+  // Sperre der Pack-Presets (Mia, Sticker): der Hinweis auf das Pack hat Vorrang, sonst der Satz zum Preset.
+  const gesperrt = !packGenuegt(PRESETS[e.preset].braucht, frei, mitSticker);
   // Ohne Pack steht dabei, was bis dahin gilt (Mosaik); mit Pack aber ohne brauchbares Patch der Hinweis des Packs allein.
-  packHinweis_.textContent = gesperrt ? packHinweis(frei, pack) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
+  packHinweis_.textContent = gesperrt ? packHinweis(frei, pack, mitSticker, PRESETS[e.preset].braucht) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset gilt, aber Face steht aus: sagen, was dann gilt (der Satz der Karte klaenge sonst nach mehr)
   if (!gesperrt && PRESETS[gilt].gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
   const zh = zonenHinweis(gilt);

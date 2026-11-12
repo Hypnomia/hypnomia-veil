@@ -30,8 +30,8 @@ interface PackBau {
 const bauModul = '../../scripts/pack/baue-pack.mjs';
 const ladeBau = async (): Promise<PackBau> => (await import(bauModul)) as PackBau;
 
-const DATEIEN = 32; // Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, 5 Klaenge, Quiz, Texte, Woerter
-const DATEIEN_OHNE_TON = 27; // ohne die 5 Klaenge: andere Zahl, damit "Zahl der Dateien" etwas aussagt
+const DATEIEN = 35; // Dummy-Pack: Lizenz, 6 Patches, 4 Vorschau, 3 Chibis, 10 Werbebilder, 5 Klaenge, Quiz, Texte, Woerter, 3 Sticker
+const DATEIEN_OHNE_TON = 30; // ohne die 5 Klaenge: andere Zahl, damit "Zahl der Dateien" etwas aussagt
 const EINSTIEG_FERTIG = { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'uebersprungen', zeit: 1 };
 
 test.describe.configure({ mode: 'serial' });

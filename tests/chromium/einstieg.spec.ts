@@ -1,6 +1,6 @@
 // Chromium: Auftrag E (Einstieg, Session 11). Testbau: nach der Installation gilt der Einstieg als erledigt und nichts oeffnet sich;
 // `einstieg-test` setzt zurueck und oeffnet. Ganzer Durchgang mit echten Klicks, Ueberspringen, "I’m not", Popup-Hinweis, #interview, 360 px.
-import { HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
+import { HINWEIS_FACE_EIN, HINWEIS_PACK_OHNE_STICKER } from '../../src/oberflaeche/gemeinsam';
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -164,13 +164,19 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   await expect(w.locator('#iv-preset-mosaik')).toBeChecked();
   await expect(w.locator('#iv-preset-mia-wort')).toBeDisabled();
   await expect(w.locator('#iv-stil-sperre')).toBeVisible();
-  await expect(w.locator('#iv-preset-karten input[name="iv-preset"]')).toHaveCount(11); // dieselben Karten wie auf der Einstellungsseite
+  await expect(w.locator('#iv-preset-karten input[name="iv-preset"]')).toHaveCount(13); // dieselben Karten wie auf der Einstellungsseite
   await w.locator('label', { has: w.locator('#iv-preset-blur') }).click();
   await expect.poll(async () => (await einst(v)).preset).toBe('blur');
   await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Calm mode steht auf Seite 5 (Fund 23)
   // Mit Pack werden die Presets mit meinem Gesicht waehlbar und der Hinweis verschwindet (folgt dem Speicher)
   await schreibe(v, { pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch'], bilder: 1, groesse: 1, importiert: 1 } });
   await expect(w.locator('#iv-preset-mia-wort')).toBeEnabled();
+  // Pack ohne Sticker (wie vor 1.0): die Sticker-Karten bleiben gesperrt, der Hinweis sagt es
+  await expect(w.locator('#iv-preset-sticker')).toBeDisabled();
+  await expect(w.locator('#iv-preset-mia-sticker')).toBeDisabled();
+  await expect(w.locator('#iv-stil-sperre')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+  await schreibe(v, { pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch', 'zensur:sticker'], bilder: 1, sticker: 1, groesse: 1, importiert: 1 } });
+  await expect(w.locator('#iv-preset-sticker')).toBeEnabled();
   await expect(w.locator('#iv-stil-sperre')).toBeHidden();
   // Face steht aus ("Body" ohne Gesicht gewaehlt): das Mia-Preset schaltet es ein
   const vorMia = await einst(v);

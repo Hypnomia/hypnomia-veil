@@ -234,6 +234,32 @@ test('Erbe: andere wirksame Behandlung erbt nicht, gleiche wirksame (aus der Tab
   assert.equal(sl2.spuren[0].motiv, m);
 });
 
+test('Erbe mit sticker: gleiche Zone und gleiche wirksame Behandlung sticker erbt das Motiv (Farbe und Sticker bleiben), mosaik erbt nicht', () => {
+  const sl = new SpurListe();
+  const PS = { ...P, preset: 'sticker' };
+  sl.ordneZu([zonenKasten('breast', 100, 100, 40, 40, 'sticker')], 3, PS);
+  const m = sl.spuren[0].motiv;
+  sl.leere();
+  sl.ordneZu([zonenKasten('breast', 101, 100, 40, 40)], 3.2, PS); // ohne `behandlung`: die Tabelle des Presets sagt sticker
+  assert.equal(sl.spuren[0].motiv, m);
+  const sl2 = new SpurListe();
+  sl2.ordneZu([zonenKasten('breast', 100, 100, 40, 40, 'sticker')], 3, PS);
+  sl2.leere();
+  sl2.ordneZu([zonenKasten('breast', 100, 100, 40, 40, 'mosaik')], 3.2, PS);
+  assert.equal(sl2.spuren[0].motiv, sl2.spuren[0].id);
+});
+
+test('stilFuerZone mit sticker: bleibt sticker (auch als Ersatz fuer Mias Gesicht ohne passendes Bild), unabhaengig von Wort und Gesicht', () => {
+  const ohne = { gesichtPasst: false, wortDa: false, wortPasst: false };
+  assert.equal(stilFuerZone('sticker', 'face', ohne), 'sticker');
+  assert.equal(stilFuerZone('sticker', 'breast', ohne), 'sticker');
+  assert.equal(stilFuerZone('mia-sticker', 'face', { ...ohne, behandlung: 'mia-gesicht', ersatz: 'sticker' }), 'sticker');
+  assert.equal(stilFuerZone('mia-sticker', 'face', ohne), 'sticker');
+  assert.equal(stilFuerZone('mia-sticker', 'face', { ...ohne, gesichtPasst: true }), 'mia-gesicht');
+  assert.equal(stilFuerZone('mia-sticker', 'breast', ohne), 'sticker');
+  assert.equal(ersatzFuer('mia-sticker', 'sticker'), 'sticker');
+});
+
 test('Erbe: zu weit weg erbt nicht (keine Ueberlappung, Mittenabstand ueber der laengeren Seite der alten Box)', () => {
   const sl = new SpurListe();
   sl.ordneZu([kasten(100, 100, 40, 20)], 3, P);
@@ -792,8 +818,8 @@ const alleFlaechen = (preset, faceAn) => {
 };
 const lageVoll = { gesichtPasst: true, wortDa: true, wortPasst: true };
 
-test('stilFuerZone: alle 11 Presets, Face an und aus: dieselbe Behandlung wie die Flaechen des Erkenners, aus der Tabelle auch ohne `behandlung`', () => {
-  assert.equal(PRESET_IDS.length, 11);
+test('stilFuerZone: alle 13 Presets, Face an und aus: dieselbe Behandlung wie die Flaechen des Erkenners, aus der Tabelle auch ohne `behandlung`', () => {
+  assert.equal(PRESET_IDS.length, 13);
   for (const preset of PRESET_IDS) {
     for (const faceAn of [true, false]) {
       const flaechen = alleFlaechen(preset, faceAn);

@@ -6,6 +6,7 @@ import {
   GESICHT_RAND,
   GESICHT_VERHAELTNIS,
   GRUPPEN,
+  GRUPPEN_NAMEN,
   MAX_THEMEN,
   NACHBAR_ANTEIL,
   PERSON_RAND,
@@ -40,25 +41,32 @@ const zonen = (an, bedeckt = []) => {
 const t = (zone, box, extra = {}) => ({ zone, bedeckt: false, score: 0.9, box, ...extra });
 const gesichtYunet = (box, re, le) => ({ score: 0.9, box, punkte: [re, le, [0, 0], [0, 0], [0, 0]] });
 
-test('Tabelle: elf Presets in drei Gruppen, Mia-Presets brauchen das Pack, nur Wort-Presets nutzen Woerter', () => {
-  assert.equal(PRESET_IDS.length, 11);
-  assert.deepEqual(GRUPPEN, ['mia', 'klassisch', 'person']);
+test('Tabelle: dreizehn Presets in vier Gruppen, Mia-Presets brauchen das Pack, Sticker-Presets Sticker, nur Wort-Presets nutzen Woerter', () => {
+  assert.equal(PRESET_IDS.length, 13);
+  assert.deepEqual(GRUPPEN, ['mia', 'sticker', 'klassisch', 'person']);
   const je = (g) => PRESET_IDS.filter((p) => PRESETS[p].gruppe === g);
   assert.deepEqual(je('mia'), ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur']);
+  assert.deepEqual(je('sticker'), ['mia-sticker', 'sticker']);
   assert.deepEqual(je('klassisch'), ['mosaik', 'mosaik-wort', 'blur', 'zensurbalken', 'augenbalken']);
   assert.deepEqual(je('person'), ['person-mosaik', 'person-blur']);
-  for (const p of PRESET_IDS) assert.equal(PRESETS[p].braucht === 'pack', PRESETS[p].gruppe === 'mia', p);
+  for (const p of PRESET_IDS) assert.equal(PRESETS[p].braucht, PRESETS[p].gruppe === 'mia' ? 'pack' : PRESETS[p].gruppe === 'sticker' ? 'sticker' : null, p);
   assert.deepEqual(PRESET_IDS.filter((p) => PRESETS[p].woerter), ['mia-wort', 'mia-mosaik-wort', 'mosaik-wort']);
   // Tabellenzeilen des Plans
   assert.deepEqual([PRESETS['mia-wort'].gesicht, PRESETS['mia-wort'].koerper], ['mia-gesicht', 'schwarz-wort']);
   assert.deepEqual([PRESETS['mia-mosaik'].gesicht, PRESETS['mia-mosaik'].koerper], ['mia-gesicht', 'mosaik']);
   assert.deepEqual([PRESETS['mia-mosaik-wort'].gesicht, PRESETS['mia-mosaik-wort'].koerper], ['mia-gesicht', 'mosaik-wort']);
   assert.deepEqual([PRESETS['mia-blur'].gesicht, PRESETS['mia-blur'].koerper], ['mia-gesicht', 'blur']);
+  assert.deepEqual([PRESETS['mia-sticker'].gesicht, PRESETS['mia-sticker'].koerper, PRESETS['mia-sticker'].augen], ['mia-gesicht', 'sticker', 'wie-koerper']);
+  assert.deepEqual([PRESETS.sticker.gesicht, PRESETS.sticker.koerper, PRESETS.sticker.augen], ['sticker', 'sticker', 'wie-koerper']);
   assert.deepEqual([PRESETS.zensurbalken.gesicht, PRESETS.zensurbalken.koerper, PRESETS.zensurbalken.augen], ['schwarz', 'schwarz', 'balken-immer']);
   assert.deepEqual([PRESETS.augenbalken.gesicht, PRESETS.augenbalken.koerper, PRESETS.augenbalken.augen], [null, null, 'nur-balken']);
   assert.equal(PRESETS['person-mosaik'].person && PRESETS['person-blur'].person, true);
   assert.equal(STANDARD.preset, 'mosaik');
   for (const p of PRESET_IDS) assert.ok(!/[\u2013\u2014]/.test(PRESETS[p].name + PRESETS[p].satz), `${p}: keine Gedankenstriche`);
+  // Texte laut STICKER-TEXTE.md
+  assert.equal(GRUPPEN_NAMEN.sticker, 'With my stickers');
+  assert.equal(PRESETS['mia-sticker'].name, 'My face, stickers');
+  assert.equal(PRESETS.sticker.name, 'Stickers');
 });
 
 test('Migration: stil wird preset, mia-patch wird mia-wort, Unbekanntes bleibt null; preset gewinnt gegen stil', () => {
@@ -82,9 +90,13 @@ test('Einstellung woerterThemen: Standard null (alle), Liste nur gueltige Kennun
   assert.equal(vervollstaendige({ woerterThemen: 'alle' }).woerterThemen, null);
 });
 
-test('presetFuerPack: Mia-Presets ohne Pack werden Mosaik, die anderen bleiben', () => {
-  for (const p of PRESET_IDS) assert.equal(presetFuerPack(p, true), p);
-  for (const p of PRESET_IDS) assert.equal(presetFuerPack(p, false), PRESETS[p].gruppe === 'mia' ? 'mosaik' : p);
+test('presetFuerPack: Mia-Presets ohne Patch-Pack und Sticker-Presets ohne Sticker werden Mosaik, die anderen bleiben', () => {
+  for (const p of PRESET_IDS) assert.equal(presetFuerPack(p, true, true), p);
+  for (const p of PRESET_IDS) assert.equal(presetFuerPack(p, false, true), PRESETS[p].gruppe === 'mia' ? 'mosaik' : p);
+  for (const p of PRESET_IDS) assert.equal(presetFuerPack(p, true, false), PRESETS[p].gruppe === 'sticker' ? 'mosaik' : p);
+  for (const p of PRESET_IDS) assert.equal(presetFuerPack(p, false, false), PRESETS[p].braucht !== null ? 'mosaik' : p);
+  // ohne dritten Wert gilt: keine Sticker (sicherer Standard)
+  assert.equal(presetFuerPack('sticker', true), 'mosaik');
 });
 
 test('Behandlungen: Wort-Behandlungen und ihre Variante ohne Wort, ganzes Bild nimmt die Koerper-Behandlung', () => {

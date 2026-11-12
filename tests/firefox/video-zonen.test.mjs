@@ -985,6 +985,146 @@ try {
   } else if (OHNE_TESTBILDER) console.log('firefox: AUSNAHME VEIL_OHNE_TESTBILDER=1: P3 und P4 uebersprungen');
   else fehlerListe.push(`Testbild ${PATCH_GESICHT} fehlt`);
 
+  // ---------- Sticker im Video (STICKER-BAUPLAN Stufe B), Gegenstueck zu P11 bis P13 in tests/chromium/video-zonen.spec.ts ----------
+  const ST_PASTELL = [[255, 211, 230], [226, 215, 255], [255, 220, 199]];
+  const ST_STICKER = [[20, 200, 90], [30, 70, 235], [0, 210, 210]];
+  const ST_RAHMEN = [255, 79, 163];
+  const stAbstand = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  const stStrecke = (p, a, b) => {
+    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const l2 = d[0] ** 2 + d[1] ** 2 + d[2] ** 2;
+    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1] + (p[2] - a[2]) * d[2]) / l2));
+    return stAbstand(p, [a[0] + t * d[0], a[1] + t * d[1], a[2] + t * d[2]]);
+  };
+  const stGedeckt = (p) => {
+    if (ST_PASTELL.some((q) => stAbstand(p, q) < 16) || stAbstand(p, ST_RAHMEN) < 60 || ST_STICKER.some((q) => stAbstand(p, q) < 45)) return true;
+    for (const q of ST_PASTELL) for (const s of [...ST_STICKER, ST_RAHMEN]) if (stStrecke(p, q, s) < 30) return true;
+    return false;
+  };
+  const stPx = (a, x, y) => { const i = (y * a.b + x) * 3; return [a.daten[i], a.daten[i + 1], a.daten[i + 2]]; };
+  const stSticker = (p) => ST_STICKER.some((q) => stAbstand(p, q) < 60);
+  function stMess(aus, box) {
+    const [bx, by, bw, bh] = box;
+    let n = 0, ok = 0, sp = 0;
+    for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) {
+      if (x < 0 || y < 0 || x >= aus.b || y >= aus.h) continue;
+      const p = stPx(aus, x, y);
+      if (ST_STICKER.some((q) => stAbstand(p, q) < 45)) sp++;
+      if (x >= bx + 3 && x < bx + bw - 3 && y >= by + 3 && y < by + bh - 3) { n++; if (stGedeckt(p)) ok++; }
+    }
+    const cx = Math.round(bx + bw / 2), cy = Math.round(by + bh / 2); const m = [0, 0, 0];
+    for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 2; x <= cx + 2; x++) stPx(aus, x, y).forEach((v, k) => (m[k] += v / 25));
+    return { deck: n ? ok / n : 1, sp, mitte: m };
+  }
+  const nurSticker = (a) => a.length > 0 && a.every((x) => x === 'sticker');
+  const dummyPfad = async (opts, name) => {
+    const pfad = path.join(ordner, name);
+    await writeFile(pfad, (await baueDummyPack(opts)).bytes);
+    return pfad;
+  };
+
+  await test('P11 sticker im Video: Flaechen ganz gedeckt, Stickerfarbe in der Mitte, dieselbe Spur behaelt Farbe und Sticker', async () => {
+    await entfernePack();
+    await importierePack(await dummyPfad({}, 'dummy-video-sticker.miapack'));
+    const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'sticker', an: BEDECKBAR, art: nurSticker });
+    pruefe(m.v.arten.every((a) => a === 'sticker'), `Arten ${m.v.arten}`);
+    m.v.flaechen.forEach((f, i) => pruefe(stMess(m.aus, f).deck >= 0.99, `erste Aufnahme: Flaeche ${i} nicht ganz gedeckt`));
+    let aufn = { v: m.v, aus: m.aus };
+    for (let i = 0; i < 12; i++) {
+      if (stSticker(stMess(aufn.aus, groesste(aufn.v, 'sticker')).mitte)) break;
+      aufn = await augenblick(nurSticker, 2.6, 4.8);
+    }
+    let mitSticker = 0;
+    aufn.v.flaechen.forEach((f, i) => {
+      const k = stMess(aufn.aus, f);
+      console.log(`firefox: P11 ${aufn.v.arten[i]} ${JSON.stringify(f)}: Deckung ${(k.deck * 100).toFixed(2)} %, Stickerpixel ${k.sp}, Mitte ${k.mitte.map(Math.round)}`);
+      pruefe(k.deck >= 0.99, `Flaeche ${i} nicht ganz gedeckt (${k.deck})`);
+      if (Math.min(f[2], f[3]) >= 60 && stSticker(k.mitte)) mitSticker++;
+    });
+    pruefe(mitSticker >= 1, 'keine Flaeche mit Sticker in der Mitte');
+    pruefe(ausserhalb(m.ref, aufn.aus, aufn.v.flaechen) < 6, 'ausserhalb veraendert');
+    let alt = aufn;
+    let verglichen = 0;
+    for (let versuch = 0; versuch < 6 && verglichen < 2; versuch++) {
+      const neu = await augenblick(nurSticker, 2.6, 4.8);
+      neu.v.ids.forEach((id, i) => {
+        const j = alt.v.ids.indexOf(id);
+        if (id < 0 || j < 0 || neu.v.motive[i] !== alt.v.motive[j]) return;
+        const fa = alt.v.flaechen[j], fn = neu.v.flaechen[i];
+        if (Math.min(fa[2], fa[3]) < 60 || Math.min(fn[2], fn[3]) < 60) return;
+        const ka = stMess(alt.aus, fa), kn = stMess(neu.aus, fn);
+        if (!stSticker(ka.mitte)) return;
+        // eine andere Flaeche, die inzwischen ueber der Mitte liegt (spaeter gemalt, oben), verdeckt den Sticker: dort nicht messen (belegt in Chromium mit Aufnahmen)
+        const mx = fn[0] + fn[2] / 2, my = fn[1] + fn[3] / 2;
+        const ueberlagert = (v, eigene) => v.flaechen.some((o, k) => k !== eigene && mx >= o[0] - 6 && mx <= o[0] + o[2] + 6 && my >= o[1] - 6 && my <= o[1] + o[3] + 6);
+        if (ueberlagert(neu.v, i) || ueberlagert(alt.v, j)) return;
+        const ecke = (a, f) => stPx(a, Math.round(f[0] + 14), Math.round(f[1] + 14));
+        pruefe(stAbstand(ecke(alt.aus, fa), ecke(neu.aus, fn)) < 10, 'Pastellfarbe der Spur wechselt');
+        pruefe(stSticker(kn.mitte) && stAbstand(ka.mitte, kn.mitte) < 60, `Sticker der Spur wechselt (${ka.mitte.map(Math.round)} gegen ${kn.mitte.map(Math.round)})`);
+        verglichen++;
+      });
+      alt = neu;
+    }
+    console.log(`firefox: P11 gleiche Spur in ${verglichen} Vergleichen unveraendert`);
+    pruefe(verglichen >= 1, 'in 6 Aufnahmen nie dieselbe Spur zweimal mit Sticker');
+  });
+
+  await test('P11b sticker im Video mit nicht dekodierbarem Sticker: die Flaeche deckt, kein Sticker, arten bleibt sticker', async () => {
+    await entfernePack();
+    await importierePack(await dummyPfad({ stickerKaputt: true }, 'dummy-video-sticker-kaputt.miapack'));
+    const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'sticker', an: BEDECKBAR, art: (a) => a.length > 0 });
+    pruefe(m.v.arten.every((a) => a === 'sticker'), `Arten ${m.v.arten}`);
+    for (const aufn of [m, await augenblick(nurSticker, 2.6, 4.8)]) {
+      aufn.v.flaechen.forEach((f, i) => {
+        const k = stMess(aufn.aus, f);
+        console.log(`firefox: P11b ${JSON.stringify(f)}: Deckung ${(k.deck * 100).toFixed(2)} %, Stickerpixel ${k.sp}`);
+        pruefe(k.deck >= 0.99 && k.sp === 0, `Flaeche ${i}: nicht gedeckt oder mit Sticker (${k.deck}, ${k.sp})`);
+      });
+    }
+    await entfernePack();
+  });
+
+  if (patchRoh.ok) {
+    await test('P12 mia-sticker im Video: Mias Gesicht mit Patch-Gesicht, ohne Patch-Gesicht Pastell mit Sticker', async () => {
+      await entfernePack();
+      const patch = await sharp(Buffer.from(await (await fetch(`${basis}/testbild/sfw/${encodeURIComponent(PATCH_GESICHT)}`)).arrayBuffer())).resize({ width: 800 }).jpeg({ quality: 90 }).toBuffer();
+      const mitG = path.join(ordner, 'dummy-gesicht-sticker.miapack');
+      await writeFile(mitG, (await baueDummyPack({ extraPatches: [{ name: 'patch/mit-gesicht.jpg', typ: 'image/jpeg', daten: new Uint8Array(patch) }] })).bytes);
+      const scan = await importierePack(mitG);
+      pruefe(scan.mit === 1, `Gesichtsscan (${JSON.stringify(scan)})`);
+      const m = await messePreset({ satz: 'sfw', bild: GESICHT, preset: 'mia-sticker', an: ['face'], art: (a) => a.includes('mia-gesicht') });
+      const f = groesste(m.v, 'mia-gesicht');
+      const k = kenn(m.ref, m.aus, f, 0);
+      console.log(`firefox: P12 mia-gesicht ${JSON.stringify(k)} Stickerpixel ${stMess(m.aus, f).sp}`);
+      pruefe(k.rahmen > Math.min(f[2], f[3]) * 2 && k.mittel > 20, `Mias Gesicht nicht getauscht (${k.rahmen}, ${k.mittel})`);
+      pruefe(stMess(m.aus, f).sp === 0, 'Mias Gesicht traegt einen Sticker');
+      await entfernePack();
+      await importierePack(await dummyPfad({}, 'dummy-ersatz-sticker.miapack'));
+      const e = await messePreset({ satz: 'sfw', bild: GESICHT, preset: 'mia-sticker', an: ['face'], art: (a) => a.length > 0 });
+      pruefe(!e.v.arten.includes('mia-gesicht') && e.v.arten.every((a) => a === 'sticker'), `Ersatz nicht sticker (${e.v.arten})`);
+      let ae = { v: e.v, aus: e.aus };
+      for (let i = 0; i < 12; i++) {
+        if (stSticker(stMess(ae.aus, groesste(ae.v, 'sticker')).mitte)) break;
+        ae = await augenblick(nurSticker, 2.6, 4.8);
+      }
+      const ke = stMess(ae.aus, groesste(ae.v, 'sticker'));
+      console.log(`firefox: P12 Ersatz: Deckung ${(ke.deck * 100).toFixed(2)} %, Stickerpixel ${ke.sp}, Mitte ${ke.mitte.map(Math.round)}`);
+      pruefe(ke.deck >= 0.99 && stSticker(ke.mitte), `Ersatz: Flaeche nicht gedeckt oder ohne Sticker (${ke.deck})`);
+    });
+  }
+
+  await test('P13 Pack ohne Sticker: das Preset sticker gilt als Mosaik im Video', async () => {
+    await entfernePack();
+    await importierePack(await dummyPfad({ ohneSticker: true }, 'dummy-video-ohne-sticker.miapack'));
+    const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'sticker', an: BEDECKBAR, art: (a) => a.length > 0 });
+    pruefe(m.v.arten.every((a) => a === 'mosaik'), `Arten ${m.v.arten}`);
+    pruefe(kenn(m.ref, m.aus, m.v.flaechen[0], 0).rahmen > Math.min(m.v.flaechen[0][2], m.v.flaechen[0][3]) * 2, 'Mosaik ohne Rahmen');
+    pruefe(m.v.flaechen.every((fl) => stMess(m.aus, fl).sp === 0), 'Sticker trotz Pack ohne Sticker');
+    pruefe(kenn(m.ref, m.aus, m.v.flaechen[0], 0).mittel > 8, 'Mosaik, kein offenes Bild: keine Abweichung vom Original');
+    pruefe(ausserhalb(m.ref, m.aus, m.v.flaechen) < 6, 'ausserhalb veraendert');
+    await entfernePack();
+  });
+
   await test('N5 Pause, Einzelbild zurueck (0,05 s, Sprung-Ereignis): die Leinwand verarbeitet den Sprung als neue Szene', async () => {
     await oeffneBild('sfw', GESICHT);
     await setze({ preset: 'mosaik', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1, pause: false, video: 'zonen' });

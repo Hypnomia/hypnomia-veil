@@ -18,6 +18,8 @@ export interface PackStand {
   importiert: number;
   // Patch-Bilder (Namen, sortiert), nur wenn `stil:mia-patch` freigeschaltet ist, sonst leer.
   patches: string[];
+  // Sticker (Namen, sortiert), nur wenn `zensur:sticker` freigeschaltet ist, sonst leer. Fehlt bei Eintraegen aus Packs vor der Sticker-Zensur (dann keine).
+  sticker?: string[];
 }
 
 // Meldung an andere Kontexte desselben Ursprungs (Erkenner im Offscreen-Dokument bzw. Hintergrund): das Pack hat sich geaendert.
@@ -93,9 +95,12 @@ export async function leseMeta(): Promise<PackMeta | null> {
 // Stand aus dem kleinen Eintrag; Fallback auf das ganze Meta (aeltere Importe ohne `stand`).
 export function standAusMeta(meta: PackMeta): PackStand {
   const frei = Array.isArray(meta.freischaltungen) && meta.freischaltungen.includes('stil:mia-patch');
+  const stickerFrei = Array.isArray(meta.freischaltungen) && meta.freischaltungen.includes('zensur:sticker');
   return {
     importiert: meta.importiert,
     patches: frei ? meta.dateien.filter((d) => d.rolle === 'patch' && d.typ.startsWith('image/')).map((d) => d.name).sort() : [],
+    // S5: ohne Freischaltung liefert der Erkenner nie Sticker-Namen, auch wenn Dateien mit der Rolle im Pack liegen
+    sticker: stickerFrei ? meta.dateien.filter((d) => d.rolle === 'sticker' && d.typ.startsWith('image/')).map((d) => d.name).sort() : [],
   };
 }
 

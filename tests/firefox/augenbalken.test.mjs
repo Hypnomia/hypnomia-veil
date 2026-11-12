@@ -214,7 +214,7 @@ try {
 
   // 1. Einstellungsseite: Preset Eye bar waehlbar, gespeichert, Hinweise
   const felder = await driver.findElements(By.css('#preset-karten input[name="preset"]'));
-  pruefe(felder.length === 11, `Einstellungsseite: elf Preset-Karten (${felder.length})`);
+  pruefe(felder.length === 13, `Einstellungsseite: dreizehn Preset-Karten (${felder.length})`);
   pruefe(!(await sichtbar('#zonen-hinweis')), 'Zonen-Hinweis ruht ohne Balken-Preset');
   await driver.findElement(By.css('label:has(#preset-augenbalken)')).click();
   await bis('Preset gespeichert', async () => (await speicher('einstellungen'))?.preset === 'augenbalken');

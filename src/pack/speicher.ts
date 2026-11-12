@@ -58,6 +58,7 @@ export function kurzAusMeta(meta: PackMeta): PackKurz {
     vorschau: meta.dateien.filter((d) => d.rolle === 'vorschau').length,
     chibis: meta.dateien.filter((d) => d.rolle === 'chibi').length,
     werbung: meta.dateien.filter((d) => d.rolle === 'werbung').length,
+    sticker: meta.dateien.filter((d) => d.rolle === 'sticker').length,
     groesse: meta.groesse,
     importiert: meta.importiert,
   };
@@ -236,9 +237,9 @@ async function leereAblage(): Promise<void> {
   });
 }
 
-// Preset von einem Mia-Preset zurueck auf Mosaik, aber nur, wenn es auch so steht (jede Speicherung setzt alle Seiten neu).
+// Preset von einem Pack-Preset (Mia oder Sticker) zurueck auf Mosaik, aber nur, wenn es auch so steht (jede Speicherung setzt alle Seiten neu).
 async function setzeStilZurueck(): Promise<void> {
-  if (PRESETS[(await ladeEinstellungen()).preset].braucht === 'pack') await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
+  if (PRESETS[(await ladeEinstellungen()).preset].braucht !== null) await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
 }
 
 // Entfernt das Pack: zuerst IndexedDB leeren, dann Kurzfassung weg, dann Stil zurueck auf Mosaik. Bleibt nach dem Leeren etwas

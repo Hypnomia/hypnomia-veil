@@ -16,9 +16,9 @@ import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 
 setTimeout(() => {
-  console.error('firefox: Zeitlimit von 200 s ueberschritten');
+  console.error('firefox: Zeitlimit von 330 s ueberschritten');
   process.exit(1);
-}, 200_000).unref();
+}, 330_000).unref();
 
 process.env.SE_AVOID_STATS = 'true';
 
@@ -150,7 +150,7 @@ function messung(o) {
     const dataUrl = await alsDataUrl(await c.convertToBlob({ type: 'image/jpeg', quality: 0.92 }));
     const orig = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     const sende = async (preset) => JSON.parse(JSON.stringify(await api.runtime.sendMessage({ ziel: 'erkenner', typ: 'pruefe', id: 'ff-m-' + Math.random(), quelle: { art: 'daten', dataUrl },
-      breite: 0, hoehe: 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, preset, ...(o.themen !== undefined ? { woerterThemen: o.themen } : {}), ...(o.ganz ? { ganzVerdecken: true } : {}) }, rendern: true })));
+      breite: o.anzeige ? Math.round(c.width * o.anzeige) : 0, hoehe: o.anzeige ? Math.round(c.height * o.anzeige) : 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, preset, ...(o.themen !== undefined ? { woerterThemen: o.themen } : {}), ...(o.ganz ? { ganzVerdecken: true } : {}) }, rendern: true })));
     const lade = async (a) => {
       const b = await createImageBitmap(await (await fetch(a.bild)).blob());
       const k = new OffscreenCanvas(b.width, b.height); const x = k.getContext('2d'); x.drawImage(b, 0, 0);
@@ -167,6 +167,20 @@ function messung(o) {
       }
       return { dunkel: dunkel / Math.max(1, n), wort, wortSpanne: maxX > minX ? (maxX - minX) / box[2] : 0, rahmen, mittel: summe / Math.max(1, n) };
     };
+    // Sticker-Zensur: Flaeche ganz gedeckt (Pastell, Rahmen, Stickerton oder Mischung davon), Stickerpixel, Farbe der Mitte
+    const PASTELL = [[255,211,230],[226,215,255],[255,220,199]], STICKER = [[20,200,90],[30,70,235],[0,210,210]], RAHMEN = [255,79,163];
+    const dist = (p, q) => Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]);
+    const strecke = (p, a, b) => { const d = [b[0]-a[0], b[1]-a[1], b[2]-a[2]]; const l2 = d[0]*d[0]+d[1]*d[1]+d[2]*d[2]; const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0]-a[0])*d[0]+(p[1]-a[1])*d[1]+(p[2]-a[2])*d[2]) / l2)); return dist(p, [a[0]+t*d[0], a[1]+t*d[1], a[2]+t*d[2]]); };
+    const gedeckt = (p) => { if (PASTELL.some((q) => dist(p, q) < 16)) return true; if (dist(p, RAHMEN) < 60) return true; if (STICKER.some((q) => dist(p, q) < 45)) return true; for (const q of PASTELL) for (const s2 of STICKER.concat([RAHMEN])) if (strecke(p, q, s2) < 30) return true; return false; };
+    const px = (bild, x, y) => { const i = (y * bild.b + x) * 4; return [bild.d[i], bild.d[i+1], bild.d[i+2]]; };
+    const deckStat = (bild, box) => {
+      let n = 0, ok = 0, sp = 0;
+      for (let y = box[1] + 3; y < box[1] + box[3] - 3; y++) for (let x = box[0] + 3; x < box[0] + box[2] - 3; x++) { n++; if (gedeckt(px(bild, x, y))) ok++; }
+      for (let y = box[1]; y < box[1] + box[3]; y++) for (let x = box[0]; x < box[0] + box[2]; x++) if (STICKER.some((q) => dist(px(bild, x, y), q) < 45)) sp++;
+      const cx = Math.round(box[0] + box[2] / 2), cy = Math.round(box[1] + box[3] / 2); const m = [0, 0, 0];
+      for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 2; x <= cx + 2; x++) { const p = px(bild, x, y); m[0] += p[0] / 25; m[1] += p[1] / 25; m[2] += p[2] / 25; }
+      return { deck: n ? ok / n : 1, sp, mitteSticker: STICKER.some((q) => dist(m, q) < 60) };
+    };
     const a = await sende(o.preset);
     if (!a.ok) return { fehler: a.fehler };
     const aus = { ok: true, flaechen: a.flaechen, hatBild: typeof a.bild === 'string', breite: a.breite, hoehe: a.hoehe };
@@ -174,7 +188,7 @@ function messung(o) {
     if (o.hash) { let h = 0; for (let i = 0; i < a.bild.length; i++) h = (Math.imul(h, 31) + a.bild.charCodeAt(i)) >>> 0; aus.bildHash = h + ':' + a.bild.length; return aus; }
     const bild = await lade(a);
     const boxen = a.flaechen.map((x) => x.box);
-    aus.stats = a.flaechen.map((x) => ({ kern: stat(bild, orig, x.box, Math.round(Math.min(x.box[2], x.box[3]) * 0.15)), ganz: stat(bild, orig, x.box, 0) }));
+    aus.stats = a.flaechen.map((x) => ({ kern: stat(bild, orig, x.box, Math.round(Math.min(x.box[2], x.box[3]) * 0.15)), ganz: stat(bild, orig, x.box, 0), ...(o.sticker ? { sticker: deckStat(bild, x.box) } : {}) }));
     let n = 0, summe = 0;
     for (let y = 0; y < bild.h; y++) for (let x = 0; x < bild.b; x++) {
       if (boxen.some((b) => x >= b[0] - 8 && x < b[0] + b[2] + 8 && y >= b[1] - 8 && y < b[1] + b[3] + 8)) continue;
@@ -209,6 +223,13 @@ try {
     await writeFile(packPfad, bau.bytes);
   } else if (OHNE_TESTBILDER) console.log('firefox: AUSNAHME VEIL_OHNE_TESTBILDER=1: Pack mit Gesichts-Patch uebersprungen');
   else pruefe(false, `Testbild ${PATCH_BILD} fehlt (HTTP ${patchRoh.status})`);
+  // Packs fuer die Sticker-Faelle: Sticker nicht dekodierbar (Hide-first) und ohne Sticker (wie ein Pack vor 1.0)
+  const kaputtPfad = path.join(ordner, 'dummy-sticker-kaputt.miapack');
+  await writeFile(kaputtPfad, (await baueDummyPack({ stickerKaputt: true })).bytes);
+  const teilweisePfad = path.join(ordner, 'dummy-sticker-teilweise.miapack');
+  await writeFile(teilweisePfad, (await baueDummyPack({ stickerTeilweise: true })).bytes);
+  const ohneStickerPfad = path.join(ordner, 'dummy-ohne-sticker.miapack');
+  await writeFile(ohneStickerPfad, (await baueDummyPack({ ohneSticker: true })).bytes);
   const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
@@ -224,12 +245,15 @@ try {
 
   // 1. Oberflaeche ohne Pack
   const karten = await driver.findElements(By.css('#preset-karten input[name="preset"]'));
-  pruefe(karten.length === 11, `elf Preset-Karten (${karten.length})`);
-  pruefe((await driver.findElements(By.css('#preset-karten .preset-gruppe'))).length === 3, 'drei Gruppen');
-  pruefe((await driver.findElements(By.css('#preset-karten .preset-bild svg'))).length === 11, 'elf Vorschau-Figuren');
+  pruefe(karten.length === 13, `dreizehn Preset-Karten (${karten.length})`);
+  pruefe((await driver.findElements(By.css('#preset-karten .preset-gruppe'))).length === 4, 'vier Gruppen');
+  const gruppenTitel = [];
+  for (const t of await driver.findElements(By.css('#preset-karten .preset-gruppe-titel'))) gruppenTitel.push(await t.getText());
+  pruefe(JSON.stringify(gruppenTitel.map((t) => t.toLowerCase())) === JSON.stringify(['with my face', 'with my stickers', 'classic', 'whole person']), `Gruppen in der Reihenfolge mia, sticker, klassisch, person (${gruppenTitel})`); // die Ueberschriften stehen in Grossbuchstaben (CSS)
+  pruefe((await driver.findElements(By.css('#preset-karten .preset-bild svg'))).length === 13, 'dreizehn Vorschau-Figuren');
   const gesperrt = [];
-  for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur']) gesperrt.push(await driver.findElement(By.css(`#preset-${id}`)).getAttribute('disabled'));
-  pruefe(gesperrt.every((g) => g === 'true'), 'ohne Pack sind die vier Presets mit meinem Gesicht gesperrt');
+  for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur', 'mia-sticker', 'sticker']) gesperrt.push(await driver.findElement(By.css(`#preset-${id}`)).getAttribute('disabled'));
+  pruefe(gesperrt.every((g) => g === 'true'), 'ohne Pack sind die sechs Presets mit meinem Gesicht oder meinen Stickern gesperrt');
   pruefe((await driver.findElement(By.css('#preset-mosaik')).isSelected()), 'Standard ohne Pack: Mosaik');
   pruefe((await text('#preset-pack-hinweis')).includes('Mia Pack'), 'Hinweis nennt das Mia Pack');
   pruefe(!(await sichtbar('#wort-themen')), 'ohne Pack keine Chips');
@@ -290,9 +314,9 @@ try {
   await bis('Face an', async () => (await speicher('einstellungen'))?.zonen?.face?.an === true);
   await bis('Hinweis', () => sichtbar('#preset-face-hinweis'));
   pruefe((await text('#preset-face-hinweis')).includes('I switched Face on'), 'Wechsel auf Mia-Preset schaltet Face ein, mit Hinweis');
-  // Radiogruppe: eine fuer alle Karten, drei benannte Gruppen darin
+  // Radiogruppe: eine fuer alle Karten, vier benannte Gruppen darin
   pruefe((await driver.findElement(By.css('#preset-karten')).getAttribute('role')) === 'radiogroup' && (await driver.findElement(By.css('#preset-karten')).getAttribute('aria-labelledby')) === 'stil-titel', 'Karten: eine Radiogruppe mit Ueberschrift');
-  pruefe((await driver.findElements(By.css('#preset-karten [role="group"]'))).length === 3 && (await driver.findElements(By.css('#preset-karten [role="radiogroup"]'))).length === 0, 'Karten: drei benannte Gruppen');
+  pruefe((await driver.findElements(By.css('#preset-karten [role="group"]'))).length === 4 && (await driver.findElements(By.css('#preset-karten [role="radiogroup"]'))).length === 0, 'Karten: vier benannte Gruppen');
   // unbekannte Wort-Themen (anderes Pack): alle Chips aus, Hinweis MIA
   await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen; await api.storage.local.set({ einstellungen: { ...a, woerterThemen: ['gibt-es-nicht'] } });`);
   await driver.findElement(By.css('label:has(#preset-mia-wort)')).click();
@@ -384,6 +408,113 @@ try {
       pruefe(s4.stats[0].kern.dunkel > 0.95 && s4.stats[0].kern.wort > 100 && s4.stats[0].ganz.rahmen === 0, `Stufe 4: ganz schwarz mit Wort, ohne Rahmen (${s4.stats[0].kern.dunkel})`);
     } else if (!OHNE_TESTBILDER) pruefe(false, `Stufe-4-Test braucht das Testbild: ${s4.grund}`);
   } else if (!OHNE_TESTBILDER) pruefe(false, `Koerper-Tests brauchen das Testbild: ${bw.grund}`);
+
+
+  // 4b. Sticker-Zensur (STICKER-BAUPLAN Stufe A): Pastell-Flaeche ganz gedeckt, Sticker in der Mitte, kleine Flaeche nur Pastell, Hide-first, Pack ohne Sticker
+  const BED = ['breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'];
+  const stickerPruefung = (m, name, { ohneSticker = false } = {}) => {
+    if (!m.ok) return pruefe(false, `${name}: ${m.fehler}`);
+    pruefe(m.flaechen.length >= 1, `${name}: mindestens eine Flaeche`);
+    m.flaechen.forEach((fl, i) => {
+      if (fl.behandlung !== 'sticker') return;
+      const st = m.stats[i].sticker;
+      const kurz = Math.min(fl.box[2], fl.box[3]);
+      console.log(`firefox: ${name} ${fl.zone} ${fl.box}: Deckung ${(st.deck * 100).toFixed(2)} %, Stickerpixel ${st.sp}`);
+      pruefe(st.deck >= 0.99, `${name} ${fl.zone}: Flaeche ganz gedeckt (${st.deck})`);
+      if (ohneSticker || kurz < 24) pruefe(st.sp === 0, `${name} ${fl.zone}: kein Sticker (${st.sp})`);
+      else if (kurz >= 40) pruefe(st.mitteSticker, `${name} ${fl.zone}: Stickerfarbe in der Mitte`);
+    });
+    pruefe(m.aussen < 4, `${name}: ausserhalb unveraendert (${m.aussen})`);
+  };
+  const sk = await messung({ basis, satz: 'nsfw', name: KOERPER_BILD, klein: true, preset: 'sticker', an: BED, sticker: true });
+  if (!sk.keinBild) {
+    stickerPruefung(sk, 'sticker Koerper');
+    pruefe(sk.flaechen.every((x) => x.behandlung === 'sticker') && sk.stats.some((x) => x.sticker.sp > 200), 'sticker: alle Flaechen sticker, mindestens eine mit Sticker');
+    const sk2 = await messung({ basis, satz: 'nsfw', name: KOERPER_BILD, klein: true, preset: 'sticker', an: BED, hash: true });
+    const sk3 = await messung({ basis, satz: 'nsfw', name: KOERPER_BILD, klein: true, preset: 'sticker', an: BED, hash: true });
+    pruefe(sk2.bildHash === sk3.bildHash, 'sticker: stabil je Bild (gleiche Bytes bei gleicher Anfrage)');
+    const sg = await messung({ basis, satz: 'sfw', name: TESTBILD, preset: 'sticker', an: ['face'], sticker: true });
+    pruefe(sg.flaechen.some((x) => x.zone === 'face' && x.behandlung === 'sticker'), 'sticker mit Face an: das Gesicht ist eine Flaeche mit sticker');
+    stickerPruefung(sg, 'sticker Gesicht');
+    const sf = await messung({ basis, satz: 'sfw', name: TESTBILD, preset: 'sticker', an: ['feet'], sticker: true });
+    pruefe(!sf.flaechen.some((x) => x.zone === 'face'), 'sticker mit Face aus: keine Gesichtsflaeche');
+    // mia-sticker: Gesicht mit Patch-Gesicht (Mias Gesicht, Ersatz sticker), Koerper sticker
+    const ms = await messung({ basis, satz: 'sfw', name: TESTBILD, preset: 'mia-sticker', an: ['face'], sticker: true });
+    const mf = ms.flaechen.find((x) => x.zone === 'face');
+    pruefe(!!mf && mf.behandlung === 'mia-gesicht' && mf.ersatz === 'sticker', `mia-sticker: Gesicht mia-gesicht mit Ersatz sticker (${JSON.stringify(mf)})`);
+    const msi = ms.flaechen.indexOf(mf);
+    pruefe(ms.stats[msi].kern.mittel > 20 && ms.stats[msi].ganz.rahmen > Math.round(Math.min(mf.box[2], mf.box[3]) * 0.5) && ms.stats[msi].sticker.sp === 0, 'mia-sticker: Mias Gesicht getauscht, pinker Rahmen, kein Sticker');
+    const mk = await messung({ basis, satz: 'nsfw', name: KOERPER_BILD, klein: true, preset: 'mia-sticker', an: BED, sticker: true });
+    pruefe(mk.flaechen.every((x) => x.behandlung === 'sticker'), 'mia-sticker: Koerper sticker');
+    stickerPruefung(mk, 'mia-sticker Koerper');
+    // kleine Flaeche (Anzeige 1/20): nur Pastell, kein Sticker, deckt trotzdem
+    const kl = await messung({ basis, satz: 'sfw', name: TESTBILD, preset: 'sticker', an: ['face'], anzeige: 0.05, sticker: true });
+    pruefe(kl.stats[0].sticker.deck >= 0.99 && kl.stats[0].sticker.sp === 0, `kleine Flaeche: nur Pastell, ohne Sticker (${kl.stats[0].sticker.deck}, ${kl.stats[0].sticker.sp})`);
+  } else if (!OHNE_TESTBILDER) pruefe(false, `Sticker-Tests brauchen das Testbild: ${sk.grund}`);
+  // Hilfen: Pack entfernen und ein anderes importieren
+  const entfernePack = async () => {
+    await driver.findElement(By.css('#entfernen')).click();
+    await bis('Rueckfrage s', () => sichtbar('#entfernen-frage'));
+    await driver.findElement(By.css('#entfernen-ja')).click();
+    await bis('Pack entfernt s', async () => (await text('#pack-status')).includes('No pack yet'));
+  };
+  const importierePack = async (pfad) => {
+    await driver.findElement(By.css('#datei')).sendKeys(pfad);
+    await bis('Lizenz s', () => sichtbar('#lizenz-block'));
+    await driver.findElement(By.css('#annehmen')).click();
+    await bis('Pack da s', async () => (await text('#pack-titel')).includes('Dummy pack'));
+  };
+  // Sticker nicht dekodierbar: die Flaeche deckt trotzdem (Hide-first)
+  await entfernePack();
+  await importierePack(kaputtPfad);
+  pruefe((await speicher('pack'))?.freischaltungen?.includes('zensur:sticker') === true, 'Pack mit kaputtem Sticker: Freischaltung bleibt');
+  if (!sk.keinBild) {
+    const kp = await messung({ basis, satz: 'sfw', name: TESTBILD, preset: 'sticker', an: ['face'], sticker: true });
+    pruefe(kp.ok && kp.stats[0].sticker.deck >= 0.99 && kp.stats[0].sticker.sp === 0, `Sticker kaputt: Flaeche deckt, ohne Sticker (${kp.ok && kp.stats[0].sticker.deck}, ${kp.ok && kp.stats[0].sticker.sp})`);
+  }
+  // Ein kaputter und zwei gute Sticker: nach dem Dekodierfehler kommt der naechste, jede Flaeche traegt einen guten Sticker (die erzwungene Wahl beim kaputten
+  // Sticker prueft Chromium, hier laufen mehrere Flaechen und Bilder durch; die Versuchsgrenze prueft der Einheitstest)
+  await entfernePack();
+  await importierePack(teilweisePfad);
+  if (!sk.keinBild) {
+    const tw = await messung({ basis, satz: 'nsfw', name: KOERPER_BILD, klein: true, preset: 'sticker', an: BED, sticker: true });
+    const tg = await messung({ basis, satz: 'sfw', name: TESTBILD, preset: 'sticker', an: ['face'], sticker: true });
+    for (const [m, name] of [[tw, 'Koerper'], [tg, 'Gesicht']]) {
+      pruefe(m.ok === true && m.stats.every((st, i) => st.sticker.deck >= 0.99 && (Math.min(m.flaechen[i].box[2], m.flaechen[i].box[3]) < 40 || st.sticker.mitteSticker)), `Pack mit einem kaputten Sticker (${name}): jede Flaeche gedeckt und mit Sticker in der Mitte`);
+    }
+  }
+  // Pack ohne Sticker: Karten gesperrt, Hinweis, ein gespeichertes Sticker-Preset gilt als Mosaik
+  await entfernePack();
+  await importierePack(ohneStickerPfad);
+  pruefe((await driver.findElement(By.css('#preset-sticker')).getAttribute('disabled')) === 'true' && (await driver.findElement(By.css('#preset-mia-sticker')).getAttribute('disabled')) === 'true', 'Pack ohne Sticker: die Sticker-Karten sind gesperrt');
+  pruefe((await driver.findElement(By.css('#preset-mia-wort')).getAttribute('disabled')) !== 'true', 'Pack ohne Sticker: die Mia-Karten sind frei');
+  pruefe(await sichtbar('#preset-pack-hinweis') && (await text('#preset-pack-hinweis')).includes('no stickers of me yet'), 'Pack ohne Sticker: eigener Hinweis');
+  await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen; await api.storage.local.set({ einstellungen: { ...a, preset: 'sticker' } });`);
+  await driver.navigate().refresh();
+  await bis('Mosaik gilt', async () => (await driver.findElement(By.css('#preset-mosaik')).isSelected()));
+  pruefe(!(await driver.findElement(By.css('#preset-sticker')).isSelected()), 'Pack ohne Sticker: gespeichertes Sticker-Preset gilt als Mosaik');
+  // Pack mit Stickern wieder rein, Sticker-Preset waehlen, Pack entfernen: Preset zurueck auf Mosaik
+  await entfernePack();
+  await importierePack(packPfad);
+  await driver.findElement(By.css('label:has(#preset-sticker)')).click();
+  await bis('sticker gespeichert', async () => (await speicher('einstellungen'))?.preset === 'sticker');
+  pruefe((await text('#stil-hinweis')).includes('A pastel patch over everything I cover'), 'Sticker-Preset: Satz unter der Wahl');
+  // Popup-Zeile: Name und Satz des Sticker-Presets, eine Vorschau
+  const optionenTab = await driver.getWindowHandle();
+  await oeffne('popup.html');
+  await bis('Popup-Zeile', async () => (await driver.findElements(By.css('#preset-name'))).length > 0 && (await text('#preset-name')) === 'Stickers');
+  pruefe((await text('#pack-hinweis')).includes('A pastel patch over everything I cover') && (await driver.findElements(By.css('#preset-bild svg'))).length === 1, 'Popup: Zeile mit Sticker-Preset, Satz und Vorschau');
+  await schliesse();
+  await driver.switchTo().window(optionenTab);
+  await driver.findElement(By.css('label:has(#preset-mia-sticker)')).click();
+  await bis('mia-sticker gespeichert', async () => (await speicher('einstellungen'))?.preset === 'mia-sticker');
+  pruefe((await speicher('einstellungen'))?.zonen?.face?.an === true, 'mia-sticker schaltet Face ein');
+  await driver.findElement(By.css('label:has(#preset-sticker)')).click();
+  await bis('sticker wieder', async () => (await speicher('einstellungen'))?.preset === 'sticker');
+  await entfernePack();
+  await bis('Preset zurueck auf Mosaik', async () => (await speicher('einstellungen'))?.preset === 'mosaik');
+  pruefe((await driver.findElement(By.css('#preset-sticker')).getAttribute('disabled')) === 'true', 'Pack entfernt: Sticker-Karten gesperrt, Preset Mosaik');
+  await importierePack(packPfad); // fuer Abschnitt 5 wieder ein Pack
 
   // 5. Echtes Pack (nur mit VEIL_ECHTES_PACK=<pfad>, der Pfad steht nie in Dateien): wie viele Patch-Bilder liefern ein Gesicht?
   if (process.env.VEIL_ECHTES_PACK) {

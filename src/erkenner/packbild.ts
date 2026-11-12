@@ -16,6 +16,7 @@ import {
   PACKBILD_MAX_SEITE,
   PACKBILD_MAX_SEITE_CHIBI,
   PACKBILD_MAX_SEITE_PATCH,
+  PACKBILD_MAX_SEITE_STICKER,
   PACKBILD_MAX_SEITE_WERBUNG,
   type AntwortFehler,
   type AntwortPackBild,
@@ -25,6 +26,7 @@ import {
 import { horchePackGeaendert, leseDatei, leseMeta, mitLesePlatz } from '../pack/db';
 import { BILDKOPF_BYTES, MAX_BILD_SEITE, leseBildmasse } from '../pack/format';
 import { hashe, waehleGesichtsPatch } from '../pack/patches';
+import { waehleSticker } from '../pack/sticker';
 import { ladeWoerter } from '../pack/woerter';
 import { MAX_THEMEN, waehleWort } from '../presets.ts';
 import { waehleVorschauNamen } from '../pack/wahl';
@@ -251,6 +253,39 @@ async function liefereGesicht(n: NachrichtErkennerPackBild): Promise<AntwortPack
   }
 }
 
+// Ein Sticker fuer eine Flaeche eines Zonen-Videos: nur mit Freischaltung `zensur:sticker` (Regel S5; waehleSticker kennt ohne sie keinen Namen), stabil je
+// Schluessel gewaehlt (gleiche Regel wie bei Bildern), auf hoechstens `maxSeite` verkleinert als PNG (Transparenz bleibt).
+async function liefereSticker(n: NachrichtErkennerPackBild): Promise<AntwortPackBild | AntwortFehler> {
+  // wie bei den anderen Rollen: Stand mit kurzer Gueltigkeit, nur bei negativem Ergebnis einmal frisch lesen
+  let m = await ladeMeta();
+  if (!m || !frei(m, 'zensur:sticker')) m = await ladeMeta(true);
+  if (!m || !frei(m, 'zensur:sticker')) return fehler('keine Sticker freigeschaltet');
+  const wahl = (await waehleSticker(n.schluessel, typeof n.packStand === 'number' ? n.packStand : undefined)).wahl;
+  if (!wahl) return fehler('kein Sticker lesbar');
+  try {
+    const q = wahl.bild as { width?: number; height?: number };
+    const b = q.width ?? 0;
+    const h = q.height ?? 0;
+    if (!(b > 0 && h > 0)) return fehler('Sticker ohne Masse');
+    const maxSeite = begrenze(n.maxSeite, PACKBILD_MAX_SEITE_STICKER);
+    const skala = Math.min(1, maxSeite / Math.max(b, h));
+    const zb = Math.max(1, Math.round(b * skala));
+    const zh = Math.max(1, Math.round(h * skala));
+    const leinwand = document.createElement('canvas');
+    leinwand.width = zb;
+    leinwand.height = zh;
+    const ctx = leinwand.getContext('2d');
+    if (!ctx) return fehler('kein 2D-Kontext');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(wahl.bild, 0, 0, zb, zh);
+    return { ok: true, dataUrl: leinwand.toDataURL('image/png'), breite: zb, hoehe: zh, name: wahl.name };
+  } catch (e) {
+    return fehler(String((e as Error)?.message ?? e));
+  } finally {
+    wahl.freigeben();
+  }
+}
+
 // Ein Wort fuer eine Spur eines Zonen-Videos: gleiche Wahl wie bei Bildern (src/presets.ts waehleWort, stabil per Hash des Schluessels).
 async function liefereWort(n: NachrichtErkennerPackBild): Promise<AntwortPackWort | AntwortFehler> {
   const datei = await ladeWoerter(typeof n.packStand === 'number' ? n.packStand : undefined).catch(() => null);
@@ -263,6 +298,7 @@ export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<Ant
     if (typeof n.schluessel !== 'string' || n.schluessel.length === 0 || n.schluessel.length > 2048) return fehler('Schluessel fehlt oder ist zu lang');
     if (n.rolle === 'gesicht') return await liefereGesicht(n);
     if (n.rolle === 'wort') return await liefereWort(n);
+    if (n.rolle === 'sticker') return await liefereSticker(n);
     let m = await ladeMeta();
     // Kein Pack oder keine Freischaltung kann auch ein veralteter Stand sein (die Meldung ueber ein neues Pack kommt nicht immer an):
     // einmal frisch lesen, bevor die Antwort negativ ausfaellt.

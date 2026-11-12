@@ -4,8 +4,9 @@
 // Wort und Mias Gesicht zeichnen dieselben Funktionen wie bei Bildern (src/erkenner/stile.ts). Hilfsleinwaende werden wiederverwendet (anders als dort,
 // wo je Aufruf neue entstehen). Alle Rechtecke in Bildpunkten der Leinwand.
 
-import { RAHMEN_FARBE, rahmenBreite, zeichneGesicht, zeichneWort } from '../erkenner/stile';
+import { RAHMEN_FARBE, rahmenBreite, zeichneGesicht, zeichneSticker, zeichneWort } from '../erkenner/stile';
 import { seitenFamilie } from '../oberflaeche/design/familie';
+import { stickerFarbe } from '../sticker';
 import type { Zeichenart } from './video-zonen';
 
 const MOSAIK_ANTEIL = 0.1;
@@ -18,6 +19,9 @@ export interface FlaechenMittel {
   ersatz?: Zeichenart;
   gesicht: { bild: CanvasImageSource; ausschnitt: [number, number, number, number] } | null;
   wort: string;
+  // Sticker-Zensur: Pastellfarbe der Flaeche (stabil je Motiv, src/sticker.ts stickerFarbe), der Sticker (null, solange er laedt oder fehlt: die Flaeche
+  // steht dann ohne Sticker) und die Anzeigegroesse (CSS-Pixel je Leinwandpunkt, fuer stickerPasst).
+  sticker?: { farbe: string; bild: CanvasImageSource | null; anzeige: number };
 }
 
 export interface ZeichenRechteck {
@@ -158,6 +162,10 @@ export class Zeichner {
         this.mosaik(ctx, r);
         this.rahmen(ctx, r);
         zeichneWort(ctx, mittel.wort, [r.x, r.y, r.w, r.h], true, seitenFamilie('VEIL Rounded'));
+        return;
+      case 'sticker':
+        // Flaeche und Rahmen sofort und ohne Abhaengigkeit vom Sticker (S1, S2); fehlt `sticker`, gilt ein fester Pastellton.
+        zeichneSticker(ctx, [r.x, r.y, r.w, r.h], mittel.sticker?.farbe ?? stickerFarbe(''), mittel.sticker?.bild ?? null, mittel.sticker?.anzeige ?? 1);
         return;
       case 'mia-gesicht':
         // Kann das Gesicht nicht gezeichnet werden (leeres oder geschlossenes Bild), gilt die Ersatz-Behandlung der Flaeche: nie ein offenes Gesicht, nie leer.

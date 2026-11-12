@@ -7,7 +7,8 @@
 //   blur          Weichzeichner                           schwarz       deckendes Schwarz, ohne Rahmen
 //   schwarz-wort  Schwarz mit einem pinken Wort           balken        schwarzer Augenbalken (wie `schwarz`, nur der Name sagt die Rolle)
 //   mia-gesicht   Mias Gesicht (Ausschnitt aus einem Patch-Bild des Packs) mit pinkem Rahmen
-export const BEHANDLUNGEN = ['mosaik', 'mosaik-wort', 'blur', 'schwarz', 'schwarz-wort', 'balken', 'mia-gesicht'] as const;
+//   sticker       deckende Pastell-Flaeche mit pinkem Rahmen, darauf mittig ein Sticker aus dem Pack (STICKER-BAUPLAN, src/sticker.ts)
+export const BEHANDLUNGEN = ['mosaik', 'mosaik-wort', 'blur', 'schwarz', 'schwarz-wort', 'balken', 'mia-gesicht', 'sticker'] as const;
 export type Behandlung = (typeof BEHANDLUNGEN)[number];
 
 export const PRESET_IDS = [
@@ -15,6 +16,8 @@ export const PRESET_IDS = [
   'mia-mosaik',
   'mia-mosaik-wort',
   'mia-blur',
+  'mia-sticker',
+  'sticker',
   'mosaik',
   'mosaik-wort',
   'blur',
@@ -25,7 +28,7 @@ export const PRESET_IDS = [
 ] as const;
 export type Preset = (typeof PRESET_IDS)[number];
 
-export type PresetGruppe = 'mia' | 'klassisch' | 'person';
+export type PresetGruppe = 'mia' | 'sticker' | 'klassisch' | 'person';
 
 // Wie die Augen behandelt werden:
 //   'wie-koerper'    wie jede andere Zone (laut Schalter), in den Mia-Presets liegen sie im getauschten Gesicht (dann nichts zusaetzlich)
@@ -43,7 +46,8 @@ export interface PresetDef {
   augen: AugenArt;
   // Ganze Person: aus den Treffern eines Bildes werden Personen-Gruppen gebildet, jede Gruppe wird als Ganzes behandelt.
   person: boolean;
-  braucht: 'pack' | null;
+  // 'pack': Pack mit Patch-Bildern (`stil:mia-patch`); 'sticker': Pack mit Stickern (`zensur:sticker`); null: laeuft immer.
+  braucht: 'pack' | 'sticker' | null;
   // Nutzt das Preset Woerter (Chips der Wort-Themen unter der Wahl)?
   woerter: boolean;
   // Anzeige (Englisch, Mias Stimme; der Texter schaerft nach).
@@ -56,6 +60,8 @@ export const PRESETS: Readonly<Record<Preset, PresetDef>> = {
   'mia-mosaik': { id: 'mia-mosaik', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'mosaik', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: false, name: 'My face, mosaic', satz: 'With Face on, every face becomes mine. Everything else I cover gets mosaic.' },
   'mia-mosaik-wort': { id: 'mia-mosaik-wort', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'mosaik-wort', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: true, name: 'My face, mosaic, words', satz: 'With Face on, every face becomes mine. Everything else I cover gets mosaic, with a word of mine on top.' },
   'mia-blur': { id: 'mia-blur', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'blur', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: false, name: 'My face, blur', satz: 'With Face on, every face becomes mine. Everything else I cover gets blurred.' },
+  'mia-sticker': { id: 'mia-sticker', gruppe: 'sticker', gesicht: 'mia-gesicht', koerper: 'sticker', augen: 'wie-koerper', person: false, braucht: 'sticker', woerter: false, name: 'My face, stickers', satz: 'With Face on, every face becomes mine. Everything else I cover gets a pastel patch with a little me on top.' },
+  sticker: { id: 'sticker', gruppe: 'sticker', gesicht: 'sticker', koerper: 'sticker', augen: 'wie-koerper', person: false, braucht: 'sticker', woerter: false, name: 'Stickers', satz: 'A pastel patch over everything I cover, with a little me on top.' },
   mosaik: { id: 'mosaik', gruppe: 'klassisch', gesicht: 'mosaik', koerper: 'mosaik', augen: 'wie-koerper', person: false, braucht: null, woerter: false, name: 'Mosaic', satz: 'Pixels over everything I cover.' },
   'mosaik-wort': { id: 'mosaik-wort', gruppe: 'klassisch', gesicht: 'mosaik-wort', koerper: 'mosaik-wort', augen: 'wie-koerper', person: false, braucht: null, woerter: true, name: 'Mosaic and words', satz: 'Pixels over everything I cover, with a word of mine on top.' },
   blur: { id: 'blur', gruppe: 'klassisch', gesicht: 'blur', koerper: 'blur', augen: 'wie-koerper', person: false, braucht: null, woerter: false, name: 'Blur', satz: 'A soft blur over everything I cover.' },
@@ -65,8 +71,8 @@ export const PRESETS: Readonly<Record<Preset, PresetDef>> = {
   'person-blur': { id: 'person-blur', gruppe: 'person', gesicht: 'blur', koerper: 'blur', augen: 'wie-koerper', person: true, braucht: null, woerter: false, name: 'Whole person, blur', satz: 'When I find something you picked, the whole person goes under blur.' },
 };
 
-export const GRUPPEN_NAMEN: Readonly<Record<PresetGruppe, string>> = { mia: 'With my face', klassisch: 'Classic', person: 'Whole person' };
-export const GRUPPEN: readonly PresetGruppe[] = ['mia', 'klassisch', 'person'];
+export const GRUPPEN_NAMEN: Readonly<Record<PresetGruppe, string>> = { mia: 'With my face', sticker: 'With my stickers', klassisch: 'Classic', person: 'Whole person' };
+export const GRUPPEN: readonly PresetGruppe[] = ['mia', 'sticker', 'klassisch', 'person'];
 export const STANDARD_PRESET: Preset = 'mosaik';
 // Preset, das ein frisch importiertes erstes Pack einschaltet (Plan: Standard mit Pack).
 export const PACK_PRESET: Preset = 'mia-wort';
@@ -95,19 +101,28 @@ export function presetAusStil(stil: unknown): Preset | null {
   }
 }
 
-// Das Preset, das wirklich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), sonst Mosaik.
-export function presetFuerPack(preset: Preset, mitMiaPack: boolean): Preset {
-  return PRESETS[preset].braucht === 'pack' && !mitMiaPack ? OHNE_PACK_PRESET : preset;
+// Das Preset, das wirklich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), Sticker-Presets nur mit Stickern im Pack
+// (`zensur:sticker`), sonst Mosaik. `mitSticker` fehlt = keine Sticker (sicherer Standard).
+export function presetFuerPack(preset: Preset, mitMiaPack: boolean, mitSticker = false): Preset {
+  return !packGenuegt(PRESETS[preset].braucht, mitMiaPack, mitSticker) ? OHNE_PACK_PRESET : preset;
 }
+
+// Reicht das Pack fuer die Anforderung eines Presets (`braucht`)?
+export function packGenuegt(braucht: PresetDef['braucht'], mitMiaPack: boolean, mitSticker: boolean): boolean {
+  return braucht === null || (braucht === 'pack' ? mitMiaPack : mitSticker);
+}
+
+// Nutzt dieses Preset Sticker (Flaechen mit der Behandlung `sticker`, auch als Ersatz fuer Mias Gesicht)?
+export const nutztSticker = (preset: Preset): boolean => PRESETS[preset].gesicht === 'sticker' || PRESETS[preset].koerper === 'sticker';
 
 // Zeichnet dieses Preset Mias Gesicht?
 export const nutztMiasGesicht = (preset: Preset): boolean => PRESETS[preset].gesicht === 'mia-gesicht';
 
 // Behandlung fuer ein ganz verdecktes Bild (Steigerung Stufe 4, bewegtes SVG): die Behandlung der Koerper-Zonen, ersatzweise Mosaik.
-// Mias Gesicht und der Augenbalken passen nicht auf ein ganzes Bild.
+// Mias Gesicht, der Augenbalken und der Sticker passen nicht auf ein ganzes Bild (STICKER-BAUPLAN Entscheidung 6: dort bleibt es Mosaik).
 export function ganzesBildBehandlung(preset: Preset): Behandlung {
   const k = PRESETS[preset].koerper;
-  return k === null || k === 'mia-gesicht' || k === 'balken' ? 'mosaik' : k;
+  return k === null || k === 'mia-gesicht' || k === 'balken' || k === 'sticker' ? 'mosaik' : k;
 }
 
 // Behandlung einer Flaeche der Zone `zone` im Preset, aus der Tabelle (die Videozensur nimmt sie, wenn eine Flaeche keine eigene Behandlung traegt;

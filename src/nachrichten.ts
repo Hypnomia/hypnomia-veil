@@ -208,13 +208,15 @@ export interface NachrichtErkennerPruefe {
 export interface NachrichtErkennerPackBild {
   ziel: 'erkenner';
   typ: 'packbild';
-  rolle: 'vorschau' | 'chibi' | 'werbung' | 'gesicht' | 'wort';
+  rolle: 'vorschau' | 'chibi' | 'werbung' | 'gesicht' | 'wort' | 'sticker';
   schluessel: string;
   maxSeite?: number;
   // Nur Rollen `gesicht` und `wort` (Preset-Behandlungen der Zonen-Videos): `importiert` des Packs, das der Absender kennt (wie bei `pruefe`), damit ein
   // ersetztes Pack sofort neu gelesen wird. Wahl stabil je `schluessel` (Video und Spur). `gesicht`: ein Patch-Bild mit Gesicht (src/pack/patches.ts,
   // waehleGesichtsPatch) mit laengster Seite hoechstens `maxSeite` und dem Gesichtsausschnitt in dessen Pixeln; ohne fertige Gesichtssuche `ok: false`.
   // `wort`: ein Wort aus den gewaehlten `themen` (null = alle, [] = keins; wie bei `pruefe`), ohne Pack oder Woerter "MIA".
+  // `sticker` (Sticker-Zensur): ein Sticker des Packs (nur mit `zensur:sticker`), Wahl stabil je `schluessel` (src/pack/sticker.ts waehleSticker), als PNG mit
+  // Transparenz, laengste Seite hoechstens `maxSeite`; ohne Sticker `ok: false` (die Flaeche steht dann ohne Sticker).
   packStand?: number;
   themen?: string[] | null;
   format?: WerbeFormat;
@@ -226,6 +228,7 @@ export interface NachrichtErkennerPackBild {
   stufe?: StufeWahl;
 }
 export const PACKBILD_MAX_SEITE_PATCH = 256;
+export const PACKBILD_MAX_SEITE_STICKER = 256;
 export type NachrichtErkenner = NachrichtErkennerWecke | NachrichtErkennerStatus | NachrichtErkennerGesichtsscan | NachrichtErkennerPruefe | NachrichtErkennerPackBild;
 export const PACKBILD_MAX_SEITE = 480;
 export const PACKBILD_MAX_SEITE_CHIBI = 512;

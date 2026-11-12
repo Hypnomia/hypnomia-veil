@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as T from '../../entrypoints/popup/texte';
-import { FEHLER_SPEICHERN, STIMMUNG_WOERTER, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { FEHLER_SPEICHERN, HINWEIS_PACK_OHNE_STICKER, STIMMUNG_WOERTER, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -363,9 +363,21 @@ test('Nr 7 und 9: Pack ohne Mia patch heisst "Mia Pack settings", Reglerenden st
     // Mia-Preset gewaehlt: ohne Patch-Bilder im Pack gesperrt (Hinweis), mit Patch-Bildern waehlbar (Satz mit der Zahl der Bilder)
     await schreibe(seite, { pack: packMit(['erwachsen:vorschau']), einstellungen: { version: 1, preset: 'mia-wort' } });
     await expect(seite.locator('#pack-link')).toHaveText(T.PACK_KNOPF_MIT);
+    // dieses Pack bringt weder Patch-Bilder noch Sticker mit: das Popup nennt nur den Hinweis zum gewaehlten Preset (Mia-Preset: nur Patch, nicht der Sticker-Satz)
     await expect(seite.locator('#pack-hinweis')).toHaveText(T.PACK_HINWEIS_OHNE_PATCH);
     await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
     await expect(seite.locator('#pack-hinweis')).toContainText('I choose my face from');
+    // Sticker-Preset gewaehlt: ohne Sticker im Pack gesperrt (Hinweis des Packs), mit Stickern waehlbar (Name und Satz)
+    await schreibe(seite, { pack: packMit(['stil:mia-patch']), einstellungen: { version: 1, preset: 'sticker' } });
+    await expect(seite.locator('#preset-name')).toHaveText('Mosaic');
+    await expect(seite.locator('#pack-hinweis')).toHaveText(HINWEIS_PACK_OHNE_STICKER); // nur der Sticker-Satz, nicht zusaetzlich der Patch-Satz
+    await schreibe(seite, { pack: packMit(['zensur:sticker']), einstellungen: { version: 1, preset: 'sticker' } });
+    await expect(seite.locator('#preset-name')).toHaveText('Stickers');
+    await schreibe(seite, { pack: packMit([]), einstellungen: { version: 1, preset: 'sticker' } });
+    await expect(seite.locator('#pack-hinweis')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+    await schreibe(seite, { pack: packMit(['stil:mia-patch', 'zensur:sticker']) });
+    await expect(seite.locator('#preset-name')).toHaveText('Stickers');
+    await expect(seite.locator('#pack-hinweis')).toContainText('A pastel patch over everything I cover');
   } finally {
     await zuruecksetzen(seite);
     await seite.close();
