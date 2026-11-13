@@ -1,15 +1,17 @@
 // Android-Durchlauf (Phase 8): der Weg einer Nutzerin in Firefox fuer Android im Emulator, je Schritt Fotos und Zahlen.
-// Aufruf: node tests/android/durchlauf.mjs --alle | --schritt <apis|einstieg|schleier|pack|pause|bedienung|speicher>[,<...>]
+// Aufruf: node tests/android/durchlauf.mjs --alle | --schritt <apis|einstieg|schleier|pack|sticker|besuch|pause|bedienung|speicher>[,<...>]
 // Vorher: Emulator veil-android15 laeuft (ohne Ton), Testbau `VEIL_AUSGABE=.output-android WXT_TESTHAKEN=1 npm run zip:test:firefox`.
 // Echtes Pack ueber VEIL_ECHTES_PACK (Pfad nie in Dateien). Fotos nach ../03 Recherche/emulator/phase8-*.png, Zahlen nach
 // scripts/messung/ergebnis-android-*.json. Der Firefox-Willkommensdialog wird im Emulator weggetippt (Entscheidung 152, lib.mjs).
 import { existsSync } from 'node:fs';
+import path from 'node:path';
+import sharp from 'sharp';
 import { By } from 'selenium-webdriver';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import * as L from './lib.mjs';
 
 process.env.SE_AVOID_STATS = 'true';
-const ALLE = ['apis', 'einstieg', 'schleier', 'pack', 'besuch', 'pause', 'bedienung', 'speicher'];
+const ALLE = ['apis', 'einstieg', 'schleier', 'pack', 'sticker', 'besuch', 'pause', 'bedienung', 'speicher'];
 const argv = process.argv.slice(2);
 const wahl = argv.includes('--alle') ? ALLE : (argv[argv.indexOf('--schritt') + 1] ?? '').split(',').filter(Boolean);
 if (wahl.length === 0 || wahl.some((s) => !ALLE.includes(s))) {
@@ -56,8 +58,11 @@ async function vermesse() {
 // Fenix zeigt nach dem Start den Startbildschirm; eine per loadURI geladene Erweiterungsseite laeuft dann unsichtbar (Breite 0).
 // Darum zuerst eine normale Seite laden: danach ist die Seitenansicht vorn und folgende loadURI-Seiten sind sichtbar.
 // Steht noch der Startbildschirm vorn, den Tab antippen (Karte "Continue" oder Tab-Uebersicht), wie eine Nutzerin es taete.
+// Session 20: nach dem Bildschirmvideo (Schritt schleier) blieb die Tab-Uebersicht vorn, obwohl innerWidth > 0 meldete: erst "Add tab" prueft es.
+const trayOffen = () => L.leseOberflaeche().some((n) => /^Add tab$/.test(n.beschreibung));
+const seiteVorn = async () => (await js('return innerWidth > 0')) && !trayOffen();
 async function seiteNachVorn() {
-  if (await js('return innerWidth > 0')) return;
+  if (await seiteVorn()) return;
   const t0 = Date.now();
   while (Date.now() - t0 < 15_000) {
     const k = L.leseOberflaeche();
@@ -78,18 +83,28 @@ async function seiteNachVorn() {
       if (zaehler) L.tippe(zaehler.mx, zaehler.my);
     }
     await L.warte(800);
-    if (await js('return innerWidth > 0')) return;
+    if (await seiteVorn()) return;
   }
   throw new Error('Seite nicht nach vorn zu holen');
 }
 
 async function oeffneErweiterungsseite(seite) {
-  await L.ladeUrl(driver, L.erweiterungsUrl(seite));
-  // Nach dem Popup (Pause-Schritt) geht der erste Ladeversuch manchmal verloren: einmal wiederholen.
-  const ms = await L.bisSeite(driver, seite, 10_000).catch(async () => {
+  // Nach dem Popup (Pause-Schritt) geht der erste Ladeversuch manchmal verloren (Session 20: auch der zweite): bis zu dreimal, dazwischen
+  // Firefox nach vorn holen und die Seitenansicht pruefen.
+  let ms;
+  for (let versuch = 1; ; versuch++) {
     await L.ladeUrl(driver, L.erweiterungsUrl(seite));
-    return L.bisSeite(driver, seite);
-  });
+    try {
+      ms = await L.bisSeite(driver, seite, versuch === 1 ? 10_000 : 15_000);
+      break;
+    } catch (e) {
+      if (versuch >= 3) throw e;
+      console.log(`android: ${seite} nicht geladen (Versuch ${versuch}), Firefox nach vorn und noch einmal`);
+      L.holeFirefoxNachVorn();
+      await L.warte(1500);
+      await seiteNachVorn().catch(() => null);
+    }
+  }
   await seiteNachVorn();
   return ms;
 }
@@ -134,8 +149,11 @@ async function einstieg() {
   await bisSchritt('einwilligung');
   await halte('einwilligung');
   await klick('#einwilligung-ok');
-  for (let n = 1; n <= 5; n++) {
-    await bisSchritt(`interview-${n}`);
+  // Session 17 (Paket D): ohne Pack beim Eintritt nur 3 Interview-Seiten, mit Pack 5: weiter, solange Interview-Seiten kommen.
+  await bisSchritt('interview-1');
+  let n = 0;
+  while (n < 6 && /^interview-\d+$/.test((await schritt()) ?? '')) {
+    n = Number(((await schritt()) ?? '').split('-')[1]);
     await halte(`interview-${n}`);
     // Unterer Teil langer Seiten auch fotografieren
     const hoch = await js('return document.documentElement.scrollHeight > innerHeight + 40');
@@ -144,8 +162,10 @@ async function einstieg() {
       await halte(`interview-${n}-unten`);
     }
     await klick('#iv-weiter');
+    await L.bis('naechste Seite', async () => (await schritt()) !== `interview-${n}`, 15_000);
   }
-  await L.bis('Ende', async () => !['interview-5', null].includes(await schritt()), 15_000);
+  console.log(`android: Interview mit ${n} Seiten`);
+  await L.bis('Ende', async () => ![`interview-${n}`, null].includes(await schritt()), 15_000);
   const ende = await schritt();
   await halte(`ende-${ende}`);
   ergebnis.schritte.einstieg = { seiten, ende };
@@ -273,6 +293,76 @@ async function pack() {
   console.log(`android pack: gewaehlt ${gewaehlt}, Import ${r.msImport} ms, ${JSON.stringify(r.pack)}, Meldung ${JSON.stringify(r.meldung)}`);
 }
 
+// Session 20: Preset "sticker" (nach dem Pack-Import, Pack mit Stickern): Preset in den Optionen antippen, auf der Foto-Testseite (nsfw)
+// muss mindestens ein zensiertes Bild pastell gedeckt sein (Pixelprobe im Bild, dazu Foto); danach Preset "mia-wort" wiederherstellen.
+async function sticker() {
+  const r = {};
+  const preset = () => L.imSeitenkontext(driver, `const e = (await api.storage.local.get('einstellungen')).einstellungen; return e ? e.preset ?? null : null;`);
+  const waehle = async (id) => {
+    await oeffneErweiterungsseite('options.html');
+    r[`gesperrt-${id}`] = await js(`const e = document.querySelector('#preset-' + arguments[0]); return e ? e.disabled : 'fehlt'`, id);
+    if (r[`gesperrt-${id}`] !== false) throw new Error(`Preset ${id} nicht waehlbar (${r[`gesperrt-${id}`]}): Pack ohne Sticker oder nicht importiert`);
+    await tippeElement(`label:has(#preset-${id})`);
+    await L.bis(`Preset ${id} gespeichert`, async () => (await preset()) === id, 10_000, 200);
+  };
+  r.vorher = await oeffneErweiterungsseite('options.html').then(() => preset());
+  await waehle('sticker');
+  r.optionenFoto = L.foto('sticker', 'optionen-sticker');
+  await driver.get(`${L.basis}/schleier-fotos.html?satz=nsfw`);
+  await seiteNachVorn();
+  await L.bis('Fotos bereit', () => js('return document.documentElement.dataset.fotosBereit ?? null'), 30_000).catch(() => null);
+  const t0 = Date.now();
+  await L.bis('alle beurteilt', async () => (await offeneBilder()) === 0, 120_000, 200).catch(() => null);
+  r.msBisAlleBeurteilt = Date.now() - t0;
+  r.urteile = await urteile();
+  r.proben = await js(`
+    const PASTELL = [[255,211,230],[226,215,255],[255,220,199]], RAHMEN = [255,79,163];
+    const dist = (p, q) => Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]);
+    const aus = [];
+    for (const i of document.querySelectorAll('img')) {
+      if ((i.dataset.veil ?? '') !== 'zensiert' || !i.complete || !i.naturalWidth) continue;
+      const f = Math.min(1, 320 / i.naturalWidth);
+      const c = document.createElement('canvas'); c.width = Math.round(i.naturalWidth * f); c.height = Math.round(i.naturalHeight * f);
+      const x = c.getContext('2d'); x.drawImage(i, 0, 0, c.width, c.height);
+      let d; try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { aus.push({ alt: i.alt, verschmutzt: true }); continue; }
+      let n = 0, pastell = 0, rahmen = 0, dunkel = 0;
+      for (let k = 0; k < d.length; k += 4) { const p = [d[k], d[k+1], d[k+2]]; n++; if (PASTELL.some((q) => dist(p, q) < 16)) pastell++; if (dist(p, RAHMEN) < 60) rahmen++; if (p[0] < 60 && p[1] < 60 && p[2] < 60) dunkel++; }
+      aus.push({ alt: i.alt, n, pastell: +(pastell / n).toFixed(4), rahmen: +(rahmen / n).toFixed(4), dunkel: +(dunkel / n).toFixed(4) });
+    }
+    return aus;`);
+  r.seitenFoto = L.foto('sticker', 'seite-sticker');
+  await js('scrollTo(0, 0)');
+  // Zweite Pixelprobe am Bildschirmfoto (die Canvas-Probe scheitert bei Bildern, deren Quelle den Canvas verschmutzt): Seitenbereich ohne Adressleiste
+  // und Navigationsleiste; Anteil der Pastell- und Rahmenpixel (Farben der Sticker-Zensur, src/sticker.ts).
+  {
+    const { data, info } = await sharp(path.join(L.fotoOrdner, r.seitenFoto)).raw().toBuffer({ resolveWithObject: true });
+    const PASTELL = [[255, 211, 230], [226, 215, 255], [255, 220, 199]], RAHMEN = [255, 79, 163];
+    const abstand = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const y0 = Math.round(info.height * 0.13), y1 = Math.round(info.height * 0.45);
+    let n = 0, pastell = 0, rahmen = 0;
+    for (let y = y0; y < y1; y++) for (let x = 0; x < info.width; x++) {
+      const i = (y * info.width + x) * info.channels, p = [data[i], data[i + 1], data[i + 2]];
+      n++;
+      if (PASTELL.some((q) => abstand(p, q) < 18)) pastell++;
+      if (abstand(p, RAHMEN) < 50) rahmen++;
+    }
+    r.fotoProbe = { n, pastell: +(pastell / n).toFixed(4), rahmen: +(rahmen / n).toFixed(4) };
+  }
+  const gedeckt = r.proben.filter((p) => !p.verschmutzt && p.pastell >= 0.01);
+  r.gedecktBilder = gedeckt.length;
+  r.maxPastell = Math.max(0, ...r.proben.map((p) => p.pastell ?? 0));
+  console.log(`android sticker: ${JSON.stringify(r.urteile)}, zensiert geprueft ${r.proben.length} (lesbar ${r.proben.filter((p) => !p.verschmutzt).length}), pastell gedeckt ${gedeckt.length}, groesster Pastellanteil ${r.maxPastell}, Fotoprobe ${JSON.stringify(r.fotoProbe)}`);
+  ergebnis.schritte.sticker = r;
+  // Preset immer wiederherstellen, auch bei rotem Befund.
+  await waehle('mia-wort');
+  r.nachher = await preset();
+  r.optionenFotoZurueck = L.foto('sticker', 'optionen-mia-wort');
+  if (r.proben.length === 0) throw new Error('kein zensiertes Bild auf der Testseite (Erkenner nicht fertig oder Satz nsfw fehlt)');
+  if (r.fotoProbe.pastell < 0.05 || r.fotoProbe.rahmen < 0.002) throw new Error(`Bildschirmfoto zeigt keine Pastellflaechen mit Rahmen (${JSON.stringify(r.fotoProbe)})`);
+  if (gedeckt.length === 0) throw new Error(`kein zensiertes Bild pastell gedeckt (groesster Anteil ${r.maxPastell})`);
+  if (r.nachher !== 'mia-wort') throw new Error(`Preset nicht wiederhergestellt: ${r.nachher}`);
+}
+
 // Pause ueber das Firefox-Menue: drei Punkte, Erweiterungen, HYPNOMIA VEIL, Popup (Overlay), "Pause Mia".
 async function oeffnePopupUeberMenue(r) {
   const weg = [];
@@ -284,7 +374,8 @@ async function oeffnePopupUeberMenue(r) {
   weg.push(erw.text || erw.beschreibung);
   await L.warte(800);
   r.menuFoto = L.foto('pause', 'menue-erweiterungen');
-  const veil = await L.tippeKnoten((n) => /^HYPNOMIA VEIL$/.test(n.text || n.beschreibung), 8000);
+  // Session 17: pausiert traegt der Eintrag den Titel des Symbols "HYPNOMIA VEIL: paused" (src/hintergrund/symbol.ts).
+  const veil = await L.tippeKnoten((n) => /^HYPNOMIA VEIL(: paused)?$/.test(n.text || n.beschreibung), 8000);
   weg.push(veil.text || veil.beschreibung);
   r.weg = weg;
   await L.warte(1500);
@@ -349,8 +440,24 @@ async function besuch() {
   await L.warte(1000);
   r.fotoEnde = L.foto('besuch', 'ende');
   r.tabs = L.finde(L.leseOberflaeche(), /Tabs Open: \d+/).map((n) => n.beschreibung).slice(0, 1);
+  // Session 20: der Besuch oeffnet Mias Seite in einem zweiten Tab, der dann vorn bleibt; spaetere Schritte luden ihre Erweiterungsseite in diesem
+  // fremden Tab und fanden sie im Fahrer-Tab nicht ("options.html nicht geladen"). Darum den fremden Tab hier schliessen.
+  try {
+    const eigener = await driver.getWindowHandle();
+    r.fremdeTabs = 0;
+    for (const h of await driver.getAllWindowHandles()) {
+      if (h === eigener) continue;
+      await driver.switchTo().window(h);
+      await driver.close();
+      r.fremdeTabs++;
+    }
+    await driver.switchTo().window(eigener);
+    await seiteNachVorn();
+  } catch (e) {
+    r.fremdeTabsFehler = String(e);
+  }
   ergebnis.schritte.besuch = r;
-  console.log(`android besuch: ${JSON.stringify(a)} nach ${r.ms} ms; Ende ${JSON.stringify(r.ende)}; ${r.tabs.join(' ')}`);
+  console.log(`android besuch: ${JSON.stringify(a)} nach ${r.ms} ms; Ende ${JSON.stringify(r.ende)}; ${r.tabs.join(' ')}; fremde Tabs geschlossen ${r.fremdeTabs ?? '?'}${r.fremdeTabsFehler ? ' (' + r.fremdeTabsFehler.slice(0, 100) + ')' : ''}`);
 }
 
 async function bedienung() {
@@ -383,7 +490,7 @@ async function speicher() {
   console.log('android speicher: uebersprungen');
 }
 
-const SCHRITTE = { apis, einstieg, schleier, pack, besuch, pause, bedienung, speicher };
+const SCHRITTE = { apis, einstieg, schleier, pack, sticker, besuch, pause, bedienung, speicher };
 
 // ---------- Ablauf ----------
 try {

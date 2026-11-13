@@ -163,6 +163,30 @@ async function stichproben(ms) {
   while (Date.now() - t0 < ms) aus.push(await messe());
   return aus;
 }
+// Zustand der Leinwand in einem Aufruf (Testhaken): Zeit, Modus, Urteil, Ansicht samt Grund, Medienzeit und Zahl der Flaechen der Boxen.
+const ZUSTAND_JS =
+  "const e = document.getElementById('v1'); if (!e) return null; let v = null; try { v = JSON.parse(e.getAttribute('data-veil-video-boxen') || 'null'); } catch (x) { v = null; }" +
+  " return { t: Math.round(e.currentTime * 1000) / 1000, modus: e.getAttribute('data-veil-video-modus'), veil: e.getAttribute('data-veil'), ansicht: v ? v.ansicht : null, grund: v ? v.grund : null, mt: v ? v.mt : null, n: v ? v.flaechen.length : 0, boxen: v ? v.boxen : null };";
+const zustand = () => driver.executeScript(ZUSTAND_JS);
+// Eine Aufnahme zeigt sicher die Zonen, wenn vor und nach ihr Modus und Ansicht "zonen" sind, das Urteil "zensiert" ist und die Zeit vor `bisT` liegt.
+const imZonenZustand = (b, bisT) => [b.vor, b.nach].every((z) => z && z.modus === 'zonen' && z.ansicht === 'zonen' && z.veil === 'zensiert' && z.t < bisT);
+// Stichproben mit dem Zustand der Leinwand vor und nach jeder Aufnahme: mindestens `ms` lang, dann weiter, bis `mindest` Aufnahmen im Zonen-Zustand liegen,
+// hoechstens bis die Zeit des Videos `bisT` erreicht (oder 6 s vergangen sind).
+async function stichprobenZustand(ms, bisT = Infinity, mindest = 0) {
+  const aus = [];
+  const t0 = Date.now();
+  for (;;) {
+    const dauer = Date.now() - t0;
+    if (dauer >= ms && aus.filter((b) => imZonenZustand(b, bisT)).length >= mindest) break;
+    if (dauer > 6000 || (aus.length > 0 && !(aus[aus.length - 1].nach?.t < bisT))) break;
+    const vor = await zustand();
+    const b = await messe();
+    const nach = await zustand();
+    aus.push({ ...b, vor, nach });
+  }
+  return aus;
+}
+const kurzZustand = (z) => (z ? `${z.ansicht ?? z.modus ?? '-'}${z.grund ? `/${z.grund}` : ''}@${z.t}${z.veil === 'zensiert' ? '' : `:${z.veil}`}` : 'null');
 const warteZonen = (id = 'v1') => bis('Zonen-Modus', async () => (await attr(id, 'data-veil-video-modus')) === 'zonen', 30_000);
 
 try {
@@ -203,16 +227,25 @@ try {
     await neuesVideo({ id: 'v1' });
     await warteZonen();
     await bis('Testbild-Abschnitt', async () => (await ct()) > 3.3 && (await ct()) < 3.8, 20_000); // Leinwand beginnt bei etwa 3,2 s (erst Blur, dann Zonen)
-    const s = await stichproben(900); // endet vor dem Schnitt bei 5 s (danach liegt kein Rahmen mehr, das ganze Bild ist Mosaik)
+    // Aufnahmen bis 4,8 s (Schnitt bei 5 s: danach liegt kein Rahmen mehr, das ganze Bild ist Mosaik). Die Leinwand darf zwischendurch ganz decken (Wackler Session 20:
+    // unter Last "sprung" und "wartet", das ganze Bild Mosaik ohne Rahmen): Rahmen und Schaerfe zaehlen nur in Aufnahmen, die vor und nach dem Foto im Zonen-Zustand
+    // lagen; jede Aufnahme, auch die ganz gedeckten, muss den Waechter unscharf zeigen.
+    const s = await stichprobenZustand(900, 4.8, 4);
+    const stDiag = await status();
+    const zustaende = JSON.stringify(s.map((b) => [b.rosa, scharf(b) ? 'SCHARF' : '', kurzZustand(b.vor), kurzZustand(b.nach)]));
+    console.log(`firefox: z1 DIAG ${zustaende} Rueckfall ${JSON.stringify(stDiag?.videoZonenRueckfall)} RTT ${JSON.stringify(stDiag?.videoZonenRtt)}`);
     pruefe(s.length >= 3, `zu wenige Stichproben (${s.length})`);
-    pruefe(s.filter(scharf).length === 0, 'Waechter scharf');
-    pruefe(s.filter((b) => b.rosa > 150).length / s.length > 0.7, `pinker Rahmen fehlt: ${JSON.stringify(s.map((b) => b.rosa))}`);
-    const kante = median(s.map((b) => b.kante));
+    pruefe(s.filter(scharf).length === 0, `Waechter scharf: ${zustaende}`);
+    const gueltig = s.filter((b) => imZonenZustand(b, 4.8));
+    pruefe(gueltig.length >= 3, `nie lange genug im Zonen-Zustand (${gueltig.length} von ${s.length} Aufnahmen; die Leinwand deckte ganz): ${zustaende}`);
+    pruefe(gueltig.filter((b) => b.rosa > 150).length / gueltig.length > 0.7, `pinker Rahmen fehlt im Zonen-Zustand: ${zustaende}`);
+    const kante = median(gueltig.map((b) => b.kante));
     pruefe(kante >= 0.8 * referenzKante, `rechte Haelfte nicht scharf genug (${kante.toFixed(2)} gegen ${referenzKante.toFixed(2)})`);
-    const boxen = JSON.parse(await attr('v1', 'data-veil-video-boxen'));
-    pruefe(boxen.boxen.length > 0, 'keine Boxen');
-    for (const k of boxen.boxen) pruefe(k[0] + k[2] / 2 < 330, `Box nicht links: ${JSON.stringify(k)}`);
-    pruefe((await attr('v1', 'data-veil')) === 'zensiert', 'data-veil nicht zensiert');
+    // Boxen und Urteil aus den Aufnahmen im Zonen-Zustand (eine spaetere Lesung kann unter Last schon "ganz" ohne Spuren treffen, Wackler Session 20)
+    for (const b of gueltig) {
+      pruefe(b.nach.boxen?.length > 0, `keine Boxen im Zonen-Zustand: ${JSON.stringify(b.nach)}`);
+      for (const k of b.nach.boxen) pruefe(k[0] + k[2] / 2 < 330, `Box nicht links: ${JSON.stringify(k)}`);
+    }
     const st = await status();
     console.log(`firefox: M2 ${(st.videoZonenMs / Math.max(1, st.videoZonenMsBilder)).toFixed(2)} ms je Bild (${st.videoZonenMsBilder} Bilder); M1 Rundlauf Median ${median(st.videoZonenRtt)} ms (${st.videoZonenRtt.length} Werte)`);
   });
@@ -306,6 +339,36 @@ try {
     await bis('verdeckt', async () => (await attr('v1', 'data-veil')) === 'verdeckt', 6000);
     pruefe((await attr('v1', 'data-veil-leinwand')) === null, 'Leinwand trotz Untertitel');
     pruefe(!!(await attr('v1', 'data-veil-video-etikett')), 'Etikett fehlt');
+  });
+
+  await test('R13h2 Hilfsleinwand ohne Flaeche haelt die Zonen nicht auf; mit Flaeche endet die Leinwand: ganz verdeckt (Grund spiegel), nie scharf', async () => {
+    await oeffne();
+    await neuesVideo({ id: 'v1', leinwand: 'sp1' });
+    await warteZonen();
+    await bis('Zeit 2,6 s', async () => (await ct()) > 2.6, 20_000);
+    pruefe((await attr('v1', 'data-veil')) === 'zensiert' && (await attr('v1', 'data-veil-leinwand')) !== null, 'keine Zonen trotz Hilfsleinwand ohne Flaeche');
+    pruefe(!((await status())?.videoZonenRueckfall ?? []).includes('spiegel'), 'Rueckfall spiegel zu frueh');
+    // Belegt: die Hilfsleinwand ist gebunden und verdeckt, waehrend das Video Zonen hat.
+    await bis('Hilfsleinwand verdeckt', async () => (await attr('sp1', 'data-veil')) === 'verdeckt', 5000);
+    pruefe((await attr('v1', 'data-veil')) === 'zensiert', 'Video nicht mehr im Zonen-Zustand vor dem Wechsel');
+    pruefe((await ct()) < 10, 'Video zu weit');
+    // Proben: mindestens 3, die erste vor dem Groessenwechsel, dann bis zum Rueckfall und danach.
+    const proben = [await messe()];
+    await driver.executeScript("window.leinwandFlaeche('sp1')");
+    const t0 = Date.now();
+    while ((await attr('v1', 'data-veil')) !== 'verdeckt' && Date.now() - t0 < 6000) proben.push(await messe());
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt', 'nicht ganz verdeckt nach dem Groessenwechsel');
+    proben.push(...(await stichproben(1200)));
+    pruefe(proben.length >= 3, `zu wenige Proben: ${proben.length}`);
+    pruefe((await attr('v1', 'data-veil-leinwand')) === null, 'Zonen-Leinwand noch da');
+    pruefe(((await attr('v1', 'data-veil-video-etikett')) ?? '') !== '', 'kein Etikett');
+    pruefe(((await status())?.videoZonenRueckfall ?? []).includes('spiegel'), 'Grund spiegel fehlt');
+    pruefe((await attr('sp1', 'data-veil')) === 'verdeckt', `Spiegel nicht verdeckt: ${await attr('sp1', 'data-veil')}`);
+    // Belegt: die Leinwand enthaelt wirklich Videobild (nicht einfarbig).
+    const vielfarbig = await driver.executeScript(`const c = document.getElementById('sp1'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) return true; return false;`);
+    pruefe(vielfarbig === true, 'Leinwand ist einfarbig');
+    pruefe(proben.filter(scharf).length === 0, `scharfe Stichproben: ${proben.filter(scharf).length} von ${proben.length}`);
   });
 
   await test('R13g Langsam-Rueckfall: ganz verdeckt mit Etikett', async () => {
@@ -518,7 +581,9 @@ try {
     return { daten: data, b: info.width, h: info.height };
   };
   const bild = async () => pix(Buffer.from(await driver.takeScreenshot(), 'base64'));
-  function kenn(ref, aus, box, inset = 0) {
+  // `andere`: die uebrigen gemalten Flaechen derselben Aufnahme. Rosa, das in einer von ihnen liegt (2 Bildpunkte Rand), gehoert zu ihr (ihr Wort, ihr Rahmen)
+  // und zaehlt weder als Rahmen noch als Wort dieser Flaeche (Wackler Session 20: das Wort einer Nachbarflaeche lag im Ring).
+  function kenn(ref, aus, box, inset = 0, andere = []) {
     const [bx, by, bw, bh] = box;
     let n = 0;
     let dunkel = 0;
@@ -526,6 +591,7 @@ try {
     let wort = 0;
     let rahmen = 0;
     const RING = 6;
+    const fremd = (x, y) => andere.some((o) => o !== box && x >= o[0] - 2 && x < o[0] + o[2] + 2 && y >= o[1] - 2 && y < o[1] + o[3] + 2);
     for (let y = Math.max(0, by - RING); y < Math.min(aus.h, by + bh + RING); y++) {
       for (let x = Math.max(0, bx - RING); x < Math.min(aus.b, bx + bw + RING); x++) {
         const i = (y * aus.b + x) * 3;
@@ -534,7 +600,7 @@ try {
         const b = aus.daten[i + 2];
         const innen = x >= bx && x < bx + bw && y >= by && y < by + bh;
         const abstand = Math.min(Math.abs(x - bx), Math.abs(x - (bx + bw - 1)), Math.abs(y - by), Math.abs(y - (by + bh - 1)));
-        if (istRosa(r, g, b)) {
+        if (istRosa(r, g, b) && !(andere.length > 0 && fremd(x, y))) {
           if (!innen || abstand <= RING) rahmen++;
           else wort++;
         }
@@ -583,13 +649,14 @@ try {
     }
     return m;
   }
-  function wortBreite(aus, box) {
+  function wortBreite(aus, box, andere = []) {
     const [bx, by, bw, bh] = box;
     let min = Infinity;
     let max = -Infinity;
+    const fremd = (x, y) => andere.some((o) => o !== box && x >= o[0] - 2 && x < o[0] + o[2] + 2 && y >= o[1] - 2 && y < o[1] + o[3] + 2);
     for (let y = by + 6; y < by + bh - 6; y++) for (let x = bx + 6; x < bx + bw - 6; x++) {
       const i = (y * aus.b + x) * 3;
-      if (istRosa(aus.daten[i], aus.daten[i + 1], aus.daten[i + 2])) {
+      if (istRosa(aus.daten[i], aus.daten[i + 1], aus.daten[i + 2]) && !(andere.length > 0 && fremd(x, y))) {
         min = Math.min(min, x);
         max = Math.max(max, x);
       }
@@ -640,6 +707,18 @@ try {
       if (v.arten[i] === art && (!best || f[2] * f[3] > best[2] * best[3])) best = f;
     });
     return best;
+  };
+  // Groesste Flaeche der Art, die keine andere Flaeche schneidet (mit dem Ring von kenn, 6 Bildpunkte, plus 2) und mindestens halb so gross ist wie die groesste
+  // (kleine Flaechen tragen ein kleines Wort); gibt es keine, die groesste (dann nimmt kenn mit `andere` das Rosa der Nachbarn aus).
+  const groessteFrei = (v, art) => {
+    const gr = groesste(v, art);
+    let best = null;
+    v.flaechen.forEach((f, i) => {
+      if (v.arten[i] !== art || !gr || f[2] * f[3] < 0.5 * gr[2] * gr[3]) return;
+      const frei = v.flaechen.every((o) => o === f || o[0] >= f[0] + f[2] + 8 || o[0] + o[2] <= f[0] - 8 || o[1] >= f[1] + f[3] + 8 || o[1] + o[3] <= f[1] - 8);
+      if (frei && (!best || f[2] * f[3] > best[2] * best[3])) best = f;
+    });
+    return best ?? gr;
   };
   const lies = async () => {
     const roh = await attr('v1', 'data-veil-video-boxen');
@@ -924,8 +1003,8 @@ try {
 
     await test('P4 schwarz-wort im Video (mia-wort): Koerper schwarz mit Wort, stabil je Spur, Themenwechsel und Packwechsel zeichnen neu', async () => {
       const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'mia-wort', an: BEDECKBAR, art: (a) => a.includes('schwarz-wort'), extra: { woerterThemen: ['alpha'] } });
-      const f = groesste(m.v, 'schwarz-wort');
-      const k = kenn(m.ref, m.aus, f, 0);
+      const f = groessteFrei(m.v, 'schwarz-wort');
+      const k = kenn(m.ref, m.aus, f, 0, m.v.flaechen);
       console.log(`firefox: P4 schwarz-wort ${JSON.stringify(k)}`);
       pruefe(k.dunkel > 0.6, `nicht ueberwiegend schwarz (${k.dunkel})`);
       pruefe(k.wort > 80, `Wort fehlt (${k.wort})`);
@@ -949,13 +1028,25 @@ try {
       pruefe(!!vergleich && stabil > 0.85 && Math.abs(vergleich.b1 - vergleich.b2) <= 3, `Wort nicht stabil (${stabil})`);
       // Themenwechsel: erst abwarten, bis die Seite den Wechsel aufgenommen hat (das Urteil des Videos wird neu gefasst), sonst saehe die Aufnahme noch das alte Bild.
       // Die Spuren beginnen neu: verglichen wird, wie breit die Woerter aller Flaechen sind.
-      const breitenAlt = m.v.flaechen.filter((_, i) => m.v.arten[i] === 'schwarz-wort').map((fl) => wortBreite(m.aus, fl));
+      // Nur freie Flaechen (Wackler Session 20, belegt in Chromium: das Wort einer ueberlappenden Nachbarflaeche verfaelschte die Breite); ist keine frei, gilt das Rosa der
+      // Nachbarn nicht und Flaechen ganz ohne eigenes Rosa zaehlen nicht.
+      const istFrei = (v, f) => v.flaechen.every((o) => o === f || o[0] >= f[0] + f[2] + 8 || o[0] + o[2] <= f[0] - 8 || o[1] >= f[1] + f[3] + 8 || o[1] + o[3] <= f[1] - 8);
+      const freieBreiten = (v, aus) => {
+        // als Anteil an der Breite der Flaeche, nur Flaechen ab 40 px Seite (das Wort passt sich der Flaeche an, wie in Chromium)
+        const l = v.flaechen.filter((f, i) => v.arten[i] === 'schwarz-wort' && istFrei(v, f) && Math.min(f[2], f[3]) >= 40).map((f) => Math.round((wortBreite(aus, f, v.flaechen) / f[2]) * 100) / 100);
+        return l.length > 0 ? l : null;
+      };
+      const ohneNachbarn = (v, aus) =>
+        v.flaechen.filter((fl, i) => v.arten[i] === 'schwarz-wort' && Math.min(fl[2], fl[3]) >= 40).map((fl) => Math.round((wortBreite(aus, fl, v.flaechen) / fl[2]) * 100) / 100).filter((b) => b > 0);
+      const breitenAlt = freieBreiten(m.v, m.aus) ?? ohneNachbarn(m.v, m.aus);
       const vorher = (await log()).length;
       await setze({ woerterThemen: ['beta'] });
       await bis('Seite nimmt den Themenwechsel auf', async () => (await log()).slice(vorher).some((e) => e.was === 'data-veil'), 20_000);
-      const beta = await augenblick((a) => a.includes('schwarz-wort'), 2.6, 4.8);
-      const breitenNeu = beta.v.flaechen.filter((_, i) => beta.v.arten[i] === 'schwarz-wort').map((fl) => wortBreite(beta.aus, fl));
-      console.log(`firefox: P4 Themenwechsel: Breiten der Woerter alpha ${JSON.stringify(breitenAlt)} px gegen beta ${JSON.stringify(breitenNeu)} px`);
+      let beta = await augenblick((a) => a.includes('schwarz-wort'), 2.6, 4.8);
+      for (let versuch = 0; versuch < 4 && !freieBreiten(beta.v, beta.aus); versuch++) beta = await augenblick((a) => a.includes('schwarz-wort'), 2.6, 4.8);
+      const breitenNeu = freieBreiten(beta.v, beta.aus) ?? ohneNachbarn(beta.v, beta.aus);
+      console.log(`firefox: P4 Themenwechsel: Breiten der Woerter (Anteil der Flaechenbreite) alpha ${JSON.stringify(breitenAlt)} gegen beta ${JSON.stringify(breitenNeu)}`);
+      pruefe(breitenAlt.length > 0 && breitenNeu.length > 0, 'keine messbare Flaeche fuer den Themenwechsel');
       pruefe(Math.min(...breitenNeu) > Math.max(...breitenAlt) * 1.2, `noch ein Wort des alten Themas (${breitenAlt} gegen ${breitenNeu})`);
       // Pack weg: Mia-Presets gelten ohne Pack nicht, die Videozensur zeichnet Mosaik. Danach eine frische Seite (waehrend die Erweiterungsseite vorn war, lag der Tab der Testseite
       // im Hintergrund und das Video lief nicht weiter; das laufende Video deckt Chromium ab).
@@ -1047,22 +1138,28 @@ try {
     let verglichen = 0;
     for (let versuch = 0; versuch < 6 && verglichen < 2; versuch++) {
       const neu = await augenblick(nurSticker, 2.6, 4.8);
-      neu.v.ids.forEach((id, i) => {
+      for (const [i, id] of neu.v.ids.entries()) {
         const j = alt.v.ids.indexOf(id);
-        if (id < 0 || j < 0 || neu.v.motive[i] !== alt.v.motive[j]) return;
+        if (id < 0 || j < 0 || neu.v.motive[i] !== alt.v.motive[j]) continue;
         const fa = alt.v.flaechen[j], fn = neu.v.flaechen[i];
-        if (Math.min(fa[2], fa[3]) < 60 || Math.min(fn[2], fn[3]) < 60) return;
+        if (Math.min(fa[2], fa[3]) < 60 || Math.min(fn[2], fn[3]) < 60) continue;
         const ka = stMess(alt.aus, fa), kn = stMess(neu.aus, fn);
-        if (!stSticker(ka.mitte)) return;
+        if (!stSticker(ka.mitte)) continue;
         // eine andere Flaeche, die inzwischen ueber der Mitte liegt (spaeter gemalt, oben), verdeckt den Sticker: dort nicht messen (belegt in Chromium mit Aufnahmen)
         const mx = fn[0] + fn[2] / 2, my = fn[1] + fn[3] / 2;
         const ueberlagert = (v, eigene) => v.flaechen.some((o, k) => k !== eigene && mx >= o[0] - 6 && mx <= o[0] + o[2] + 6 && my >= o[1] - 6 && my <= o[1] + o[3] + 6);
-        if (ueberlagert(neu.v, i) || ueberlagert(alt.v, j)) return;
+        if (ueberlagert(neu.v, i) || ueberlagert(alt.v, j)) continue;
         const ecke = (a, f) => stPx(a, Math.round(f[0] + 14), Math.round(f[1] + 14));
+        // Diagnose (Wackler Session 20): bei einem Wechsel beide Aufnahmen und beide Boxen ablegen
+        if (process.env.VEIL_WACKLER_DIR && (stAbstand(ecke(alt.aus, fa), ecke(neu.aus, fn)) >= 10 || !(stSticker(kn.mitte) && stAbstand(ka.mitte, kn.mitte) < 60))) {
+          const stamm = path.join(process.env.VEIL_WACKLER_DIR, `p11-ff-${Date.now()}-id${id}`);
+          for (const [teil, a] of [['alt', alt], ['neu', neu]]) await sharp(a.aus.daten, { raw: { width: a.aus.b, height: a.aus.h, channels: 3 } }).png().toFile(`${stamm}-${teil}.png`);
+          await writeFile(`${stamm}.json`, JSON.stringify({ id, i, j, fa, fn, ka, kn, alt: alt.v, neu: neu.v }, null, 1));
+        }
         pruefe(stAbstand(ecke(alt.aus, fa), ecke(neu.aus, fn)) < 10, 'Pastellfarbe der Spur wechselt');
         pruefe(stSticker(kn.mitte) && stAbstand(ka.mitte, kn.mitte) < 60, `Sticker der Spur wechselt (${ka.mitte.map(Math.round)} gegen ${kn.mitte.map(Math.round)})`);
         verglichen++;
-      });
+      }
       alt = neu;
     }
     console.log(`firefox: P11 gleiche Spur in ${verglichen} Vergleichen unveraendert`);

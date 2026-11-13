@@ -132,6 +132,19 @@ export function sucheVideo(leinwand: HTMLCanvasElement, minKante: number = SPIEG
   );
 }
 
+// Zaehlt eine gebundene Leinwand fuer die Eignung der Zonen-Leinwand als Spiegel? Nur wenn sie im Augenblick der Pruefung im Dokument steht und
+// Flaeche hat (Breite und Hoehe groesser 0): eine Leinwand ohne Flaeche (Hilfsleinwand fuer Bildschirmfotos im Player) zeigt nichts. Die Bindung
+// (S7) bleibt davon unberuehrt. Keine Mindestgroesse: jede Flaeche groesser 0 zaehlt. Ein Messfehler zaehlt als Spiegel (hide-first).
+export function leinwandZaehltAlsSpiegel(leinwand: Pick<HTMLCanvasElement, 'isConnected' | 'getBoundingClientRect'>): boolean {
+  try {
+    if (!leinwand.isConnected) return false;
+    const r = leinwand.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  } catch {
+    return true;
+  }
+}
+
 // Leinwaende, die zum Video passen koennten: alle Leinwaende unter dem Vorfahren einige Ebenen ueber dem Video (nie body oder html), in deren
 // Behaelter das Video steckt.
 export function sammleLeinwaende(video: HTMLVideoElement): HTMLCanvasElement[] {

@@ -99,7 +99,7 @@ import {
   Zwischenspeicher,
 } from './pruefung';
 import { entferneWurzelStile, raeumeWurzelStileAuf, schalteWurzelStile } from './shadow';
-import { leinwandLeer, Spiegel } from './spiegel';
+import { leinwandLeer, leinwandZaehltAlsSpiegel, Spiegel } from './spiegel';
 import { testRiegel } from '../riegel/testhaken';
 import { freigabeGesperrt, Status, testhakenAktiv } from './status';
 import { zaehleZustaende, type Zaehlung } from './zaehlung';
@@ -337,7 +337,8 @@ export function starteSchleier(ctx: KontextLeicht): void {
     zustand: (el) => zustaende.get(el),
     sichtbar: (el, z) => sichtbarJetzt(el, z),
     lesbar: (el) => !unlesbareVideos.has(el) && !el.srcObject && !istDrm(el) && pixelLesenErlaubt(videoAdresse(el)),
-    hatSpiegel: (el) => spiegel.spiegelDes(el).length > 0,
+    // Nur gebundene Leinwaende mit Flaeche zaehlen (leinwandZaehltAlsSpiegel); eine Leinwand ohne Flaeche bleibt gebunden, haelt die Zonen aber nicht auf.
+    hatSpiegel: (el) => spiegel.spiegelDes(el).some(leinwandZaehltAlsSpiegel),
     vorschau: (el) => aktiv && erwachsenStatus().liste !== null && istVorschauVideo(el),
     anzeige: (el) => istAnzeige(el, location.href),
     setzeSchnell: (el, an) => video.setzeSchnell(el, an),

@@ -169,7 +169,9 @@ try {
   console.log(`firefox echt: Import in ${Date.now() - t0} ms (mit Lizenz und Klick)`);
   const m = await metaUndZahl();
   console.log(`firefox echt: ${m.id} ${m.version}, ${m.frei.length} Freischaltungen, ${m.dateien} Eintraege, ${m.gespeichert} gespeichert, Rollen ${JSON.stringify(m.rollen)}, Vorschau mit Massen ${m.masse}`);
-  pruefe(m.frei.length === 18, `alle 18 Freischaltungen aktiv (${m.frei.length})`); // seit Pack 0.8.0 mit zensur:woerter
+  // seit Pack 0.8.0 mit zensur:woerter 18, seit Pack 1.0.0 mit zensur:sticker 19
+  const sollFrei = m.frei.includes('zensur:sticker') ? 19 : 18;
+  pruefe(m.frei.length === sollFrei, `alle ${sollFrei} Freischaltungen aktiv (${m.frei.length})`);
   pruefe(m.dateien > 150 && m.gespeichert === m.dateien, 'alle Dateien gespeichert');
   pruefe(m.masse === (m.rollen['vorschau:tease'] ?? 0) + (m.rollen['vorschau:hot'] ?? 0) + (m.rollen['vorschau:explicit'] ?? 0), 'jede Vorschau hat Masse');
 

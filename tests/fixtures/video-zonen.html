@@ -230,9 +230,33 @@
           if (opt.fit) v.style.objectFit = opt.fit;
           if (opt.transform) v.style.transform = opt.transform;
           (opt.anker ? document.querySelector(opt.anker) : platz).appendChild(v);
+          // opt.leinwand: eine Hilfsleinwand (canvas, CSS 0 mal 0, wie Player sie fuer Bildschirmfotos anlegen) neben dem Video im selben Behaelter;
+          // sie malt das Video in jedem Bild. window.leinwandFlaeche(id) gibt ihr danach Flaeche ueber dem Video.
+          if (opt.leinwand) {
+            var c = document.createElement('canvas');
+            c.id = opt.leinwand;
+            c.width = 640;
+            c.height = 360;
+            c.style.cssText = 'display:block;position:absolute;left:0;top:0;width:0;height:0;';
+            v.parentNode.appendChild(c);
+            var cg = c.getContext('2d');
+            var malen = function () {
+              try { cg.drawImage(v, 0, 0, 640, 360); } catch (e) { /* noch keine Bilddaten */ }
+              requestAnimationFrame(malen);
+            };
+            malen();
+          }
           v.src = opt.quelle || adresse;
           if (opt.abspielen !== false) v.play().catch(function () {});
           return v;
+        };
+
+        // Gibt der Hilfsleinwand Flaeche genau ueber dem Video (640 mal 360 an der Stelle des Videos); liefert die Epoche des Wechsels.
+        window.leinwandFlaeche = function (id) {
+          var c = document.getElementById(id);
+          c.style.width = '640px';
+          c.style.height = '360px';
+          return window.epoche();
         };
 
         // Frische blob:-Adresse desselben Films (zweites Video, Quellenwechsel).

@@ -72,7 +72,8 @@ test('echtes Pack: Import, Freischaltungen, Dateien', async () => {
       }),
   );
   console.log(`chromium echt: ${m.id} ${m.version}, ${m.frei.length} Freischaltungen, ${m.dateien} Eintraege, ${m.gespeichert} gespeichert, ${JSON.stringify(m.rollen)}`);
-  expect(m.frei.length).toBe(18); // seit Pack 0.8.0 mit zensur:woerter
+  // seit Pack 0.8.0 mit zensur:woerter 18, seit Pack 1.0.0 mit zensur:sticker 19
+  expect(m.frei.length).toBe(m.frei.includes('zensur:sticker') ? 19 : 18);
   expect(m.dateien).toBeGreaterThan(150);
   expect(m.gespeichert).toBe(m.dateien);
   expect(m.rollen.ton).toBe(5);

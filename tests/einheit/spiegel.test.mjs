@@ -2,7 +2,7 @@
 // Das Dokument wird mit kleinen Attrappen nachgebaut (Knoten mit parentNode, contains, querySelectorAll und Rechteck).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { flaeche, istVideoKandidat, sammleLeinwaende, Spiegel, sucheVideo, ueberdeckung, waehleSpiegelVideo } from '../../src/schleier/spiegel.ts';
+import { flaeche, istVideoKandidat, leinwandZaehltAlsSpiegel, sammleLeinwaende, Spiegel, sucheVideo, ueberdeckung, waehleSpiegelVideo } from '../../src/schleier/spiegel.ts';
 
 const rect = (left, top, breite, hoehe) => ({ left, top, right: left + breite, bottom: top + hoehe });
 
@@ -17,7 +17,8 @@ function knoten(name, opt = {}) {
     rechteck: opt.rechteck ?? rect(0, 0, 0, 0),
     isConnected: true,
     getBoundingClientRect() {
-      return this.rechteck;
+      const r = this.rechteck;
+      return { ...r, width: r.right - r.left, height: r.bottom - r.top };
     },
     contains(x) {
       for (let n = x; n; n = n.parentNode) if (n === this) return true;
@@ -560,4 +561,45 @@ test('Spiegel: faellt die Beziehung beim Abgleich der Nachbarn weg (Video nur mi
   assert.equal(spiegel.istSpiegel(c), false);
   assert.equal(zc.urteil, null);
   assert.equal(namen(protokoll).at(-1), 'bewerte');
+});
+
+// Eignung der Zonen-Leinwand: nur eine gebundene Leinwand mit Flaeche im Dokument zaehlt als Spiegel (die Bindung selbst bleibt, S7).
+test('leinwandZaehltAlsSpiegel: ohne Flaeche zaehlt nicht, mit Flaeche zaehlt, Messfehler zaehlt, getrennt zaehlt nicht', () => {
+  const mess = (b, h, verbunden = true) => ({ isConnected: verbunden, getBoundingClientRect: () => ({ width: b, height: h }) });
+  assert.equal(leinwandZaehltAlsSpiegel(mess(0, 0)), false);
+  assert.equal(leinwandZaehltAlsSpiegel(mess(0, 50)), false);
+  assert.equal(leinwandZaehltAlsSpiegel(mess(50, 0)), false);
+  assert.equal(leinwandZaehltAlsSpiegel(mess(640, 360)), true);
+  // keine Mindestgroesse: jede Flaeche groesser 0 zaehlt
+  assert.equal(leinwandZaehltAlsSpiegel(mess(1, 1)), true);
+  assert.equal(leinwandZaehltAlsSpiegel(mess(0.5, 0.5)), true);
+  // Messfehler (Ausnahme): hide-first, zaehlt als Spiegel
+  assert.equal(
+    leinwandZaehltAlsSpiegel({
+      isConnected: true,
+      getBoundingClientRect() {
+        throw new Error('weg');
+      },
+    }),
+    true,
+  );
+  // getrennte Leinwand: nicht im Dokument, zeigt nichts
+  assert.equal(leinwandZaehltAlsSpiegel(mess(640, 360, false)), false);
+});
+
+test('Spiegel: Leinwand ohne Flaeche bleibt gebunden und folgt dem Video, zaehlt aber erst mit Flaeche als Spiegel der Eignung', () => {
+  const { video, c, zv, zc, spiegel } = aufbau();
+  c.rechteck = rect(0, 0, 0, 0);
+  zv.urteil = 'verdeckt';
+  assert.equal(spiegel.ordne(c, zc), true);
+  assert.equal(spiegel.istSpiegel(c), true);
+  assert.deepEqual(spiegel.spiegelDes(video), [c]);
+  assert.equal(zc.urteil, 'verdeckt', 'sie folgt dem Urteil ihres Videos');
+  assert.equal(spiegel.spiegelDes(video).some(leinwandZaehltAlsSpiegel), false, 'ohne Flaeche kein Spiegel fuer die Eignung');
+  // Sie bekommt Flaeche ueber dem Video: gleiche Bindung, jetzt zaehlt sie.
+  c.rechteck = rect(0, 0, 100, 100);
+  assert.equal(spiegel.ordne(c, zc), true);
+  assert.deepEqual(spiegel.spiegelDes(video), [c]);
+  assert.equal(spiegel.spiegelDes(video).some(leinwandZaehltAlsSpiegel), true);
+  assert.equal(zc.urteil, 'verdeckt');
 });

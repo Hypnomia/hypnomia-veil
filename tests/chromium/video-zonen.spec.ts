@@ -954,6 +954,45 @@ test('R13h Untertitel showing: nie Zonen, ganz verdeckt mit Etikett', async () =
   await s.close();
 });
 
+test('R13h2 Hilfsleinwand ohne Flaeche haelt die Zonen nicht auf; bekommt sie Flaeche, endet die Leinwand: ganz verdeckt (Grund spiegel), nie scharf', async () => {
+  test.setTimeout(90_000);
+  const { s, rec } = await startePruefling('', { id: 'v1', leinwand: 'sp1' });
+  // Die Hilfsleinwand (CSS 0 mal 0, malt das Video) ist gebunden, zaehlt aber nicht als Spiegel: das Video bekommt Zonen und behaelt sie.
+  await warteZonen(s);
+  await wartePoll(async () => (await ct(s)) > 2.6, 20_000);
+  expect(await attr(s, 'v1', 'data-veil')).toBe('zensiert');
+  expect(await attr(s, 'v1', 'data-veil-leinwand')).not.toBeNull();
+  expect((await status(s))?.videoZonenRueckfall ?? []).not.toContain('spiegel');
+  // Belegt: die Hilfsleinwand ist gebunden und verdeckt, waehrend das Video Zonen hat (ein Spiegel ist nie frei).
+  await expect.poll(() => attr(s, 'sp1', 'data-veil'), { timeout: 5000, intervals: [50] }).toBe('verdeckt');
+  expect(await attr(s, 'v1', 'data-veil')).toBe('zensiert');
+  expect(await ct(s)).toBeLessThan(10);
+  // Die Leinwand bekommt Flaeche ueber dem Video: die Zonen enden, das Video ist ganz verdeckt.
+  await s.evaluate(() => (window as any).leinwandFlaeche('sp1') as number);
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 5000, intervals: [50] }).toBe('verdeckt');
+  expect(await attr(s, 'v1', 'data-veil-leinwand')).toBeNull();
+  expect(await attr(s, 'v1', 'data-veil-video-etikett')).toBeTruthy();
+  expect((await status(s))?.videoZonenRueckfall ?? []).toContain('spiegel');
+  await abwarten(1200);
+  expect(await attr(s, 'sp1', 'data-veil')).toBe('verdeckt');
+  // Belegt: die Leinwand enthaelt wirklich Videobild (nicht einfarbig), sonst bewiese das Schachbrett nichts.
+  const vielfarbig = await s.evaluate(() => {
+    const c = document.getElementById('sp1') as HTMLCanvasElement;
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) return true;
+    return false;
+  });
+  expect(vielfarbig, 'Leinwand ist einfarbig').toBe(true);
+  const bilder = await rec.stoppe();
+  // Keine Toleranz: jedes Bild vom Start der Zonen bis nach dem Rueckfall, auch vor und im Augenblick des Groessenwechsels.
+  const von = zonenBeginn(await eintraege(s));
+  expect(von, 'Zonen haben nie begonnen').not.toBeNull();
+  const fenster = bilder.filter((b) => b.ts >= von!);
+  expect(fenster.length).toBeGreaterThan(30);
+  expect(fenster.filter(scharf).length, 'scharfe Bilder ab dem Start der Zonen').toBe(0);
+  await s.close();
+});
+
 test('R13i object-fit cover in einer 4:3-Box und scaleX(-1): die Boxen decken das Bild, nie scharf', async () => {
   test.setTimeout(90_000);
   for (const [name, opt] of [
@@ -1128,7 +1167,11 @@ async function pix(png: Buffer): Promise<Pix> {
 // beiderseits des Randes (der Rahmen; die Boxen gehen je Antwort um bis zu 3 Bildpunkte auf und zu, je nach Lage der Leinwand ist er zu halben Pixeln
 // verwaschen) und kraeftiges Rosa tiefer im Inneren (das Wort). Rosa: rot hoch, blau ueber gruen (Hauttoene haben blau unter gruen).
 const istRosa = (r: number, g: number, b: number): boolean => r > 225 && b - g > 20 && g < 215;
-function kenn(ref: Pix, aus: Pix, box: number[], inset = 0) {
+// `andere`: die uebrigen gemalten Flaechen derselben Aufnahme. Rosa, das in einer von ihnen liegt (2 Bildpunkte Rand), gehoert zu ihr (ihr Wort, ihr Rahmen) und
+// zaehlt weder als Rahmen noch als Wort dieser Flaeche (Wackler Session 20: das Wort einer Nachbarflaeche lag im Ring, belegt mit Aufnahmen).
+const inAnderer = (andere: number[][], box: number[], x: number, y: number): boolean =>
+  andere.some((o) => o !== box && x >= o[0]! - 2 && x < o[0]! + o[2]! + 2 && y >= o[1]! - 2 && y < o[1]! + o[3]! + 2);
+function kenn(ref: Pix, aus: Pix, box: number[], inset = 0, andere: number[][] = []) {
   const [bx, by, bw, bh] = box as [number, number, number, number];
   let n = 0;
   let dunkel = 0;
@@ -1144,7 +1187,7 @@ function kenn(ref: Pix, aus: Pix, box: number[], inset = 0) {
       const b = aus.daten[i + 2]!;
       const innen = x >= bx && x < bx + bw && y >= by && y < by + bh;
       const abstand = Math.min(Math.abs(x - bx), Math.abs(x - (bx + bw - 1)), Math.abs(y - by), Math.abs(y - (by + bh - 1)));
-      if (istRosa(r, g, b)) {
+      if (istRosa(r, g, b) && !(andere.length > 0 && inAnderer(andere, box, x, y))) {
         if (!innen || abstand <= RING) rahmen++;
         else wort++;
       }
@@ -1336,6 +1379,28 @@ const groesste = (v: VideoBoxen, art: string): number[] | null => {
   });
   return best;
 };
+// Schneidet die Flaeche keine andere (mit dem Ring von kenn, 6 Bildpunkte, plus 2)? Dann gehoert alles Rosa um sie herum ihr selbst.
+const istFrei = (v: VideoBoxen, f: number[]): boolean =>
+  v.flaechen.every((o) => o === f || o[0]! >= f[0]! + f[2]! + 8 || o[0]! + o[2]! <= f[0]! - 8 || o[1]! >= f[1]! + f[3]! + 8 || o[1]! + o[3]! <= f[1]! - 8);
+// Groesste freie Flaeche der Art, mindestens halb so gross wie die groesste (kleine Flaechen tragen ein kleines Wort); sonst die groesste (dann nimmt kenn mit
+// `andere` das Rosa der Nachbarn aus).
+const groessteFrei = (v: VideoBoxen, art: string): number[] | null => {
+  const gr = groesste(v, art);
+  let best: number[] | null = null;
+  v.flaechen.forEach((f, i) => {
+    if (v.arten[i] !== art || !gr || f[2]! * f[3]! < 0.5 * gr[2]! * gr[3]! || !istFrei(v, f)) return;
+    if (!best || f[2]! * f[3]! > best[2]! * best[3]!) best = f;
+  });
+  return best ?? gr;
+};
+// Breiten der Woerter auf den Flaechen der Art: nur freie Flaechen (das Wort einer Nachbarflaeche oder eine spaeter gemalte Flaeche verfaelschen sonst die Breite,
+// Wackler Session 20); null, wenn keine Flaeche frei ist.
+// Als Anteil an der Breite der Flaeche (das Wort passt sich der Flaeche an: ein Beta-Wort auf einer kleinen Flaeche ist schmaler als ein Alpha-Wort auf einer grossen,
+// gemessen unter Last), nur Flaechen ab 40 px Seite (darunter unterscheidet die Breite die Themen nicht).
+const freieWortBreiten = (v: VideoBoxen, aus: Pix, art: string): number[] | null => {
+  const l = v.flaechen.filter((f, i) => v.arten[i] === art && istFrei(v, f) && Math.min(f[2]!, f[3]!) >= 40).map((f) => Math.round((wortBreite(aus, f, v.flaechen) / f[2]!) * 100) / 100);
+  return l.length > 0 ? l : null;
+};
 
 test('P1 mosaik im Video: Mosaik mit pinkem Rahmen, ausserhalb unveraendert (Grundlage der Presets); blur ohne Rahmen', async () => {
   test.setTimeout(180_000);
@@ -1402,14 +1467,14 @@ function deckung(a: Set<number>, b: Set<number>, breite: number, tol = 2): numbe
   return treffer / Math.max(1, a.size);
 }
 // Waagerechte Ausdehnung der Wortpixel (Breite des Wortes) innerhalb einer Flaeche.
-function wortBreite(aus: Pix, box: number[]): number {
+function wortBreite(aus: Pix, box: number[], andere: number[][] = []): number {
   const [bx, by, bw, bh] = box as [number, number, number, number];
   let min = Infinity;
   let max = -Infinity;
   for (let y = by + 6; y < by + bh - 6; y++) {
     for (let x = bx + 6; x < bx + bw - 6; x++) {
       const i = (y * aus.b + x) * 3;
-      if (istRosa(aus.daten[i]!, aus.daten[i + 1]!, aus.daten[i + 2]!)) {
+      if (istRosa(aus.daten[i]!, aus.daten[i + 1]!, aus.daten[i + 2]!) && !(andere.length > 0 && inAnderer(andere, box, x, y))) {
         min = Math.min(min, x);
         max = Math.max(max, x);
       }
@@ -1448,9 +1513,36 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
   test.setTimeout(300_000);
   await setzePack();
   const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'mia-wort', an: BEDECKBAR, art: (a) => a.includes('schwarz-wort'), extra: { woerterThemen: ['alpha'] } });
-  const f = groesste(m.v, 'schwarz-wort')!;
-  const k = kenn(m.ref, m.aus, f, 0);
+  // Messflaeche: die groesste freie (keine andere Flaeche im Ring); Rosa anderer Flaechen zaehlt nie als Rahmen (Wackler Session 20)
+  const f = groessteFrei(m.v, 'schwarz-wort')!;
+  const k = kenn(m.ref, m.aus, f, 0, m.v.flaechen);
   console.log(`chromium: P4 schwarz-wort ${JSON.stringify(k)}`);
+  {
+    // Diagnose (Wackler Session 20): woher das Rosa im Ring kommt (in welcher anderen Flaeche es liegt) und wie viel jeder Kante als Linie belegt ist
+    const RING = 6;
+    const [bx, by, bw, bh] = f as [number, number, number, number];
+    const herkunft: Record<string, number> = {};
+    const kanten = { o: new Set<number>(), u: new Set<number>(), l: new Set<number>(), r: new Set<number>() };
+    for (let y = Math.max(0, by - RING); y < Math.min(m.aus.h, by + bh + RING); y++) {
+      for (let x = Math.max(0, bx - RING); x < Math.min(m.aus.b, bx + bw + RING); x++) {
+        const i = (y * m.aus.b + x) * 3;
+        if (!istRosa(m.aus.daten[i]!, m.aus.daten[i + 1]!, m.aus.daten[i + 2]!)) continue;
+        const innen = x >= bx && x < bx + bw && y >= by && y < by + bh;
+        const abstand = Math.min(Math.abs(x - bx), Math.abs(x - (bx + bw - 1)), Math.abs(y - by), Math.abs(y - (by + bh - 1)));
+        if (innen && abstand > RING) continue;
+        const andere = m.v.flaechen.map((o, j) => (o !== f && x >= o[0]! - 2 && x < o[0]! + o[2]! + 2 && y >= o[1]! - 2 && y < o[1]! + o[3]! + 2 ? `${j}:${m.v.arten[j]}` : null)).filter((z) => z);
+        const schl = andere.length ? andere.join('+') : 'keine';
+        herkunft[schl] = (herkunft[schl] ?? 0) + 1;
+        if (Math.abs(y - by) <= 3) kanten.o.add(x);
+        if (Math.abs(y - (by + bh - 1)) <= 3) kanten.u.add(x);
+        if (Math.abs(x - bx) <= 3) kanten.l.add(y);
+        if (Math.abs(x - (bx + bw - 1)) <= 3) kanten.r.add(y);
+      }
+    }
+    const linie = { o: kanten.o.size / bw, u: kanten.u.size / bw, l: kanten.l.size / bh, r: kanten.r.size / bh };
+    console.log(`chromium: P4 DIAG f=${JSON.stringify(f)} Herkunft ${JSON.stringify(herkunft)} Kantenanteil ${JSON.stringify(Object.fromEntries(Object.entries(linie).map(([a, b]) => [a, Math.round(b * 100) / 100])))} Arten ${JSON.stringify(m.v.arten)} Flaechen ${JSON.stringify(m.v.flaechen)}`);
+    if (process.env.VEIL_WACKLER_DIR) await sharp(m.aus.daten, { raw: { width: m.aus.b, height: m.aus.h, channels: 3 } }).png().toFile(path.join(process.env.VEIL_WACKLER_DIR, `p4-${Date.now()}-rahmen${k.rahmen}.png`));
+  }
   expect(k.dunkel, 'ueberwiegend schwarz').toBeGreaterThan(0.6);
   expect(k.wort, 'pinkes Wort').toBeGreaterThan(80);
   expect(k.rahmen, 'Schwarz mit Wort hat keinen Rahmen').toBeLessThan(10);
@@ -1477,13 +1569,19 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
   expect(Math.abs(vergleich!.b1 - vergleich!.b2)).toBeLessThanOrEqual(3);
   // Themenwechsel (alpha schmal zu beta breit): die Leinwand zeichnet neu (das Urteil des Videos wird neu gefasst), ein anderes Wort steht da. Erst abwarten, bis die Seite
   // den Wechsel aufgenommen hat, sonst saehe die Aufnahme noch das alte Bild. Die Spuren beginnen neu: verglichen wird, wie breit die Woerter aller Flaechen sind.
-  const breitenAlt = m.v.flaechen.filter((_, i) => m.v.arten[i] === 'schwarz-wort').map((fl) => wortBreite(m.aus, fl));
+  // Gemessen nur auf freien Flaechen (Wackler Session 20: das Wort einer ueberlappenden Nachbarflaeche machte ein Alpha-Wort 58 px breit, eine spaeter gemalte Flaeche
+  // ein Beta-Wort 0 px); ist in der Aufnahme keine frei, gilt das Rosa der Nachbarn nicht (und Flaechen ganz ohne eigenes Rosa zaehlen nicht).
+  const ohneNachbarn = (v: VideoBoxen, aus: Pix) =>
+    v.flaechen.filter((fl, i) => v.arten[i] === 'schwarz-wort' && Math.min(fl[2]!, fl[3]!) >= 40).map((fl) => Math.round((wortBreite(aus, fl, v.flaechen) / fl[2]!) * 100) / 100).filter((b) => b > 0);
+  const breitenAlt = freieWortBreiten(m.v, m.aus, 'schwarz-wort') ?? ohneNachbarn(m.v, m.aus);
   const vorher = (await eintraege(m.s)).length;
   await setze({ woerterThemen: ['beta'] });
   await wartePoll(async () => (await eintraege(m.s)).slice(vorher).some((e) => e.was === 'data-veil'), 20_000);
-  const beta = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
-  const breitenNeu = beta.v.flaechen.filter((_, i) => beta.v.arten[i] === 'schwarz-wort').map((fl) => wortBreite(beta.aus, fl));
-  console.log(`chromium: P4 Themenwechsel: Breiten der Woerter alpha ${JSON.stringify(breitenAlt)} px gegen beta ${JSON.stringify(breitenNeu)} px`);
+  let beta = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
+  for (let versuch = 0; versuch < 4 && !freieWortBreiten(beta.v, beta.aus, 'schwarz-wort'); versuch++) beta = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
+  const breitenNeu = freieWortBreiten(beta.v, beta.aus, 'schwarz-wort') ?? ohneNachbarn(beta.v, beta.aus);
+  console.log(`chromium: P4 Themenwechsel: Breiten der Woerter (Anteil der Flaechenbreite) alpha ${JSON.stringify(breitenAlt)} gegen beta ${JSON.stringify(breitenNeu)}`);
+  expect(breitenAlt.length > 0 && breitenNeu.length > 0, 'keine messbare Flaeche fuer den Themenwechsel').toBe(true);
   expect(Math.min(...breitenNeu), 'noch ein Wort des alten Themas').toBeGreaterThan(Math.max(...breitenAlt) * 1.2);
   // Pack weg: Mia-Presets gelten ohne Pack nicht, die Videozensur zeichnet Mosaik
   await worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
@@ -1843,6 +1941,12 @@ test('P11 sticker im Video: alle Flaechen Pastell mit Rahmen, ganz gedeckt, Stic
       const my = fn[1]! + fn[3]! / 2;
       const ueberlagert = (v: VideoBoxen, eigene: number) => v.flaechen.some((o, k) => k !== eigene && mx >= o[0]! - 6 && mx <= o[0]! + o[2]! + 6 && my >= o[1]! - 6 && my <= o[1]! + o[3]! + 6);
       if (ueberlagert(neu.v, i) || ueberlagert(alt.v, j)) continue;
+      // Diagnose (Wackler Session 20): bei einem Wechsel beide Aufnahmen und beide Boxen ablegen
+      if (process.env.VEIL_WACKLER_DIR && (stAbstand(ecke(alt.aus, fa), ecke(neu.aus, fn)) >= 10 || !(stSticker(kn.mitte) && stAbstand(ka.mitte, kn.mitte) < 60))) {
+        const stamm = path.join(process.env.VEIL_WACKLER_DIR, `p11-${Date.now()}-id${id}`);
+        for (const [teil, a] of [['alt', alt], ['neu', neu]] as const) await sharp(a.aus.daten, { raw: { width: a.aus.b, height: a.aus.h, channels: 3 } }).png().toFile(`${stamm}-${teil}.png`);
+        await writeFile(`${stamm}.json`, JSON.stringify({ id, i, j, fa, fn, ka, kn, alt: alt.v, neu: neu.v }, null, 1));
+      }
       expect(stAbstand(ecke(alt.aus, fa), ecke(neu.aus, fn)), 'Pastellfarbe der Spur wechselt nicht').toBeLessThan(10);
       expect(stSticker(kn.mitte) && stAbstand(ka.mitte, kn.mitte) < 60, `Sticker der Spur wechselt nicht (${ka.mitte.map(Math.round)} gegen ${kn.mitte.map(Math.round)})`).toBe(true);
       verglichen++;
