@@ -193,6 +193,9 @@ export interface NachrichtErkennerPruefe {
   rendern: boolean;
   // Zonen-Video (Bauplan Video-Zonen): diese Pruefung geht in der Warteschlange des Erkenners vor (Interview Punkt 2: Sicherheit zuerst).
   vorrang?: true;
+  // Nur der Bild-Weg setzt es (Phase 11 E1): gleichrangige Flaechen werden zu Huellen verschmolzen. Fehlt es (Video-Wege, Leinwand, Canvas, ungeklaerte
+  // Aufrufer), liefert der Erkenner die Flaechen unverschmolzen wie vor E1: S1 gilt auch fuer Videos (boxenAnteil, Spuren).
+  verschmelzen?: true;
 }
 // Phase 4: ein Bild aus dem Pack fuer das Content-Script (Pruefer-Fund 1, wie Mia-Patch Entscheidung 65): der Erkenner (Chrome Offscreen,
 // Firefox Hintergrund) liest das Bild aus IndexedDB und liefert eine verkleinerte Data-URL (laengste Seite hoechstens PACKBILD_MAX_SEITE,
@@ -247,7 +250,9 @@ export interface Treffer { zone: Zone; bedeckt: boolean; score: number; box: Box
 // behandlung: wie die Flaeche gezeichnet wird (src/presets.ts); fehlt sie, gilt die Behandlung des Presets fuer ein ganzes Bild.
 // ersatz: nur bei `mia-gesicht`: Behandlung, wenn kein Gesichts-Patch passt oder keins zu haben ist.
 export interface Augenbalken { mitte: [number, number]; breite: number; hoehe: number; winkel: number }
-export interface Flaeche { zone: Zone; box: Box; balken?: Augenbalken; behandlung?: Behandlung; ersatz?: Behandlung }
+// wortBox: das groesste freie Rechteck der Flaeche, das keine aufgelegte Flaeche (Mias Gesicht, Augenbalken) schneidet; dort stehen Wort und
+// Sticker. Fehlt das Feld, gilt `box`; null: kein freies Rechteck (kein Wort, kein Sticker, die Flaeche deckt trotzdem).
+export interface Flaeche { zone: Zone; box: Box; balken?: Augenbalken; behandlung?: Behandlung; ersatz?: Behandlung; wortBox?: Box | null }
 
 export interface ZeitenPruefung {
   netz: number;

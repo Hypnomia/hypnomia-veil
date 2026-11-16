@@ -229,6 +229,31 @@ export function ohneWort(b: Behandlung): Behandlung {
 }
 export const hatWort = (b: Behandlung): boolean => b === 'mosaik-wort' || b === 'schwarz-wort';
 
+// Regel O2 (Phase 11): je sichtbar zusammenhaengender Flaeche hoechstens ein Wort oder Sticker. Faellt eine aufgelegte Gesichtsflaeche auf ihre Ersatz-
+// behandlung zurueck (kein passender Patch) und die Ersatzbehandlung traegt ein Wort oder einen Sticker, schneidet sie aber eine Flaeche, die schon
+// eine Marke (Wort oder Sticker) traegt, dann entfaellt ihre Marke: Variante ohne Wort bzw. Sticker-Flaeche ohne Sticker. Die Deckung bleibt voll,
+// nur die Marke entfaellt. Steht sie allein, behaelt sie ihre Marke. `markierte`: die Boxen der Flaechen, die in diesem Bild schon eine Marke tragen.
+export type BoxLike = readonly [number, number, number, number];
+const schneidetBox = (a: BoxLike, b: BoxLike): boolean => Math.min(a[0] + a[2], b[0] + b[2]) > Math.max(a[0], b[0]) && Math.min(a[1] + a[3], b[1] + b[3]) > Math.max(a[1], b[1]);
+export const traegtMarkeArt = (b: Behandlung): boolean => hatWort(b) || b === 'sticker';
+export function ersatzMitMarke(b: Behandlung, box: BoxLike, markierte: readonly BoxLike[]): { behandlung: Behandlung; ohneSticker: boolean } {
+  if (!traegtMarkeArt(b) || !markierte.some((m) => schneidetBox(m, box))) return { behandlung: b, ohneSticker: false };
+  return { behandlung: ohneWort(b), ohneSticker: b === 'sticker' };
+}
+
+// Staerke einer Behandlung beim Verschmelzen von Flaechen (Phase 11, S1): Schwarz (mit oder ohne Wort, auch der Augenbalken) vor Sticker vor
+// Mosaik (mit oder ohne Wort) vor Weichzeichner. Mias Gesicht wird nie verschmolzen; sicherheitshalber zaehlt es wie Mosaik.
+const RANG: Readonly<Record<Behandlung, number>> = { blur: 0, mosaik: 1, 'mosaik-wort': 1, 'mia-gesicht': 1, sticker: 2, schwarz: 3, 'schwarz-wort': 3, balken: 3 };
+export const behandlungsRang = (b: Behandlung): number => RANG[b];
+// Die staerkste Behandlung einer Liste; das Wort bleibt, wenn eine der staerksten Flaechen eines traegt. Eine Flaeche ohne Behandlung gilt als
+// `standard` (im Zeichner ist das die Behandlung des Presets fuer ein ganzes Bild); sie wird nie uebergangen.
+export function staerksteBehandlung(liste: readonly (Behandlung | undefined)[], standard: Behandlung): Behandlung {
+  const da = liste.map((b) => b ?? standard);
+  const top = Math.max(...da.map(behandlungsRang));
+  const gleich = da.filter((b) => behandlungsRang(b) === top);
+  return gleich.find(hatWort) ?? gleich[0] ?? standard;
+}
+
 // Mias Gesicht: Ausschnitt um das gefundene Gesicht eines Patch-Bildes. Rand 25 % der Gesichtsbox je Seite, danach auf das Seitenverhaeltnis
 // 3:4 (Breite zu Hoehe) gebracht (zuerst die Breite erweitern, sonst die Hoehe), auf das Bild begrenzt (dabei kann das Verhaeltnis kleiner
 // werden, dann bleibt es, wie es ist). Kommazahlen; [x, y, w, h].

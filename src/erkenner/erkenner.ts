@@ -85,7 +85,7 @@ async function stickerFuer(
   // Nach dem ersten Lesefehler oder der ersten Zeitueberschreitung der Pack-Datenbank wird fuer diese Pruefung nichts weiter angefordert (holeJeFlaeche).
   const bilder = await holeJeFlaeche<CanvasImageSource>(
     flaechen.length,
-    (i) => kannSticker(flaechen[i]!) && stickerPasst(flaechen[i]!.box, anzeigeSkala),
+    (i) => kannSticker(flaechen[i]!) && stickerPasst(flaechen[i]!.wortBox === undefined ? flaechen[i]!.box : (flaechen[i]!.wortBox ?? [0, 0, 0, 0]), anzeigeSkala),
     async (i) => {
       try {
         const r = await waehleSticker(schluessel[i]!, packStand);
@@ -482,7 +482,7 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
       ? [{ zone: 'face' as const, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number], behandlung: ganz }]
       : frau
       ? [{ zone: frau.zone, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number], behandlung: ganz }]
-      : berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe);
+      : berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe, n.verschmelzen === true);
     const tNach = jetzt();
     let bild: string | undefined;
     if (n.rendern && flaechen.length > 0) {

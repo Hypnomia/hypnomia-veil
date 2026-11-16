@@ -80,6 +80,8 @@ export const WERTE: Record<string, string> = {
   fingerziel: '44px',
   // Ikone fuer den Pause-Knopf der Erweiterungsseiten (weiss, auf dem Akzent-Verlauf): zwei Balken, im Pausen-Zustand ein Abspiel-Dreieck.
   'ikon-pause': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3Crect x='13.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3C/svg%3E")`,
+  // Pfeil der Auswahlfelder (Regel O6, Phase 11 E4a): Strich in rosa-800, 12 x 8.
+  'ikon-pfeil': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='${FARBEN['rosa-800'].replace('#', '%23')}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
   'ikon-weiter': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.5 6.8 17.5 12l-8 5.2z' fill='white' stroke='white' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E")`,
 };
 
@@ -111,7 +113,15 @@ export const GEMEINSAM = `.v-augenpaar { display: inline-flex; gap: 3px; flex: n
 // Nur Erweiterungsseiten (tokens.css, nicht SEITEN_TOKENS): ein gemeinsamer Regler fuer Willkommensseite, Popup und Einstellungsseite
 // (Lesung W/U/O Nr. 3). Spur zart rosa nach lavendel, gefuellt im Akzent-Verlauf bis zum Wert; Chromium liest den Wert aus `--wert`
 // (regler.ts setzt ihn), Firefox fuellt selbst. Griff weiss mit rosa Ring. Fingerflaeche: Feldhoehe 32 px, 44 px bei Finger und schmal.
-export const ERWEITERUNG = `input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; }
+export const ERWEITERUNG = `/* Auswahlfelder (Regel O6): eine Gestalt fuer alle select der Erweiterungsseiten; Pfeil 16 px vom rechten Rand, Text nie darunter. */
+select { -webkit-appearance: none; appearance: none; box-sizing: border-box; max-width: 100%; min-height: 40px; padding: 6px 44px 6px 12px;
+  border: 1.5px solid var(--v-rand); border-radius: var(--v-r-s); color: var(--v-text); cursor: pointer; text-overflow: ellipsis;
+  font: 700 16px var(--v-schrift-text);
+  background: var(--v-weiss) var(--v-ikon-pfeil) right 16px center / 12px 8px no-repeat; }
+select:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 3px; }
+select:disabled { opacity: 0.55; cursor: default; }
+@media (max-width: 480px), (pointer: coarse) { select { min-height: var(--v-fingerziel); } }
+input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; }
 input[type='range']::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; box-shadow: inset 0 1px 2px rgba(67, 40, 60, 0.18);
   background: linear-gradient(90deg, #b8327a, #8a3fb8) 0 0 / var(--wert, 0%) 100% no-repeat, linear-gradient(90deg, var(--v-rosa-200), var(--v-lav-200)); }
 input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; margin-top: -8px; border-radius: 50%; border: 0;

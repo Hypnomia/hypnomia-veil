@@ -142,6 +142,9 @@ try {
   pruefe((await text('#kon-pack-hinweis')).includes('Mia Pack'), 'ohne Pack Hinweis nennt das Pack');
   pruefe((await eigenschaft('#kon-werbung', 'checked')) === false, 'Werbung standardmaessig aus (Opt-in, Entscheidung 179)');
   pruefe((await eigenschaft('#kon-blitz', 'value')) === 'selten', 'Blitzwoerter standardmaessig selten');
+  // Phase 11 E4a (Regel O6): Auswahlfeld nach der gemeinsamen Regel (kein Browser-Standard, Pfeil 16 px vom Rand, Text nie unter dem Pfeil).
+  const auswahl = await driver.executeScript(`const c = getComputedStyle(document.querySelector('#kon-blitz')); return { app: c.appearance, pr: parseFloat(c.paddingRight), pos: c.backgroundPosition, rad: c.borderTopLeftRadius, h: document.querySelector('#kon-blitz').getBoundingClientRect().height };`);
+  pruefe(auswahl.app === 'none' && auswahl.pr >= 44 && /16px/.test(auswahl.pos) && auswahl.rad === '12px' && auswahl.h >= 40, `Auswahlfeld nach Regel O6 (${JSON.stringify(auswahl)})`);
   pruefe((await eigenschaft('#kon-leerlauf', 'checked')) === true, 'Spirale standardmaessig an');
   pruefe((await eigenschaft('#kon-minuten', 'value')) === '2', 'Spirale nach 2 Minuten');
 

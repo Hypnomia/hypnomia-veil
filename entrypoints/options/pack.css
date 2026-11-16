@@ -204,18 +204,6 @@
   font-size: 15px;
 }
 
-#einrichten select {
-  -webkit-appearance: none;
-  appearance: none;
-  min-height: 40px;
-  padding: 6px 34px 6px 12px;
-  border: 1.5px solid var(--v-rand);
-  border-radius: var(--v-r-s);
-  background: var(--v-weiss) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a2759' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 12px center / 12px 8px no-repeat;
-  color: var(--v-text);
-  font: 700 16px var(--v-schrift-text);
-}
-
 #einrichten .regel {
   align-items: center;
 }

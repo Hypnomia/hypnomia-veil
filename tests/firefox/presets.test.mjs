@@ -150,7 +150,7 @@ function messung(o) {
     const dataUrl = await alsDataUrl(await c.convertToBlob({ type: 'image/jpeg', quality: 0.92 }));
     const orig = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     const sende = async (preset) => JSON.parse(JSON.stringify(await api.runtime.sendMessage({ ziel: 'erkenner', typ: 'pruefe', id: 'ff-m-' + Math.random(), quelle: { art: 'daten', dataUrl },
-      breite: o.anzeige ? Math.round(c.width * o.anzeige) : 0, hoehe: o.anzeige ? Math.round(c.height * o.anzeige) : 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, preset, ...(o.themen !== undefined ? { woerterThemen: o.themen } : {}), ...(o.ganz ? { ganzVerdecken: true } : {}) }, rendern: true })));
+      breite: o.anzeige ? Math.round(c.width * o.anzeige) : 0, hoehe: o.anzeige ? Math.round(c.height * o.anzeige) : 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, preset, ...(o.themen !== undefined ? { woerterThemen: o.themen } : {}), ...(o.ganz ? { ganzVerdecken: true } : {}) }, rendern: true, ...(o.ohneVerschmelzen ? {} : { verschmelzen: true }) })));
     const lade = async (a) => {
       const b = await createImageBitmap(await (await fetch(a.bild)).blob());
       const k = new OffscreenCanvas(b.width, b.height); const x = k.getContext('2d'); x.drawImage(b, 0, 0);
@@ -401,6 +401,25 @@ try {
     pruefe(pm.stats[0].kern.mittel > 3 && pm.aussen < 4, `Ganze Person: Huelle veraendert, ausserhalb unveraendert (${pm.aussen})`);
     const pb = await messung({ basis, satz: 'nsfw', name: KOERPER_BILD, klein: true, preset: 'person-blur', an: ['feet'] });
     pruefe(pb.flaechen.length >= 1 && pb.flaechen.every((f) => f.behandlung === 'blur'), 'Ganze Person (Blur)');
+    // O1 (Phase 11 Etappe 1): gleichrangige Flaechen schneiden sich nie (Mias Gesicht und Augenbalken liegen absichtlich auf), mit allen Koerperzonen
+    const schneidendePaare = (fl) => {
+      const g = fl.filter((f) => f.behandlung !== 'mia-gesicht' && f.behandlung !== 'balken');
+      let n = 0;
+      for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) {
+        const a = g[i].box;
+        const b = g[j].box;
+        if (Math.min(a[0] + a[2], b[0] + b[2]) > Math.max(a[0], b[0]) && Math.min(a[1] + a[3], b[1] + b[3]) > Math.max(a[1], b[1])) n++;
+      }
+      return n;
+    };
+    // Bild mit dicht liegenden Zonen (jugendfrei): vor dem Verschmelzen schneiden sich dort Flaechen (Phase 11 Messung: 13 auf 5 Flaechen)
+    const O1_BILD = 'sfw-016-figur.jpg';
+    const o1Mosaik = await messung({ basis, satz: 'sfw', name: O1_BILD, klein: true, preset: 'mosaik', an: ['breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'] });
+    const o1Wort = await messung({ basis, satz: 'sfw', name: O1_BILD, klein: true, preset: 'mia-wort', an: ['breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'] });
+    // N4: ohne Verschmelzen (Video-Weg) schneiden sich auf diesem Bild Flaechen, mit Verschmelzen nicht mehr
+    const o1Roh = await messung({ basis, satz: 'sfw', name: O1_BILD, klein: true, preset: 'mosaik', an: ['breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'], ohneVerschmelzen: true });
+    pruefe(schneidendePaare(o1Roh.flaechen) > 0 && o1Roh.flaechen.length > o1Mosaik.flaechen.length, `O1: das Bild hatte vor dem Verschmelzen sich schneidende Flaechen (${schneidendePaare(o1Roh.flaechen)} Paare, ${o1Roh.flaechen.length} auf ${o1Mosaik.flaechen.length} Flaechen)`);
+    pruefe(schneidendePaare(o1Wort.flaechen) === 0 && schneidendePaare(o1Mosaik.flaechen) === 0, `O1: keine sich schneidenden gleichrangigen Flaechen (mia-wort ${o1Wort.flaechen.length}, mosaik ${o1Mosaik.flaechen.length} Flaechen)`);
     // Stufe 4 (ganz verdecken) mit einem Mia-Preset: das ganze Bild schwarz mit Wort
     const s4 = await messung({ basis, satz: 'nsfw', name: 'IMG_0260.jpg', klein: true, preset: 'mia-wort', an: ['feet', 'face'], ganz: true });
     if (!s4.keinBild) {

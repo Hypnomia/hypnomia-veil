@@ -65,6 +65,7 @@
   --v-zyklus-spirale: 14s;
   --v-fingerziel: 44px;
   --v-ikon-pause: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3Crect x='13.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3C/svg%3E");
+  --v-ikon-pfeil: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a2759' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --v-ikon-weiter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.5 6.8 17.5 12l-8 5.2z' fill='white' stroke='white' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
@@ -76,6 +77,14 @@
 .v-dreht { animation: v-dreh var(--v-zyklus-spirale) linear infinite; transform-origin: 0 0; }
 .v-funkel { animation: v-funkeln var(--v-zyklus-funkel) ease-in-out infinite; }
 /* Nur Erweiterungsseiten: gemeinsamer Regler (regler.ts setzt --wert fuer Chromium). */
+/* Auswahlfelder (Regel O6): eine Gestalt fuer alle select der Erweiterungsseiten; Pfeil 16 px vom rechten Rand, Text nie darunter. */
+select { -webkit-appearance: none; appearance: none; box-sizing: border-box; max-width: 100%; min-height: 40px; padding: 6px 44px 6px 12px;
+  border: 1.5px solid var(--v-rand); border-radius: var(--v-r-s); color: var(--v-text); cursor: pointer; text-overflow: ellipsis;
+  font: 700 16px var(--v-schrift-text);
+  background: var(--v-weiss) var(--v-ikon-pfeil) right 16px center / 12px 8px no-repeat; }
+select:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 3px; }
+select:disabled { opacity: 0.55; cursor: default; }
+@media (max-width: 480px), (pointer: coarse) { select { min-height: var(--v-fingerziel); } }
 input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; }
 input[type='range']::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; box-shadow: inset 0 1px 2px rgba(67, 40, 60, 0.18);
   background: linear-gradient(90deg, #b8327a, #8a3fb8) 0 0 / var(--wert, 0%) 100% no-repeat, linear-gradient(90deg, var(--v-rosa-200), var(--v-lav-200)); }

@@ -362,7 +362,6 @@ input[type='range'] {
 }
 
 /* Phase 5: Abschnitt "Mia’s control" */
-#kontrolle select,
 #kontrolle input[type='number'] {
   font: inherit;
   color: var(--text);
@@ -661,7 +660,6 @@ section:empty {
     gap: 2px;
   }
   .zeit-zeile input[type='time'],
-  #kontrolle select,
   #kontrolle input[type='number'],
   .zeile input[type='text'] {
     min-height: 44px;
@@ -988,8 +986,7 @@ button.klein:hover:not(:disabled) {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible,
-select:focus-visible {
+input:focus-visible {
   outline: 3px solid var(--v-lav-500);
   outline-offset: 3px;
 }
@@ -1113,7 +1110,6 @@ input[type='range'] {
 
 /* Felder */
 .zeile input[type='text'],
-#kontrolle select,
 #kontrolle input[type='number'],
 .zeit-zeile input[type='time'] {
   border: 1.5px solid var(--v-rand);
@@ -1198,12 +1194,6 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 
-@media (min-width: 481px) and (pointer: fine) {
-  #kontrolle select {
-    min-height: 36px;
-  }
-}
-
 /* Nr. 5 (Runde 3): der Fokusrahmen der Chips passt in das Polster der Leiste (5 px). */
 #sprung a:focus-visible {
   outline-offset: 2px;
@@ -1215,18 +1205,6 @@ input[type='checkbox'] {
   color: var(--v-fehler);
   border-color: var(--v-fehler);
   background: var(--v-weiss);
-}
-
-/* UX-Pruefung 8b Nr. 6: Auswahlfelder im Look A (eigener Pfeil, runder Rand) statt Browser-Standard. */
-#kontrolle select {
-  -webkit-appearance: none;
-  appearance: none;
-  padding: 6px 34px 6px 12px;
-  border: 1.5px solid var(--v-rand);
-  border-radius: var(--v-r-s);
-  background: var(--v-weiss) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a2759' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 12px center / 12px 8px no-repeat;
-  color: var(--v-text);
-  font-weight: 700;
 }
 
 /* Session 17: Weg zur Hilfe-Seite neben "Settings" im Kopf. */

@@ -179,6 +179,8 @@ export async function sendePruefe(
   rendern: boolean,
   packStand?: number,
   vorrang = false,
+  // Nur der Bild-Weg verschmilzt Flaechen zu Huellen (Phase 11 E1); Video, Canvas und alle anderen Aufrufer lassen es aus.
+  verschmelzen = false,
 ): Promise<AntwortPruefe> {
   const id = `${idPraefix}-${++zaehler}`;
   const angepasst = zonenAnpassung?.(e) ?? null;
@@ -200,6 +202,7 @@ export async function sendePruefe(
     },
     rendern,
     ...(vorrang ? { vorrang: true as const } : {}),
+    ...(verschmelzen ? { verschmelzen: true as const } : {}),
   };
   // Zeitgrenze: ein haengender Erkenner (oder ein haengender Bildserver beim Nachladen) darf das Element nicht ewig offen halten.
   // Nach Ablauf gilt die Anfrage als Fehler; die Antwort, die vielleicht spaeter noch kommt, wird verworfen.

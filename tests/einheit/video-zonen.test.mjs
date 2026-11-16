@@ -36,7 +36,7 @@ import { readFileSync } from 'node:fs';
 import { PRESET_IDS, PRESETS, behandlungFuerZone, ganzesBildBehandlung, personenGruppen } from '../../src/presets.ts';
 import { SchriftVersuche, SCHRIFT_PAUSEN_MS } from '../../src/oberflaeche/design/schrift-versuche.ts';
 import { vervollstaendige, ZONEN } from '../../src/einstellungen.ts';
-import { berechneFlaechen, yunetTreffer } from '../../src/erkenner/zonen.ts';
+import { aktiveZonenBoxen, berechneFlaechen, fuehreZusammen, mitRand, yunetTreffer } from '../../src/erkenner/zonen.ts';
 import { Schranke } from '../../src/erkenner/schranke.ts';
 
 const nah = (a, b, eps = 0.01) => assert.ok(Math.abs(a - b) <= eps, `${a} ist nicht ${b} (+-${eps})`);
@@ -814,7 +814,7 @@ const alleFlaechen = (preset, faceAn) => {
   const gesicht = { score: 0.9, box: [100, 100, 120, 150], punkte: [[130, 150], [190, 150], [0, 0], [0, 0], [0, 0]] };
   const treffer = yunetTreffer(gesicht, 500, 500);
   treffer.push({ zone: 'breast', bedeckt: false, score: 0.9, box: [0, 300, 200, 100] });
-  return berechneFlaechen(treffer, { zonen, rand: 0.1, preset }, 500, 500);
+  return berechneFlaechen(treffer, { zonen, rand: 0.1, preset }, 500, 500, false);
 };
 const lageVoll = { gesichtPasst: true, wortDa: true, wortPasst: true };
 
@@ -1033,4 +1033,48 @@ test('istSprung: Rueckwaertsgrenze ist die Uhr-Toleranz', () => {
   const tol = uhrToleranz();
   assert.equal(istSprung(3.293, 3.293 - tol + 0.001, 0.75), false);
   assert.equal(istSprung(3.293, 3.293 - tol - 0.001, 0.75), true);
+});
+
+// ---------- Phase 11 E1, H1: der Video-Weg bekommt die Flaechen wie vor Etappe 1 (unverschmolzen) ----------
+// Wachter: ohne das sinkt `boxenAnteil` (Summe der Einzelflaechen) durch die Huelle, und das Video kippte von "ganz" auf Zonen (weniger Deckung).
+
+const kanten = (fl) => fl.map((f) => ({ l: f.box[0], t: f.box[1], r: f.box[0] + f.box[2], b: f.box[1] + f.box[3] }));
+const trf = (zone, box) => ({ zone, bedeckt: false, score: 0.9, box });
+const H1_ZONEN = Object.fromEntries(ZONEN.map((z) => [z, { an: ['breast', 'belly', 'genitals', 'feet', 'face', 'head', 'eyes', 'mouth'].includes(z), bedeckt: false }]));
+
+test('H1 (1): ohne den Schalter liefert berechneFlaechen genau die Flaechen wie vor Etappe 1 (Zahl, Boxen, Zone, Behandlung, kein wortBox), in allen Zonen-Presets', () => {
+  const tr = [trf('breast', [100, 100, 260, 260]), trf('belly', [190, 190, 260, 260]), trf('genitals', [120, 330, 120, 100]), trf('feet', [520, 520, 60, 70])];
+  for (const preset of ['mosaik', 'mosaik-wort', 'blur', 'sticker', 'zensurbalken']) {
+    const d = PRESETS[preset];
+    const einst = { zonen: H1_ZONEN, rand: 0.15, preset };
+    // Bezug: die Rechnung am Stand HEAD (zusammenfuehren, Rand, Behandlung nach Zone), ohne Verschmelzen
+    const bezug = mitRand(fuehreZusammen(aktiveZonenBoxen(tr, d.augen === 'balken-immer' ? { ...H1_ZONEN, eyes: { an: false } } : H1_ZONEN, 600, 600)), 0.15, 600, 600).map((f) => ({
+      zone: f.zone,
+      box: f.box,
+      behandlung: f.zone === 'face' ? d.gesicht : d.koerper,
+    }));
+    const video = berechneFlaechen(tr, einst, 600, 600, false).filter((f) => f.behandlung !== 'balken');
+    assert.deepEqual(video, bezug, `${preset}: Video-Weg wie HEAD`);
+    assert.ok(video.every((f) => !('wortBox' in f)), `${preset}: kein wortBox im Video-Weg`);
+    // das Verschmelzen (Bild-Weg) deckt nie weniger Pixel, hat aber weniger oder gleich viele Flaechen
+    const bild = berechneFlaechen(tr, einst, 600, 600, true).filter((f) => f.behandlung !== 'balken');
+    assert.ok(bild.length < video.length, `${preset}: Bild-Weg hat Huellen (${bild.length} gegen ${video.length})`);
+  }
+});
+
+test('H1 (2): zwei sich schneidende Flaechen, deren Summe ueber 0,6 liegt und deren Huelle darunter: der Video-Weg bleibt "ganz", der verschmolzene Bild-Weg wuerde kippen', () => {
+  const tr = [trf('breast', [100, 100, 260, 260]), trf('belly', [190, 190, 260, 260])];
+  const einst = { zonen: H1_ZONEN, rand: 0.15, preset: 'mosaik' };
+  const video = berechneFlaechen(tr, einst, 600, 600, false);
+  const bild = berechneFlaechen(tr, einst, 600, 600, true);
+  assert.equal(video.length, 2);
+  assert.equal(bild.length, 1);
+  const anteilVideo = boxenAnteil(kanten(video), 600, 600);
+  const anteilBild = boxenAnteil(kanten(bild), 600, 600);
+  assert.ok(anteilVideo > 0.6 && anteilBild < 0.6, `Voraussetzung: Summe ${anteilVideo.toFixed(3)} ueber, Huelle ${anteilBild.toFixed(3)} unter 0,6`);
+  const fakten = { alter: 0.1, alterMax: 0.6, schnitt: false, sprung: false, wartetAufSzene: false, ganzAnteil: 0.6, fehler: false };
+  assert.deepEqual(entscheideAnsicht({ ...fakten, anteil: anteilVideo }), { ansicht: 'ganz', grund: 'anteil' }, 'Video-Weg: ganz');
+  assert.equal(entscheideAnsicht({ ...fakten, anteil: anteilBild }).ansicht, 'zonen', 'Gegenprobe: mit der Huelle wuerde das Video auf Zonen kippen');
+  // nie weniger als vor dem Umbau
+  assert.ok(anteilVideo >= boxenAnteil(kanten(mitRand(fuehreZusammen(aktiveZonenBoxen(tr, H1_ZONEN, 600, 600)), 0.15, 600, 600)), 600, 600) - 1e-9);
 });

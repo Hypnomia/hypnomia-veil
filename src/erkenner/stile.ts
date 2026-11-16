@@ -3,7 +3,7 @@
 // er zur Flaeche passt, mit pinkem Rahmen) oder Sticker (deckende Pastell-Flaeche mit Rahmen, darauf mittig ein Sticker des Packs). Ausgabe als JPEG-Data-URL (PNG, wenn die Quelle Durchsichtiges hat und nur Balken oder Schwarz kommen).
 
 import { FARBEN, WERTE } from '../oberflaeche/design/werte.ts';
-import { ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
+import { ersatzMitMarke, ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
 import { stickerFarbe, stickerPasst, stickerRechteck } from '../sticker.ts';
 import type { Box, Flaeche } from '../nachrichten';
 
@@ -243,7 +243,8 @@ export function kannAlpha(typ: string): boolean {
 // `source-over`, keinen Clip und haengt an nichts vom Sticker; das Zeichnen des Stickers kann sie nie loeschen oder durchsichtig machen (nur `drawImage`
 // mit `source-over`, kein `clearRect`, kein `destination-out`). Scheitert der Sticker (geschlossenes Bitmap), bleibt die Flaeche stehen.
 // `farbe`: Hex-Farbe der Flaeche (src/sticker.ts stickerFarbe). `anzeigeSkala`: Darstellungsgroesse durch Arbeitsbild, wie bei `patchPasst`.
-export function zeichneSticker(ctx: Kontext, box: Box, farbe: string, sticker: CanvasImageSource | null | undefined, anzeigeSkala = 1): void {
+// `stickerBox`: wohin der Sticker kommt (Flaeche ohne aufgelegtes Gesicht darunter: die Flaeche selbst), null: kein Sticker.
+export function zeichneSticker(ctx: Kontext, box: Box, farbe: string, sticker: CanvasImageSource | null | undefined, anzeigeSkala = 1, stickerBox: Box | null = box): void {
   const [x, y, w, h] = box;
   ctx.save();
   try {
@@ -255,9 +256,9 @@ export function zeichneSticker(ctx: Kontext, box: Box, farbe: string, sticker: C
     ctx.restore();
   }
   zeichneRahmen(ctx, box);
-  if (!sticker || !stickerPasst(box, anzeigeSkala)) return;
+  if (!sticker || !stickerBox || !stickerPasst(stickerBox, anzeigeSkala)) return;
   const m = bildMass(sticker);
-  const r = stickerRechteck(box, m.b, m.h, rahmenBreite(w, h));
+  const r = stickerRechteck(stickerBox, m.b, m.h, rahmenBreite(stickerBox[2], stickerBox[3]));
   if (!r) return;
   ctx.save();
   try {
@@ -350,17 +351,24 @@ export async function rendereZensur(
   ctx.drawImage(quelle, 0, 0, leinwand.width, leinwand.height);
   const blurOk = kannFilter(ctx);
   const standard = ganzesBildBehandlung(preset);
+  // Boxen der Flaechen, die schon ein Wort oder einen Sticker gemalt haben (Regel O2: je zusammenhaengender Flaeche hoechstens eine Marke).
+  const markierte: Box[] = [];
   flaechen.forEach((f, i) => {
     let b: Behandlung = f.behandlung ?? standard;
+    let ohneSticker = false;
     if (b === 'mia-gesicht') {
       const g = optionen.gesichter?.[i];
       const w = f.balken ? f.balken.breite : f.box[2];
       const h = f.balken ? f.balken.hoehe : f.box[3];
       if (g && patchPasst([0, 0, w, h], g.ausschnitt[2], g.ausschnitt[3], optionen.anzeigeSkala) && zeichneGesicht(ctx, f, g.bild, g.ausschnitt)) return;
-      b = f.ersatz && f.ersatz !== 'mia-gesicht' ? f.ersatz : 'mosaik';
+      const ersatz = ersatzMitMarke(f.ersatz && f.ersatz !== 'mia-gesicht' ? f.ersatz : 'mosaik', f.box, markierte);
+      b = ersatz.behandlung;
+      ohneSticker = ersatz.ohneSticker;
     }
+    // Wort und Sticker stehen in der wortBox (frei von aufgelegten Flaechen, Phase 11 O2); ohne Feld in der Flaeche selbst, null: nirgends.
+    const zb: Box | null = f.wortBox === undefined ? f.box : f.wortBox;
     const wort = hatWort(b) ? (optionen.woerter?.[i] ?? '') : '';
-    if (hatWort(b) && (wort === '' || !wortPasst(f.box[2], f.box[3], optionen.anzeigeSkala))) b = ohneWort(b);
+    if (hatWort(b) && (wort === '' || !zb || !wortPasst(zb[2], zb[3], optionen.anzeigeSkala))) b = ohneWort(b);
     switch (b) {
       case 'schwarz':
       case 'balken':
@@ -368,7 +376,8 @@ export async function rendereZensur(
         return;
       case 'schwarz-wort':
         zeichneSchwarz(ctx, f);
-        zeichneWort(ctx, wort, f.box, false);
+        zeichneWort(ctx, wort, zb!, false);
+        markierte.push(f.box);
         return;
       case 'blur':
         if (blurOk) zeichneBlur(ctx, quelle, f.box, leinwand.width, leinwand.height);
@@ -376,10 +385,15 @@ export async function rendereZensur(
         return;
       case 'mosaik-wort':
         zeichneMosaik(ctx, quelle, f.box);
-        zeichneWort(ctx, wort, f.box, true);
+        zeichneWort(ctx, wort, zb!, true);
+        markierte.push(f.box);
         return;
       case 'sticker':
-        zeichneSticker(ctx, f.box, stickerFarbe(optionen.stickerSchluessel?.[i] ?? `${f.zone}|${f.box.join(',')}`), optionen.sticker?.[i] ?? null, optionen.anzeigeSkala);
+        {
+          const bild = ohneSticker ? null : (optionen.sticker?.[i] ?? null);
+          zeichneSticker(ctx, f.box, stickerFarbe(optionen.stickerSchluessel?.[i] ?? `${f.zone}|${f.box.join(',')}`), bild, optionen.anzeigeSkala, zb);
+          if (bild && zb && stickerPasst(zb, optionen.anzeigeSkala)) markierte.push(f.box);
+        }
         return;
       default:
         zeichneMosaik(ctx, quelle, f.box);

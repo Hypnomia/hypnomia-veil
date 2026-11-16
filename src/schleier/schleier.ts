@@ -1087,8 +1087,11 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // Fragt den Erkenner (mit Zwischenspeicher, gleiche Adresse nur einmal gleichzeitig). null = nicht lesbar, freigeben.
   // Schluessel fuer Zwischenspeicher und laufende Anfragen: Epoche der pruefrelevanten Einstellungen plus Adresse.
-  function schluesselFuer(adresse: string): string {
-    return `${epoche}|${adresse}`;
+  // Der Zwischenspeicher haelt nur Antworten des Bild-Wegs, und der verschmilzt die Flaechen (Phase 11 E1). Der Schalter steht im Schluessel, damit eine
+  // verschmolzene Antwort nie fuer eine Anfrage ohne Schalter geliefert wird und umgekehrt, auch wenn ein neuer Aufrufer dazukommt.
+  const BILD_VERSCHMILZT = true;
+  function schluesselFuer(adresse: string, verschmilzt = BILD_VERSCHMILZT): string {
+    return `${epoche}|${verschmilzt ? 'v' : 'e'}|${adresse}`;
   }
 
   async function frageNach(
@@ -1107,7 +1110,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (!q) return null;
       if ('fehler' in q) return { ok: false, id: '', fehler: q.endgueltig ? FEHLER_NICHT_PRUEFBAR : q.fehler } as AntwortPruefe;
       if (!(await wecke(lebt))) return { ok: false, id: '', fehler: 'Erkenner nicht erreichbar' } as AntwortPruefe;
-      return sendePruefe(q.quelle, q.breite, q.hoehe, e, true, packStandFuer(e));
+      return sendePruefe(q.quelle, q.breite, q.hoehe, e, true, packStandFuer(e), false, BILD_VERSCHMILZT);
     });
     // Nur ablegen, wenn sich die pruefrelevanten Einstellungen inzwischen nicht geaendert haben.
     if (antwort?.ok && dieseEpoche === epoche) speicher.lege(schluessel, antwort);

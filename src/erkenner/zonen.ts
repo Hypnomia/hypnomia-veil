@@ -2,9 +2,10 @@
 // Vorbild fuer das Zusammenfuehren ist clean_boxes des alten Tools (gleiche Zone verschmelzen, Verschachteltes in Kopf oder Gesicht weglassen).
 
 import type { Einstellungen, Zone } from '../einstellungen';
-import { PRESETS, personenGruppen, type Preset } from '../presets.ts';
+import { PRESETS, ganzesBildBehandlung, personenGruppen, type Preset } from '../presets.ts';
 import type { Box, Flaeche, Treffer } from '../nachrichten';
 import type { YunetGesicht } from './yunet';
+import { setzeWortBoxen, verschmelze } from './verschmelzen.ts';
 
 // Gleiche Zone: Vereinigung, wenn IoU ueber diesem Wert oder Ueberdeckung ueber dem zweiten Wert.
 const ZUSAMMEN_IOU = 0.3;
@@ -314,15 +315,18 @@ export function berechnePersonen(
   breite: number,
   hoehe: number,
   rand = 0,
+  verschmelzen = false,
 ): Flaeche[] {
   // Jede Treffer-Box wird zuerst um den Sicherheitsrand der Einstellungen erweitert wie bei den Zonen-Flaechen: die Person ist nie kleiner
   // als das, was die Zonen allein deckten.
   const boxen = treffer.map((t) => begrenzeBox(t.box[0] - t.box[2] * rand, t.box[1] - t.box[3] * rand, t.box[2] * (1 + 2 * rand), t.box[3] * (1 + 2 * rand), breite, hoehe));
   const zaehlt = treffer.map((t) => aktiveZonenBoxen([t], zonen, breite, hoehe).length > 0);
-  return personenGruppen(boxen, zaehlt, breite, hoehe).map((box) => {
+  const personen = personenGruppen(boxen, zaehlt, breite, hoehe).map((box): Flaeche => {
     const drin = treffer.find((t, i) => zaehlt[i] && t.box[0] + t.box[2] / 2 >= box[0] && t.box[0] + t.box[2] / 2 <= box[0] + box[2] && t.box[1] + t.box[3] / 2 >= box[1] && t.box[1] + t.box[3] / 2 <= box[1] + box[3]);
     return { zone: drin?.zone ?? 'face', box, behandlung };
   });
+  // Der Rand um die Huelle kann zwei Personen-Huellen ueberlappen lassen: auch sie werden eine (O1, Phase 11).
+  return verschmelzen ? verschmelze(personen, behandlung) : personen;
 }
 
 export function berechneFlaechen(
@@ -330,10 +334,14 @@ export function berechneFlaechen(
   einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: Preset },
   breite: number,
   hoehe: number,
+  // Ausdruecklich: true nur im Bild-Weg (Phase 11 E1: gleichrangige Flaechen verschmelzen zu Huellen, `wortBox` fuer Aufgelegtes). false: genau die
+  // Flaechen wie vor E1, unverschmolzen und ohne `wortBox`. Jeder Video-Weg (Zonen-Leinwand, Verfolgung, boxenAnteil) nimmt false, bis E1v
+  // die Huellen in der Leinwand eigens behandelt (sonst sinkt der Anteil und das Video kippt von "ganz" auf Zonen, weniger Deckung als zuvor).
+  verschmelzen: boolean,
 ): Flaeche[] {
   const d = PRESETS[einstellungen.preset ?? 'mosaik'];
   if (d.augen === 'nur-balken') return berechneAugenbalken(treffer, breite, hoehe);
-  if (d.person) return berechnePersonen(treffer, einstellungen.zonen, d.koerper!, breite, hoehe, einstellungen.rand);
+  if (d.person) return berechnePersonen(treffer, einstellungen.zonen, d.koerper!, breite, hoehe, einstellungen.rand, verschmelzen);
   const mia = d.gesicht === 'mia-gesicht';
   let zonen = einstellungen.zonen;
   // Augenbalken uebernehmen die Augen; Mias Gesicht schluckt Augen und Mund (sie liegen im Gesicht). Abweichung vom Plan, der auch den Kopf nennt:
@@ -343,11 +351,15 @@ export function berechneFlaechen(
   const gesichtTausch = mia && zonen.face.an;
   if (gesichtTausch) zonen = { ...zonen, face: { an: false }, eyes: { an: false }, mouth: { an: false } };
   const aktiv = aktiveZonenBoxen(treffer, zonen, breite, hoehe);
-  const alle = mitRand(fuehreZusammen(aktiv), einstellungen.rand, breite, hoehe).map((f): Flaeche => {
+  // Reihenfolge (Phase 11, O1, S1): zusammenfuehren, Rand, Behandlung setzen, verschmelzen (gleichrangige Flaechen, die sich schneiden, werden
+  // eine Huelle mit der staerksten Behandlung), erst danach das Aufgelegte (Mias Gesicht, Augenbalken), das nie verschmilzt.
+  const einzeln = mitRand(fuehreZusammen(aktiv), einstellungen.rand, breite, hoehe).map((f): Flaeche => {
     const b = f.zone === 'face' ? d.gesicht : d.koerper;
     return b ? { ...f, behandlung: b } : f;
   });
-  if (gesichtTausch) alle.push(...berechneGesichter(treffer, d.koerper ?? undefined, breite, hoehe, einstellungen.rand));
-  if (d.augen === 'balken-immer') alle.push(...berechneAugenbalken(treffer, breite, hoehe));
-  return alle;
+  const gleichrangig = verschmelzen ? verschmelze(einzeln, ganzesBildBehandlung(einstellungen.preset ?? 'mosaik')) : einzeln;
+  const aufgelegt: Flaeche[] = [];
+  if (gesichtTausch) aufgelegt.push(...berechneGesichter(treffer, d.koerper ?? undefined, breite, hoehe, einstellungen.rand));
+  if (d.augen === 'balken-immer') aufgelegt.push(...berechneAugenbalken(treffer, breite, hoehe));
+  return [...(verschmelzen ? setzeWortBoxen(gleichrangig, aufgelegt.map((f) => f.box)) : gleichrangig), ...aufgelegt];
 }

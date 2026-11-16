@@ -206,13 +206,19 @@ test('berechneFlaechen: Mosaik, Mosaik-Wort, Blur geben jeder Flaeche ihre Behan
   const tr = [t('breast', [100, 300, 200, 100]), t('genitals', [120, 420, 100, 80])];
   const z = zonen(['breast', 'genitals']);
   for (const [preset, erwartet] of [['mosaik', 'mosaik'], ['mosaik-wort', 'mosaik-wort'], ['blur', 'blur']]) {
-    const f = berechneFlaechen(tr, { zonen: z, rand: 0.15, preset }, 800, 800);
-    assert.equal(f.length, 2, preset);
+    const f = berechneFlaechen(tr, { zonen: z, rand: 0.15, preset }, 800, 800, true);
+    // Seit Phase 11 Etappe 1 verschmelzen sich die sich schneidenden Flaechen zu einer Huelle (O1): vorher zwei Flaechen, jetzt eine,
+    // die beide samt Rand ganz enthaelt (mehr Deckung, nie weniger), mit derselben Behandlung.
+    assert.equal(f.length, 1, preset);
     assert.ok(f.every((x) => x.behandlung === erwartet), preset);
+    assert.ok(f[0].box[0] <= 85 && f[0].box[1] <= 285 && f[0].box[0] + f[0].box[2] >= 330 && f[0].box[1] + f[0].box[3] >= 500, `${preset}: Huelle enthaelt beide`);
   }
+  // Getrennte Flaechen bleiben zwei
+  const fern = berechneFlaechen([t('breast', [100, 300, 100, 100]), t('genitals', [600, 600, 100, 80])], { zonen: z, rand: 0.15, preset: 'mosaik' }, 800, 800, true);
+  assert.equal(fern.length, 2);
   // Ohne Preset (aelterer Aufrufer): Mosaik-Verhalten wie bisher, ohne Behandlung gilt die des Presets fuer ein ganzes Bild (Mosaik)
-  const alt = berechneFlaechen(tr, { zonen: z, rand: 0.15 }, 800, 800);
-  assert.equal(alt.length, 2);
+  const alt = berechneFlaechen(tr, { zonen: z, rand: 0.15 }, 800, 800, true);
+  assert.equal(alt.length, 1);
 });
 
 test('berechneFlaechen Mia-Presets: Gesicht an tauscht das Gesicht (Augen und Mund dazu nichts), Koerper nach Preset; Gesicht aus laesst Gesichter frei', () => {
