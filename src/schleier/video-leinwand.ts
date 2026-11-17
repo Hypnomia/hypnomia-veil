@@ -132,6 +132,8 @@ export interface LeinwandHaken {
   bildBereit(): void;
   // Eine Sofortpruefung ist geschuldet (Schnitt, Sprung, Pause).
   sofort(): void;
+  // Die Leinwand hat ihr erstes Bild gemalt und das Video unsichtbar gemacht (P8): der Verwalter laesst das Urteil auf "zensiert" wechseln.
+  erstesBild(): void;
   // Die Hysterese des Taktes (video.ts) steht kurz vor der Freigabe (genug saubere Pruefungen in Folge)? Erst dann darf ein Bild ohne Spur klar bleiben.
   freigabeReif(): boolean;
   // Mias Gesicht fuer dieses Motiv (Spur.motiv): Bild des Packs und Gesichtsausschnitt darin (null = noch nicht geladen oder keins zu haben, das Laden ist
@@ -280,8 +282,8 @@ export class ZonenVideo {
     const ctx = c.getContext('2d', { alpha: true });
     if (!ctx) throw new Error('kein 2D-Kontext');
     this.ctx = ctx;
-    // Erst das Attribut (Video unsichtbar), dann der Host: nie ein Augenblick mit sichtbarem Video.
-    el.setAttribute(ATTR_LEINWAND, '');
+    // P8: das Attribut (Video unsichtbar) kommt erst, wenn die Leinwand ihr erstes Bild gemalt hat (male). Bis dahin bleibt das Video weichgezeichnet
+    // (data-veil verdeckt, setzt der Verwalter), nie eine leere Flaeche und nie ein Video ohne Deckung.
     const eltern = el.parentNode;
     if (!eltern) throw new Error('kein Elternknoten');
     eltern.insertBefore(host, el.nextSibling);
@@ -722,6 +724,11 @@ export class ZonenVideo {
     if (this.ansicht === 'ganz' && e.ansicht === 'ganz') this.grund = e.grund; // der heutige Grund (Testhaken)
     this.malen(m, vb, vh);
     this.gemalt++;
+    if (this.gemalt === 1 && !this.tot) {
+      // Erstes gemaltes Bild: erst jetzt wird das Video unsichtbar, danach (im selben Aufruf, vor dem naechsten Bild) zeigt der Schleier "zensiert".
+      el.setAttribute(ATTR_LEINWAND, '');
+      this.h.erstesBild();
+    }
     this.h.zaehler.bilder++;
     if (this.ansicht === 'ganz') this.h.zaehler.ganz++;
     if (this.ersteBildZeit === null) this.ersteBildZeit = jetzt;

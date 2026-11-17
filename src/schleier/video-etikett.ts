@@ -17,6 +17,7 @@ import type { EignungsGrund } from './video-zonen';
 // Texte des Etiketts (Oberflaeche Englisch, Stimme von Mia; der Texter schaerft sie).
 export const ETIKETT_UNLESBAR = 'I can’t see inside this one, so all of it stays hidden.';
 export const ETIKETT_LANGSAM = 'Too slow to follow closely here. I’m covering the whole video.';
+export const ETIKETT_ANDERE = 'One video at a time. I’m keeping this one covered for now.';
 export const ETIKETT_KNIFFLIG = 'Too tricky to cover piece by piece, so all of it stays hidden.';
 
 export function etikettTextFuer(grund: EignungsGrund): string | null {
@@ -26,8 +27,9 @@ export function etikettTextFuer(grund: EignungsGrund): string | null {
     case 'einstellung':
       return null; // "The whole video" gewaehlt: kein Etikett, so soll es sein
     case 'klein':
+      return null; // kleine Videos (Werbeflaechen, Symbole): ein Etikett waere nur Laerm
     case 'andere':
-      return null; // kleine Videos (Werbeflaechen, Symbole) und das zweite Video im Dokument: ein Etikett waere nur Laerm
+      return ETIKETT_ANDERE; // ein anderes Video hat die Leinwand (E3a): dieses bleibt ganz verdeckt und sagt es
     case 'unlesbar':
     case 'drm':
       return ETIKETT_UNLESBAR;

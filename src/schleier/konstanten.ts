@@ -17,6 +17,8 @@ export const ATTR_LEINWAND = 'data-veil-leinwand';
 // Testhaken der Zonen-Leinwand (nur Testbau, nur Testhost): Ansicht des Videos (frei, zonen, mosaik, ganz) und die gezeigten Boxen (JSON).
 export const ATTR_VIDEO_MODUS = TESTHAKEN ? 'data-veil-video-modus' : '';
 export const ATTR_VIDEO_BOXEN = TESTHAKEN ? 'data-veil-video-boxen' : '';
+// Testhaken: Stand des Zaehlers sauberer Pruefungen der Freigabe-Hysterese (video.ts VideoLauf.sauber), am Video, nur bei Aenderung geschrieben.
+export const ATTR_VIDEO_SAUBER = TESTHAKEN ? 'data-veil-video-sauber' : '';
 
 // Inline-Hintergrund (auch Kurzform `background: url(...)`): dieselbe Auswahl steht in entrypoints/content/style.css.
 // Die Gross-/Kleinschreibung im Attributwert ist egal (`i`). Den Wert liest der Schleier ueber die Langform background-image des Style-Objekts.

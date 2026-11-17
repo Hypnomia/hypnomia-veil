@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Video-Platz-Testseite</title>
+    <script>
+      // Protokoll fuer die Tests (alles mit Zeit im Rueckruf, Epoche in Millisekunden: performance.timeOrigin + performance.now()):
+      //   window.__modus   Wechsel des Attributs data-veil-video-modus (Ansicht der Zonen-Leinwand: zonen, mosaik) und data-veil (frei, zensiert, verdeckt)
+      //   window.__sicht   Verstoesse: das Video war sichtbar (opacity > 0), obwohl es unter einer Leinwand liegt oder noch kein Urteil hatte
+      //   window.__platz   jeder Wechsel von data-veil, data-veil-leinwand, data-veil-video-modus, data-veil-video-etikett und jedes Entfernen eines Videos
+      //   window.__verstoss  Zustaende, die es nie geben darf (Platzregel, Schutz-Aussagen I1 bis I3): "zensiert-ohne-leinwand", "frei", "leinwand-sichtbar",
+      //                    "ohne-urteil-sichtbar". Geprueft nach jedem Stapel von Attributwechseln (MutationObserver, vor dem naechsten Bild) und in jedem
+      //                    Bild, nicht nur als Stichprobe; jeder Zustand wird beim Beginn einmal eingetragen, am Ende mit `bis` abgeschlossen.
+      (function () {
+        window.__modus = [];
+        window.__sicht = [];
+        var epoche = function () { return performance.timeOrigin + performance.now(); };
+        window.epoche = epoche;
+        new MutationObserver(function (liste) {
+          for (var i = 0; i < liste.length; i++) {
+            var el = liste[i].target;
+            if (el.localName !== 'video') continue;
+            window.__modus.push({ t: epoche(), id: el.id, was: liste[i].attributeName, v: el.getAttribute(liste[i].attributeName), ct: el.currentTime });
+          }
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-veil', 'data-veil-video-modus'] });
+        // Waechter: nach jedem gezeichneten Bild darf ein Video mit Leinwand oder ohne Urteil nicht sichtbar sein.
+        function probe() {
+          var vs = document.querySelectorAll('video');
+          for (var i = 0; i < vs.length; i++) {
+            var v = vs[i];
+            var urteil = v.getAttribute('data-veil');
+            var leinwand = v.hasAttribute('data-veil-leinwand');
+            var op = getComputedStyle(v).opacity;
+            var sichtbar = op !== '0';
+            if (document.documentElement.getAttribute('data-veil-seite') === 'aus') continue;
+            if (sichtbar && (leinwand || urteil === null)) window.__sicht.push({ t: epoche(), id: v.id, urteil: urteil, leinwand: leinwand });
+          }
+        }
+        function schritt() { setTimeout(probe, 0); requestAnimationFrame(schritt); }
+        requestAnimationFrame(schritt);
+
+        // ---- Platz-Protokoll und Waechter der Schutz-Aussagen ----
+        window.__platz = [];
+        window.__verstoss = [];
+        var offen = {}; // id + art -> Eintrag in __verstoss (bis ist null, solange der Zustand besteht)
+        function zustandVon(v) {
+          return {
+            id: v.id,
+            veil: v.getAttribute('data-veil'),
+            leinwand: v.hasAttribute('data-veil-leinwand'),
+            modus: v.getAttribute('data-veil-video-modus'),
+            etikett: v.getAttribute('data-veil-video-etikett'),
+            opacity: getComputedStyle(v).opacity,
+            ct: v.currentTime,
+            pausiert: v.paused,
+            readyState: v.readyState
+          };
+        }
+        window.__zustand = function () {
+          return Array.prototype.map.call(document.querySelectorAll('video'), zustandVon);
+        };
+        function pruefeZustaende(quelle) {
+          if (document.documentElement.getAttribute('data-veil-seite') === 'aus') return;
+          var jetzt = epoche();
+          var gesehen = {};
+          var vs = document.querySelectorAll('video');
+          for (var i = 0; i < vs.length; i++) {
+            var z = zustandVon(vs[i]);
+            var arten = [];
+            if (z.veil === 'zensiert' && !z.leinwand) arten.push('zensiert-ohne-leinwand');
+            if (z.veil === 'frei') arten.push('frei');
+            if (z.leinwand && z.opacity !== '0') arten.push('leinwand-sichtbar');
+            if (z.veil === null && !z.leinwand && z.opacity !== '0') arten.push('ohne-urteil-sichtbar');
+            for (var k = 0; k < arten.length; k++) {
+              var schluessel = z.id + '|' + arten[k];
+              gesehen[schluessel] = true;
+              if (!offen[schluessel]) {
+                offen[schluessel] = { t: jetzt, bis: null, id: z.id, art: arten[k], quelle: quelle, ct: z.ct, veil: z.veil, leinwand: z.leinwand, opacity: z.opacity };
+                window.__verstoss.push(offen[schluessel]);
+              }
+            }
+          }
+          for (var s in offen) {
+            if (offen[s] && !gesehen[s]) {
+              offen[s].bis = jetzt;
+              offen[s] = null;
+            }
+          }
+        }
+        new MutationObserver(function (liste) {
+          for (var i = 0; i < liste.length; i++) {
+            var l = liste[i];
+            if (l.type === 'attributes' && l.target.localName === 'video') {
+              window.__platz.push({ t: epoche(), id: l.target.id, was: l.attributeName, v: l.target.getAttribute(l.attributeName), ct: l.target.currentTime, pausiert: l.target.paused });
+            } else if (l.type === 'childList') {
+              for (var j = 0; j < l.removedNodes.length; j++) {
+                var n = l.removedNodes[j];
+                if (n.localName === 'video') window.__platz.push({ t: epoche(), id: n.id, was: 'entfernt', v: null, ct: n.currentTime, pausiert: n.paused });
+              }
+            }
+          }
+          pruefeZustaende('mutation');
+        }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-veil', 'data-veil-leinwand', 'data-veil-video-modus', 'data-veil-video-etikett'] });
+        function schrittPruefung() { pruefeZustaende('bild'); requestAnimationFrame(schrittPruefung); }
+        requestAnimationFrame(schrittPruefung);
+      })();
+    </script>
+    <style>
+      html, body { margin: 0; padding: 0; background: #fff; font-family: sans-serif; }
+      #platz, #platz2 { position: relative; width: 640px; }
+      video { display: block; width: 640px; height: 360px; background: #000; }
+      #abstand { height: 1800px; }
+      #bedienung { position: absolute; left: 8px; bottom: 8px; width: 80px; height: 30px; background: #0a0; color: #fff; z-index: 5; font-size: 12px; text-align: center; line-height: 30px; }
+    </style>
+  </head>
+  <body>
+    <!-- Videos bereichsweise zensieren (Bauplan Video-Zonen). Die Seite nimmt zur Laufzeit ein 15-s-Video auf (MediaRecorder, keine Mediendatei im Repo):
+           0 bis 2 s    neutral (Farbverlauf, kleiner Punkt bewegt sich)
+           2 bis 5 s    links das Testbild ?bild=<name> aus dem Satz nsfw (hochkant, Hoehe des Bildes), rechts Farbverlauf mit wanderndem Streifenmuster
+           5 bis 8 s    harter Schnitt: dunkler Hintergrund, das Testbild an anderer Stelle (rechts)
+           8 bis 12 s   dasselbe Bild wandert mit 200 Bildpunkten je s hin und her
+           12 bis 15 s  neutral
+         Waechter: ein Schachbrett aus 8 mal 8 Feldern zu je 4 Bildpunkten in Magenta und Gruen (32 mal 32), fest im Bild des Testbilds (Anteile
+         ?wu und ?wv, Standard im Rumpf). Es wandert mit dem Bild. Ist es in einer Aufnahme der Seite scharf zu sehen, lag keine Zensur darueber.
+         ?satz=sfw nimmt das Testbild aus dem Satz sfw statt nsfw (Standard), ?ohne=1 laesst den Waechter weg (Kontrolle), ?kurz=1 nimmt nur 6 Sekunden auf (0 bis 2 neutral, 2 bis 6 Testbild).
+         Aufnahme einmal je Browserprofil (localStorage), danach steht data-film-bereit="1" sofort. Die Videos legt der Test an: window.neuesVideo(opt). -->
+    <!-- Layout: #platz oben (Videos stapeln sich darin untereinander, je 640 mal 360), dann #luecke (?luecke=<px>, Standard 1200), dann #platz2 (Anker fuer
+         ein Video, das erst nach dem Scrollen ins Bild kommt), dann #abstand. -->
+    <div id="platz"><div id="bedienung">Play</div></div>
+    <div id="luecke"></div>
+    <div id="platz2"></div>
+    <div id="abstand"></div>
+    <script>
+      (function () {
+        var param = new URLSearchParams(location.search);
+        var bild = param.get('bild') || '';
+        var satz = param.get('satz') || 'nsfw'; // Ordner der Testbilder (nsfw oder sfw)
+        var ohne = param.get('ohne') === '1';
+        var kurz = param.get('kurz') === '1';
+        var schnell = param.get('modus') === 'schnell'; // schnelle Schnitte: ab 1 s alle 400 ms zwischen hellem und dunklem Bild mit dem Testbild links und rechts
+        var WU = Number(param.get('wu') || '0.5');
+        var WV = Number(param.get('wv') || '0.55');
+        // ?aufl=720 oder 1080: Aufloesung der Aufnahme (Messung M2), sonst 640 mal 360. Die Anteile des Waechters gelten je Bild.
+        // ?speed=400: Geschwindigkeit des wandernden Bildes in Bildpunkten je s (Standard 200)
+        var SPEED = Number(param.get('speed') || '200');
+        var AUFL = Number(param.get('aufl') || '360');
+        var B = AUFL === 1080 ? 1920 : AUFL === 720 ? 1280 : 640;
+        var H = AUFL === 1080 ? 1080 : AUFL === 720 ? 720 : 360;
+        var DAUER_MS = kurz || schnell ? 6000 : 15000;
+        var SCHLUESSEL = 'video-zonen-3:' + satz + '/' + bild + ':' + (schnell ? 'schnell' : kurz ? 'kurz' : 'lang') + ':' + AUFL + ':' + SPEED + ':' + (ohne ? 'o' : 'w') + ':' + WU + ':' + WV;
+        var platz = document.getElementById('platz');
+        document.getElementById('luecke').style.height = Number(param.get('luecke') || '1200') + 'px';
+        var adresse = null;
+        var filmBlob = null;
+
+        function ladeBild(name) {
+          return new Promise(function (fertig, fehler) {
+            var i = new Image();
+            i.onload = function () { fertig(i); };
+            i.onerror = function () { fehler(new Error('Testbild nicht ladbar')); };
+            i.src = '/testbild/' + encodeURIComponent(satz) + '/' + encodeURIComponent(name);
+          });
+        }
+
+        function verlauf(g, b, h, versatz) {
+          var v = g.createLinearGradient(0, 0, b, h);
+          v.addColorStop(0, 'hsl(' + versatz + ', 55%, 62%)');
+          v.addColorStop(1, 'hsl(' + (versatz + 70) + ', 55%, 45%)');
+          g.fillStyle = v;
+          g.fillRect(0, 0, b, h);
+        }
+
+        // Waechter: 8 mal 8 Felder zu 4 Bildpunkten (32 mal 32), Magenta und Gruen. Die Felder sind so gross, dass sie die Videokomprimierung
+        // (VP8, Farbunterabtastung) uebersteht und als Folge kurzer Laeufe (2 bis 7 Bildpunkte) erkennbar bleiben; ein Mosaik hat Bloecke ab 12.
+        function waechter(g, x, y) {
+          for (var j = 0; j < 8; j++) {
+            for (var i = 0; i < 8; i++) {
+              g.fillStyle = (i + j) % 2 === 0 ? '#ff00ff' : '#00ff00';
+              g.fillRect(Math.round(x) + i * 4, Math.round(y) + j * 4, 4, 4);
+            }
+          }
+        }
+
+        function nimmAuf() {
+          return ladeBild(bild).then(function (img) {
+            var leinwand = document.createElement('canvas');
+            leinwand.width = B;
+            leinwand.height = H;
+            var g = leinwand.getContext('2d');
+            // Das Bild in voller Hoehe des Videos, Breite nach Seitenverhaeltnis.
+            var bh = H;
+            var bb = Math.round(img.naturalWidth * (bh / img.naturalHeight));
+            var t0 = performance.now();
+            var zeichne = function () {
+              var t = (performance.now() - t0) / 1000;
+              var bx = null; // linke Kante des Testbilds, null = nicht im Bild
+              if (schnell) {
+                if (t < 1 || t >= 5.8) {
+                  verlauf(g, B, H, (t * 12) % 360);
+                } else {
+                  var ph = Math.floor((t - 1) / 0.4) % 2;
+                  if (ph === 0) {
+                    verlauf(g, B, H, 200);
+                    bx = Math.round(B / 4 - bb / 2);
+                  } else {
+                    g.fillStyle = '#1d1d26';
+                    g.fillRect(0, 0, B, H);
+                    bx = Math.round(0.6 * B);
+                  }
+                }
+              } else if (t < 2 || t >= 12) {
+                verlauf(g, B, H, (t * 12) % 360);
+                g.fillStyle = '#000';
+                g.fillRect((t * 100) % (B - 8), H - 8, 8, 8);
+              } else if (t < 5) {
+                verlauf(g, B, H, 200 + (t * 12) % 60);
+                // wanderndes Streifenmuster rechts (kraeftige Kanten, dient als Kontrast fuer "scharf")
+                g.fillStyle = '#fff';
+                var v = Math.round(t * 90) % 16;
+                for (var x = B / 2 + 8 - v; x < B; x += 16) g.fillRect(Math.max(x, B / 2), 40, Math.min(8, B - x), H - 80);
+                bx = Math.round(B / 4 - bb / 2);
+              } else {
+                g.fillStyle = '#1d1d26';
+                g.fillRect(0, 0, B, H);
+                // schwacher Hinweis, dass auch hier etwas im Hintergrund geschieht
+                g.fillStyle = '#3a3a52';
+                g.fillRect((t * 60) % (B - 20), 8, 20, 6);
+                if (t < 8) bx = Math.round(0.6 * B);
+                else {
+                  // Dreieckswelle mit 200 Bildpunkten je Sekunde zwischen 20 und B - bb - 20, stetig ab der Lage 0,6 * B
+                  var spanne = B - bb - 40;
+                  var s = (t - 8) * SPEED + (Math.round(0.6 * B) - 20);
+                  var m = s % (2 * spanne);
+                  bx = Math.round(20 + (m <= spanne ? m : 2 * spanne - m));
+                }
+              }
+              if (bx !== null) {
+                g.drawImage(img, bx, 0, bb, bh);
+                if (!ohne) waechter(g, bx + WU * bb - 16, WV * bh - 16);
+              }
+              // Kennfeld unten links: Zeit in Zehntelsekunden als Helligkeit, hilft beim Zuordnen
+            };
+            zeichne();
+            var uhr = setInterval(zeichne, 20);
+            var aufnahme = new MediaRecorder(leinwand.captureStream(30), { videoBitsPerSecond: AUFL > 360 ? 2500000 : 800000 });
+            var stuecke = [];
+            aufnahme.ondataavailable = function (e) { stuecke.push(e.data); };
+            return new Promise(function (fertig) {
+              aufnahme.onstop = function () {
+                clearInterval(uhr);
+                fertig(new Blob(stuecke, { type: aufnahme.mimeType }));
+              };
+              t0 = performance.now();
+              aufnahme.start();
+              setTimeout(function () { aufnahme.stop(); }, DAUER_MS);
+            });
+          });
+        }
+
+        function alsText(blob) {
+          return new Promise(function (fertig) {
+            var l = new FileReader();
+            l.onload = function () { fertig(String(l.result)); };
+            l.readAsDataURL(blob);
+          });
+        }
+
+        function ausText(text) {
+          var teile = text.split(',');
+          var typ = /^data:([^;,]+)/.exec(teile[0]);
+          var bin = atob(teile[1]);
+          var feld = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) feld[i] = bin.charCodeAt(i);
+          return new Blob([feld], { type: typ ? typ[1] : 'video/webm' });
+        }
+
+        function beschaffe() {
+          try {
+            var gespeichert = localStorage.getItem(SCHLUESSEL);
+            if (gespeichert) {
+              document.documentElement.dataset.filmQuelle = 'speicher';
+              return Promise.resolve(ausText(gespeichert));
+            }
+          } catch (e) { /* ohne Speicher wird immer neu aufgenommen */ }
+          document.documentElement.dataset.filmQuelle = 'aufnahme';
+          return nimmAuf().then(function (blob) {
+            return alsText(blob).then(function (text) {
+              try { localStorage.setItem(SCHLUESSEL, text); } catch (e) { /* zu gross: dann bei jedem Laden neu */ }
+              return blob;
+            });
+          });
+        }
+
+        // Legt ein Video an: id, abspielen (Standard ja), loop (Standard ja), controls, breite/hoehe (CSS), anker (Element, in das es kommt), fit, transform.
+        window.neuesVideo = function (opt) {
+          var v = document.createElement('video');
+          v.id = opt.id;
+          v.muted = true;
+          v.loop = opt.loop !== false;
+          v.setAttribute('playsinline', '');
+          // opt.preload ('auto', 'metadata', 'none'): Ladeverhalten; opt.ct0: Startzeit in s (Sprung nach dem Laden der Metadaten, auch fuer ein Video, das
+          // nie gespielt wird und als Vorschau sein erstes Bild zeigt, das Bild mit der Person bei 2 bis 5 s).
+          if (opt.preload) v.preload = opt.preload;
+          if (typeof opt.ct0 === 'number') v.addEventListener('loadedmetadata', function () { try { v.currentTime = opt.ct0; } catch (e) { /* ohne Sprung */ } }, { once: true });
+          if (opt.controls) v.controls = true;
+          if (opt.breite) v.style.width = opt.breite + 'px';
+          if (opt.hoehe) v.style.height = opt.hoehe + 'px';
+          if (opt.fit) v.style.objectFit = opt.fit;
+          if (opt.transform) v.style.transform = opt.transform;
+          (opt.anker ? document.querySelector(opt.anker) : platz).appendChild(v);
+          // opt.leinwand: eine Hilfsleinwand (canvas, CSS 0 mal 0, wie Player sie fuer Bildschirmfotos anlegen) neben dem Video im selben Behaelter;
+          // sie malt das Video in jedem Bild. window.leinwandFlaeche(id) gibt ihr danach Flaeche ueber dem Video.
+          if (opt.leinwand) {
+            var c = document.createElement('canvas');
+            c.id = opt.leinwand;
+            c.width = 640;
+            c.height = 360;
+            c.style.cssText = 'display:block;position:absolute;left:0;top:0;width:0;height:0;';
+            v.parentNode.appendChild(c);
+            var cg = c.getContext('2d');
+            var malen = function () {
+              try { cg.drawImage(v, 0, 0, 640, 360); } catch (e) { /* noch keine Bilddaten */ }
+              requestAnimationFrame(malen);
+            };
+            malen();
+          }
+          v.src = opt.quelle || adresse;
+          if (opt.abspielen !== false) v.play().catch(function () {});
+          return v;
+        };
+
+        // Gibt der Hilfsleinwand Flaeche genau ueber dem Video (640 mal 360 an der Stelle des Videos); liefert die Epoche des Wechsels.
+        window.leinwandFlaeche = function (id) {
+          var c = document.getElementById(id);
+          c.style.width = '640px';
+          c.style.height = '360px';
+          return window.epoche();
+        };
+
+        // Hilfen fuer die Platz-Faelle: alles in der Seite, damit Zeitpunkte genau sind (Epoche in ms zurueck).
+        window.spiele = function (id) { document.getElementById(id).play().catch(function () {}); return window.epoche(); };
+        window.pausiere = function (id) { document.getElementById(id).pause(); return window.epoche(); };
+        window.entferne = function (id) { var v = document.getElementById(id); v.pause(); v.remove(); return window.epoche(); };
+        // Pausiert im ersten Augenblick, in dem die Zeit des Videos `ab` erreicht hat (Pruefung je Bild, kein Warten auf WebDriver); liefert { t, ct, pruef }
+        // (Epoche, Zeit des Videos, Zahl der Video-Pruefungen laut Status im selben Augenblick) oder null nach 30 s.
+        window.pausiereBei = function (id, ab) {
+          return new Promise(function (fertig) {
+            var v = document.getElementById(id);
+            var t0 = performance.now();
+            function schritt() {
+              if (v.currentTime >= ab && !v.paused) {
+                v.pause();
+                var roh = document.documentElement.dataset.veilStatus;
+                fertig({ t: window.epoche(), ct: v.currentTime, pruef: roh ? JSON.parse(roh).videoPruefungen : null });
+              } else if (performance.now() - t0 > 30000) fertig(null);
+              else requestAnimationFrame(schritt);
+            }
+            schritt();
+          });
+        };
+        // Zehn schnelle Wechsel der Berechtigung: Schritt i spielt a und pausiert b (gerade i) oder umgekehrt, alle `abstand` ms; liefert nach dem letzten
+        // Schritt { start, ende } (Epoche).
+        window.wechselFolge = function (a, b, schritte, abstand) {
+          return new Promise(function (fertig) {
+            var start = window.epoche();
+            var i = 0;
+            function schritt() {
+              if (i >= schritte) return fertig({ start: start, ende: window.epoche() });
+              if (i % 2 === 0) { window.pausiere(a); window.spiele(b); } else { window.pausiere(b); window.spiele(a); }
+              i++;
+              setTimeout(schritt, abstand);
+            }
+            schritt();
+          });
+        };
+
+        // Frische blob:-Adresse desselben Films (zweites Video, Quellenwechsel).
+        window.neueQuelle = function () { return URL.createObjectURL(filmBlob); };
+
+        window.filmBereitPromise = beschaffe().then(function (blob) {
+          filmBlob = blob;
+          adresse = URL.createObjectURL(blob);
+          document.documentElement.dataset.filmBereit = '1';
+        });
+      })();
+    </script>
+  </body>
+</html>

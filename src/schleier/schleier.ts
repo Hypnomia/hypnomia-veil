@@ -54,6 +54,7 @@ import {
   ATTR_SEITE,
   ATTR_STRICT,
   ATTR_URTEIL,
+  ATTR_VIDEO_SAUBER,
   AUFRAEUM_VERZOEGERUNG_MS,
   BLITZ_SPERRE_MS,
   GROSSFLAECHE_ANTEIL,
@@ -247,13 +248,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
         if (aktiv) bewerte(el, z);
       },
       wende: (el, z, urteil: VideoUrteil) => {
-        // Frei: die Zonen-Leinwand (falls da) geht zuerst weg, das Video zeigt sich dann selbst.
-        if (urteil === 'frei') zonen.beende(el);
+        // Frei: erst steht das Urteil "frei" (die Leinwand liegt noch, das Video ist per Attribut unsichtbar), dann geht die Zonen-Leinwand weg und das Video
+        // zeigt sich selbst. So steht nie "zensiert" ohne Leinwand da, auch nicht fuer einen Mutationsschritt.
         if (z.urteil === null) {
           // Erst-Urteil: wie jedes Urteil (Zeit fuer sichtbarFreiMs, Zaehlung).
           if (urteil === 'frei') {
             letzteVideoFreigabe = performance.now();
             urteilFrei(el, z);
+            zonen.beende(el);
+            wechselOffen.delete(el);
           } else if (!zonen.versuche(el, z)) urteilVerdeckt(el, z);
           return;
         }
@@ -264,9 +267,22 @@ export function starteSchleier(ctx: KontextLeicht): void {
           zonen.merkeWechsel(el);
         } else if (zonen.versuche(el, z)) return; // Zonen-Leinwand statt Blur (zeigt das Urteil selbst)
         setzeUrteil(el, z, urteil, z.urteilMs);
+        if (urteil === 'frei') {
+          zonen.beende(el);
+          wechselOffen.delete(el); // R13
+        }
         status.videoWechsel++;
         status.plane();
       },
+      // Testhaken: Stand des Zaehlers sauberer Pruefungen am Video (nur Testbau und Testhost, nur bei Aenderung).
+      ...(ATTR_VIDEO_SAUBER && testhakenAktiv()
+        ? {
+            beiSauber: (el: HTMLVideoElement, sauber: number | null) => {
+              if (sauber === null) el.removeAttribute(ATTR_VIDEO_SAUBER);
+              else if (el.getAttribute(ATTR_VIDEO_SAUBER) !== String(sauber)) el.setAttribute(ATTR_VIDEO_SAUBER, String(sauber));
+            },
+          }
+        : {}),
     },
     {
       taktMs: VIDEO_TAKT_MS,
@@ -348,10 +364,16 @@ export function starteSchleier(ctx: KontextLeicht): void {
     zeigeZonen: (el, z) => zeigeCover(el, z, 'zensiert'),
     // Rueckfall der Leinwand: der Grund steht schon im Zaehler (stoerung), Urteil und Status werden zugleich sichtbar (Testhaken; ausserhalb des
     // Testbaus tut schreibe nichts). Sonst sah ein Test unter Last das Urteil 'verdeckt' vor dem gedrosselten Status (30 ms) mit dem Grund.
+    zeigeVorLeinwand: (el, z) => zeigeVorLeinwand(el, z),
     zeigeGanz: (el, z) => {
       zeigeCover(el, z, 'verdeckt');
       status.schreibe();
     },
+    verdeckeNotfall: (el) => {
+      // Zustand des Videos unbekannt: im Zweifel verdecken, nie "zensiert" ohne Leinwand stehen lassen.
+      if (el.getAttribute(ATTR_URTEIL) === 'zensiert') el.setAttribute(ATTR_URTEIL, 'verdeckt');
+    },
+    verwirfFreigabe: (el) => video.verwirfFreigabe(el),
     dokumentBremseOk: () => performance.now() - letzteVideoFreigabe >= BLITZ_SPERRE_MS,
     meldeLangsam: () => {
       // Hinweis fuer das Popup (Zeitstempel, nur obere Seite): "Too slow to follow closely here."
@@ -504,10 +526,12 @@ export function starteSchleier(ctx: KontextLeicht): void {
       status.videoWechsel++;
     }
     video.beende(z);
-    if (z.art === 'video') zonen.beende(el as HTMLVideoElement);
+    if (z.art === 'video') wechselOffen.delete(el as HTMLVideoElement);
     z.videoEcht = false;
     z.videoGezaehlt = false; // vergiss gilt einer neuen Quelle, einer neuen Bewertung oder der Pause: das Video darf neu zaehlen
+    // Erst das Urteil weg (die Leinwand liegt noch, das Video ist unsichtbar, ohne Urteil versteckt es das CSS), dann die Leinwand: nie "zensiert" ohne Leinwand.
     vergissElement(el, z, restore);
+    if (z.art === 'video') zonen.vergiss(el as HTMLVideoElement);
     // Spiegel (S3): wird das Video zurueckgesetzt, gehen seine Leinwaende mit zurueck; eine zurueckgesetzte Leinwand wird neu zugeordnet.
     if (z.art === 'video') spiegel.angleichen(el as HTMLVideoElement);
     else if (z.art === 'canvas') spiegel.loese(el as HTMLCanvasElement);
@@ -614,6 +638,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   function urteilFrei(el: Element, z: Zustand): void {
     z.eingereiht = false;
+    if (z.art === 'video') wechselOffen.delete(el as HTMLVideoElement);
     if (z.art === 'bild') z.adresse = bildAdresse(el as HTMLImageElement);
     else if (z.art === 'video') zaehleVideoWechsel(el as HTMLVideoElement, z, 'frei');
     setzeUrteil(el, z, 'frei', status.seitStart());
@@ -645,9 +670,29 @@ export function starteSchleier(ctx: KontextLeicht): void {
 
   // Ein Video ist bedeckt: "zensiert" (Zonen-Leinwand, das Video selbst unsichtbar) oder "verdeckt" (ganz, Blur). Der Wechsel zwischen beiden zaehlt
   // wie ein Urteilswechsel (Bremse, Testhaken).
+  // R3: Weichzeichner vor dem ersten Bild einer Leinwand. Der Zustand steht sofort auf "verdeckt" (Attribut und Urteil, damit die Hysterese gilt und nie ein Video ohne
+  // Urteil neben einer Leinwand steht), gebucht wird dabei nichts (kein Wechsel, keine Bremse). Hat sich die Anzeige geaendert (kein Weichzeichner vorher), bleibt der
+  // eine Wechsel dieses Leinwandstarts offen: er wird beim ersten Bild ("zensiert") oder beim Rueckfall vor dem ersten Bild ("verdeckt") gebucht.
+  const wechselOffen = new WeakSet<HTMLVideoElement>();
+  function zeigeVorLeinwand(el: HTMLVideoElement, z: Zustand): void {
+    z.eingereiht = false;
+    z.adresse = videoAdresse(el) || z.adresse;
+    if (el.getAttribute(ATTR_URTEIL) !== 'verdeckt' && el.getAttribute(ATTR_URTEIL) !== 'zensiert') wechselOffen.add(el);
+    setzeUrteil(el, z, 'verdeckt', z.urteilMs ?? status.seitStart());
+    spiegel.beiVideoUrteil(el);
+    nachUrteil();
+  }
+
   function zeigeCover(el: HTMLVideoElement, z: Zustand, art: 'zensiert' | 'verdeckt'): void {
     z.eingereiht = false;
     const vorher = el.getAttribute(ATTR_URTEIL);
+    // Der offene Wechsel des Leinwandstarts (R3): beim ersten Bild bucht die Zeile "verdeckt zu zensiert" unten ihn schon; beim Rueckfall vor dem ersten Bild
+    // (Anzeige bleibt verdeckt) wird er hier gebucht.
+    if (wechselOffen.delete(el) && art === 'verdeckt' && vorher === 'verdeckt') {
+      video.merkeWechsel(el);
+      status.videoWechsel++;
+      letzteVideoFreigabe = Math.max(letzteVideoFreigabe, performance.now());
+    }
     zaehleVideoWechsel(el, z, 'verdeckt');
     if ((vorher === 'verdeckt' || vorher === 'zensiert') && vorher !== art) {
       video.merkeWechsel(el);
@@ -1385,6 +1430,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
           merkeGroesse(z, e);
           if (e.isIntersecting && !startphaseVorbei) z.sichtbarBeiStart = true;
           if (z.video) video.sichtGeaendert(z.video);
+          if (z.art === 'video') zonen.platzAnstoss();
         }
       },
       (eintraege) => {
@@ -1616,6 +1662,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     },
     entfernt: () => {
       video.raeumeEntfernteAuf();
+      zonen.entferntAnstoss(); // R2: ein entfernter Halter gibt Leinwand und Host sofort ab, auch bei genau einem Video
       planeAufraeumen();
     },
     istAus: () => aus,

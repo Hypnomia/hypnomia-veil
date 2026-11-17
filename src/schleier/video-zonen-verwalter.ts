@@ -18,6 +18,7 @@ import type { Zustand } from './zustand';
 import { ZonenVideo, type Aufnahme, type AntwortDaten, type AnfangsAntwort, type LeinwandHaken } from './video-leinwand';
 import { matrixDreht, pruefeEignung, type Eignung, type EignungsGrund } from './video-zonen';
 import { ETIKETT_LANGSAM, etikettTextFuer, VideoEtikett } from './video-etikett';
+import { antwortFrisch, entscheidePlatz, PLATZ_RUNDE_MIN_MS, PLATZ_WECHSEL_MIN_MS, sichtAnteil, sichtbarMitHysterese, type PlatzVideo } from './video-platz';
 
 export interface VerwalterHaken {
   lebt(): boolean;
@@ -45,6 +46,13 @@ export interface VerwalterHaken {
   // Urteil am Element: "zensiert" (Leinwand) und "verdeckt" (ganz, Blur). Zaehlen den Wechsel und merken ihn fuer die Bremse.
   zeigeZonen(el: HTMLVideoElement, z: Zustand): void;
   zeigeGanz(el: HTMLVideoElement, z: Zustand): void;
+  // Weichzeichner vor dem ersten Bild einer Leinwand (R3): Zustand sofort "verdeckt" (Attribut und Urteil, damit die Hysterese gilt), aber nicht als Wechsel
+  // gebucht (kein videoWechsel, kein merkeWechsel, keine Dokument-Bremse). Der eine Wechsel je Leinwandstart wird beim ersten Bild gebucht.
+  zeigeVorLeinwand(el: HTMLVideoElement, z: Zustand): void;
+  // Letzter Ausweg beim Verlust der Leinwand ohne bekannten Zustand des Videos (P6): steht data-veil noch auf "zensiert", wird es "verdeckt".
+  verdeckeNotfall(el: HTMLVideoElement): void;
+  // Ende einer Leinwand ohne Freigabe (Rueckfall, Platzverlust, P7): der Zaehler sauberer Pruefungen steht danach auf 0.
+  verwirfFreigabe(el: HTMLVideoElement): void;
   // Die Dokument-Bremse (BLITZ_SPERRE_MS nach dem letzten grossen Wechsel eines Videos im Dokument) erlaubt einen Wechsel zur Leinwand?
   dokumentBremseOk(): boolean;
   // Ein Rueckfall wegen Langsamkeit (Popup-Hinweis, Status).
@@ -68,6 +76,7 @@ function kennungVon(adresse: string): string {
   return h.toString(36);
 }
 
+type PlatzListe = Array<{ el: HTMLVideoElement; eintrag: PlatzVideo; wartet: boolean }>;
 type GesichtsStand = 'laedt' | { fehlerBis: number } | { bild: ImageBitmap; ausschnitt: [number, number, number, number] };
 type StickerStand = 'laedt' | { fehlerBis: number } | { bild: ImageBitmap };
 type WortStand = 'laedt' | { fehlerBis: number } | { wort: string };
@@ -88,6 +97,21 @@ export class VideoZonen {
   // Zaehlt jedes Verwerfen (vergissBilder): eine Lieferung aus einer alten Runde legt nichts mehr ab.
   private runde = 0;
   private schriftStand: 'neu' | 'laedt' | 'da' | 'fehlt' = 'neu';
+  // Platzregel (E3a, video-platz.ts): alle Videos, die geantwortet haben, in der Reihenfolge ihrer ersten Antwort; Zeit des letzten Platzwechsels;
+  // Kennung je Video fuer die reine Logik; Sichtbarkeit nach P12 (zwei Schwellen); frueher Capture-Horcher je Video; Zeitgeber.
+  private readonly bekannt = new Set<HTMLVideoElement>();
+  private letzterPlatzwechsel = Number.NEGATIVE_INFINITY;
+  private readonly kennungen = new WeakMap<HTMLVideoElement, string>();
+  private kennungNr = 0;
+  private readonly sichtGalt = new WeakMap<HTMLVideoElement, boolean>();
+  private readonly platzHoerer = new WeakMap<HTMLVideoElement, () => void>();
+  private readonly sofortAm = new WeakMap<HTMLVideoElement, number>();
+  private platzTimer: ReturnType<typeof setTimeout> | null = null;
+  // Eignung je Video und Runde hoechstens einmal gerechnet (R8): gilt nur innerhalb einer Runde der Platzregel.
+  private eignungRunde: Map<HTMLVideoElement, Eignung> | null = null;
+  private letzteRunde = Number.NEGATIVE_INFINITY;
+  private platzTakt: ReturnType<typeof setInterval> | null = null;
+  private scrollHoerer: (() => void) | null = null;
   private readonly leser = new GrauLeser(VIDEO_ZONEN_GRAU_B);
   private readonly etiketten = new VideoEtikett();
   private readonly haken: VerwalterHaken;
@@ -124,7 +148,27 @@ export class VideoZonen {
     return false;
   }
 
-  private fakten(el: HTMLVideoElement): Eignung {
+  private fakten(el: HTMLVideoElement, ohneAndere = false): Eignung {
+    let basis = this.eignungRunde?.get(el);
+    if (!basis) {
+      basis = this.baueFakten(el);
+      this.eignungRunde?.set(el, basis);
+    }
+    return { ...basis, andereAktiv: !ohneAndere && [...this.lauf.keys()].some((v) => v !== el) && this.lauf.size >= VIDEO_ZONEN_MAX_JE_DOKUMENT };
+  }
+
+  // Eine Runde der Platzregel: die Eignung eines Videos wird darin nur einmal gerechnet.
+  private inRunde<T>(fn: () => T): T {
+    const eigene = this.eignungRunde === null;
+    if (eigene) this.eignungRunde = new Map();
+    try {
+      return fn();
+    } finally {
+      if (eigene) this.eignungRunde = null;
+    }
+  }
+
+  private baueFakten(el: HTMLVideoElement): Eignung {
     const e = this.haken.einstellungen();
     let rect: DOMRect | null = null;
     try {
@@ -152,13 +196,19 @@ export class VideoZonen {
       minH: VIDEO_ZONEN_MIN_H,
       vollbildVideo: document.fullscreenElement === el,
       vorschau: this.haken.vorschau(el),
-      andereAktiv: [...this.lauf.keys()].some((v) => v !== el) && this.lauf.size >= VIDEO_ZONEN_MAX_JE_DOKUMENT,
+      andereAktiv: false,
     };
   }
 
   // null = geeignet. `ohneAndere`: das Limit "ein Zonen-Video je Dokument" nicht pruefen (laufende Leinwand prueft sich selbst).
   grundFuer(el: HTMLVideoElement): EignungsGrund | null {
     const r = pruefeEignung(this.fakten(el));
+    return r.ok ? null : r.grund;
+  }
+
+  // Eignung ohne den Punkt "ein anderes Video hat den Platz" (den entscheidet die Platzregel).
+  private grundOhneAndere(el: HTMLVideoElement): EignungsGrund | null {
+    const r = pruefeEignung(this.fakten(el, true));
     return r.ok ? null : r.grund;
   }
 
@@ -176,6 +226,7 @@ export class VideoZonen {
 
   beiAntwort(el: HTMLVideoElement, aufn: Aufnahme | null, antwort: AntwortDaten | null): void {
     if (!aufn) return;
+    this.merke(el);
     const l = this.lauf.get(el);
     if (l) return l.beiAntwort(aufn, antwort);
     this.anfaenge.set(el, { aufnahme: aufn, antwort });
@@ -183,36 +234,266 @@ export class VideoZonen {
 
   // ---------- Start und Ende ----------
 
-  // Das Video soll verdeckt gezeigt werden: Zonen (true) oder ganz (false). Bei true steht die Leinwand und der Schleier zeigt "zensiert".
+  // Alle Bedingungen, unter denen ein Video die Leinwand beginnen darf, ausser dem Platz selbst (den vergibt die Platzregel).
+  private startbereit(el: HTMLVideoElement, frisch: boolean): boolean {
+    if (!this.haken.aktiv() || !el.isConnected) return false;
+    if (this.haken.einstellungen()?.video !== 'zonen') return false;
+    if (this.gesperrt(el)) return false;
+    const letzter = this.letzterWechsel.get(el);
+    if (letzter !== undefined && performance.now() - letzter < VIDEO_WECHSEL_MIN_MS) return false;
+    if (!this.hatFlaechen(el, frisch && this.bekannt.size >= 2)) return false;
+    if (!this.haken.dokumentBremseOk()) return false;
+    return this.grundOhneAndere(el) === null;
+  }
+
+  private gesperrt(el: HTMLVideoElement): boolean {
+    const sperre = this.sperreBis.get(el);
+    return sperre !== undefined && performance.now() < sperre;
+  }
+
+  // Ohne frische Antwort (erste Pruefung mit Bild) gibt es keine Boxen: ganz verdecken, bis die naechste Antwort da ist. Nur mit einer Antwort, die Flaechen
+  // hat: eine saubere Antwort (bei noch geltendem Urteil "verdeckt") liesse ein klares Bild stehen und umginge die Hysterese der saubere Pruefungen.
+  // R6: bei mehreren bekannten Videos zaehlt nur eine frische Antwort (hoechstens PLATZ_ANTWORT_MAX_MS alt, vom Bild der Aufnahme an): eine alte Antwort startet
+  // keine Leinwand, P9 holt eine neue. Bei einem bekannten Video (R7) gilt der Ablauf wie vor E3a: die Leinwand beginnt in `versuche` direkt nach einer Antwort.
+  private hatFlaechen(el: HTMLVideoElement, mitAlter = false): boolean {
+    const anfang = this.anfaenge.get(el);
+    if (!anfang || !anfang.antwort || anfang.antwort.flaechen.length === 0) return false;
+    return !mitAlter || antwortFrisch(performance.now() - anfang.aufnahme.zeit);
+  }
+
+  // Das Video soll verdeckt gezeigt werden: Zonen (true) oder ganz (false). Bei true steht die Leinwand (der Schleier zeigt zuerst "verdeckt", erst nach dem
+  // ersten gemalten Bild "zensiert", P8). Den Platz vergibt die Platzregel (video-platz.ts): ein anderer Halter behaelt ihn, solange er berechtigt ist.
   versuche(el: HTMLVideoElement, z: Zustand): boolean {
     if (this.lauf.has(el)) return true;
     if (!this.haken.aktiv() || !el.isConnected) return false;
     if (this.haken.einstellungen()?.video !== 'zonen') return false;
-    const sperre = this.sperreBis.get(el);
-    if (sperre !== undefined && performance.now() < sperre) return false;
-    const letzter = this.letzterWechsel.get(el);
-    if (letzter !== undefined && performance.now() - letzter < VIDEO_WECHSEL_MIN_MS) return false;
+    this.merke(el);
+    this.inRunde(() => this.wendePlatzAn(el, z, this.platzListe(el)));
+    return this.lauf.has(el);
+  }
+
+  // Fragt die Platzregel und setzt die Entscheidung um. `aufrufer`: das Video, das gerade sein Urteil bekommt (zaehlt auch ohne Zustand "verdeckt" als wartend).
+  private wendePlatzAn(aufrufer: HTMLVideoElement | null, zAufrufer: Zustand | null, videos: PlatzListe): void {
+    if (!this.haken.aktiv() || this.haken.einstellungen()?.video !== 'zonen') return;
+    // R11: ein Halter, der nicht mehr im Dokument steht, gibt Leinwand und Host in jeder Runde sofort ab (P6: erst verdeckt, dann die Leinwand weg), auch wenn der
+    // Kandidat noch gebremst ist; der Kandidat bleibt verdeckt, bis er wirklich beginnt. Danach entscheidet die Platzregel ohne Halter.
+    const getrennt = this.halter();
+    if (getrennt && !getrennt.isConnected) this.verliere(getrennt);
+    const halter = this.halter();
+    const e = entscheidePlatz({
+      halter: halter ? this.kennung(halter) : null,
+      videos: videos.map((v) => v.eintrag),
+      seitWechselMs: performance.now() - this.letzterPlatzwechsel,
+    });
+    if (e.art === 'gibtAb') {
+      if (halter) this.verliere(halter);
+      return;
+    }
+    if (e.art === 'wartet') return this.planePlatz(PLATZ_WECHSEL_MIN_MS - (performance.now() - this.letzterPlatzwechsel) + 5);
+    if (e.art !== 'wechselt') return;
+    const gewinner = videos.find((v) => v.eintrag.id === e.zu)?.el;
+    if (!gewinner) return;
+    const z = gewinner === aufrufer ? zAufrufer : this.haken.zustand(gewinner);
+    // Kann der Gewinner noch nicht beginnen (Bremsen), bleibt alles, wie es ist: der Verlierer behaelt seine Leinwand, bis der Gewinner wirklich dran ist.
+    // (Die Wiederholung nach 250 ms gilt nur fuer voruebergehende Hindernisse: Bremsen, noch keine frische Antwort; R1.)
+    // R12: die Frische (400 ms) gilt nur fuer den Start aus einer gespeicherten Antwort; der Start des Aufrufers direkt beim Eintreffen seiner Antwort ist der alte Weg.
+    if (!z || !this.startbereit(gewinner, gewinner !== aufrufer)) return this.planePlatz(250);
+    this.nimmPlatz(gewinner, z);
+  }
+
+  // Der Platz wechselt: zuerst ist der Verlierer ganz verdeckt und ohne Leinwand, dann beginnt die Leinwand des Gewinners. Der Gewinner bleibt
+  // weichgezeichnet ("verdeckt"), bis seine Leinwand ihr erstes Bild gemalt hat (P8, erstesBild).
+  private nimmPlatz(el: HTMLVideoElement, z: Zustand): void {
     const anfang = this.anfaenge.get(el);
-    // Ohne frische Antwort (erste Pruefung mit Bild) gibt es keine Boxen: ganz verdecken, bis die naechste Antwort da ist.
-    // Nur mit einer Antwort, die Flaechen hat: eine saubere Antwort (bei noch geltendem Urteil "verdeckt") liesse ein klares Bild stehen und umginge die
-    // Hysterese der saubere Pruefungen.
-    if (!anfang || !anfang.antwort || anfang.antwort.flaechen.length === 0) return false;
-    if (!this.haken.dokumentBremseOk()) return false;
-    if (this.grundFuer(el)) return false;
+    if (!anfang) return;
+    const alt = this.halter();
+    if (alt && alt !== el) this.verliere(alt);
+    if (this.lauf.size >= VIDEO_ZONEN_MAX_JE_DOKUMENT) return; // nie mehr als eine Leinwand je Dokument
     this.anfaenge.delete(el);
     this.etiketten.entferne(el);
     let l: ZonenVideo;
     try {
       l = new ZonenVideo(el, this.leinwandHaken(el), anfang);
     } catch {
-      return false;
+      return;
     }
     this.lauf.set(el, l);
     this.haken.setzeSchnell(el, true);
-    this.letzterWechsel.set(el, performance.now());
-    this.haken.zeigeZonen(el, z);
+    const jetzt = performance.now();
+    this.letzterWechsel.set(el, jetzt);
+    this.letzterPlatzwechsel = jetzt;
+    // Vor dem ersten Bild der Leinwand: Weichzeichner, nicht als Wechsel gebucht (R3); nie "zensiert" ohne Leinwand-Attribut, nie ein Video ohne Urteil.
+    this.haken.zeigeVorLeinwand(el, z);
     l.starte();
-    return true;
+    this.aktualisiereEtiketten();
+  }
+
+  // Der Halter verliert den Platz (Platzwechsel oder entfernt): P6 zuerst "verdeckt", dann die Leinwand weg, P7 Zaehler auf 0. Keine Rueckfall-Sperre (P10).
+  private verliere(el: HTMLVideoElement): void {
+    const z = this.haken.zustand(el);
+    this.verdecke(el, z);
+    this.beende(el);
+    if (!el.isConnected) this.vergiss(el); // R8: auch die Horcher ab
+    this.haken.verwirfFreigabe(el);
+  }
+
+  // Ganz verdecken (Weichzeichner), auch wenn der Zustand des Videos unbekannt ist: nie "zensiert" ohne Leinwand.
+  private verdecke(el: HTMLVideoElement, z: Zustand | undefined): void {
+    if (z && this.haken.aktiv()) this.haken.zeigeGanz(el, z);
+    else this.haken.verdeckeNotfall(el);
+  }
+
+  private halter(): HTMLVideoElement | null {
+    for (const v of this.lauf.keys()) return v;
+    return null;
+  }
+
+  private kennung(el: HTMLVideoElement): string {
+    let k = this.kennungen.get(el);
+    if (!k) {
+      k = String(++this.kennungNr);
+      this.kennungen.set(el, k);
+    }
+    return k;
+  }
+
+  // Die Liste fuer die Platzregel: bekannte, im Dokument stehende Videos in der Reihenfolge ihrer ersten Antwort (entfernte fallen heraus, P11).
+  private platzListe(aufrufer: HTMLVideoElement | null): PlatzListe {
+    const aus: PlatzListe = [];
+    for (const el of [...this.bekannt]) {
+      if (!el.isConnected) {
+        if (!this.lauf.has(el)) this.vergiss(el);
+        continue;
+      }
+      const z = this.haken.zustand(el);
+      const halter = this.lauf.has(el);
+      // Wartend: ein verdecktes Video mit echtem Urteil (oder das Video, das eben sein Urteil bekommt), nicht gesperrt, mit Flaechen in der Antwort.
+      const wartet = el === aufrufer || (!!z && z.urteil === 'verdeckt' && z.videoEcht);
+      // R1: Flaechen zaehlen nur bei geeigneten Videos (sonst nimmt Regel 4 ein Video, das nie beginnen darf); R6: nur frische Antworten.
+      const hatFlaechen = halter || (wartet && !this.gesperrt(el) && this.hatFlaechen(el, el !== aufrufer && this.bekannt.size >= 2) && this.grundOhneAndere(el) === null);
+      aus.push({ el, eintrag: { id: this.kennung(el), berechtigt: this.berechtigt(el, z), hatFlaechen }, wartet });
+    }
+    return aus;
+  }
+
+  // Berechtigt: geeignet (ohne "andere"), spielt (nicht pausiert, nicht zu Ende, Bilddaten da), sichtbar (P12) und Tab sichtbar.
+  private berechtigt(el: HTMLVideoElement, z: Zustand | undefined): boolean {
+    if (!z || el.paused || el.ended || el.readyState < 2 || !(el.videoWidth > 0)) return false;
+    if (document.visibilityState !== 'visible') return false;
+    if (this.grundOhneAndere(el)) return false;
+    if (!this.haken.sichtbar(el, z)) return false;
+    return this.sichtbarP12(el);
+  }
+
+  // P12: Anteil der Videoflaeche im Ausschnitt, sichtbar ab einem Viertel, verloren erst unter einem Zehntel.
+  private sichtbarP12(el: HTMLVideoElement): boolean {
+    let anteil = 0;
+    try {
+      anteil = sichtAnteil(el.getBoundingClientRect(), window.innerWidth, window.innerHeight);
+    } catch {
+      anteil = 0;
+    }
+    const jetzt = sichtbarMitHysterese(anteil, this.sichtGalt.get(el) ?? false);
+    this.sichtGalt.set(el, jetzt);
+    return jetzt;
+  }
+
+  // ---------- Ausloeser der Platzregel ----------
+
+  // Ein Video hat geantwortet: es ist bekannt (Reihenfolge der ersten Antwort) und hoert frueh (Capture) auf Play, Pause, Ende.
+  private merke(el: HTMLVideoElement): void {
+    if (this.bekannt.has(el)) return;
+    this.bekannt.add(el);
+    const an = (): void => this.planePlatz(0);
+    this.platzHoerer.set(el, an);
+    for (const n of ['play', 'playing', 'pause', 'ended', 'emptied', 'seeked']) el.addEventListener(n, an, true);
+    if (!this.scrollHoerer) {
+      // Scrollen und Groesse stossen hoechstens alle PLATZ_RUNDE_MIN_MS eine Runde an (R8).
+      this.scrollHoerer = () => this.planePlatz(Math.max(0, PLATZ_RUNDE_MIN_MS - (performance.now() - this.letzteRunde)));
+      window.addEventListener('scroll', this.scrollHoerer, { capture: true, passive: true });
+      window.addEventListener('resize', this.scrollHoerer, { passive: true });
+    }
+    // Sicherheitsnetz fuer Ereignisse, die eine Seite verschluckt, und fuer entfernte Videos: bei mehr als einem bekannten Video alle 500 ms.
+    if (!this.platzTakt && this.bekannt.size >= 2) {
+      this.platzTakt = setInterval(() => {
+        if (this.bekannt.size < 2) return this.stoppePlatzTakt();
+        this.planePlatz(0);
+      }, 500);
+    }
+    if (this.bekannt.size >= 2) this.planePlatz(0);
+  }
+
+  // Von aussen (Sichtbarkeit hat gewechselt): die Platzregel neu fragen.
+  platzAnstoss(): void {
+    if (this.bekannt.size >= 2) this.planePlatz(0);
+  }
+
+  // R7: bei genau einem bekannten Video laeuft keine Runde aus Ereignissen, Scrollen, Groesse, Sicht-Beobachter oder Zeitgebern (Ausnahme: entferntAnstoss).
+  private planePlatz(ms: number): void {
+    if (this.platzTimer || this.bekannt.size < 2) return;
+    this.platzTimer = setTimeout(
+      () => {
+        this.platzTimer = null;
+        if (this.bekannt.size >= 2) this.pruefePlatz();
+      },
+      Math.max(0, ms),
+    );
+  }
+
+  // Eine Runde der Platzregel (Ereignis, Zeitgeber): setzt eine Entscheidung um und gibt jedem berechtigten wartenden Video ohne Flaechen sofort eine Pruefung (P9).
+  private pruefePlatz(): void {
+    if (!this.haken.aktiv()) return;
+    this.letzteRunde = performance.now();
+    this.inRunde(() => {
+      const halter = this.halter();
+      const videos = this.platzListe(null);
+      for (const v of videos) {
+        if (v.wartet && v.eintrag.berechtigt && !v.eintrag.hatFlaechen && v.el !== halter) {
+          const letzte = this.sofortAm.get(v.el) ?? 0;
+          if (performance.now() - letzte > 500) {
+            this.sofortAm.set(v.el, performance.now());
+            this.haken.sofort(v.el);
+          }
+        }
+      }
+      this.wendePlatzAn(null, null, videos);
+      this.aktualisiereEtiketten();
+    });
+  }
+
+  // R2: ein Video wurde aus dem Dokument entfernt (Rueckruf des Schleiers, auch bei genau einem bekannten Video): ein getrennter Halter gibt Leinwand und Host
+  // sofort ab (P11), ein nur umgehaengtes Video (zum Zeitpunkt des Rueckrufs wieder im Dokument) behaelt sie.
+  entferntAnstoss(): void {
+    const h = this.halter();
+    if (!h || h.isConnected || !this.haken.aktiv()) return;
+    this.inRunde(() => {
+      this.wendePlatzAn(null, null, this.platzListe(null));
+      this.aktualisiereEtiketten();
+    });
+  }
+
+  private aktualisiereEtiketten(): void {
+    for (const el of this.bekannt) {
+      const z = this.haken.zustand(el);
+      if (z && !this.lauf.has(el)) this.etikett(el, z);
+    }
+  }
+
+  private stoppePlatzTakt(): void {
+    if (this.platzTakt) clearInterval(this.platzTakt);
+    this.platzTakt = null;
+  }
+
+  // Ein Video vergessen (neue Quelle, Pause, entfernt): Leinwand weg, aus der Liste, Horcher ab.
+  vergiss(el: HTMLVideoElement): void {
+    this.beende(el);
+    this.bekannt.delete(el);
+    const an = this.platzHoerer.get(el);
+    if (an) {
+      for (const n of ['play', 'playing', 'pause', 'ended', 'emptied', 'seeked']) el.removeEventListener(n, an, true);
+      this.platzHoerer.delete(el);
+    }
+    if (this.bekannt.size < 2) this.stoppePlatzTakt();
   }
 
   // Etikett fuer ein ganz verdecktes Video, das trotz "Only the naughty bits" ganz bleibt (nicht lesbar, zu knifflig): nur nach dem Urteil.
@@ -250,19 +531,32 @@ export class VideoZonen {
   alleBeenden(): void {
     for (const el of [...this.lauf.keys()]) this.beende(el);
     this.etiketten.alleWeg();
+    for (const el of [...this.bekannt]) this.vergiss(el);
+    this.stoppePlatzTakt();
+    if (this.platzTimer) clearTimeout(this.platzTimer);
+    this.platzTimer = null;
+    if (this.scrollHoerer) {
+      window.removeEventListener('scroll', this.scrollHoerer, true);
+      window.removeEventListener('resize', this.scrollHoerer);
+      this.scrollHoerer = null;
+    }
   }
 
-  // Die Leinwand kann nicht weiter: ganz verdecken (Blur), nach einer Sperrzeit darf es erneut versucht werden.
+  // Die Leinwand kann nicht weiter: ganz verdecken (Blur), nach einer Sperrzeit darf es erneut versucht werden. P6: zuerst verdeckt, dann erst die Leinwand
+  // weg. P7: der Zaehler sauberer Pruefungen steht danach auf 0.
   private faelleZurueck(el: HTMLVideoElement, grund: string): void {
     const z = this.haken.zustand(el);
+    this.verdecke(el, z);
     this.beende(el);
+    this.haken.verwirfFreigabe(el);
     const sperre = SPERRE_MS[grund] ?? SPERRE_STANDARD_MS;
     if (sperre > 0) this.sperreBis.set(el, performance.now() + sperre);
     if (grund === 'langsam') {
       this.langsamBis.set(el, performance.now() + sperre);
       this.haken.meldeLangsam();
     }
-    if (z && this.haken.aktiv()) this.haken.zeigeGanz(el, z);
+    if (z && this.haken.aktiv()) this.etikett(el, z);
+    this.planePlatz(0); // ein anderes berechtigtes Video darf den freien Platz nehmen
   }
 
   // Nach einem Ergebnis der Takt-Pruefung: ein ganz verdecktes Video kehrt zu den Zonen zurueck, sobald es geeignet ist und die Bremse es erlaubt.
@@ -293,6 +587,11 @@ export class VideoZonen {
       bildBereit: () => h.bildBereit(el),
       freigabeReif: () => h.freigabeReif(el),
       sofort: () => h.sofort(el),
+      erstesBild: () => {
+        // P8: die Leinwand hat gemalt und das Video unsichtbar gemacht: jetzt (und nur jetzt) "zensiert".
+        const z = h.zustand(el);
+        if (z && this.lauf.has(el) && h.aktiv()) h.zeigeZonen(el, z);
+      },
       gesicht: (motiv) => this.gesicht(el, motiv),
       wort: (motiv) => this.wort(el, motiv),
       sticker: (motiv) => this.sticker(el, motiv),

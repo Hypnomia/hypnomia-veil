@@ -1113,14 +1113,21 @@ test('N3 Erste-Bild-Frist: ein unsichtbar gewordenes Video loest keine Stoerung 
   const s = await oeffne();
   await testEreignis(s, { malenAus: true });
   await neuesVideo(s);
-  await expect.poll(() => attr(s, 'v1', 'data-veil-leinwand'), { timeout: 20_000, intervals: [30] }).not.toBeNull();
+  // E3a (P8): das Leinwand-Attribut und "zensiert" kommen erst nach dem ersten gemalten Bild; mit malenAus gibt es keins. Die Leinwand steht dann (Modus
+  // "mosaik" im Testhaken), das Video bleibt weichgezeichnet ("verdeckt").
+  await expect.poll(() => attr(s, 'v1', 'data-veil-video-modus'), { timeout: 20_000, intervals: [30] }).not.toBeNull();
   await s.evaluate(() => window.scrollTo(0, 1500));
   await abwarten(1800);
-  expect(await attr(s, 'v1', 'data-veil'), 'Stoerung trotz unsichtbarem Video').toBe('zensiert');
-  expect(await attr(s, 'v1', 'data-veil-leinwand')).not.toBeNull();
+  expect(await attr(s, 'v1', 'data-veil'), 'Stoerung trotz unsichtbarem Video').toBe('verdeckt');
+  expect(await attr(s, 'v1', 'data-veil-video-modus'), 'die Leinwand wurde trotz unsichtbarem Video beendet').not.toBeNull();
+  // R5: der Beweis fuer P8: die Leinwand steht, malt aber nie ein Bild: das Video bekommt kein Leinwand-Attribut (es bleibt weichgezeichnet, nie unsichtbar ohne Bild).
+  expect(await attr(s, 'v1', 'data-veil-leinwand'), 'Leinwand-Attribut ohne gemaltes Bild (P8)').toBeNull();
+  expect((await status(s))!.videoZonenRueckfall, 'Rueckfall trotz unsichtbarem Video').not.toContain('keine Bilder');
   await s.evaluate(() => window.scrollTo(0, 0));
-  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 5000, intervals: [100] }).toBe('verdeckt');
-  expect((await status(s))!.videoZonenRueckfall).toContain('keine Bilder');
+  // E3a (P8): das Video war schon "verdeckt"; der Rueckfall zeigt sich im Status und im Ende der Leinwand.
+  await expect.poll(async () => (await status(s))?.videoZonenRueckfall ?? [], { timeout: 5000, intervals: [100] }).toContain('keine Bilder');
+  expect(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
+  expect(await attr(s, 'v1', 'data-veil-video-modus'), 'die Leinwand steht nach dem Rueckfall noch').toBeNull();
   await s.close();
 });
 
@@ -1510,9 +1517,24 @@ test('P3 Mias Gesicht im Video: Gesicht aus dem Pack mit pinkem Rahmen an der Fa
 });
 
 test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort aus dem Pack, kein Rahmen, stabil je Spur; Themenwechsel und Packwechsel zeichnen neu', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
   await setzePack();
-  const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'mia-wort', an: BEDECKBAR, art: (a) => a.includes('schwarz-wort'), extra: { woerterThemen: ['alpha'] } });
+  // Messbarkeit ist keine Aussage ueber das Produkt (Session 21): auf dem Standbild entstehen bei Schwelle 0,1 ab und zu weitere, grenzwertige Spuren zwischen den beiden
+  // echten, auch erst nach dem Start. Dann ueberlappen sich die Flaechen, und eine der vier Messungen (erste Messung, Paar "stabil je Spur", alpha, beta) findet keine
+  // Flaeche mit unverdecktem Wort. Ein solcher Durchgang wird verworfen (`NichtMessbar`) und der ganze Fall mit einer neuen Szene wiederholt, hoechstens dreimal; der
+  // letzte Durchgang ist dann rot wie bisher. Alle Aussagen ueber das Produkt (schwarz, Wort, kein Rahmen, stabil je Spur, Themenwechsel, ohne Pack) bleiben harte Forderungen.
+  // Schwelle 0,3 statt des Standards 0,1 (Sonde vom 17.11.2026, `MESSUNG-PHASE-11-E3.md`): die weiteren Spuren sind grenzwertige Treffer des Erkenners. Bei 0,1 hatten
+  // 3 von 12 Szenen (Stand mit E3a) und 12 von 12 (Stand 9408eaa) Zusatzflaechen, bei 0,2 und 0,3 keine von 12, die beiden echten Flaechen blieben in jeder Probe.
+  // Der Fall prueft das Zeichnen (schwarz mit Wort), nicht die Empfindlichkeit des Erkenners; die Wiederholung bleibt als Netz.
+  class NichtMessbar extends Error {}
+  const szeneP4 = (): Promise<Messung> =>
+    messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'mia-wort', an: BEDECKBAR, art: (a) => a.includes('schwarz-wort'), extra: { woerterThemen: ['alpha'], schwelle: 0.3 } });
+  const durchgang = async (): Promise<void> => {
+  let m = await szeneP4();
+  const nichtMessbar = async (text: string): Promise<never> => {
+    await m.s.close();
+    throw new NichtMessbar(text);
+  };
   // Unverdeckt: der Wortbereich (Mitte der Box, plus/minus 0,4 der Breite, volle Hoehe) wird von keiner anderen Box (2 Bildpunkte Rand) geschnitten. Dann kann keine
   // spaeter gemalte Flaeche das Wort uebermalen und kein Rosa wegfallen (Wackler Session 21: dritte Spur ueberlappt beide, Beta-Wort als Teilstueck 0,16 bis 0,62 gemessen).
   const wortBereichFrei = (v: VideoBoxen, f: number[]): boolean => {
@@ -1534,8 +1556,28 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
     });
     return best;
   };
-  const fristErst = Date.now() + 60_000;
+  // Auswahl der Szene (Session 21): ob der Koerper zwei Spuren bekommt oder eine dritte, grenzwertige dazwischen (Schwelle 0,1), entscheidet sich beim Start der Szene
+  // und bleibt auf dem Standbild dann stehen. Mit der dritten Spur ueberlappen sich die Flaechen dauerhaft, messbar ist nur ab und zu eine (rot an der ersten Messung, am
+  // Paar "stabil je Spur" oder am Themenwechsel). Darum gilt eine Szene nur, wenn drei Aufnahmen in Folge eine messbare Flaeche haben; sonst wird sie neu geoeffnet
+  // (neue Spuren), hoechstens viermal. Die Forderung bleibt: die letzte Szene laeuft mit der alten Frist, ohne messbare Flaeche ist der Fall rot.
   let aufnahmenErst = 1;
+  let szenenErst = 1;
+  for (;;) {
+    let stabil = !!messbar(m.v);
+    for (let i = 0; stabil && i < 2; i++) {
+      const x = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
+      m.v = x.v;
+      m.aus = x.aus;
+      aufnahmenErst++;
+      stabil = !!messbar(m.v);
+    }
+    if (stabil || szenenErst >= 5) break;
+    console.log(`chromium: P4 Szene ${szenenErst} nicht stabil messbar (${JSON.stringify(m.v.flaechen)}), Szene wird neu geoeffnet`);
+    await m.s.close();
+    m = await szeneP4();
+    szenenErst++;
+  }
+  const fristErst = Date.now() + 60_000;
   while (!messbar(m.v) && Date.now() < fristErst) {
     const x = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
     m.v = x.v;
@@ -1543,8 +1585,8 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
     aufnahmenErst++;
   }
   const f = messbar(m.v);
-  console.log(`chromium: P4 erste Messung: ${aufnahmenErst} Aufnahme(n), Messbox ${JSON.stringify(f)}, alle Flaechen ${JSON.stringify(m.v.flaechen)}`);
-  expect(f, 'keine unverdeckte Flaeche fuer die erste Messung (P4) gefunden').not.toBeNull();
+  console.log(`chromium: P4 erste Messung: Szene ${szenenErst}, ${aufnahmenErst} Aufnahme(n), Messbox ${JSON.stringify(f)}, alle Flaechen ${JSON.stringify(m.v.flaechen)}`);
+  if (!f) await nichtMessbar('keine unverdeckte Flaeche fuer die erste Messung (P4) gefunden');
   const k = kenn(m.ref, m.aus, f!, 0, m.v.flaechen);
   console.log(`chromium: P4 schwarz-wort ${JSON.stringify(k)}`);
   {
@@ -1596,7 +1638,7 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
     alt = neu;
   }
   console.log(`chromium: P4 stabil je Spur: ${paarVersuche} Aufnahme(n) bis zum Paar`);
-  expect(vergleich, 'in der Frist nie dieselbe Spur mit unverdecktem Wortbereich zweimal gezeigt').not.toBeNull();
+  if (!vergleich) await nichtMessbar('in der Frist nie dieselbe Spur mit unverdecktem Wortbereich zweimal gezeigt');
   const { w1, w2 } = vergleich!;
   console.log(`chromium: P4 Wort stabil je Spur: ${w1.size} und ${w2.size} Pixel, Deckung ${(deckung(w1, w2, 1000, 1) * 100).toFixed(0)} %, Breite ${vergleich!.b1} und ${vergleich!.b2} px`);
   expect(deckung(w1, w2, 1000, 1)).toBeGreaterThan(0.85);
@@ -1632,14 +1674,24 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
       `Weg ${betaFrei ? 'freie Flaechen' : 'unverdeckte Wortbereiche'}, ${aufnahmen} Aufnahme(n), Beta-Flaechen ${JSON.stringify(betaFrei ? betaBoxen : betaUnverdeckt!.boxen)}, ` +
       `alle Flaechen ${JSON.stringify(beta.v.flaechen)}`
   );
-  expect(breitenAlt.length, 'keine messbare Flaeche fuer alpha (Themenwechsel)').toBeGreaterThan(0);
-  expect(breitenNeu.length, 'keine unverdeckte Flaeche fuer den Themenwechsel messbar').toBeGreaterThan(0);
+  if (breitenAlt.length === 0) await nichtMessbar('keine messbare Flaeche fuer alpha (Themenwechsel)');
+  if (breitenNeu.length === 0) await nichtMessbar('keine unverdeckte Flaeche fuer den Themenwechsel messbar');
   expect(Math.min(...breitenNeu), 'noch ein Wort des alten Themas').toBeGreaterThan(Math.max(...breitenAlt) * 1.2);
   // Pack weg: Mia-Presets gelten ohne Pack nicht, die Videozensur zeichnet Mosaik
   await worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
   const ohne = await augenblick(m.s, (a) => a.every((x) => x === 'mosaik'));
   console.log(`chromium: P4 ohne Pack: ${JSON.stringify(ohne.v.arten)}`);
   await m.s.close();
+  };
+  for (let nr = 1; ; nr++) {
+    try {
+      await durchgang();
+      break;
+    } catch (e) {
+      if (!(e instanceof NichtMessbar) || nr >= 3) throw e;
+      console.log(`chromium: P4 Durchgang ${nr} nicht messbar (${e.message}), der Fall beginnt mit einer neuen Szene von vorn`);
+    }
+  }
 });
 
 test('P5 Preset-Wechsel im laufenden Video: die Leinwand zeichnet neu, ohne Mischzustand alter und neuer Behandlung (mosaik, blur, schwarz)', async () => {

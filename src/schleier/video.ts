@@ -45,6 +45,8 @@ export interface VideoHaken {
   beiBild?(el: HTMLVideoElement, z: Zustand): boolean;
   // Optional (Zonen-Leinwand): darf ein verdecktes Video jetzt frei werden? false haelt es verdeckt (Zonen-Video: erst nach 3 s Medienzeit ohne Treffer).
   haelt?(el: HTMLVideoElement, z: Zustand): boolean;
+  // Optional (Testhaken): der Zaehler sauberer Pruefungen des Videos hat sich geaendert (null = der Lauf ist zu Ende).
+  beiSauber?(el: HTMLVideoElement, sauber: number | null): void;
 }
 
 // ---------- reine Logik ----------
@@ -321,6 +323,7 @@ export class VideoTakt {
       this.dokumentHoerer = true;
       document.addEventListener('visibilitychange', this.beiDokumentSicht);
     }
+    this.meldeSauber(lauf);
     this.gleicheAn(lauf);
     this.plane(lauf);
   }
@@ -404,6 +407,22 @@ export class VideoTakt {
   freigabeReif(el: HTMLVideoElement): boolean {
     const lauf = [...this.laeufe].find((l) => l.el === el);
     return !lauf || lauf.soll === 'frei' || lauf.sauber >= this.g.freiNach - 1;
+  }
+
+  // Die Leinwand endet ohne Freigabe (Rueckfall, Platzverlust, P7): der Zaehler sauberer Pruefungen steht danach auf 0, eine geplante Freigabe
+  // (soll frei, wartet auf die Bremse) entfaellt. Das Video braucht danach wieder drei saubere Pruefungen in Folge. Nie fuer die Freigabe selbst.
+  verwirfFreigabe(el: HTMLVideoElement): void {
+    const lauf = [...this.laeufe].find((l) => l.el === el);
+    if (!lauf || lauf.tot) return;
+    lauf.soll = 'verdeckt';
+    lauf.sauber = 0;
+    if (lauf.wechselTimer) clearTimeout(lauf.wechselTimer);
+    lauf.wechselTimer = null;
+    this.meldeSauber(lauf);
+  }
+
+  private meldeSauber(lauf: VideoLauf): void {
+    this.haken.beiSauber?.(lauf.el, lauf.sauber);
   }
 
   // Sofortpruefung auf Wunsch der Leinwand (Schnitt, Sprung, Pause).
@@ -601,6 +620,7 @@ export class VideoTakt {
       const neu = entscheideHysterese(lauf, 'fehler', this.g.freiNach);
       lauf.soll = neu.soll;
       lauf.sauber = neu.sauber;
+      this.meldeSauber(lauf);
       this.gleicheAn(lauf);
     }, this.g.taktMs * 2);
     this.fuehreAus(lauf.stand, 'takt', () => this.haken.pruefe(lauf.el), !lauf.schnell).then(
@@ -647,6 +667,7 @@ export class VideoTakt {
       lauf.soll = neu.soll;
       lauf.sauber = neu.sauber;
     }
+    this.meldeSauber(lauf);
     this.gleicheAn(lauf);
   }
 
@@ -664,6 +685,7 @@ export class VideoTakt {
     }
     lauf.soll = 'verdeckt';
     lauf.sauber = 0;
+    this.meldeSauber(lauf);
     this.gleicheAn(lauf);
   }
 
@@ -699,6 +721,7 @@ export class VideoTakt {
   private beendeLauf(lauf: VideoLauf): void {
     lauf.tot = true;
     lauf.sofortOffen = false;
+    this.haken.beiSauber?.(lauf.el, null);
     this.entwaffne(lauf);
     if (lauf.fristTimer) clearTimeout(lauf.fristTimer);
     lauf.fristTimer = null;

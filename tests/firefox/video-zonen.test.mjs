@@ -411,12 +411,17 @@ try {
     await oeffne();
     await driver.executeScript("document.dispatchEvent(new CustomEvent('veil-test', { detail: JSON.stringify({ malenAus: true }) }))");
     await neuesVideo({ id: 'v1' });
-    await bis('Leinwand', async () => (await attr('v1', 'data-veil-leinwand')) !== null, 30_000);
+    // E3a (P8): ohne gemaltes Bild (malenAus) kommen Leinwand-Attribut und "zensiert" nicht; die Leinwand steht (Modus im Testhaken), das Video bleibt "verdeckt".
+    await bis('Leinwand', async () => (await attr('v1', 'data-veil-video-modus')) !== null, 30_000);
     await driver.executeScript('window.scrollTo(0, 1500)');
     await warte(1800);
-    pruefe((await attr('v1', 'data-veil')) === 'zensiert', 'Stoerung trotz unsichtbarem Video');
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt', 'Stoerung trotz unsichtbarem Video');
+    const rf = async () => JSON.parse(await driver.executeScript('return document.documentElement.dataset.veilStatus'))?.videoZonenRueckfall ?? [];
+    pruefe(!(await rf()).includes('keine Bilder'), 'Rueckfall trotz unsichtbarem Video');
+    pruefe((await attr('v1', 'data-veil-leinwand')) === null, 'Leinwand-Attribut ohne gemaltes Bild (P8)');
     await driver.executeScript('window.scrollTo(0, 0)');
-    await bis('Stoerung nach dem Sichtbarwerden', async () => (await attr('v1', 'data-veil')) === 'verdeckt', 6000);
+    await bis('Stoerung nach dem Sichtbarwerden', async () => (await rf()).includes('keine Bilder'), 6000);
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt', 'nach der Stoerung nicht verdeckt');
   });
 
   await test('z11 Pause der Erweiterung: alles weg, danach wieder Zonen', async () => {
@@ -1244,6 +1249,85 @@ try {
       const v = await lies();
       return !!v && v.szene > v0.szene;
     }, 30_000);
+  });
+
+  // ---------- Etappe 3 (E3r): Platz fuer die Leinwand und Pause nach Regel S2, Fixture video-platz.html ----------
+  // Erwartete Fehlschlaege: Firefox kennt kein `test.fail`. `testRot` laeuft den Fall wie einen normalen und meldet "ERWARTET ROT (E3a)" statt eines Fehlers, wenn er
+  // scheitert; wird er gruen, ist das ein Fehler ("UNERWARTET GRUEN: Kennzeichnung entfernen"), damit der Bauer sie herausnimmt. VEIL_E3_OHNE_KENNZEICHNUNG=1
+  // laeuft die Faelle als normale Tests (Rohlauf, jede Meldung ist dann ein Fehler). Die Chromium-Faelle stehen in tests/chromium/video-platz.spec.ts.
+  async function testRot(name, etappe, fn) {
+    if (process.env.VEIL_E3_OHNE_KENNZEICHNUNG === '1') return test(name, fn);
+    if (process.env.VEIL_NUR && !process.env.VEIL_NUR.split(',').some((n) => name.startsWith(n))) return;
+    const t0 = Date.now();
+    try {
+      await fn();
+    } catch (fehler) {
+      console.log(`firefox: ERWARTET ROT (${etappe}) ${name} (${Date.now() - t0} ms): ${String(fehler?.message ?? fehler).slice(0, 300)}`);
+      return;
+    }
+    console.error(`firefox: FEHLER ${name}: UNERWARTET GRUEN, die Kennzeichnung ${etappe} entfernen`);
+    fehlerListe.push(`${name} (unerwartet gruen)`);
+  }
+  async function oeffnePlatz(abfrage = '') {
+    await driver.get(`${basis}/video-platz.html?bild=${encodeURIComponent(BILD)}${abfrage ? `&${abfrage}` : ''}`);
+    await bis('Film bereit', () => driver.executeScript('return document.documentElement.dataset.filmBereit ?? null'), 60_000);
+    await setze({ pause: false, video: 'zonen' });
+  }
+  const hatLeinwand = (id) => driver.executeScript("const e = document.getElementById(arguments[0]); return !!e && e.hasAttribute('data-veil-leinwand')", id);
+  const zustaende = () => driver.executeScript('return window.__zustand()');
+
+  await test('V1 Voraussetzung: ein nie gespieltes Vorschau-Video mit Person im ersten Bild nimmt die Leinwand und behaelt sie', async () => {
+    await oeffnePlatz();
+    await neuesVideo({ id: 'v1', preload: 'auto', abspielen: false, ct0: 3.0 });
+    await bis('Leinwand bei Video 1', () => hatLeinwand('v1'), 30_000);
+    await warte(1500);
+    const z = (await zustaende())[0];
+    pruefe(z.pausiert === true && z.ct > 2.5 && z.veil === 'zensiert' && z.leinwand === true, `Vorschau-Video: ${JSON.stringify(z)}`);
+  });
+
+  await test('V1 Platzwechsel beim Spielen: Video 2 bekommt die Leinwand in 3 s, Video 1 ist verdeckt', async () => {
+    await oeffnePlatz();
+    await neuesVideo({ id: 'v1', preload: 'auto', abspielen: false, ct0: 3.0 });
+    await bis('Voraussetzung: Leinwand bei Video 1', () => hatLeinwand('v1'), 30_000);
+    await warte(1000);
+    const tPlay = await driver.executeScript("window.neuesVideo({ id: 'v2', ct0: 2.5 }); return window.epoche();");
+    await bis('V1: Video 2 hat nach 10 s keine Leinwand (Video 1 haelt den Platz)', () => hatLeinwand('v2'), 10_000);
+    const l = await driver.executeScript('return window.__platz');
+    const e = l.find((x) => x.id === 'v2' && x.was === 'data-veil-leinwand' && x.v !== null && x.t >= tPlay);
+    pruefe(e && e.t - tPlay <= 3000, `V1: Video 2 bekam die Leinwand zu spaet (${e ? Math.round(e.t - tPlay) : 'nie'} ms)`);
+    console.log(`firefox: V1 Zeit von Play bis Leinwand bei Video 2: ${e ? Math.round(e.t - tPlay) : 'nie'} ms`);
+    const zs = await zustaende();
+    const z1 = zs.find((x) => x.id === 'v1');
+    pruefe(z1.veil === 'verdeckt' && z1.leinwand === false, `V1: Video 1 ist nicht verdeckt ohne Leinwand: ${JSON.stringify(z1)}`);
+    const v = await driver.executeScript('return window.__verstoss');
+    pruefe(v.filter((x) => ['zensiert-ohne-leinwand', 'frei', 'leinwand-sichtbar', 'ohne-urteil-sichtbar'].includes(x.art)).length === 0, `V3: Verstoss ${JSON.stringify(v)}`);
+  });
+
+  await test('V5 zwei Videos spielen zugleich: genau eine Leinwand, das andere verdeckt und mit Etikett', async () => {
+    await oeffnePlatz();
+    await neuesVideo({ id: 'v1', ct0: 2.5 });
+    await neuesVideo({ id: 'v2', ct0: 2.5 });
+    const halter = await bis('Voraussetzung: eine Leinwand', async () => (await zustaende()).find((x) => x.leinwand)?.id ?? null, 30_000);
+    await warte(5000);
+    const zs = await zustaende();
+    pruefe(zs.filter((x) => x.leinwand).map((x) => x.id).join() === halter, `V5: genau eine Leinwand beim selben Video: ${JSON.stringify(zs.map((x) => [x.id, x.leinwand]))}`);
+    const anderes = zs.find((x) => x.id !== halter);
+    pruefe(anderes.veil === 'verdeckt', `V5: das andere Video ist nicht verdeckt: ${JSON.stringify(anderes)}`);
+    pruefe((anderes.etikett ?? '') !== '', 'V5: das andere Video traegt kein Etikett');
+  });
+
+  await testRot('S2a Pause auf sauberem Standbild: in der Pause wird geprueft, nach drei sauberen Pruefungen ist das Video frei', 'E3c', async () => {
+    await oeffnePlatz();
+    await setze({ video: 'ganz' });
+    await neuesVideo({ id: 'v1', ct0: 10.5 });
+    await bis('Voraussetzung: verdeckt beim Anlaufen (Person bei 10,5 s)', async () => (await attr('v1', 'data-veil')) === 'verdeckt', 30_000);
+    const p = await driver.executeAsyncScript(
+      `const fertig = arguments[arguments.length - 1]; window.pausiereBei('v1', 12.5).then(fertig);`,
+    );
+    pruefe(p !== null, 'Voraussetzung: das Video erreichte 12,5 s nicht');
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt' && !(await hatLeinwand('v1')), 'Voraussetzung: beim Pausieren verdeckt, ohne Leinwand');
+    await bis('S2a: das Video blieb 15 s auf dem sauberen Standbild verdeckt', async () => (await attr('v1', 'data-veil')) === 'frei', 15_000);
+    pruefe((await ct('v1')) === p.ct, 'S2a: das Standbild hat sich bewegt');
   });
   await rm(ordner, { recursive: true, force: true });
 } catch (fehler) {
