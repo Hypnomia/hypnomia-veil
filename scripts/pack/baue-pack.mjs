@@ -218,7 +218,7 @@ export const DUMMY_FARBEN_WARM = [
 ];
 
 // Baut das Dummy-Pack im Speicher. Liefert die Bytes und die verwendeten Farben (Tests pruefen Pixel dagegen).
-// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`, `opts.grosseVorschau: n`: n grosse Vorschau-Bilder (1 bis 2 MB) statt der vier Standard-Bilder, `opts.vorschauSatz: 'stufen'`: Vorschau-Bilder je Stufe und Format (DUMMY_STUFEN_BILDER) statt der vier Standard-Bilder, `opts.ohneSticker`: ohne Sticker und Freischaltung `zensur:sticker` (wie ein Pack vor 1.0), `opts.stickerTeilweise`: zwei gute und ein kaputter Sticker, `opts.stickerKaputt`: statt der drei Sticker eine einzige nicht dekodierbare Datei `sticker/kaputt-1.webp` (Freischaltung bleibt; Hide-first-Test).
+// `opts.farben`: eigene Farbpaare (Standard DUMMY_FARBEN), `opts.id`: andere Pack-Kennung, `opts.version`: andere Version (Standard 0.0.1), `opts.ohneTon`: ohne Klaenge und Freischaltung `ton`, `opts.grosseVorschau: n`: n grosse Vorschau-Bilder (1 bis 2 MB) statt der vier Standard-Bilder, `opts.vorschauGemischt: { quer, hoch }`: so viele kleine Vorschau-Bilder in 16:9 und 3:4 (Stufe hot), `opts.vorschauSatz: 'stufen'`: Vorschau-Bilder je Stufe und Format (DUMMY_STUFEN_BILDER) statt der vier Standard-Bilder, `opts.ohneSticker`: ohne Sticker und Freischaltung `zensur:sticker` (wie ein Pack vor 1.0), `opts.stickerTeilweise`: zwei gute und ein kaputter Sticker, `opts.stickerKaputt`: statt der drei Sticker eine einzige nicht dekodierbare Datei `sticker/kaputt-1.webp` (Freischaltung bleibt; Hide-first-Test).
 export async function baueDummyPack(opts = {}) {
   const paare = opts.farben ?? DUMMY_FARBEN;
   const dateien = [{ name: 'lizenz.txt', typ: 'text/plain', daten: new TextEncoder().encode(lizenzTextDummy()), rolle: 'lizenz' }];
@@ -243,6 +243,15 @@ export async function baueDummyPack(opts = {}) {
     if (opts.vorschauSatz === 'stufen') {
       for (const x of DUMMY_STUFEN_BILDER) {
         dateien.push({ name: `vorschau/stufe-${x.schluessel}.webp`, typ: 'image/webp', daten: await dummyBild(x.farben[0], x.farben[1], x.breite, x.hoehe), rolle: 'vorschau', stufe: x.stufe });
+      }
+    } else if (opts.vorschauGemischt) {
+      // Etappe 2: `opts.vorschauGemischt: { quer, hoch }` baut so viele kleine Vorschau-Bilder (Stufe hot) im Format 16:9 und 3:4, je mit eigener Farbe.
+      const { quer = 0, hoch = 0 } = opts.vorschauGemischt;
+      for (let i = 0; i < quer + hoch; i++) {
+        const q = i < quer;
+        const a = [(i * 37 + 20) % 256, (i * 91 + 60) % 256, (i * 53 + 100) % 256];
+        const b = [255 - a[0], (a[1] + 128) % 256, 255 - a[2]];
+        dateien.push({ name: `vorschau/${q ? 'quer' : 'hoch'}-${i + 1}.webp`, typ: 'image/webp', daten: await dummyBild(a, b, q ? 640 : 360, q ? 360 : 480), rolle: 'vorschau', stufe: 'hot' });
       }
     } else if (!(opts.grosseVorschau > 0)) {
       // Standard seit Phase 7: zwei Bilder Tease, zwei Hot (alle quer), damit die Standardstufe `hot` sie zeigt.
@@ -324,7 +333,7 @@ export async function baueDummyPack(opts = {}) {
     farben: paare.flat(),
     bilder: paare.length,
     vorschauFarben: !phase4 || grosse ? [] : (opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.flatMap((x) => x.farben) : DUMMY_VORSCHAU_FARBEN).flat(),
-    vorschau: !phase4 ? 0 : grosse ? opts.grosseVorschau : opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.length : DUMMY_VORSCHAU_FARBEN.length,
+    vorschau: !phase4 ? 0 : grosse ? opts.grosseVorschau : opts.vorschauGemischt ? (opts.vorschauGemischt.quer ?? 0) + (opts.vorschauGemischt.hoch ?? 0) : opts.vorschauSatz === 'stufen' ? DUMMY_STUFEN_BILDER.length : DUMMY_VORSCHAU_FARBEN.length,
     chibis: phase4 ? DUMMY_CHIBI_POSEN.length : 0,
     werbung: phase4 ? DUMMY_WERBUNG.length : 0,
   };

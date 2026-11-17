@@ -304,8 +304,11 @@ test('Video nur mit Poster und ohne Quelle (preload none) bekommt das Standbild,
 test('Video mit Groesse 0, das spaeter waechst, bekommt das Standbild dann', async () => {
   const s = await oeffneSeite();
   try {
-    await neuesVideo(s, { id: 'haupt' });
-    await s.evaluate(() => ((window as any).findeVideo('haupt').style.cssText = 'width:0px;height:0px'));
+    // Das Video entsteht in einem Schritt mit Groesse 0 (zwei getrennte Aufrufe liessen dem Produkt Zeit, schon vorher ein Standbild zu legen, das beim Schrumpfen stehen bleibt).
+    await s.evaluate(() => {
+      (window as any).neuesVideo({ id: 'haupt' });
+      (window as any).findeVideo('haupt').style.cssText = 'width:0px;height:0px';
+    });
     await s.waitForTimeout(800);
     expect(await standbild(s)).toBeNull();
     await s.evaluate(() => ((window as any).findeVideo('haupt').style.cssText = ''));

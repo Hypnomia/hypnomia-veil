@@ -288,6 +288,26 @@ try {
     await wirdOrtGetauscht(ort);
   }
 
+  // 3b. Phase 11 Etappe 2 (O3): zwoelf gleich grosse Kacheln, kein Ersatzbild doppelt, solange der Pool reicht (Dummy-Pack: vier Vorschau-Bilder);
+  // a: gleiche Quelle ohne Link, b: verschiedene Kennungen, c: Link /fh/out?url=%2Fvideos%2F<Kennung> mit data:-Platzhalter, d: gemeinsamer Link #, e: dasselbe Video zweimal. Nach Neuladen dieselbe Zuordnung.
+  for (const v of ['a', 'b', 'c', 'd', 'e']) {
+    const ids12 = vorschauIds(12);
+    const bildVon = (e) => (e.src.startsWith('data:') ? e.src : e.hg);
+    await driver.get(seite('xvideos', `optik-kacheln.html?v=${v}`));
+    await warteAufTausch(ids12);
+    const k1 = (await stand(ids12)).map(bildVon);
+    const verschieden = new Set(k1).size;
+    console.log(`firefox O3${v}: ${verschieden} verschiedene Ersatzbilder bei 12 Kacheln, Pool ${voll.vorschau}`);
+    pruefe(verschieden === Math.min(12, voll.vorschau), `O3${v}: so viele verschiedene Ersatzbilder wie der Pool hergibt (${verschieden})`);
+    const z = new Map();
+    for (const b of k1) z.set(b, (z.get(b) ?? 0) + 1);
+    pruefe(Math.max(...z.values()) <= Math.ceil(12 / voll.vorschau), `O3${v}: kein Bild haeufiger als noetig`);
+    if (v === 'e') pruefe([0, 2, 4, 6, 8, 10].every((i) => k1[i] !== k1[i + 1]), 'O3e: zwei Kacheln desselben Videos zeigen verschiedene Bilder');
+    await driver.navigate().refresh();
+    await warteAufTausch(ids12);
+    pruefe(JSON.stringify((await stand(ids12)).map(bildVon)) === JSON.stringify(k1), `O3${v}: nach Neuladen dieselbe Zuordnung`);
+  }
+
   // 4. Dynamisch
   await driver.get(seite('x', 'erwachsen-dynamisch.html'));
   const tausch = ['lazy', 'pimg', 'wechsel', 'hg', 'breit-img'];
@@ -341,7 +361,12 @@ try {
   await bis('20 gleiche Bilder', () => driver.executeScript(() => Array.from(document.querySelectorAll('#gleiche img')).every((i) => (i.getAttribute('src') || '').startsWith('data:image/jpeg'))));
   const nachher = await erwachsenStand();
   console.log(`firefox E: Abrufe ${vorher} -> ${nachher.abrufe}, ${nachher.bilder} Bilder im Zwischenspeicher`);
-  pruefe(nachher.abrufe - vorher <= 1 && nachher.bilder <= 4, 'gleiche Quelle ein Abruf, Zwischenspeicher klein');
+  // Phase 11 Etappe 2 (O3 geht vor): zwanzig gleichzeitig verbundene Kacheln desselben Videos bekommen verschiedene Bilder, solange der Pool reicht (vier).
+  const gleicheBilder = await driver.executeScript(() => Array.from(document.querySelectorAll('#gleiche img')).map((i) => i.getAttribute('src') || ''));
+  const jeBild = new Map();
+  for (const q of gleicheBilder) jeBild.set(q, (jeBild.get(q) ?? 0) + 1);
+  pruefe(nachher.abrufe - vorher <= 21 && nachher.bilder <= 4, 'je Kachel ein Abruf, Zwischenspeicher klein');
+  pruefe(jeBild.size === 4 && Math.max(...jeBild.values()) <= 5, `zwanzig Kacheln desselben Videos zeigen alle vier Bilder des Pools, je hoechstens fuenfmal (${jeBild.size})`);
   pruefe((await waechter()).aufblitzen === 0, 'dynamisch: 0 Aufblitzen');
 
   // 5. Pause

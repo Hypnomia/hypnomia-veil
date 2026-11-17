@@ -15,6 +15,8 @@
          ?v=b: zwoelf gleich grosse Kacheln mit verschiedenen Kennungen, gleiche Platzhalter-Quelle.
          ?v=c: wie xHamster-Premium (Messung 0b): zwoelf gleich grosse Kacheln, Link /fh/out?url=%2Fvideos%2F<je eigene Kennung> (die Kennung steht prozentkodiert
                in der Abfrage, das Muster der Erkennung greift nicht), Bildquelle nur ein gemeinsamer data:-Platzhalter.
+         ?v=d: zwoelf gleich grosse Kacheln, alle in `<a href="#">`, gleiche Quelle (Platzhalter-Link, unterscheidet nicht).
+         ?v=e: zwoelf Kacheln, je zwei hintereinander zeigen dasselbe Video (gleiche Kennung im Link), beide verbunden und sichtbar.
          ?v=formen: acht Kacheln mit verschiedenen Formaten (quer, hoch, quadratisch, sehr breit), verschiedene Kennungen. -->
     <div class="liste" id="liste"></div>
     <script>
@@ -30,7 +32,7 @@
         const huelle = document.createElement('div');
         huelle.className = 'karte thumb-inside';
         const bild = `<img class="vorschau" id="v${i + 1}" alt="Vorschau ${i + 1}" width="${b}" height="${h}" src="${v === 'c' ? platzhalter : '/synthetisch/40.png'}" />`;
-        huelle.innerHTML = !hat ? bild : v === 'c' ? `<a href="/fh/out?url=%2Fvideos%2Foptik${1000 + i}%3Futm_content%3Dgold-video%26utm_term%3D1&utm_source=widgets">${bild}</a>` : `<a href="/video/optik${1000 + i}/clip">${bild}</a>`;
+        huelle.innerHTML = !hat ? bild : v === 'd' ? `<a href="#">${bild}</a>` : v === 'e' ? `<a href="/video/optik${1000 + (i >> 1)}/clip">${bild}</a>` : v === 'c' ? `<a href="/fh/out?url=%2Fvideos%2Foptik${1000 + i}%3Futm_content%3Dgold-video%26utm_term%3D1&utm_source=widgets">${bild}</a>` : `<a href="/video/optik${1000 + i}/clip">${bild}</a>`;
         liste.appendChild(huelle);
       });
     </script>

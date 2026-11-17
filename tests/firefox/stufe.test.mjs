@@ -308,8 +308,23 @@ try {
   await warteAufTausch([...ks, 'd1', 'd2']);
   const wahl = await Promise.all(ks.map((id) => welches(id)));
   console.log(`firefox I2: Verteilung ${wahl.join(', ')}`);
-  pruefe((await welches('d1')) === wahl[0] && (await welches('d2')) === wahl[6], 'gleiche Quelle gleiches Bild');
-  pruefe(new Set(wahl).size === 2 && wahl.every((k) => k === 'tease-quer' || k === 'hot-quer'), 'verschiedene Quellen verteilen sich auf beide erlaubten Bilder');
+  // Etappe 2, Entscheidung 256: O3 gilt je Kachel, auch fuer dasselbe Video und vor dem Format; die Stabilitaet traegt das Gedaechtnis je Kachel.
+  // Ersetzt "gleiche Quelle gleiches Bild": (i) d1 und d2 tragen ein in der Stufe Hot erlaubtes Bild, (ii) dieselbe Kachel behaelt ihr Bild bei erneuter Bewertung
+  // (Quellwechsel), (iii) d1 traegt ein anderes Bild als k1, solange ein erlaubtes Bild frei ist.
+  const ERLAUBT_HOT = ['tease-quer', 'tease-hoch', 'hot-quer', 'hot-hoch', 'hot-quadratisch']; // nie explicit
+  const d1 = await welches('d1');
+  const d2 = await welches('d2');
+  const andere = await Promise.all(['s1', 's2', 's3', ...ks].map((id) => welches(id)));
+  pruefe(ERLAUBT_HOT.includes(d1) && ERLAUBT_HOT.includes(d2), `d1 und d2 tragen ein in der Stufe Hot erlaubtes Bild (${d1}, ${d2})`);
+  pruefe(new Set(andere).size >= ERLAUBT_HOT.length || d1 !== wahl[0], 'd1 traegt ein anderes Bild als k1, solange ein erlaubtes Bild frei ist');
+  await driver.executeScript(() => { document.getElementById('d1').src = '/synthetisch/125.png'; });
+  await warteAufTausch(['d1']);
+  pruefe((await welches('d1')) === d1, 'dieselbe Kachel behaelt ihr Bild bei erneuter Bewertung');
+  // Etappe 2, Entscheidung 256: ersetzt "verschiedene Quellen verteilen sich auf beide erlaubten Bilder": (i) jedes Bild ist in der Stufe erlaubt, (ii) die passenden
+  // Quer-Bilder werden zuerst vergeben (s1 und k1 tragen tease-quer und hot-quer in beliebiger Folge), (iii) mindestens zwei verschiedene Bilder.
+  pruefe(wahl.every((k) => ERLAUBT_HOT.includes(k)), 'jedes Bild ist in der Stufe Hot erlaubt');
+  pruefe(JSON.stringify([await welches('s1'), wahl[0]].sort()) === JSON.stringify(['hot-quer', 'tease-quer']), 'die passenden Quer-Bilder werden zuerst vergeben');
+  pruefe(new Set(wahl).size >= 2, 'mindestens zwei verschiedene Bilder');
 
   // ---------- Galerie ----------
   const zeige = async (stufe) => {

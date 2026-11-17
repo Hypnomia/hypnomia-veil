@@ -88,7 +88,8 @@ async function brauchtBild(satz: string, name: string): Promise<Buffer> {
 interface Pixel { daten: Buffer; b: number; h: number }
 async function rohPixel(bytes: Buffer): Promise<Pixel> {
   const { data, info } = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  return { daten: data, b: info.width, h: info.height };
+  // Eigene Kopie je Aufruf: ein geteilter oder wiederverwendeter Rohpuffer von sharp machte zwei Vergleichsbilder inhaltsgleich (Wackler Session 21: Mitte genau 0,0).
+  return { daten: Buffer.from(data), b: info.width, h: info.height };
 }
 const ausDataUrl = (url: string): Buffer => Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
 
@@ -655,6 +656,9 @@ test('Koerper-Behandlungen im Pixeltest: Schwarz mit Wort, Mosaik mit Wort und U
   expect(mw.innen.wort - mo.innen.wort).toBeGreaterThan(500); // das Wort
   // die dunkle Unterlage hinter dem Wort: in der Mitte weicht Mosaik-Wort stark vom Mosaik ab, in den Ecken (ausserhalb der Unterlage) nicht
   const [mx, my, mbw, mbh] = mw.f.box;
+  // Vor dem Vergleich: Mosaik und Mosaik-Wort sind zwei eigene Puffer mit verschiedenem Inhalt (sonst wuerde die Mitte 0,0 und der Fehler laege am Messen, nicht am Bild).
+  expect(mw.aus.daten !== mo.aus.daten, 'Mosaik und Mosaik-Wort teilen sich denselben Pixelpuffer').toBe(true);
+  expect(mw.aus.daten.equals(mo.aus.daten), 'Mosaik und Mosaik-Wort sind inhaltsgleich (Pixelpuffer identisch)').toBe(false);
   const mitte = stat(mo.aus, mw.aus, [mx + Math.round(mbw * 0.15), my + Math.round(mbh * 0.4), Math.round(mbw * 0.7), Math.round(mbh * 0.2)]);
   const ecke = stat(mo.aus, mw.aus, [mx + 12, my + 12, Math.round(mbw * 0.25), Math.round(mbh * 0.2)]);
   console.log(`chromium: mosaik-wort gegen Mosaik: Mitte ${mitte.mittel.toFixed(1)}, Ecke ${ecke.mittel.toFixed(1)}`);

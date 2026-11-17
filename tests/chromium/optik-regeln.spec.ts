@@ -3,7 +3,7 @@
 //   O2  Jedes Wort liegt ganz in seiner Flaeche, mittig, mit Abstand zum Rand, und wird von keiner Nachbarflaeche ueberdeckt; je Flaeche hoechstens ein Wort.
 //   O3  Kein Ersatzbild steht zweimal gleichzeitig im sichtbaren Bereich, solange der Pool reicht (zwoelf gleich grosse Kacheln auf einer Erwachsenenseite).
 //   O4  Kein Ersatzbild ist gestreckt (Zuschnitt ist erlaubt).
-// Kennzeichnung: was heute rot ist, steht als erwarteter Fehlschlag (`test.fail`, Kommentar "Phase 11 Etappe N hebt das auf"); was heute gruen ist, ist ein
+// Kennzeichnung: was zu einem Zeitpunkt rot ist, steht als erwarteter Fehlschlag (`test.fail`, Kommentar "Phase 11 Etappe N hebt das auf"); was gruen ist, ist ein
 // normaler Test (Waechter). Damit ein erwarteter Fehlschlag nicht an einer fehlenden Voraussetzung scheitert, pruefen eigene normale Tests zuerst die
 // Voraussetzungen (Bilder da, Kacheln getauscht). Erwartungen werden nie gelockert.
 // Testbilder aus ../05 Testbilder (nie im Repo): fehlen sie, ist der Test ROT, nur mit VEIL_OHNE_TESTBILDER=1 wird er laut uebersprungen.
@@ -348,6 +348,11 @@ const kacheln = (s: Page, liste: string[]): Promise<Kachel[]> =>
   );
 const istPackBild = (k: Kachel) => k.veil === 'zensiert' && (k.src.startsWith('data:image/jpeg') || k.hg.includes('data:image/jpeg'));
 const bildVon = (k: Kachel) => (k.src.startsWith('data:') ? k.src : k.hg);
+const haeufigste = (k: Kachel[]) => {
+  const z = new Map<string, number>();
+  for (const x of k) z.set(bildVon(x), (z.get(bildVon(x)) ?? 0) + 1);
+  return Math.max(...z.values());
+};
 
 async function warteAufTausch(s: Page, liste: string[]): Promise<Kachel[]> {
   try {
@@ -359,19 +364,19 @@ async function warteAufTausch(s: Page, liste: string[]): Promise<Kachel[]> {
   return kacheln(s, liste);
 }
 
-async function oeffneKacheln(variante: 'a' | 'b' | 'c' | 'formen'): Promise<Page> {
+async function oeffneKacheln(variante: 'a' | 'b' | 'c' | 'd' | 'e' | 'formen'): Promise<Page> {
   const s = await context.newPage();
   await s.goto(seite('xvideos', `optik-kacheln.html?v=${variante}`));
   return s;
 }
 
-test('O3 Voraussetzung: mit Pack, Erwachsenenmodus und Stufe Hot werden alle zwoelf Kacheln der Varianten a, b und c gegen Pack-Bilder getauscht', async () => {
+test('O3 Voraussetzung: mit Pack, Erwachsenenmodus und Stufe Hot werden alle zwoelf Kacheln der Varianten a bis e gegen Pack-Bilder getauscht', async () => {
   test.setTimeout(120_000);
   await importierePack();
   expect(poolGroesse, 'Pool des Dummy-Packs').toBeGreaterThanOrEqual(2);
   await loescheEinstellungen();
   await setzeEinstellungen({ erwachsen: { stufe: 'hot', an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] } });
-  for (const v of ['a', 'b', 'c'] as const) {
+  for (const v of ['a', 'b', 'c', 'd', 'e'] as const) {
     const s = await oeffneKacheln(v);
     const k = await warteAufTausch(s, ids(12));
     expect(k.filter(istPackBild).length, `Variante ${v}`).toBe(12);
@@ -379,31 +384,33 @@ test('O3 Voraussetzung: mit Pack, Erwachsenenmodus und Stufe Hot werden alle zwo
   }
 });
 
-// Phase 11 Etappe 2 hebt das auf: Variante a (kein Video-Kennung im Link, gleiche Platzhalter-Quelle) ergibt heute einen gemeinsamen Schluessel,
-// also zwoelf Mal dasselbe Bild (Bestand B2). Erwartung: min(Kacheln, Pool) verschiedene Bilder.
-test.fail('O3a: zwoelf Kacheln ohne Video-Kennung und mit gleicher Platzhalter-Quelle zeigen so viele verschiedene Ersatzbilder wie der Pool hergibt, nach Neuladen dieselbe Zuordnung', async () => {
+// Variante a (keine Video-Kennung im Link, gleiche Quelle): ohne Etappe 2 ein gemeinsamer Schluessel, zwoelf Mal dasselbe Bild (Bestand B2).
+// Erwartung: min(Kacheln, Pool) verschiedene Bilder.
+test('O3a: zwoelf Kacheln ohne Video-Kennung und mit gleicher Platzhalter-Quelle zeigen so viele verschiedene Ersatzbilder wie der Pool hergibt, nach Neuladen dieselbe Zuordnung', async () => {
   test.setTimeout(120_000);
   const s = await oeffneKacheln('a');
   const k1 = await warteAufTausch(s, ids(12));
   const verschieden = new Set(k1.map(bildVon)).size;
   console.log(`chromium O3a: ${verschieden} verschiedene Ersatzbilder bei 12 Kacheln, Pool ${poolGroesse}`);
   expect(verschieden, 'verschiedene Ersatzbilder').toBe(Math.min(12, poolGroesse));
+  expect(haeufigste(k1), 'kein Bild haeufiger als noetig').toBeLessThanOrEqual(Math.ceil(12 / poolGroesse));
   await s.reload();
   const k2 = await warteAufTausch(s, ids(12));
   expect(k2.map(bildVon), 'dieselbe Zuordnung nach Neuladen').toEqual(k1.map(bildVon));
   await s.close();
 });
 
-// Phase 11 Etappe 2 hebt das auf: Variante c baut die xHamster-Premium-Kachel nach (Messung 0b): Link /fh/out?url=%2Fvideos%2F<Kennung>, die Kennung steht
+// Variante c baut die xHamster-Premium-Kachel nach (Messung 0b): Link /fh/out?url=%2Fvideos%2F<Kennung>, die Kennung steht
 // prozentkodiert in der Abfrage, das Bild hat nur einen data:-Platzhalter. Der Rueckfall in `kuerze` nimmt dann die Link-Adresse ohne Abfrage, also fuer
 // alle Kacheln denselben Schluessel und dasselbe Ersatzbild.
-test.fail('O3c: zwoelf Kacheln mit Link /fh/out?url=%2Fvideos%2F<Kennung> und data:-Platzhalter zeigen so viele verschiedene Ersatzbilder wie der Pool hergibt, nach Neuladen dieselbe Zuordnung', async () => {
+test('O3c: zwoelf Kacheln mit Link /fh/out?url=%2Fvideos%2F<Kennung> und data:-Platzhalter zeigen so viele verschiedene Ersatzbilder wie der Pool hergibt, nach Neuladen dieselbe Zuordnung', async () => {
   test.setTimeout(120_000);
   const s = await oeffneKacheln('c');
   const k1 = await warteAufTausch(s, ids(12));
   const verschieden = new Set(k1.map(bildVon)).size;
   console.log(`chromium O3c: ${verschieden} verschiedene Ersatzbilder bei 12 Kacheln, Pool ${poolGroesse}`);
   expect(verschieden, 'verschiedene Ersatzbilder').toBe(Math.min(12, poolGroesse));
+  expect(haeufigste(k1), 'kein Bild haeufiger als noetig').toBeLessThanOrEqual(Math.ceil(12 / poolGroesse));
   await s.reload();
   const k2 = await warteAufTausch(s, ids(12));
   expect(k2.map(bildVon), 'dieselbe Zuordnung nach Neuladen').toEqual(k1.map(bildVon));
@@ -419,9 +426,37 @@ test('O3b (Waechter): zwoelf Kacheln mit verschiedenen Kennungen zeigen so viele
   const verschieden = new Set(k1.map(bildVon)).size;
   console.log(`chromium O3b: ${verschieden} verschiedene Ersatzbilder bei 12 Kacheln, Pool ${poolGroesse}`);
   expect(verschieden, 'verschiedene Ersatzbilder').toBe(Math.min(12, poolGroesse));
+  expect(haeufigste(k1), 'kein Bild haeufiger als noetig').toBeLessThanOrEqual(Math.ceil(12 / poolGroesse));
   await s.reload();
   const k2 = await warteAufTausch(s, ids(12));
   expect(k2.map(bildVon), 'dieselbe Zuordnung nach Neuladen').toEqual(k1.map(bildVon));
+  await s.close();
+});
+
+// Variante d: gemeinsamer Platzhalter-Link `#` und gleiche Quelle unterscheiden die Kacheln nicht (Pruefung E2, M2): je Kachel ein eigenes Bild, solange der Pool reicht.
+test('O3d: zwoelf Kacheln mit gemeinsamem Link # und gleicher Quelle zeigen so viele verschiedene Ersatzbilder wie der Pool hergibt, nach Neuladen dieselbe Zuordnung', async () => {
+  test.setTimeout(120_000);
+  const s = await oeffneKacheln('d');
+  const k1 = await warteAufTausch(s, ids(12));
+  const verschieden = new Set(k1.map(bildVon)).size;
+  console.log(`chromium O3d: ${verschieden} verschiedene Ersatzbilder bei 12 Kacheln, Pool ${poolGroesse}, haeufigstes ${haeufigste(k1)}`);
+  expect(verschieden, 'verschiedene Ersatzbilder').toBe(Math.min(12, poolGroesse));
+  expect(haeufigste(k1), 'kein Bild haeufiger als noetig').toBeLessThanOrEqual(Math.ceil(12 / poolGroesse));
+  await s.reload();
+  const k2 = await warteAufTausch(s, ids(12));
+  expect(k2.map(bildVon), 'dieselbe Zuordnung nach Neuladen').toEqual(k1.map(bildVon));
+  await s.close();
+});
+
+// Variante e: dasselbe Video zweimal gleichzeitig sichtbar (Empfehlung und Liste): die beiden Kacheln zeigen verschiedene Bilder (O3 geht vor).
+test('O3e: zwei gleichzeitig sichtbare Kacheln desselben Videos zeigen verschiedene Ersatzbilder', async () => {
+  test.setTimeout(120_000);
+  const s = await oeffneKacheln('e');
+  const k1 = await warteAufTausch(s, ids(12));
+  const gleich = [0, 2, 4, 6, 8, 10].filter((i) => bildVon(k1[i]!) === bildVon(k1[i + 1]!));
+  console.log(`chromium O3e: ${new Set(k1.map(bildVon)).size} verschiedene Ersatzbilder, Paare mit gleichem Bild: ${gleich.length}`);
+  expect(gleich, 'Paare desselben Videos mit gleichem Bild').toEqual([]);
+  expect(new Set(k1.map(bildVon)).size, 'verschiedene Ersatzbilder').toBe(Math.min(12, poolGroesse));
   await s.close();
 });
 

@@ -5,6 +5,8 @@
 //   Seitenverhaeltnis der Flaeche, dann stabil per Hash des Schluessels (Quelladresse); Logik in src/pack/wahl.ts. Der Zwischenspeicher
 //   (`fertig`) haelt das Ergebnis je Datei und Kantenlaenge: weil die Wahl von Stufe und Klasse vor dem Nachschlagen laeuft, landet ein
 //   Stufenwechsel von selbst bei anderen Dateien, ohne dass alte Eintraege das falsche Bild liefern koennten.
+//   Etappe 2 (O3): optional `ausschluss` (alle vergebenen Namen), `sichtbar` (Namen im Blickfeld), `bevorzugt` (Name, den der Schluessel schon hatte) und `nurWahl` (nur den Namen melden);
+//   die Liste ordnet nur um, der Stufenfilter bleibt davor (src/pack/wahl.ts).
 // - Chibi: Schluessel = Pose, bei Quiz-Posen `quiz-<zustand>#<nummer>` (src/chibi.ts liesChibiSchluessel). Mit `chibi:pack` ein passendes
 //   Pack-Chibi (passtZurPose; Quiz-Pose zuerst, dann ihre Grundpose), sonst das Demo-Chibi `/chibi/<grundpose>.webp` aus der Erweiterung,
 //   fehlt beides `ok: false`. Chibis behalten ihre Transparenz (WebP oder PNG).
@@ -314,8 +316,16 @@ export async function lieferePackBild(n: NachrichtErkennerPackBild): Promise<Ant
         n.schluessel,
         n.breite,
         n.hoehe,
+        {
+          ausschluss: Array.isArray(n.ausschluss) ? n.ausschluss.filter((x): x is string => typeof x === 'string').slice(-1000) : undefined,
+          sichtbar: Array.isArray(n.sichtbar) ? n.sichtbar.filter((x): x is string => typeof x === 'string').slice(-1000) : undefined,
+          fenster: n.fenster,
+          bevorzugt: typeof n.bevorzugt === 'string' ? n.bevorzugt : undefined,
+        },
       );
       if (!namen.length) return fehler('kein Vorschau-Bild in dieser Stufe');
+      // Nur die Wahl melden (Etappe 2): das Content-Script vergibt die Namen nacheinander, das Lesen und Verkleinern kommt danach gleichzeitig.
+      if (n.nurWahl === true) return { ok: true, dataUrl: '', breite: 0, hoehe: 0, name: namen[0]! };
       const a = await ausPack(namen, n.schluessel, begrenze(n.maxSeite, PACKBILD_MAX_SEITE), false, fertig, true);
       return a ?? fehler('kein Vorschau-Bild lesbar');
     }

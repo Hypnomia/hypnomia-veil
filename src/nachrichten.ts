@@ -229,6 +229,18 @@ export interface NachrichtErkennerPackBild {
   breite?: number;
   hoehe?: number;
   stufe?: StufeWahl;
+  // Phase 11 Etappe 2 (Regel O3), nur Rolle `vorschau`, alle optional (alte Absender bleiben gueltig): `ausschluss` sind die Namen aller auf der Seite
+  // vergebenen Pack-Bilder (aelteste Vergabe zuerst), `sichtbar` die auf Kacheln im Blickfeld; daraus bildet die Wahl drei Raenge, innerhalb des Rangs
+  // entscheidet das Format (src/pack/wahl.ts). Der Stufenfilter bleibt davor: die Liste ordnet nur um. `bevorzugt` ist der Name, den dieser Schluessel schon hatte
+  // (zaehlt nur, wenn er in der erlaubten Wahl steht). `nurWahl`: nur den gewaehlten Namen melden (`dataUrl` leer, Masse 0), ohne das Bild zu lesen; so
+  // vergibt das Content-Script die Bilder nacheinander und holt sie dann gleichzeitig. Die Namen bleiben im Content-Script, nie im Seiten-DOM.
+  ausschluss?: string[];
+  // Namen auf Kacheln, die gerade im Blickfeld stehen (Rang der Wahl, src/pack/wahl.ts).
+  sichtbar?: string[];
+  // Ausschnitt-Groesse in Kacheln, ceil(1,5 x Flaeche des Fensters / Flaeche der waehlenden Kachel); der Erkenner klemmt auf 24 bis 200 (Entscheidung 257).
+  fenster?: number;
+  bevorzugt?: string;
+  nurWahl?: boolean;
 }
 export const PACKBILD_MAX_SEITE_PATCH = 256;
 export const PACKBILD_MAX_SEITE_STICKER = 256;

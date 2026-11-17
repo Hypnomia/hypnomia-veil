@@ -538,6 +538,10 @@ test('eigene Seite bekommt die Galerie (auch in Chrome); ohne Eintrag nicht', as
   const ohne = await oeffne(EIGEN);
   try {
     await warteOhneGalerie(ohne);
+    // warteOhneGalerie ist sofort wahr (noch kein Attribut): erst abwarten, bis der Waechter seine erste Probe genommen hat (Wackler Session 21: ersteProbeMitAttr noch null).
+    await expect
+      .poll(async () => (await waechter(ohne)).ersteProbeMitAttr, { timeout: 10_000, intervals: [25], message: 'der Waechter hat in 10 s keine erste Probe genommen (ersteProbeMitAttr bleibt null)' })
+      .not.toBeNull();
     const w = await waechter(ohne);
     expect(w.ersteProbeMitAttr).toBe(false); // eigene Seiten sind erst nach dem Laden bekannt, vorher keine Verdeckung
   } finally {

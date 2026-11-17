@@ -325,10 +325,24 @@ test('Stabile Wahl je Quelle: gleiche Quelle gleiches Bild, verschiedene Quellen
   await warteAufTausch(s, [...ids, 'd1', 'd2']);
   const wahl = await Promise.all(ids.map((id) => welches(s, id)));
   console.log(`chromium I2: Verteilung ${wahl.join(', ')}`);
-  expect(await welches(s, 'd1')).toBe(wahl[0]);
-  expect(await welches(s, 'd2')).toBe(wahl[6]);
-  expect(new Set(wahl).size).toBe(2);
-  expect(wahl.every((k) => k === 'tease-quer' || k === 'hot-quer')).toBe(true);
+  // Etappe 2, Entscheidung 256: O3 gilt je Kachel, auch fuer dasselbe Video und vor dem Format. Die Stabilitaet, die "gleiche Quelle gleiches Bild" schuetzte,
+  // traegt jetzt das Gedaechtnis je Kachel. Ersetzt: (i) d1 und d2 tragen ein in der Stufe Hot erlaubtes Bild, (ii) dieselbe Kachel behaelt ihr Bild bei erneuter
+  // Bewertung (Quellwechsel), (iii) d1 traegt ein anderes Bild als k1, solange ein erlaubtes Bild frei ist.
+  const ERLAUBT_HOT = ['tease-quer', 'tease-hoch', 'hot-quer', 'hot-hoch', 'hot-quadratisch']; // nie explicit
+  const d1 = await welches(s, 'd1');
+  const d2 = await welches(s, 'd2');
+  expect(ERLAUBT_HOT).toContain(d1);
+  expect(ERLAUBT_HOT).toContain(d2);
+  const andere = await Promise.all(['s1', 's2', 's3', ...ids].map((id) => welches(s, id)));
+  if (new Set(andere).size < ERLAUBT_HOT.length) expect(d1, 'ein freies erlaubtes Bild war da').not.toBe(wahl[0]);
+  await s.evaluate(() => ((document.getElementById('d1') as HTMLImageElement).src = '/synthetisch/125.png'));
+  await warteAufTausch(s, ['d1']);
+  expect(await welches(s, 'd1'), 'dieselbe Kachel behaelt ihr Bild bei erneuter Bewertung').toBe(d1);
+  // Etappe 2, Entscheidung 256 (ersetzt: "verteilen sich auf beide erlaubten Bilder"): (i) jedes Bild ist in der Stufe erlaubt, (ii) die passenden Quer-Bilder werden
+  // zuerst vergeben (die ersten zwei Quer-Kacheln, s1 und k1, tragen tease-quer und hot-quer in beliebiger Folge), (iii) mindestens zwei verschiedene Bilder.
+  expect(wahl.every((k) => ERLAUBT_HOT.includes(k))).toBe(true);
+  expect([await welches(s, 's1'), wahl[0]].sort()).toEqual(['hot-quer', 'tease-quer']);
+  expect(new Set(wahl).size).toBeGreaterThanOrEqual(2);
   await s.close();
 });
 

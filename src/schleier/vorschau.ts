@@ -21,7 +21,8 @@ import { bildSignatur, hintergrundWert, setzeBildSofortNeu, setzeHintergrund, st
 import { ANTWORT_MAX_MS, TAUSCH_MAX_MS } from './konstanten';
 import { urlAusEbene, vergissWecken, wecke, zerlegeEbenen } from './pruefung';
 import { testhakenAktiv } from './status';
-import { NachtauschMerker, VorschauSpeicher } from './vorschau-speicher';
+import { NachtauschMerker, VorschauSpeicher, type HolZusatz } from './vorschau-speicher';
+import { KachelGedaechtnis, Kennungen, videoKennung } from './vorschau-wahl';
 import type { ErsetztInfo, Zustand } from './zustand';
 
 // Quellen, die eine Seite fuer verzoegertes Laden in Attribute legt (die echte Adresse steht dort, nicht in src).
@@ -62,11 +63,16 @@ export interface VorschauRueckrufe {
 
 // Eine Anfrage an den Erkenner. 'transport': keine verwertbare Antwort (nicht geweckt, Zeitgrenze, Empfaenger weg).
 // `zusammen`: Schluessel der Quelle samt Klasse der Flaeche (src/pack/wahl.ts), `stufe`: aktuelle Intensitaet (wird bei jeder Anfrage gelesen).
-function frageErkenner(lebt: () => boolean, stufe: () => StufeWahl): (zusammen: string) => Promise<AntwortPackBild | AntwortFehler | 'transport'> {
-  return async (zusammen) => {
+function frageErkenner(lebt: () => boolean, stufe: () => StufeWahl): (zusammen: string, zusatz?: HolZusatz) => Promise<AntwortPackBild | AntwortFehler | 'transport'> {
+  return async (zusammen, zusatz) => {
     if (!(await wecke(lebt))) return 'transport';
     const { schluessel, breite, hoehe } = trenneKlasse(zusammen);
     const nachricht: NachrichtErkennerPackBild = { ziel: 'erkenner', typ: 'packbild', rolle: 'vorschau', schluessel, breite, hoehe, stufe: stufe() };
+    if (zusatz?.nurWahl) nachricht.nurWahl = true;
+    if (zusatz?.ausschluss?.length) nachricht.ausschluss = zusatz.ausschluss;
+    if (zusatz?.sichtbar?.length) nachricht.sichtbar = zusatz.sichtbar;
+    if (typeof zusatz?.fenster === 'number') nachricht.fenster = zusatz.fenster;
+    if (zusatz?.bevorzugt !== undefined) nachricht.bevorzugt = zusatz.bevorzugt;
     let uhr: ReturnType<typeof setTimeout> | undefined;
     const zeit = new Promise<null>((fertig) => {
       uhr = setTimeout(() => fertig(null), ANTWORT_MAX_MS);
@@ -78,6 +84,8 @@ function frageErkenner(lebt: () => boolean, stufe: () => StufeWahl): (zusammen: 
         | undefined
         | null;
       if (a && a.ok === false) return a;
+      // Reine Wahl: nur der Name kommt zurueck, das Bild fehlt absichtlich.
+      if (zusatz?.nurWahl) return a && a.ok === true && typeof a.name === 'string' && a.name ? a : 'transport';
       return a && a.ok === true && typeof a.dataUrl === 'string' && a.dataUrl.startsWith('data:image/') ? a : 'transport';
     } catch {
       return 'transport';
@@ -88,13 +96,13 @@ function frageErkenner(lebt: () => boolean, stufe: () => StufeWahl): (zusammen: 
 }
 
 // Mit einem zweiten Versuch nach einem Transportfehler (frisch wecken). null = endgueltig kein Bild; wirft bei bleibendem Transportfehler.
-function holeVomErkenner(lebt: () => boolean, stufe: () => StufeWahl): (schluessel: string) => Promise<AntwortPackBild | null> {
+function holeVomErkenner(lebt: () => boolean, stufe: () => StufeWahl): (schluessel: string, zusatz?: HolZusatz) => Promise<AntwortPackBild | null> {
   const einmal = frageErkenner(lebt, stufe);
-  return async (schluessel) => {
-    let a = await einmal(schluessel);
+  return async (schluessel, zusatz) => {
+    let a = await einmal(schluessel, zusatz);
     if (a === 'transport') {
       vergissWecken();
-      a = await einmal(schluessel);
+      a = await einmal(schluessel, zusatz);
     }
     if (a === 'transport') throw new Error('Erkenner nicht erreichbar');
     return a.ok === true ? a : null;
@@ -110,6 +118,15 @@ export class Vorschau {
   private importiert = 0;
   private readonly zaehler = new InhaltsZaehler();
   private readonly speicher: VorschauSpeicher;
+  // Etappe 2 (O3): Kennung je Kachel, Gedaechtnis der vergebenen Bilder und die Elemente dazu (nur fuer die Frage "im Blickfeld?").
+  private readonly kennungen = new Kennungen((o) => (o as Element).isConnected);
+  private readonly gedaechtnis = new KachelGedaechtnis();
+  private readonly elemente = new Map<string, WeakRef<Element>>();
+  private blickAm = -Infinity;
+  private imBlick = new Set<string>();
+  private blickBekannt = new Set<string>();
+  // Nur im Testbau: Dauer der letzten Blickfeld-Messungen in ms (Messung N4).
+  private blickMessungen: number[] = [];
   private fehlgeschlagen = 0;
   private sperreBis = 0;
   // Elemente, die in der Transport-Sperre den normalen Schleier bekamen: nach der Sperre werden sie erneut getauscht.
@@ -119,7 +136,64 @@ export class Vorschau {
   private testTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly r: VorschauRueckrufe, speicher?: VorschauSpeicher) {
-    this.speicher = speicher ?? new VorschauSpeicher(holeVomErkenner(() => r.lebt(), () => this.stufe));
+    this.speicher =
+      speicher ??
+      new VorschauSpeicher(holeVomErkenner(() => r.lebt(), () => this.stufe), undefined, {
+        gedaechtnis: this.gedaechtnis,
+        daten: (k) => this.wahlDaten(k),
+        aktuell: (k) => this.elemente.get(k)?.deref()?.isConnected !== false,
+      });
+  }
+
+  // Steht das Element im Blick (Fenster samt 200 px Rand)?
+  private static imBlick(el: Element | undefined): boolean {
+    if (!el || !el.isConnected) return false;
+    const r = el.getBoundingClientRect();
+    const rand = 200;
+    return r.width > 0 && r.height > 0 && r.bottom > -rand && r.top < window.innerHeight + rand && r.right > -rand && r.left < window.innerWidth + rand;
+  }
+
+  // Daten fuer die Wahl (Regel v2, src/pack/wahl.ts): alle vergebenen Namen (aelteste Vergabe zuerst) und die Namen auf ANDEREN Kacheln im Blick, aber nur,
+  // wenn die waehlende Kachel selbst im Blick steht (sonst leer). Bekannt, nicht angenommen: der Stand der sichtbaren Kacheln wird hoechstens alle 250 ms
+  // fuer alle gemerkten Elemente neu gemessen; Kacheln, die danach dazukamen (die Namen, die im selben Schub vergeben wurden), und die waehlende Kachel
+  // selbst werden einzeln gemessen (je eine Messung, einmal je Stand).
+  private wahlDaten(schluessel: string): { ausschluss: string[]; sichtbar: string[]; fenster?: number } {
+    const jetzt = performance.now();
+    if (jetzt - this.blickAm > 250) {
+      const sichtbar = new Set<string>();
+      const bekannt = new Set<string>();
+      for (const [k, ref] of this.elemente) {
+        bekannt.add(k);
+        if (Vorschau.imBlick(ref.deref())) sichtbar.add(k);
+      }
+      this.imBlick = sichtbar;
+      this.blickBekannt = bekannt;
+      this.blickAm = jetzt;
+      if (TESTHAKEN_E) this.blickMessungen = [...this.blickMessungen.slice(-19), +(performance.now() - jetzt).toFixed(2)];
+    }
+    const steht = (k: string): boolean => {
+      if (!this.blickBekannt.has(k)) {
+        this.blickBekannt.add(k);
+        if (Vorschau.imBlick(this.elemente.get(k)?.deref())) this.imBlick.add(k);
+      }
+      return this.imBlick.has(k);
+    };
+    const daten: { ausschluss: string[]; sichtbar: string[]; fenster?: number } = {
+      ausschluss: this.gedaechtnis.ausschluss(),
+      sichtbar: steht(schluessel) ? this.gedaechtnis.sichtbareNamen((k) => k !== schluessel && steht(k)) : [],
+    };
+    // Fenster der "nahen" Vergaben nach der Groesse des Ausschnitts (Entscheidung 257): so viele Kacheln, wie anderthalb Ausschnitte fassen. Ohne Flaeche kein Feld.
+    const r = this.elemente.get(schluessel)?.deref()?.getBoundingClientRect();
+    if (r && r.width > 0 && r.height > 0) {
+      const fenster = Math.ceil((1.5 * window.innerWidth * window.innerHeight) / (r.width * r.height));
+      if (Number.isFinite(fenster)) daten.fenster = fenster;
+    }
+    return daten;
+  }
+
+  private merkeElement(schluessel: string, el: Element): void {
+    if (!this.elemente.has(schluessel) && this.elemente.size >= 4000) this.elemente.delete(this.elemente.keys().next().value as string);
+    this.elemente.set(schluessel, new WeakRef(el));
   }
 
   // ---------- Zustand der Seite ----------
@@ -131,7 +205,10 @@ export class Vorschau {
     const neuImportiert = pack?.importiert ?? 0;
     // Anderes Pack oder anderer Schalter: gehaltene Bilder gehoeren zum alten Stand.
     // Auch bei einem Stufenwechsel: gehaltene Bilder gehoeren zur alten Stufe, das naechste Bild fragt neu (bereits getauschte bleiben stehen).
-    if (neuTausch !== this.tausch || (neuTausch && neuImportiert !== this.importiert) || (neuTausch && e.erwachsen.stufe !== this.stufe)) this.speicher.leere();
+    if (neuTausch !== this.tausch || (neuTausch && neuImportiert !== this.importiert) || (neuTausch && e.erwachsen.stufe !== this.stufe)) {
+      this.speicher.leere();
+      this.elemente.clear();
+    }
     this.stufe = e.erwachsen.stufe;
     this.liste = liste;
     this.tausch = neuTausch;
@@ -219,19 +296,14 @@ export class Vorschau {
     }
   }
 
-  private static videoKennung(href: string): string | null {
-    for (const muster of [/[?&]viewkey=([\w-]+)/i, /\/videos\/([^/?#]+)/i, /\/video[-.]?([\w]+)\//i, /\/video\/([\w-]+)/i, /\/post\/([\w-]+)/i]) {
-      const t = muster.exec(href);
-      if (t?.[1]) return t[1];
-    }
-    return null;
-  }
-
   private kuerze(quelle: string, el: Element): string {
     const href = Vorschau.naechster(el, 'a[href]')?.getAttribute('href') ?? '';
-    const kennung = Vorschau.videoKennung(href);
-    if (kennung) return `video:${kennung}`.slice(0, SCHLUESSEL_MAX);
-    return (Vorschau.ohneAbfrage(quelle) || Vorschau.ohneAbfrage(href) || 'leer').slice(0, SCHLUESSEL_MAX);
+    const kennung = videoKennung(href);
+    if (kennung) return this.kennungen.kennung(el, { kandidat: `video:${kennung}`.slice(0, SCHLUESSEL_MAX) });
+    // Quelle oder Link ohne Abfrage unterscheidet die Kachel nur, wenn keine andere sie schon so benutzt (gleiche Platzhalter-Quelle, Link ohne
+    // Kennung, `leer`): sonst bekommt jedes Element seine eigene Kennung und damit sein eigenes Ersatzbild (Etappe 2, O3).
+    const kandidat = (Vorschau.ohneAbfrage(quelle) || Vorschau.ohneAbfrage(href) || 'leer').slice(0, SCHLUESSEL_MAX);
+    return this.kennungen.kennung(el, { kandidat });
   }
 
   // Schluessel fuer einen Hintergrund: erste url-Ebene, sonst der Link.
@@ -267,8 +339,10 @@ export class Vorschau {
     z.eingereiht = true; // belegt das Element, bis die Antwort da ist (bewerte laeuft nicht doppelt)
     const generation = z.generation;
     schluessel = schluesselMitKlasse(schluessel, mass.width, mass.height); // Klasse der Flaeche (quer, hoch, quadratisch) gehoert zum Zwischenspeicher
+    this.merkeElement(schluessel, el);
     const jetzt = this.speicher.sofort(schluessel);
     if (jetzt) {
+      this.gedaechtnis.beruehre(schluessel);
       this.stapele(el, z, jetzt, mass, schluessel, generation);
       return true;
     }
@@ -365,6 +439,7 @@ export class Vorschau {
     if (trenneKlasse(z.ersetzt.schluessel).schluessel !== this.schluesselBild(el)) return false;
     const a = this.speicher.sofort(z.ersetzt.schluessel);
     if (!a) return false;
+    this.gedaechtnis.beruehre(z.ersetzt.schluessel);
     z.eigen = a.dataUrl;
     setzeBildSofortNeu(el, z, a.dataUrl);
     return true;
@@ -552,6 +627,7 @@ export class Vorschau {
           bilder: this.speicher.anzahlBilder,
           bytes: this.speicher.anzahlBytes,
           fehlgeschlagen: this.fehlgeschlagen,
+          blickMs: this.blickMessungen,
           gruende: this.gruende,
           zaehlung: this.zaehler.stand,
         }),
@@ -570,6 +646,7 @@ export class Vorschau {
     this.nachtauschPlan = null;
     this.nachtausch.leere();
     this.speicher.leere();
+    this.elemente.clear();
     if (TESTHAKEN_E) document.documentElement?.removeAttribute(ATTR_ERWACHSEN);
     setzeErwachsenStatus({ liste: null, amInhalt: false });
   }

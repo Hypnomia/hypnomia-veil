@@ -1513,14 +1513,44 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
   test.setTimeout(300_000);
   await setzePack();
   const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'mia-wort', an: BEDECKBAR, art: (a) => a.includes('schwarz-wort'), extra: { woerterThemen: ['alpha'] } });
-  // Messflaeche: die groesste freie (keine andere Flaeche im Ring); Rosa anderer Flaechen zaehlt nie als Rahmen (Wackler Session 20)
-  const f = groessteFrei(m.v, 'schwarz-wort')!;
-  const k = kenn(m.ref, m.aus, f, 0, m.v.flaechen);
+  // Unverdeckt: der Wortbereich (Mitte der Box, plus/minus 0,4 der Breite, volle Hoehe) wird von keiner anderen Box (2 Bildpunkte Rand) geschnitten. Dann kann keine
+  // spaeter gemalte Flaeche das Wort uebermalen und kein Rosa wegfallen (Wackler Session 21: dritte Spur ueberlappt beide, Beta-Wort als Teilstueck 0,16 bis 0,62 gemessen).
+  const wortBereichFrei = (v: VideoBoxen, f: number[]): boolean => {
+    const x0 = f[0]! + f[2]! * 0.1 - 2;
+    const x1 = f[0]! + f[2]! * 0.9 + 2;
+    return v.flaechen.every((o) => o === f || o[0]! >= x1 || o[0]! + o[2]! <= x0 || o[1]! >= f[1]! + f[3]! + 2 || o[1]! + o[3]! <= f[1]! - 2);
+  };
+  const unverdeckteBreiten = (v: VideoBoxen, aus: Pix): { breiten: number[]; boxen: number[][] } => {
+    const fl = v.flaechen.filter((f, i) => v.arten[i] === 'schwarz-wort' && Math.min(f[2]!, f[3]!) >= 40 && wortBereichFrei(v, f));
+    return { breiten: fl.map((f) => Math.round((wortBreite(aus, f, v.flaechen) / f[2]!) * 100) / 100), boxen: fl };
+  };
+  // Erste Messung (dunkel, Wort, Rahmen, ausserhalb, stabil je Spur) nur an einer Flaeche, deren Wortbereich keine andere Box schneidet (frei im Ring oder unverdeckt):
+  // sonst uebermalt eine spaeter gemalte Flaeche das Wort (Wackler Session 21: Wortpixel 52 statt ueber 80). Aufnahme mit Frist (60 s) wiederholen; die groesste solche Flaeche gilt.
+  const messbar = (v: VideoBoxen): number[] | null => {
+    let best: number[] | null = null;
+    v.flaechen.forEach((fl, i) => {
+      if (v.arten[i] !== 'schwarz-wort' || Math.min(fl[2]!, fl[3]!) < 40 || !(istFrei(v, fl) || wortBereichFrei(v, fl))) return;
+      if (!best || fl[2]! * fl[3]! > best[2]! * best[3]!) best = fl;
+    });
+    return best;
+  };
+  const fristErst = Date.now() + 60_000;
+  let aufnahmenErst = 1;
+  while (!messbar(m.v) && Date.now() < fristErst) {
+    const x = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
+    m.v = x.v;
+    m.aus = x.aus;
+    aufnahmenErst++;
+  }
+  const f = messbar(m.v);
+  console.log(`chromium: P4 erste Messung: ${aufnahmenErst} Aufnahme(n), Messbox ${JSON.stringify(f)}, alle Flaechen ${JSON.stringify(m.v.flaechen)}`);
+  expect(f, 'keine unverdeckte Flaeche fuer die erste Messung (P4) gefunden').not.toBeNull();
+  const k = kenn(m.ref, m.aus, f!, 0, m.v.flaechen);
   console.log(`chromium: P4 schwarz-wort ${JSON.stringify(k)}`);
   {
     // Diagnose (Wackler Session 20): woher das Rosa im Ring kommt (in welcher anderen Flaeche es liegt) und wie viel jeder Kante als Linie belegt ist
     const RING = 6;
-    const [bx, by, bw, bh] = f as [number, number, number, number];
+    const [bx, by, bw, bh] = f! as [number, number, number, number];
     const herkunft: Record<string, number> = {};
     const kanten = { o: new Set<number>(), u: new Set<number>(), l: new Set<number>(), r: new Set<number>() };
     for (let y = Math.max(0, by - RING); y < Math.min(m.aus.h, by + bh + RING); y++) {
@@ -1551,9 +1581,12 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
   // Unter Last verliert die Leinwand eine Spur und legt sie neu an (neue Kennung, anderes Wort): dann zaehlt das Paar nicht, es wird (hoechstens 5 Versuche) neu aufgenommen.
   let vergleich: { w1: Set<number>; w2: Set<number>; b1: number; b2: number } | null = null;
   let alt = { v: m.v, aus: m.aus };
-  for (let versuch = 0; versuch < 5 && !vergleich; versuch++) {
+  // Das Paar zaehlt nur, wenn die Wortbereiche der Flaeche in beiden Aufnahmen unverdeckt sind (Frist 60 s statt fester 5 Versuche; die Aussagen bleiben, nur die Zahl der Versuche waechst).
+  const fristPaar = Date.now() + 60_000;
+  let paarVersuche = 0;
+  for (; (paarVersuche < 5 || Date.now() < fristPaar) && !vergleich && paarVersuche < 40; paarVersuche++) {
     const neu = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
-    const gemeinsam = neu.v.ids.findIndex((id, i) => neu.v.arten[i] === 'schwarz-wort' && id >= 0 && alt.v.ids.some((x, j) => x === id && alt.v.arten[j] === 'schwarz-wort'));
+    const gemeinsam = neu.v.ids.findIndex((id, i) => neu.v.arten[i] === 'schwarz-wort' && id >= 0 && alt.v.ids.some((x, j) => x === id && alt.v.arten[j] === 'schwarz-wort') && wortBereichFrei(neu.v, neu.v.flaechen[i]!) && wortBereichFrei(alt.v, alt.v.flaechen[alt.v.ids.findIndex((x, j) => x === id && alt.v.arten[j] === 'schwarz-wort')]!));
     if (gemeinsam >= 0) {
       const id = neu.v.ids[gemeinsam]!;
       const fa = alt.v.flaechen[alt.v.ids.findIndex((x, j) => x === id && alt.v.arten[j] === 'schwarz-wort')]!;
@@ -1562,7 +1595,8 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
     }
     alt = neu;
   }
-  expect(vergleich, 'in 5 Aufnahmepaaren nie dieselbe Spur zweimal gezeigt').not.toBeNull();
+  console.log(`chromium: P4 stabil je Spur: ${paarVersuche} Aufnahme(n) bis zum Paar`);
+  expect(vergleich, 'in der Frist nie dieselbe Spur mit unverdecktem Wortbereich zweimal gezeigt').not.toBeNull();
   const { w1, w2 } = vergleich!;
   console.log(`chromium: P4 Wort stabil je Spur: ${w1.size} und ${w2.size} Pixel, Deckung ${(deckung(w1, w2, 1000, 1) * 100).toFixed(0)} %, Breite ${vergleich!.b1} und ${vergleich!.b2} px`);
   expect(deckung(w1, w2, 1000, 1)).toBeGreaterThan(0.85);
@@ -1570,18 +1604,36 @@ test('P4 schwarz-wort im Video (mia-wort, Face aus): Koerper schwarz mit Wort au
   // Themenwechsel (alpha schmal zu beta breit): die Leinwand zeichnet neu (das Urteil des Videos wird neu gefasst), ein anderes Wort steht da. Erst abwarten, bis die Seite
   // den Wechsel aufgenommen hat, sonst saehe die Aufnahme noch das alte Bild. Die Spuren beginnen neu: verglichen wird, wie breit die Woerter aller Flaechen sind.
   // Gemessen nur auf freien Flaechen (Wackler Session 20: das Wort einer ueberlappenden Nachbarflaeche machte ein Alpha-Wort 58 px breit, eine spaeter gemalte Flaeche
-  // ein Beta-Wort 0 px); ist in der Aufnahme keine frei, gilt das Rosa der Nachbarn nicht (und Flaechen ganz ohne eigenes Rosa zaehlen nicht).
-  const ohneNachbarn = (v: VideoBoxen, aus: Pix) =>
-    v.flaechen.filter((fl, i) => v.arten[i] === 'schwarz-wort' && Math.min(fl[2]!, fl[3]!) >= 40).map((fl) => Math.round((wortBreite(aus, fl, v.flaechen) / fl[2]!) * 100) / 100).filter((b) => b > 0);
-  const breitenAlt = freieWortBreiten(m.v, m.aus, 'schwarz-wort') ?? ohneNachbarn(m.v, m.aus);
+  // ein Beta-Wort 0 px); ist in der Aufnahme keine frei, zaehlen nur Flaechen mit unverdecktem Wortbereich (siehe unten); der alte Rueckfall auf alle Flaechen entfaellt.
+  // Alpha-Messung: gleiche Falle (zu kleine Alpha-Breiten machen den Test nur leichter, nie faelschlich rot); ohne freie Flaeche gilt auch hier der Weg ueber
+  // unverdeckte Wortbereiche.
+  // Auch alpha mit Frist (60 s): so lange neu aufnehmen, bis eine Flaeche frei ist oder (letzte Aufnahme) wenigstens ein Wortbereich unverdeckt bleibt.
+  let alpha = { v: m.v, aus: m.aus };
+  const fristAlpha = Date.now() + 60_000;
+  while (!freieWortBreiten(alpha.v, alpha.aus, 'schwarz-wort') && Date.now() < fristAlpha) alpha = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
+  const breitenAlt = freieWortBreiten(alpha.v, alpha.aus, 'schwarz-wort') ?? unverdeckteBreiten(alpha.v, alpha.aus).breiten;
   const vorher = (await eintraege(m.s)).length;
   await setze({ woerterThemen: ['beta'] });
   await wartePoll(async () => (await eintraege(m.s)).slice(vorher).some((e) => e.was === 'data-veil'), 20_000);
+  // Nach dem Wechsel mit Frist (90 s) wiederholt aufnehmen, bis mindestens eine freie Flaeche da ist; sonst gilt die letzte Aufnahme mit unverdeckten Wortbereichen.
   let beta = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
-  for (let versuch = 0; versuch < 4 && !freieWortBreiten(beta.v, beta.aus, 'schwarz-wort'); versuch++) beta = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
-  const breitenNeu = freieWortBreiten(beta.v, beta.aus, 'schwarz-wort') ?? ohneNachbarn(beta.v, beta.aus);
-  console.log(`chromium: P4 Themenwechsel: Breiten der Woerter (Anteil der Flaechenbreite) alpha ${JSON.stringify(breitenAlt)} gegen beta ${JSON.stringify(breitenNeu)}`);
-  expect(breitenAlt.length > 0 && breitenNeu.length > 0, 'keine messbare Flaeche fuer den Themenwechsel').toBe(true);
+  const frist = Date.now() + 90_000;
+  let aufnahmen = 1;
+  while (!freieWortBreiten(beta.v, beta.aus, 'schwarz-wort') && Date.now() < frist) {
+    beta = await augenblick(m.s, (a) => a.includes('schwarz-wort'));
+    aufnahmen++;
+  }
+  const betaFrei = freieWortBreiten(beta.v, beta.aus, 'schwarz-wort');
+  const betaBoxen = betaFrei ? beta.v.flaechen.filter((f, i) => beta.v.arten[i] === 'schwarz-wort' && istFrei(beta.v, f) && Math.min(f[2]!, f[3]!) >= 40) : [];
+  const betaUnverdeckt = betaFrei ? null : unverdeckteBreiten(beta.v, beta.aus);
+  const breitenNeu = betaFrei ?? betaUnverdeckt!.breiten;
+  console.log(
+    `chromium: P4 Themenwechsel: Breiten der Woerter (Anteil der Flaechenbreite) alpha ${JSON.stringify(breitenAlt)} gegen beta ${JSON.stringify(breitenNeu)}; ` +
+      `Weg ${betaFrei ? 'freie Flaechen' : 'unverdeckte Wortbereiche'}, ${aufnahmen} Aufnahme(n), Beta-Flaechen ${JSON.stringify(betaFrei ? betaBoxen : betaUnverdeckt!.boxen)}, ` +
+      `alle Flaechen ${JSON.stringify(beta.v.flaechen)}`
+  );
+  expect(breitenAlt.length, 'keine messbare Flaeche fuer alpha (Themenwechsel)').toBeGreaterThan(0);
+  expect(breitenNeu.length, 'keine unverdeckte Flaeche fuer den Themenwechsel messbar').toBeGreaterThan(0);
   expect(Math.min(...breitenNeu), 'noch ein Wort des alten Themas').toBeGreaterThan(Math.max(...breitenAlt) * 1.2);
   // Pack weg: Mia-Presets gelten ohne Pack nicht, die Videozensur zeichnet Mosaik
   await worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));

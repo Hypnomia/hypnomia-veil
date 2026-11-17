@@ -407,8 +407,15 @@ test('dynamisch: Lazy-Load, picture/srcset, Quellwechsel, Inline-Hintergrund, Se
     .toBe(true);
   const nachher = await erwachsenStand(s);
   console.log(`chromium E: Abrufe ${vorher} -> ${nachher.abrufe} nach Quellwechsel und 20 gleichen Bildern, ${nachher.bilder} Bilder, ${nachher.bytes} Zeichen im Zwischenspeicher`);
-  expect(nachher.abrufe - vorher).toBeLessThanOrEqual(1); // gleiche Video-Kennung = ein Abruf, der Quellwechsel desselben Videos holt nichts neu
+  // Phase 11 Etappe 2 (O3 geht vor): zwanzig gleichzeitig verbundene Kacheln desselben Videos bekommen verschiedene Bilder, solange der Pool reicht (vier),
+  // je Kachel ein Abruf; der Zwischenspeicher haelt weiter nur die Bilder des Packs.
+  expect(nachher.abrufe - vorher).toBeLessThanOrEqual(21);
   expect(nachher.bilder).toBeLessThanOrEqual(4);
+  const gleicheBilder = await s.evaluate(() => Array.from(document.querySelectorAll('#gleiche img')).map((i) => i.getAttribute('src') ?? ''));
+  expect(new Set(gleicheBilder).size, 'verschiedene Bilder bei zwanzig Kacheln desselben Videos').toBe(4);
+  const je = new Map<string, number>();
+  for (const q of gleicheBilder) je.set(q, (je.get(q) ?? 0) + 1);
+  expect(Math.max(...je.values())).toBeLessThanOrEqual(5);
   const w = await waechter(s);
   expect(w.aufblitzen, w.wer.join('; ')).toBe(0);
   await s.close();

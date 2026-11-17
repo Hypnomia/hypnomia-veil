@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nachbau lange Kachelliste (synthetisch, Etappe 2: 120 Kacheln)</title>
+    <style>
+      body { margin: 0; padding: 8px; font-family: sans-serif; }
+      .liste { display: flex; flex-wrap: wrap; gap: 8px; }
+      .karte { display: block; position: relative; }
+      .karte img.vorschau { display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- ?n=<Anzahl> (Standard 120), ?b=<Breite> und ?h=<Hoehe> (Standard 240 x 135) gleich grosse Kacheln mit je eigener Video-Kennung im Link, gemeinsame Platzhalter-Quelle. -->
+    <div class="liste" id="liste"></div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const n = Number(q.get('n') || 120);
+      const b = Number(q.get('b') || 240);
+      const h = Number(q.get('h') || 135);
+      const liste = document.getElementById('liste');
+      for (let i = 0; i < n; i++) {
+        const huelle = document.createElement('div');
+        huelle.className = 'karte thumb-inside';
+        huelle.innerHTML = `<a href="/video/lang${1000 + i}/clip"><img class="vorschau" id="v${i + 1}" alt="Vorschau ${i + 1}" width="${b}" height="${h}" src="/synthetisch/40.png" /></a>`;
+        liste.appendChild(huelle);
+      }
+    </script>
+  </body>
+</html>
