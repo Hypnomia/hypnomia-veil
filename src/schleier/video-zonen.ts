@@ -433,6 +433,39 @@ export function boxenAnteil(liste: readonly Kanten[], bildB: number, bildH: numb
   return summe / (bildB * bildH);
 }
 
+// Anteil der Bildflaeche, den die VEREINIGUNG der Kanten deckt (Phase 11 E3b, Entscheidung 255): jede Stelle zaehlt einmal, auch wo sich Rechtecke
+// ueberdecken oder ineinander liegen; was ueber den Bildrand ragt, zaehlt nur im Bild. Rechtecke ohne Flaeche (r <= l, b <= t, nicht endlich) zaehlen nicht.
+// Ungueltiges Bildmass: 1 (wie boxenAnteil, im Zweifel ganz). Die Aufruferin gibt die Rechtecke, die die Leinwand wirklich malt (Huellen und einzelne Flaechen).
+export function boxenAnteilVereinigt(liste: readonly Kanten[], bildB: number, bildH: number): number {
+  if (!(bildB > 0 && bildH > 0)) return 1;
+  const rs: Kanten[] = [];
+  for (const k of liste) {
+    const l = Math.max(0, k.l);
+    const t = Math.max(0, k.t);
+    const r = Math.min(bildB, k.r);
+    const b = Math.min(bildH, k.b);
+    if (r > l && b > t) rs.push({ l, t, r, b });
+  }
+  if (rs.length === 0) return 0;
+  const xs = [...new Set(rs.flatMap((k) => [k.l, k.r]))].sort((p, q) => p - q);
+  let summe = 0;
+  for (let i = 0; i < xs.length - 1; i++) {
+    const x1 = xs[i]!;
+    const x2 = xs[i + 1]!;
+    // y-Bereiche aller Rechtecke, die den Streifen x1 bis x2 ganz ueberdecken; ihre Vereinigung mal die Streifenbreite.
+    const bereiche = rs.filter((k) => k.l <= x1 && k.r >= x2).map((k) => [k.t, k.b] as const).sort((p, q) => p[0] - q[0]);
+    let hoehe = 0;
+    let ende = Number.NEGATIVE_INFINITY;
+    for (const [von, bis] of bereiche) {
+      if (bis <= ende) continue;
+      hoehe += bis - Math.max(von, ende);
+      ende = bis;
+    }
+    summe += (x2 - x1) * hoehe;
+  }
+  return Math.min(1, summe / (bildB * bildH));
+}
+
 // ---------- Entscheidung zonen oder ganz (im Bild) ----------
 
 export type Ansicht = 'zonen' | 'ganz';

@@ -12,6 +12,7 @@ import type { Zeichenart } from './video-zonen';
 const MOSAIK_ANTEIL = 0.1;
 const MOSAIK_MINDEST = 4;
 const BLUR_TEILER = 12;
+const GANZ_BLUR_CSS_PX = 80;
 
 // Hilfsmittel einer Flaeche: Mias Gesicht (Bild des Packs und Ausschnitt darin) und das Wort.
 export interface FlaechenMittel {
@@ -22,6 +23,9 @@ export interface FlaechenMittel {
   // Sticker-Zensur: Pastellfarbe der Flaeche (stabil je Motiv, src/sticker.ts stickerFarbe), der Sticker (null, solange er laedt oder fehlt: die Flaeche
   // steht dann ohne Sticker) und die Anzeigegroesse (CSS-Pixel je Leinwandpunkt, fuer stickerPasst).
   sticker?: { farbe: string; bild: CanvasImageSource | null; anzeige: number };
+  // Huellen (E3b): das Rechteck in der Flaeche, in dem Wort und Sticker stehen (frei von aufgelegten Flaechen, Mias Gesicht). Fehlt das Feld, gilt die Flaeche
+  // selbst; null: nirgends (Flaeche ohne Wort und ohne Sticker, sie deckt weiter).
+  wortBox?: ZeichenRechteck | null;
 }
 
 export interface ZeichenRechteck {
@@ -153,7 +157,7 @@ export class Zeichner {
         return this.balken(ctx, r);
       case 'schwarz-wort':
         this.balken(ctx, r);
-        zeichneWort(ctx, mittel.wort, [r.x, r.y, r.w, r.h], false, seitenFamilie('VEIL Rounded'));
+        this.wort(ctx, r, mittel, false);
         return;
       case 'blur':
         this.blur(ctx, r);
@@ -161,11 +165,14 @@ export class Zeichner {
       case 'mosaik-wort':
         this.mosaik(ctx, r);
         this.rahmen(ctx, r);
-        zeichneWort(ctx, mittel.wort, [r.x, r.y, r.w, r.h], true, seitenFamilie('VEIL Rounded'));
+        this.wort(ctx, r, mittel, true);
         return;
       case 'sticker':
         // Flaeche und Rahmen sofort und ohne Abhaengigkeit vom Sticker (S1, S2); fehlt `sticker`, gilt ein fester Pastellton.
-        zeichneSticker(ctx, [r.x, r.y, r.w, r.h], mittel.sticker?.farbe ?? stickerFarbe(''), mittel.sticker?.bild ?? null, mittel.sticker?.anzeige ?? 1);
+        {
+          const wb = mittel.wortBox === undefined ? r : mittel.wortBox;
+          zeichneSticker(ctx, [r.x, r.y, r.w, r.h], mittel.sticker?.farbe ?? stickerFarbe(''), mittel.sticker?.bild ?? null, mittel.sticker?.anzeige ?? 1, wb ? [wb.x, wb.y, wb.w, wb.h] : null);
+        }
         return;
       case 'mia-gesicht':
         // Kann das Gesicht nicht gezeichnet werden (leeres oder geschlossenes Bild), gilt die Ersatz-Behandlung der Flaeche: nie ein offenes Gesicht, nie leer.
@@ -178,8 +185,49 @@ export class Zeichner {
     this.rahmen(ctx, r);
   }
 
-  // Ganzes Bild kurz Mosaik (Schnitt, Sprung, altes Urteil), unabhaengig vom gewaehlten Stil, ohne Rahmen.
-  ganz(ctx: Ctx, r: ZeichenRechteck): void {
-    this.mosaik(ctx, r);
+  // Das Wort einer Flaeche in der wortBox (ohne Feld: mittig in der Flaeche, null: kein Wort).
+  private wort(ctx: Ctx, r: ZeichenRechteck, mittel: FlaechenMittel, aufMosaik: boolean): void {
+    const wb = mittel.wortBox === undefined ? r : mittel.wortBox;
+    if (wb && mittel.wort) zeichneWort(ctx, mittel.wort, [wb.x, wb.y, wb.w, wb.h], aufMosaik, seitenFamilie('VEIL Rounded'));
+  }
+
+  // Weichzeichner fuer das GANZE Bild (E3b): Zellen von etwa GANZ_BLUR_CSS_PX CSS-Pixeln, also mindestens so stark wie der CSS-Weichzeichner blur(40px)
+  // von `verdeckt` (Standardabweichung 40 CSS-Pixel loescht Strukturen unter etwa 80 Pixeln; hier bleibt nur ein Farbverlauf in Zellen dieser Groesse).
+  // `skala`: Leinwandpunkte je CSS-Pixel.
+  blurGanz(ctx: Ctx, r: ZeichenRechteck, skala: number): void {
+    const zelle = GANZ_BLUR_CSS_PX * Math.max(0.05, skala);
+    const kb = Math.max(2, Math.ceil(r.w / zelle));
+    const kh = Math.max(2, Math.ceil(r.h / zelle));
+    const klein = this.verkleinere(ctx, r, kb, kh);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(r.x, r.y, r.w, r.h);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(klein, 0, 0, kb, kh, r.x, r.y, r.w, r.h);
+    ctx.restore();
+  }
+
+  // Ganzes Bild verdeckt (Schnitt, Sprung, altes Urteil, zu grosser Anteil) im Stil des Presets (E3b): Koerper-Behandlung `art` (Mosaik, Weichzeichner, Schwarz,
+  // Schwarz mit Wort; Sticker und Mias Gesicht kommen als Mosaik an, ganzesBildBehandlung), ohne Rahmen. `wort` ist leer, wenn keins steht.
+  ganz(ctx: Ctx, r: ZeichenRechteck, art: Zeichenart = 'mosaik', wort = '', skala = 1): void {
+    switch (art) {
+      case 'schwarz':
+      case 'balken':
+        return this.balken(ctx, r);
+      case 'schwarz-wort':
+        this.balken(ctx, r);
+        if (wort) zeichneWort(ctx, wort, [r.x, r.y, r.w, r.h], false, seitenFamilie('VEIL Rounded'));
+        return;
+      case 'blur':
+        return this.blurGanz(ctx, r, skala);
+      case 'mosaik-wort':
+        this.mosaik(ctx, r);
+        if (wort) zeichneWort(ctx, wort, [r.x, r.y, r.w, r.h], true, seitenFamilie('VEIL Rounded'));
+        return;
+      default:
+        this.mosaik(ctx, r);
+    }
   }
 }

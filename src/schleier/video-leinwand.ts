@@ -11,7 +11,8 @@
 
 import type { Zone } from '../einstellungen';
 import { patchPasst } from '../erkenner/stile';
-import { PRESETS, ganzesBildBehandlung, personenGruppen, wortPasst, type Preset } from '../presets';
+import { PRESETS, ganzesBildBehandlung, hatWort, personenGruppen, wortPasst, type Preset } from '../presets';
+import { groesstesFreiesRechteck } from '../erkenner/verschmelzen';
 import {
   ATTR_LEINWAND,
   ATTR_VIDEO_BOXEN,
@@ -52,7 +53,7 @@ import { testhakenAktiv, type VideoZonenZaehler } from './status';
 import {
   Rundlauf,
   SpurListe,
-  boxenAnteil,
+  boxenAnteilVereinigt,
   entscheideAnsicht,
   entspanne,
   fruehestensAnsicht,
@@ -81,6 +82,7 @@ import {
   type ZoneBox,
 } from './video-zonen';
 import { Zeichner, type FlaechenMittel, type ZeichenRechteck } from './video-zeichner';
+import { HuellenSpeicher, type Huelle, type HuellenSpur } from './video-huellen';
 
 const PARAM: VerfolgungsParameter = {
   suchBasis: VIDEO_ZONEN_SUCH_BASIS,
@@ -98,6 +100,8 @@ const SAUBER_SCHRITT_S = 0.25; // hoechstens so viel Medienzeit zaehlt eine einz
 const ERSTES_BILD_FRIST_MS = 700; // ohne gemaltes Bild nach so langer Zeit gilt die Leinwand als gestoert
 const LAGE_TAKT_MS = 400;
 const ZAEHLER_LISTE = 64;
+// Motiv des einen Wortes in der Ansicht "ganz" (Spuren zaehlen ab 1, -1 sind die Personen-Huellen): das Wort bleibt, solange "ganz" dauert.
+const GANZ_MOTIV = 0;
 // Testhaken nur im Testbau: Zahl der Bilder, die mit geleerter Leinwand gemalt wurden (Leinwandgroesse neu gesetzt, danach bis zum Ende unseres
 // letzten Rueckrufs vor dem Malen, der ResizeObserver-Phase, kein Videobild gezeichnet). Am Video, geschrieben nur bei Aenderung.
 const ATTR_VIDEO_LEER = TESTHAKEN ? 'data-veil-video-leer' : '';
@@ -197,6 +201,9 @@ export class ZonenVideo {
   private readonly zeichner = new Zeichner();
   private readonly leser = new GrauLeser(VIDEO_ZONEN_GRAU_B);
   private readonly spuren = new SpurListe();
+  private readonly huellen = new HuellenSpeicher();
+  // Das Bild-Rezept des letzten Durchgangs von `male` (Videopunkte): Huellen und einzelne Flaechen, dazu die aufgelegten (Mias Gesicht, Augenbalken).
+  private plan: { huellen: Huelle[]; aufgelegt: Spur[] } = { huellen: [], aufgelegt: [] };
   private readonly rundlauf = new Rundlauf(VIDEO_ZONEN_RTT_FENSTER);
   private readonly ring: RingEintrag[] = [];
   private readonly hoerer: Array<[EventTarget, string, EventListener]> = [];
@@ -675,6 +682,7 @@ export class ZonenVideo {
     this.saubereZeit = 0;
     this.sofortOffen = true;
     this.spuren.leere();
+    this.huellen.leere();
     this.wartetAufSzene = true;
     this.letzterDaumen = null;
     this.letzteAntwortMt = Number.NEGATIVE_INFINITY;
@@ -706,7 +714,8 @@ export class ZonenVideo {
       schnitt: szeneGrund === 'schnitt',
       sprung: szeneGrund === 'sprung',
       wartetAufSzene: this.wartetAufSzene,
-      anteil: boxenAnteil(kanten, vb, vh),
+      // E3b: die vereinigte Flaeche dessen, was die Leinwand wirklich malt (Huellen und einzelne Flaechen), nicht die Summe der Spuren.
+      anteil: boxenAnteilVereinigt(this.planeFlaechen(vb, vh, performance.now()), vb, vh),
       ganzAnteil: VIDEO_ZONEN_GANZ_ANTEIL,
       fehler: this.fehler,
       // Keine Spur, aber das Video gilt noch als verdeckt (Hysterese, 3 s Medienzeit ohne Treffer): das Bild bleibt ganz gedeckt, nie klar.
@@ -735,6 +744,30 @@ export class ZonenVideo {
     this.schmutzig = false;
     this.setzeModus();
     this.schreibeBoxen(jetzt, kanten, m);
+  }
+
+  // Was die Leinwand im Zonen-Zustand malt, in Videopunkten (E3b). Ganze-Person-Presets: die Personen-Huellen wie in `malen` (ohne Haltezeit, wie bisher).
+  // Alle anderen: je Gruppe sich schneidender gleichrangiger Spuren eine Huelle (video-huellen.ts, Haltezeit gegen Flattern), einzelne Spuren einzeln; Mias
+  // Gesicht und Augenbalken sind aufgelegt und werden nie verschmolzen (wie im Bild-Weg). Wird bei jedem Bild gerufen, auch in der Ansicht "ganz", damit die Zeit der
+  // Huellen weiterlaeuft. Liefert die Kanten fuer die Rechnung des Anteils.
+  private planeFlaechen(vb: number, vh: number, jetzt: number): Kanten[] {
+    const preset = this.h.preset();
+    const mitAnzeige = this.spuren.spuren.filter((s) => s.anzeige);
+    if (PRESETS[preset].person) {
+      this.plan = { huellen: [], aufgelegt: [] };
+      const gruppen = personenGruppen(mitAnzeige.map((s) => [s.anzeige!.l, s.anzeige!.t, s.anzeige!.r - s.anzeige!.l, s.anzeige!.b - s.anzeige!.t] as const), mitAnzeige.map(() => true), vb, vh, 0);
+      return gruppen.map(([x, y, w, h]) => ({ l: x, t: y, r: x + w, b: y + h }));
+    }
+    const gleich: HuellenSpur[] = [];
+    const aufgelegt: Spur[] = [];
+    for (const s of mitAnzeige) {
+      const beh = wirksameBehandlung(preset, s.zone, s.behandlung);
+      if (beh === 'mia-gesicht' || beh === 'balken') aufgelegt.push(s);
+      else gleich.push({ id: s.id, motiv: s.motiv, behandlung: beh, kanten: s.anzeige! });
+    }
+    const huellen = this.huellen.berechne(gleich, jetzt, ganzesBildBehandlung(preset));
+    this.plan = { huellen, aufgelegt };
+    return [...huellen.map((h) => h.kanten), ...aufgelegt.map((s) => s.anzeige!)];
   }
 
   private letzteMalZeit: number | null = null;
@@ -787,7 +820,10 @@ export class ZonenVideo {
     const flaeche = Zeichner.begrenze(r, c.width, c.height);
     if (!flaeche) return;
     if (this.ansicht === 'ganz') {
-      this.zeichner.ganz(ctx, flaeche);
+      // E3b: "ganz" folgt dem Stil des Presets (Koerper-Behandlung; Sticker und Mias Gesicht fallen auf Mosaik zurueck), ein Wort hoechstens einmal.
+      const art = ganzesBildBehandlung(this.h.preset());
+      const wort = hatWort(art) && wortPasst(flaeche.w, flaeche.h, 1 / Math.max(0.05, m.skala)) ? this.h.wort(GANZ_MOTIV) : null;
+      this.zeichner.ganz(ctx, flaeche, art, wort ?? '', m.skala);
       return;
     }
     const fx = r.w / vb;
@@ -795,13 +831,15 @@ export class ZonenVideo {
     const preset = this.h.preset();
     const anzeige = 1 / Math.max(0.05, m.skala); // CSS-Pixel je Leinwandpunkt
     // Gezeigte Flaechen in Leinwandpunkten.
-    const liste: Array<{ spur: Spur; rr: ZeichenRechteck }> = [];
-    for (const s of this.spuren.spuren) {
-      const k = s.anzeige;
-      if (!k) continue;
+    const zuLeinwand = (k: Kanten): ZeichenRechteck | null => {
       const l = m.flipX ? vb - k.r : k.l;
       const o = m.flipY ? vh - k.b : k.t;
-      const rr = Zeichner.begrenze({ x: r.x + l * fx, y: r.y + o * fy, w: (k.r - k.l) * fx, h: (k.b - k.t) * fy }, c.width, c.height);
+      return Zeichner.begrenze({ x: r.x + l * fx, y: r.y + o * fy, w: (k.r - k.l) * fx, h: (k.b - k.t) * fy }, c.width, c.height);
+    };
+    const liste: Array<{ spur: Spur; rr: ZeichenRechteck }> = [];
+    for (const s of this.spuren.spuren) {
+      if (!s.anzeige) continue;
+      const rr = zuLeinwand(s.anzeige);
       if (rr) liste.push({ spur: s, rr });
     }
     // Ganze Person: je Bild werden die Huellen der Spuren neu zusammengefasst (Spuren, die einander nahe kamen, werden eine Huelle), wie bei Bildern
@@ -817,7 +855,38 @@ export class ZonenVideo {
       }
       return;
     }
-    for (const { spur: s, rr } of liste) {
+    // E3b: je Huelle (Gruppe sich schneidender gleichrangiger Spuren) eine Flaeche mit hoechstens einem Wort oder Sticker; einzelne Spuren wie bisher; zuletzt
+    // die aufgelegten (Mias Gesicht, Augenbalken). Das Wort einer Huelle steht im groessten freien Rechteck ohne aufgelegte Flaeche (nie unter Mias Gesicht).
+    const nachId = new Map(liste.map((e) => [e.spur.id, e]));
+    const aufgelegt = new Set(this.plan.aufgelegt.map((a) => a.id));
+    const aufRects = liste.filter((e) => aufgelegt.has(e.spur.id)).map((e) => [e.rr.x, e.rr.y, e.rr.w, e.rr.h] as [number, number, number, number]);
+    const reihe: Array<{ spur: Spur; rr: ZeichenRechteck }> = [];
+    for (const h of this.plan.huellen) {
+      if (h.ids.length === 1) {
+        const e = nachId.get(h.ids[0]!);
+        if (e) reihe.push(e);
+        continue;
+      }
+      const rr = zuLeinwand(h.kanten);
+      if (!rr) continue;
+      const zone = nachId.get(h.ids[0]!)?.spur.zone ?? this.spuren.spuren[0]!.zone;
+      const wb = groesstesFreiesRechteck([rr.x, rr.y, rr.w, rr.h], aufRects);
+      const wortBox: ZeichenRechteck | null = wb ? { x: wb[0], y: wb[1], w: wb[2], h: wb[3] } : null;
+      const wort = wortBox && hatWort(h.behandlung) ? this.h.wort(h.motiv) : null;
+      const passt = !!wortBox && wortPasst(wortBox.w, wortBox.h, anzeige);
+      const art = stilFuerZone(preset, zone, { behandlung: h.behandlung, gesichtPasst: false, wortDa: !!wort, wortPasst: passt });
+      const stk = art === 'sticker' ? this.h.sticker(h.motiv) : null;
+      const mittel: FlaechenMittel = {
+        gesicht: null,
+        wort: wort ?? '',
+        wortBox: passt ? wortBox : null,
+        ...(stk ? { sticker: { farbe: stk.farbe, bild: stk.bild, anzeige } } : {}),
+      };
+      this.zeichner.flaeche(ctx, rr, art, mittel);
+      if (this.testAn) this.merkeGemalt(art, rr, h.ids[0]!, h.motiv);
+    }
+    for (const e of liste) if (aufgelegt.has(e.spur.id)) reihe.push(e);
+    for (const { spur: s, rr } of reihe) {
       const beh = wirksameBehandlung(preset, s.zone, s.behandlung);
       const g = beh === 'mia-gesicht' ? this.h.gesicht(s.motiv) : null;
       const gesichtPasst = !!g && patchPasst([0, 0, rr.w, rr.h], g.ausschnitt[2], g.ausschnitt[3], anzeige);

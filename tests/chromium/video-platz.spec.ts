@@ -414,24 +414,35 @@ async function pruefungenZwischen(s: Page, von: number, bis: number): Promise<nu
   return st.videoZeiten.filter((z) => ursprung + z.t > von && ursprung + z.t <= bis).length;
 }
 
-// Verlauf des Zaehlers sauberer Pruefungen eines Videos (Testhaken data-veil-video-sauber), nur bei Aenderung, Epoche in ms: zaehlt allein die Pruefungen dieses Videos.
+// Verlauf des Zaehlers sauberer Pruefungen eines Videos (Testhaken data-veil-video-sauber) und des Modus, Epoche in ms: zaehlt allein die Pruefungen dieses Videos.
+// Ein MutationObserver (kein Abfragen im Takt) haelt jede Aenderung fest, auch eine, die kuerzer als ein Abfragetakt steht (nach dem Ende einer Leinwand steht der Zaehler
+// auf 0, bis die naechste saubere Pruefung ihn auf 1 setzt, bei erzwingeSauber binnen weniger Millisekunden). Der Wert NACH einer Aenderung ist der alte Wert der
+// naechsten Aenderung desselben Attributs (attributeOldValue), sonst der aktuelle: auch mehrere Aenderungen in einem Stapel bleiben einzeln sichtbar.
 async function starteSauberVerlauf(s: Page, id: string) {
   await s.evaluate((i) => {
     const w = window as any;
     w.__sauber = w.__sauber ?? {};
     w.__sauber[i] = [];
-    let alt: string | null | undefined;
-    setInterval(() => {
-      const e = document.getElementById(i);
-      const wert = e ? e.getAttribute('data-veil-video-sauber') : null;
-      if (wert !== alt) {
-        alt = wert;
-        w.__sauber[i].push({ t: w.epoche(), s: wert, m: e ? e.getAttribute('data-veil-video-modus') : null });
-      }
-    }, 10);
+    const ziel = () => document.getElementById(i);
+    const lies = (n: string) => ziel()?.getAttribute(n) ?? null;
+    w.__sauber[i].push({ t: w.epoche(), s: lies('data-veil-video-sauber'), m: lies('data-veil-video-modus'), b: 0 });
+    let stapel = 0;
+    const nach = (recs: MutationRecord[], k: number, name: string): string | null => {
+      for (let j = k + 1; j < recs.length; j++) if (recs[j]!.attributeName === name) return recs[j]!.oldValue;
+      return lies(name);
+    };
+    const beob = new MutationObserver((recs) => {
+      const t = w.epoche();
+      stapel++;
+      recs.forEach((r, k) => {
+        if ((r.target as Element).id !== i) return;
+        w.__sauber[i].push({ t, s: nach(recs, k, 'data-veil-video-sauber'), m: nach(recs, k, 'data-veil-video-modus'), b: stapel });
+      });
+    });
+    beob.observe(document, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['data-veil-video-sauber', 'data-veil-video-modus'] });
   }, id);
 }
-const sauberVerlauf = (s: Page, id: string) => s.evaluate((i) => (window as any).__sauber[i] as Array<{ t: number; s: string | null; m: string | null }>, id);
+const sauberVerlauf = (s: Page, id: string) => s.evaluate((i) => (window as any).__sauber[i] as Array<{ t: number; s: string | null; m: string | null; b: number }>, id);
 
 test('V7a Verlierer des Platzes: nach dem Verlust zaehlt die Freigabe von vorn (drei saubere Pruefungen im Takt, nicht eine)', async () => {
   test.setTimeout(150_000);
@@ -574,7 +585,16 @@ test('P7 Dauerfall: Rueckfall ueber die Eignung (controls) bei Zaehlerstand 2 se
   const iWeg = v.findIndex((x, i) => i > 0 && x.m === null && v[i - 1]!.m !== null);
   expect(iWeg, `die Leinwand endete nicht (Verlauf ${JSON.stringify(v)})`).toBeGreaterThan(0);
   expect(v[iWeg - 1]!.s, 'vor dem Ende der Leinwand stand der Zaehler nicht auf 2').toBe('2');
-  expect(v[iWeg]!.s, 'nach dem Ende der Leinwand ohne Freigabe steht der Zaehler nicht auf 0 (P7)').toBe('0');
+  // T1 (Pruefung M1): die '0' steht im SELBEN Stapel des Beobachters wie das Verschwinden von data-veil-video-modus (beende und verwirfFreigabe laufen synchron in einer
+  // Aufgabe), und die letzte Zahl vor diesem Stapel ist die '2'. Ohne verwirfFreigabe (P7) kaeme die 0 erst mit der naechsten sauberen Pruefung, die dann auf 3 zaehlt,
+  // in einem spaeteren Stapel. Nach dem Ende der Leinwand zaehlt der Zaehler weiter 1, 2: das ist egal, nur frei darf das Video nicht werden (unten, 1500 ms).
+  const stapel = v[iWeg]!.b;
+  const imStapel = v.filter((x) => x.b === stapel);
+  expect(imStapel.some((x) => x.s === '0'), `P7: im Stapel, in dem der Modus verschwindet, steht keine 0 (Stapel ${JSON.stringify(imStapel)})`).toBe(true);
+  const davor = v.filter((x) => x.b < stapel && x.s !== null);
+  expect(davor[davor.length - 1]?.s, `P7: die letzte Zahl vor dem Stapel ist nicht die 2 (Verlauf ${JSON.stringify(v)})`).toBe('2');
+  await abwarten(1500); // die Video-Bremse von 1000 ms ist abgelaufen: ohne P7 stuende das Video nach spaetestens drei sauberen Pruefungen frei, hier nach 1500 ms ohne Freigabe
+  expect(await attr(s, 'v1', 'data-veil'), 'P7: das Video wurde nach dem Rueckfall zu frueh frei').toBe('verdeckt');
   expect(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
   await s.close();
 });
@@ -627,7 +647,7 @@ test('R2b ein nur umgehaengtes Video (in derselben Aufgabe wieder im Dokument) b
   await s.close();
 });
 
-test('R11 der Halter wird entfernt, waehrend der Kandidat gebremst ist: Host binnen 200 ms weg, der Kandidat bleibt verdeckt, danach bekommt er die Leinwand', async () => {
+test('R11 (Waechter) der Halter wird entfernt: Host binnen 200 ms weg, der Kandidat (womoeglich noch gebremst) bleibt verdeckt, danach bekommt er die Leinwand', async () => {
   test.setTimeout(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1', ct0: 2.5 });
@@ -638,6 +658,9 @@ test('R11 der Halter wird entfernt, waehrend der Kandidat gebremst ist: Host bin
   await s.evaluate((ids) => (window as any).pausiere(ids[0]), [erster]);
   await wartePoll(() => hatLeinwand(s, zweiter), 15_000);
   await s.evaluate((ids) => (window as any).spiele(ids[0]), [erster]);
+  // T4 (Pruefung N1): Waechter. Dieser Fall stellt den durch die Video-Bremse gebremsten Kandidaten NICHT sicher her: es gibt keinen Haken fuer "frische Antwort dieses
+  // Videos" (`videoPruefungen` zaehlt auch die Pruefungen des Halters, die Wartebedingung darauf wurde deshalb entfernt). Er bewacht nur, dass der Host des entfernten
+  // Halters binnen 200 ms weg ist, der Kandidat nie ohne Deckung steht und danach die Leinwand bekommt.
   await abwarten(300);
   const hosts = () => s.evaluate(() => [...document.getElementById('platz')!.children].filter((c) => c.localName === 'div' && c.id !== 'bedienung').length);
   expect(await hosts(), 'Voraussetzung: der Host des Halters steht').toBe(1);
@@ -997,7 +1020,6 @@ test('F2 Voraussetzung: zwei bis drei stark ueberlappende Zonen, Summe ueber 60 
 });
 
 test('F2 Summe ueber 60 Prozent, vereinigte Flaeche darunter: die Leinwand zeigt Zonen statt "ganz"; jede erkannte Stelle ist verdeckt', async () => {
-  erwartetRot('E3b', 'heute rechnet boxenAnteil die Summe: Grund anteil, Modus mosaik, solange die Summe ueber 60 Prozent liegt');
   test.setTimeout(120_000);
   const e = await holeSzene(...F2_SCENE);
   const passend = e.proben.filter((p) => p.boxen.length >= 2 && flaecheSumme(p.boxen) > SCHWELLE + 0.05 && flaecheVereint(p.boxen) < SCHWELLE - 0.03);
@@ -1043,7 +1065,6 @@ test('F4 Voraussetzung: die Szene liefert im Zonen-Zustand mehrere Spuren, von d
 });
 
 test('F4 (O1 im Video) zwei sich schneidende gleichrangige Spuren werden als eine Huelle gemalt: weniger Flaechen als Spuren, jede Spur gedeckt', async () => {
-  erwartetRot('E3b', 'heute malt die Leinwand jede Spur einzeln (Flaechen gleich Spuren), die Huellen aus Etappe 1 stehen nur im Bild-Weg');
   test.setTimeout(120_000);
   const e = await holeSzene(...F4_SCENE);
   const schnitt = e.proben.filter((p) => p.ansicht === 'zonen' && p.boxen.length >= 2 && gruppenZahl(p.boxen) < p.boxen.length && p.flaechen.length > 0);
@@ -1069,6 +1090,40 @@ test('F5 (Waechter) die Zahl der gemalten Flaechen wechselt hoechstens zweimal j
   for (let i = 1; i < folge.length; i++) if (folge[i]!.flaechen.length !== folge[i - 1]!.flaechen.length) wechsel.push(folge[i]!.t);
   const jeS = Math.max(0, ...wechsel.map((t) => wechsel.filter((u) => u >= t && u < t + 1000).length));
   expect(jeS, `Wechsel der Zahl gemalter Flaechen in einer Sekunde: ${jeS} (Zeitpunkte ${JSON.stringify(wechsel.map((t) => Math.round(t % 100000)))})`).toBeLessThanOrEqual(2);
+});
+
+// F7 (Vorschlag des Pruefers, E3b), T3: belegt ehrlich nur: (1) jede Spurmitte liegt in einer gemalten Flaeche, (2) gemalte Flaechen schneiden sich nie (hoechstens 2 Pixel Rundung),
+// (3) hoechstens 2 Wechsel der Flaechenzahl je Sekunde. Ob in einem Lauf eine Huelle entsteht, haengt von den grenzwertigen Spuren ab; der Lauf meldet es im Protokoll ("mit Huelle"),
+// die PFLICHT zur Huelle liegt bei F4. die Szene von P4 (Koerper aus _DSC6278.JPG, alle bedeckbaren Zonen) bei der Standard-Schwelle 0,1. Dort kommen und gehen grenzwertige
+// Spuren zwischen den beiden echten (Sonde P4, MESSUNG-PHASE-11-E3.md). Erwartet: nie zwei gemalte Flaechen, die sich schneiden (gleichrangig: jede Gruppe eine Huelle,
+// ein Wort je Huelle), nie ein Bild, in dem eine Spur nicht von einer gemalten Flaeche gedeckt ist, und hoechstens 2 Wechsel der Zahl gemalter Flaechen je Sekunde.
+const F7_SZENE = ['nsfw', '_DSC6278.JPG', 'mosaik-wort', BEDECKBAR, 0.15] as const;
+test('F7 Schwelle 0,1 an der Szene von P4: jede Spurmitte liegt in einer gemalten Flaeche; entsteht eine Huelle, dann ohne Ueberschneidung und mit hoechstens 2 Wechseln der Flaechenzahl je Sekunde', async () => {
+  test.setTimeout(150_000);
+  const e = await holeSzene(...F7_SZENE);
+  const folge = e.proben.filter((p) => p.ansicht === 'zonen' && p.flaechen.length > 0);
+  expect(folge.length, `zu wenige Proben im Zonen-Zustand (${zaehle(e.proben)})`).toBeGreaterThanOrEqual(8);
+  const mitHuelle = folge.filter((p) => p.boxen.length > p.flaechen.length).length;
+  console.log(`chromium: F7 Huelle in diesem Lauf: ${mitHuelle > 0 ? 'ja' : 'nein'}; ${folge.length} Proben im Zonen-Zustand, davon ${mitHuelle} mit mehr Spuren als gemalten Flaechen (Huelle), Flaechenzahlen ${JSON.stringify([...new Set(folge.map((p) => p.flaechen.length))])}`);
+  const tief = (a: number[], b: number[]) => a[0]! < b[0]! + b[2]! - 2 && b[0]! < a[0]! + a[2]! - 2 && a[1]! < b[1]! + b[3]! - 2 && b[1]! < a[1]! + a[3]! - 2;
+  for (const p of folge) {
+    for (let i = 0; i < p.flaechen.length; i++) for (let j = i + 1; j < p.flaechen.length; j++) expect.soft(tief(p.flaechen[i]!, p.flaechen[j]!), `F7: zwei gemalte Flaechen schneiden sich: ${JSON.stringify([p.flaechen[i], p.flaechen[j]])}`).toBe(false);
+    for (const b of p.boxen) {
+      const mx = b[0]! + b[2]! / 2;
+      const my = b[1]! + b[3]! / 2;
+      expect.soft(p.flaechen.some((f) => mx >= f[0]! && mx <= f[0]! + f[2]! && my >= f[1]! && my <= f[1]! + f[3]!), `F7: Spur ${JSON.stringify(b)} nicht gedeckt`).toBe(true);
+    }
+  }
+  const wechsel: number[] = [];
+  for (let i = 1; i < folge.length; i++) if (folge[i]!.flaechen.length !== folge[i - 1]!.flaechen.length) wechsel.push(folge[i]!.t);
+  const jeS = Math.max(0, ...wechsel.map((t) => wechsel.filter((u) => u >= t && u < t + 1000).length));
+  expect(jeS, `F7: Wechsel der Flaechenzahl in einer Sekunde: ${jeS} (Zeitpunkte ${JSON.stringify(wechsel.map((t) => Math.round(t % 100000)))})`).toBeLessThanOrEqual(2);
+  // Der Waechter (Schachbrett) liegt in dieser Szene nur in manchen Proben in einer gemalten Flaeche (die Szene ist nach P4 gewaehlt, nicht nach dem Waechter): scharf darf er
+  // nur sein, wo keine gemalte Flaeche ihn deckt. Gezaehlt wird die Deckung je Probe; ist er in allen Proben gedeckt, gilt wie bei F2 und F4: kein scharfes Bild.
+  const w = waechterRechteck(Math.round((VH * 4672) / 7008));
+  const gedeckt = folge.filter((p) => liegtIn(w, p.flaechen)).length;
+  console.log(`chromium: F7 Waechter ${JSON.stringify(w)} in einer gemalten Flaeche in ${gedeckt} von ${folge.length} Proben`);
+  if (gedeckt === folge.length) keineScharfen(e.bilder, zensurBeginn(e.log), 'F7');
 });
 
 // ---------- F6: "ganz" im Stil des Presets ----------
@@ -1120,8 +1175,47 @@ test('F6 Voraussetzung: mit dem Preset Mosaik ist "ganz" bunt (kaum schwarze Bil
 });
 
 test('F6 "ganz" in der Leinwand folgt dem Stil des Presets: mit Zensurbalken ist das ganze Bild schwarz, nicht Mosaik', async () => {
-  erwartetRot('E3b', 'heute zeichnet Zeichner.ganz immer Mosaik, egal welches Preset');
   test.setTimeout(120_000);
   const m = await messeGanzSchwarz('zensurbalken');
   expect.soft(m.schwarz, `F6: Anteil schwarzer Bildpunkte in "ganz" bei Zensurbalken: ${m.schwarz.toFixed(2)} (Mosaik: bunt)`).toBeGreaterThanOrEqual(0.85);
 });
+
+test('F6 "ganz" mit dem Preset Weichzeichner ist weichgezeichnet (keine Kante, kein scharfer Waechter), nicht Mosaik und nicht scharf', async () => {
+  test.setTimeout(120_000);
+  const m = await messeGanzGlatt('blur');
+  expect.soft(m.waechterScharf, 'F6: das Waechter-Schachbrett ist im weichgezeichneten "ganz" noch scharf zu erkennen').toBe(false);
+  expect.soft(m.kante, `F6: mittlerer Helligkeitsunterschied benachbarter Bildpunkte in "ganz" bei Blur: ${m.kante.toFixed(2)} (Mosaik hat harte Blockkanten, ein scharfes Bild hohe Werte)`).toBeLessThan(1.5);
+});
+
+async function messeGanzGlatt(preset: string): Promise<{ kante: number; waechterScharf: boolean }> {
+  await setze({ preset, zonen: zonenNur(['face', 'head']), rand: 0.15, schwelle: 0.1, pause: false, video: 'zonen' });
+  const s = await oeffnePlatz('satz=sfw&kurz=1', 800, 800, 'sfw-002-portraet.jpg');
+  await neuesVideo(s, { id: 'v1', ct0: 2.2 });
+  let ergebnis: { kante: number; waechterScharf: boolean } | null = null;
+  const t0 = Date.now();
+  while (!ergebnis && Date.now() - t0 < 30_000) {
+    const lies = () =>
+      s.evaluate(() => {
+        const e = document.getElementById('v1') as HTMLVideoElement;
+        const roh = e.getAttribute('data-veil-video-boxen');
+        return { ct: e.currentTime, veil: e.getAttribute('data-veil'), b: roh ? (JSON.parse(roh) as { ansicht: string; grund: string | null }) : null };
+      });
+    const vor = await lies();
+    if (vor.veil === 'zensiert' && vor.b?.ansicht === 'ganz' && vor.b.grund === 'anteil' && vor.ct > 2.8 && vor.ct < 5.4) {
+      const png = await s.screenshot({ type: 'png' });
+      const nach = await lies();
+      if (nach.b?.ansicht === 'ganz' && nach.b.grund === 'anteil' && nach.ct < 5.6) {
+        const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true });
+        let summe = 0;
+        let n = 0;
+        for (let y = 0; y < 315; y++) for (let x = 0; x < VB - 1; x++) { summe += Math.abs(data[y * info.width + x]! - data[y * info.width + x + 1]!); n++; }
+        // T2 (Pruefung M2): das Waechter-Schachbrett (4 Pixel Felder, Magenta und Gruen) ist im weichgezeichneten Bild nicht mehr zu erkennen (Gegenprobe der Messung: erster Fall der Datei)
+        ergebnis = { kante: summe / n, waechterScharf: scharf((await messeBild(png)) as Bild) };
+      }
+    }
+    await abwarten(60);
+  }
+  await s.close();
+  expect(ergebnis, 'die Leinwand zeigte nie "ganz" mit Grund anteil in einer Aufnahme').not.toBeNull();
+  return ergebnis!;
+}

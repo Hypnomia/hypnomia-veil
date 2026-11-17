@@ -1801,7 +1801,9 @@ test('P8 Mias Gesicht ohne Gesicht im Pack: die Koerper-Behandlung deckt das Ges
   await entfernePack();
 });
 
-test('P9 Rueckfall "ganzes Bild kurz Mosaik": bleibt Mosaik ohne Rahmen, auch mit dem Preset Zensurbalken (nie schwarz, nie Rahmen)', async () => {
+// E3b (Entscheidung 268, Punkt 4): "ganz" in der Leinwand folgt dem Stil des Presets. Vorher stand hier: das ganze Bild bleibt Mosaik, auch mit Zensurbalken. Jetzt: mit
+// Zensurbalken ist das ganze Bild schwarz ohne Rahmen (kein Rosa); der Fall mit Mosaik als Preset steht in video-platz.spec.ts (F6). Die Aussage "ohne Rahmen" bleibt.
+test('P9 Rueckfall "ganzes Bild" folgt dem Stil des Presets: mit Zensurbalken schwarz, nie Rahmen', async () => {
   test.setTimeout(240_000);
   await setze({ preset: 'zensurbalken', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1 });
   const s = await oeffneBild('sfw', GESICHT, 'ohne=1&kurz=1');
@@ -1830,7 +1832,7 @@ test('P9 Rueckfall "ganzes Bild kurz Mosaik": bleibt Mosaik ohne Rahmen, auch mi
     return true;
   }, 60_000);
   console.log(`chromium: P9 ganzes Bild: ${JSON.stringify(gesehen)}`);
-  expect(gesehen!.dunkel, 'das ganze Bild ist schwarz, es soll Mosaik sein').toBeLessThan(0.15);
+  expect(gesehen!.dunkel, 'das ganze Bild ist nicht schwarz, es soll im Stil des Presets (Zensurbalken) gedeckt sein').toBeGreaterThan(0.85);
   expect(gesehen!.rosa, 'Rahmen im ganzen Bild').toBeLessThan(20);
   await s.close();
 });

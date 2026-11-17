@@ -903,7 +903,8 @@ try {
     }
   });
 
-  await test('P9 Rueckfall "ganzes Bild kurz Mosaik": bleibt Mosaik ohne Rahmen, auch mit dem Preset Zensurbalken', async () => {
+  // E3b (Entscheidung 268, Punkt 4): "ganz" folgt dem Stil des Presets; mit Zensurbalken ist das ganze Bild schwarz, weiter ohne Rahmen (vorher: immer Mosaik).
+  await test('P9 Rueckfall "ganzes Bild" folgt dem Stil des Presets: mit Zensurbalken schwarz, nie Rahmen', async () => {
     await oeffneBild('sfw', GESICHT);
     await setze({ preset: 'zensurbalken', zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1, pause: false, video: 'zonen' });
     await neuesVideo({ id: 'v1' });
@@ -926,7 +927,7 @@ try {
       return { dunkel: dunkel / n, rosa };
     }, 60_000);
     console.log(`firefox: P9 ganzes Bild: ${JSON.stringify(g)}`);
-    pruefe(g.dunkel < 0.15, `das ganze Bild ist schwarz (${g.dunkel})`);
+    pruefe(g.dunkel > 0.85, `das ganze Bild ist nicht schwarz, es soll im Stil des Presets (Zensurbalken) gedeckt sein (${g.dunkel})`);
     pruefe(g.rosa < 20, `Rahmen im ganzen Bild (${g.rosa})`);
   });
 
