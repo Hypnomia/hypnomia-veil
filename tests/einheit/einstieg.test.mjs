@@ -35,16 +35,17 @@ test('Zonen: Hin und zurueck ergibt den Ausgangsstand, Zwischenstaende ohne Wahl
   assert.equal(zonenWahl(setzeZonenWahl(sonder, 'koerper')), 'koerper');
 });
 
-test('Zonen: "even when clothed" gilt fuer alle eingeschalteten bedeckbaren Zonen, auch nach einer neuen Wahl', () => {
+test('Zonen: "even when clothed" gilt fuer alle bedeckbaren Zonen (auch ausgeschaltete), auch nach einer neuen Wahl', () => {
   assert.equal(bedecktAlle(STANDARD.zonen), false); // ab Werk nur Genitals bedeckt
   const an1 = setzeBedeckt(STANDARD.zonen, true);
   assert.equal(bedecktAlle(an1), true);
-  for (const z of ZONEN) if (BEDECKBARE_ZONEN.has(z)) assert.equal(an1[z].bedeckt, STANDARD.zonen[z].an ? true : STANDARD.zonen[z].bedeckt);
+  // R15: der Haken gilt fuer ALLE bedeckbaren Zonen, auch fuer ausgeschaltete (vorher blieben diese unberuehrt).
+  for (const z of ZONEN) if (BEDECKBARE_ZONEN.has(z)) assert.equal(an1[z].bedeckt, true, z);
   // Wahl "Everything" danach: neue bedeckbare Zonen uebernehmen den gesetzten Haken.
   const alles = setzeZonenWahl(an1, 'alles');
   assert.equal(bedecktAlle(alles), true);
   for (const z of BEDECKBARE_ZONEN) assert.equal(alles[z].bedeckt, true);
-  // Ohne Haken bleiben neue Zonen unbedeckt, Haken weg setzt alle eingeschalteten auf unbedeckt.
+  // Ohne Haken bleiben neue Zonen unbedeckt, Haken weg setzt alle bedeckbaren Zonen auf unbedeckt.
   const aus = setzeBedeckt(alles, false);
   assert.equal(bedecktAlle(aus), false);
   for (const z of BEDECKBARE_ZONEN) assert.equal(aus[z].bedeckt, false);

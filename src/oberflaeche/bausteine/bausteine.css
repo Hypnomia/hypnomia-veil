@@ -1,0 +1,95 @@
+/* Gemeinsame Bausteine der Oberflaeche (Phase 11 E4c0). Nur Farben, Masse, Schriften und Symbole aus tokens.css (var(--v-...)), keine eigene Farbe.
+   Die Seite bindet tokens.css vor dieser Datei ein. Fingerziel: jedes bedienbare Element ist bei jeder Breite und jedem Zeiger mindestens
+   var(--v-fingerziel) mal var(--v-fingerziel) gross (Fund N6 der Lesung E4c). Auswahlfelder folgen der Regel O6 aus tokens.css.
+   Abstaende und Radien kommen aus den Tokens; feste Pixel stehen nur fuer die eigene Geometrie eines Bausteins (Bahn, Haken, Kreis, Rahmenbreiten)
+   und fuer Schriftgroessen (tokens.css kennt keine). Die Sammelregeln treffen nur die eigenen Klassen der Bausteine, nie fremden Inhalt. */
+
+.v-baustein { display: flex; flex-direction: column; gap: var(--v-a-3); min-width: 0; color: var(--v-text); font-family: var(--v-schrift-text); }
+:is(.v-schalter-knopf, .v-stufe, .v-wahl-karte, .v-chip, .v-frage, .v-auf-kopf, .v-regler-eingabe, .v-auswahl-feld) { font-family: var(--v-schrift-text); color: var(--v-text); touch-action: manipulation; }
+:is(.v-schalter-knopf, .v-stufe, .v-wahl-karte, .v-chip, .v-frage, .v-auf-kopf, .v-regler-eingabe, .v-auswahl-feld):focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 3px; }
+:is(.v-schalter-knopf, .v-stufe, .v-wahl-karte, .v-chip, .v-frage, .v-auf-kopf, .v-regler-eingabe, .v-auswahl-feld):disabled,
+.v-schalter-knopf[aria-disabled='true'] { opacity: 0.55; cursor: default; }
+
+/* ---------- Titel und "?" ---------- */
+.v-titel { display: flex; flex-direction: column; gap: var(--v-a-2); min-width: 0; }
+.v-titelzeile { display: flex; align-items: center; gap: var(--v-a-2); min-width: 0; }
+.v-titeltext { font: 800 16px/1.3 var(--v-schrift-text); min-width: 0; overflow-wrap: anywhere; }
+/* Der Knopf ist das ganze Fingerziel; nur der Kreis darin ist klein. Der negative Rand haelt die Zeile schlank (das Fingerziel ragt aus der Zeile). */
+.v-frage { --v-kreis: 24px; flex: none; display: inline-grid; place-items: center; width: var(--v-fingerziel); height: var(--v-fingerziel); margin-block: calc((var(--v-kreis) - var(--v-fingerziel)) / 2); padding: 0; border: 0; background: transparent; cursor: pointer; }
+.v-frage-kreis { display: grid; place-items: center; width: var(--v-kreis); height: var(--v-kreis); border-radius: var(--v-r-voll); border: 1.5px solid var(--v-rosa-300); background: var(--v-weiss); color: var(--v-rosa-800); font: 800 13px/1 var(--v-schrift-text); }
+.v-frage[aria-expanded='true'] .v-frage-kreis { background: var(--v-rosa-100); border-color: var(--v-rosa-700); border-width: 2px; }
+.v-erklaerung { margin: 0; padding: var(--v-a-3) var(--v-a-4); border-radius: var(--v-r-m); background: var(--v-verlauf-zart); border: 1px solid var(--v-weiss); color: var(--v-text); font-size: 14px; line-height: 1.45; }
+.v-erklaerung[hidden] { display: none; }
+
+/* ---------- Hinweis (hoechstens einer je Baustein) ---------- */
+.v-hinweis { margin: 0; color: var(--v-leise); font-size: 14px; line-height: 1.45; }
+
+/* ---------- Haken: zweites Zeichen neben der Farbe fuer jeden markierten Zustand ---------- */
+.v-haken { display: none; flex: none; position: relative; width: 18px; height: 18px; border-radius: var(--v-r-voll); background: var(--v-verlauf-akzent); }
+.v-haken::before { content: ''; position: absolute; left: 6px; top: 3px; width: 4px; height: 8px; border: solid var(--v-weiss); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+[aria-checked='true'] > .v-haken, [aria-pressed='true'] > .v-haken { display: block; }
+
+/* ---------- Schalter ---------- */
+.v-schalter-zeile { display: flex; align-items: flex-start; gap: var(--v-a-4); min-height: var(--v-fingerziel); }
+.v-schalter-knopf { flex: none; display: flex; align-items: center; width: calc(var(--v-fingerziel) + var(--v-a-3)); height: var(--v-fingerziel); padding: 0; border: 0; background: transparent; cursor: pointer; }
+.v-bahn { position: relative; flex: none; width: 48px; height: 28px; border-radius: var(--v-r-voll); background: var(--v-rand); box-shadow: var(--v-schatten-klein); transition: background var(--v-dauer-kurz); }
+.v-bahn::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--v-weiss); transition: left var(--v-dauer-kurz); }
+.v-schalter-knopf[aria-checked='true'] .v-bahn { background: var(--v-verlauf-akzent); }
+.v-schalter-knopf[aria-checked='true'] .v-bahn::after { left: 23px; }
+.v-schalter-text { flex: 1; min-width: 0; padding-top: calc((var(--v-fingerziel) - 21px) / 2); }
+.v-schalter-text .v-titeltext { cursor: pointer; }
+.v-schalter-text .v-titel { gap: var(--v-a-1); }
+.v-schalter-text .v-hinweis { margin-top: var(--v-a-1); padding-bottom: var(--v-a-2); }
+
+/* ---------- Stufenwahl ---------- */
+.v-stufen { display: flex; flex-wrap: wrap; gap: var(--v-a-1); padding: var(--v-a-1); width: max-content; max-width: 100%; border-radius: var(--v-r-voll); background: var(--v-weiss); border: 1.5px solid var(--v-rand); }
+.v-stufe { min-width: var(--v-fingerziel); min-height: var(--v-fingerziel); padding: 0 var(--v-a-5); border: 0; border-radius: var(--v-r-voll); background: transparent; font-weight: 700; font-size: 15px; white-space: nowrap; cursor: pointer; }
+.v-stufe[aria-checked='true'] { background: var(--v-verlauf-akzent); color: var(--v-weiss); font-weight: 800; box-shadow: var(--v-schatten-knopf); }
+.v-stufe[aria-checked='true']::before { content: ''; display: inline-block; width: 5px; height: 9px; margin: 0 var(--v-a-2) 2px 0; border: solid var(--v-weiss); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+/* ---------- Regler "Exact value" ---------- */
+.v-regler { display: flex; align-items: center; gap: var(--v-a-3); }
+.v-regler input[type='range'] { flex: 1; min-width: 0; min-height: var(--v-fingerziel); }
+.v-wert { flex: none; padding: var(--v-a-1) var(--v-a-3); border-radius: var(--v-r-voll); background: var(--v-verlauf-zart); border: 1px solid var(--v-weiss); color: var(--v-rosa-800); font: 800 13px/1.2 var(--v-schrift-text); white-space: nowrap; }
+
+/* ---------- Aufklapper ---------- */
+.v-aufklapper { gap: 0; border-radius: var(--v-r-m); border: 1.5px solid var(--v-rand); background: var(--v-glas); }
+.v-auf-kopfzeile { display: flex; align-items: center; padding-right: var(--v-a-2); }
+.v-auf-kopf { flex: 1; display: flex; align-items: center; gap: var(--v-a-3); min-width: 0; min-height: calc(var(--v-fingerziel) + var(--v-a-1)); padding: 0 var(--v-a-4); border: 0; background: transparent; font-weight: 800; font-size: 15px; color: var(--v-rosa-800); text-align: left; cursor: pointer; }
+.v-auf-stand { margin-left: auto; color: var(--v-leise); font-weight: 600; font-size: 14px; }
+.v-auf-kopf::after { content: ''; flex: none; width: 12px; height: 8px; background: var(--v-ikon-pfeil) center / contain no-repeat; transition: transform var(--v-dauer-kurz); }
+.v-auf-kopf[aria-expanded='true']::after { transform: rotate(180deg); }
+.v-aufklapper > .v-erklaerung { margin: 0 var(--v-a-4) var(--v-a-3); }
+.v-auf-inhalt { display: flex; flex-direction: column; gap: var(--v-a-3); padding: var(--v-a-1) var(--v-a-4) var(--v-a-4); }
+.v-auf-inhalt[hidden] { display: none; }
+
+/* ---------- Wahlkarten (auch Zonenwahl und Kleidungsfrage) ---------- */
+.v-wahl { display: grid; gap: var(--v-a-3); grid-template-columns: repeat(var(--v-spalten, 3), minmax(0, 1fr)); }
+.v-wahl-karte { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: var(--v-fingerziel); min-height: calc(var(--v-fingerziel) + var(--v-a-5)); padding: var(--v-a-3) var(--v-a-8) var(--v-a-3) var(--v-a-4); text-align: left; border: 1.5px solid var(--v-rand); border-radius: var(--v-r-m); background: var(--v-weiss); cursor: pointer; }
+.v-wahl-titel { font-weight: 800; font-size: 15px; line-height: 1.3; }
+.v-wahl-satz { color: var(--v-leise); font-size: 13.5px; line-height: 1.35; }
+.v-wahl-bild { display: block; align-self: stretch; margin: 2px 0 var(--v-a-2); border-radius: var(--v-r-s); overflow: hidden; aspect-ratio: 4 / 3; background: var(--v-rosa-50); }
+.v-wahl-bild > * { display: block; width: 100%; height: 100%; }
+.v-wahl-karte[aria-checked='true'] { border: 2px solid var(--v-rosa-700); background: var(--v-rosa-100); padding: calc(var(--v-a-3) - 0.5px) calc(var(--v-a-8) - 0.5px) calc(var(--v-a-3) - 0.5px) calc(var(--v-a-4) - 0.5px); }
+.v-wahl-karte > .v-haken { position: absolute; right: var(--v-a-3); top: var(--v-a-3); }
+
+/* ---------- Zonen einzeln (Chips) ---------- */
+.v-chips { display: flex; flex-wrap: wrap; gap: var(--v-a-2); }
+.v-chip { display: inline-flex; align-items: center; gap: var(--v-a-2); min-width: var(--v-fingerziel); min-height: var(--v-fingerziel); padding: 0 var(--v-a-4); border-radius: var(--v-r-voll); border: 1.5px solid var(--v-rand); background: var(--v-weiss); font-weight: 700; font-size: 14px; cursor: pointer; }
+.v-chip[aria-pressed='true'] { border: 2px solid var(--v-rosa-700); background: var(--v-rosa-100); color: var(--v-rosa-800); padding: 0 calc(var(--v-a-4) - 0.5px); }
+
+/* ---------- Auswahlfeld: Gestalt aus tokens.css (O6), hier nur Breite und Fingerziel bei jeder Breite ---------- */
+.v-auswahl .v-auswahl-feld { width: 100%; min-height: var(--v-fingerziel); }
+
+/* ---------- Platz der festen Vorschau ---------- */
+.v-vorschau-platz { gap: 0; }
+.v-vorschau-rahmen { position: relative; aspect-ratio: 3 / 4; border-radius: var(--v-r-m); overflow: hidden; border: 1px solid var(--v-weiss); box-shadow: var(--v-schatten-klein); background: var(--v-verlauf-zart); }
+.v-vorschau-flaeche { position: absolute; inset: 0; }
+.v-vorschau-flaeche > * { display: block; width: 100%; height: 100%; }
+.v-vorschau-etikett { position: absolute; left: var(--v-a-3); top: var(--v-a-3); padding: var(--v-a-1) var(--v-a-2); border-radius: var(--v-r-voll); background: var(--v-glas-stark); color: var(--v-rosa-800); font: 800 12px/1.2 var(--v-schrift-text); box-shadow: var(--v-schatten-klein); }
+.v-vorschau-etikett[hidden] { display: none; }
+
+@media (max-width: 480px) {
+  .v-wahl { grid-template-columns: repeat(var(--v-spalten-schmal, 1), minmax(0, 1fr)); }
+  .v-stufe { padding: 0 var(--v-a-4); }
+}

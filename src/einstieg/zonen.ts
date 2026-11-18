@@ -29,7 +29,7 @@ export function bedecktAlle(zonen: ZonenStand): boolean {
   return an.length > 0 && an.every((z) => zonen[z].bedeckt === true);
 }
 
-// Setzt eine Wahl. Neu eingeschaltete bedeckbare Zonen bekommen genau den Stand von "even when clothed" (gesetzt: bedeckt, sonst nicht, ein altes `bedeckt` kehrt nicht zurueck);
+// Setzt eine Wahl. Neu eingeschaltete bedeckbare Zonen bekommen `bedeckt`, wenn "even when clothed" gesetzt ist oder sie es schon gespeichert hatten (nie weniger Deckung als vorher);
 // ausgeschaltete Zonen behalten ihr `bedeckt`, damit Hin und Zurueck nichts verliert.
 export function setzeZonenWahl(zonen: ZonenStand, wahl: ZonenWahl): ZonenStand {
   const soll = zonenDerWahl(wahl);
@@ -38,18 +38,20 @@ export function setzeZonenWahl(zonen: ZonenStand, wahl: ZonenWahl): ZonenStand {
   for (const z of ZONEN) {
     const alt = zonen[z];
     const e: ZonenEinstellung = { an: soll.has(z) };
-    if (BEDECKBARE_ZONEN.has(z)) e.bedeckt = !alt.an && e.an ? bedeckt : alt.bedeckt === true;
+    // Eine neu eingeschaltete Zone verliert nie ein gespeichertes `bedeckt` (Phase 11 E4c0 Nacharbeit R2): sie behaelt es, oder sie bekommt es durch "even when clothed".
+    if (BEDECKBARE_ZONEN.has(z)) e.bedeckt = !alt.an && e.an ? bedeckt || alt.bedeckt === true : alt.bedeckt === true;
     neu[z] = e;
   }
   return neu;
 }
 
-// "Even when clothed" an oder aus: gilt fuer alle eingeschalteten bedeckbaren Zonen (ausgeschaltete bleiben unberuehrt).
+// "Even when clothed" an oder aus: gilt fuer ALLE bedeckbaren Zonen, auch fuer ausgeschaltete (Nacharbeit R15): an gibt allen `bedeckt`, aus nimmt es allen.
+// Sonst kehrte ein altes `bedeckt` einer ausgeschalteten Zone zurueck, nachdem der Nutzer den Haken ausdruecklich abgewaehlt hat. `an` aendert sich nie.
 export function setzeBedeckt(zonen: ZonenStand, bedeckt: boolean): ZonenStand {
   const neu = {} as ZonenStand;
   for (const z of ZONEN) {
     const alt = zonen[z];
-    neu[z] = BEDECKBARE_ZONEN.has(z) && alt.an ? { an: true, bedeckt } : { ...alt };
+    neu[z] = BEDECKBARE_ZONEN.has(z) ? { ...alt, bedeckt } : { ...alt };
   }
   return neu;
 }

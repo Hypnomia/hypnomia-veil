@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bausteine</title>
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/bausteine.css" />
+  <style>
+    body { margin: 0; padding: 16px; background: var(--v-verlauf-grund); font: 400 15px/1.5 var(--v-schrift-text); }
+    #wurzel { display: flex; flex-direction: column; gap: 32px; max-width: 640px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <!-- Testseite fuer src/oberflaeche/bausteine: das Buendel baut der Test selbst (tests/bausteine-server.mjs). Alle Texte hier sind Testtexte. -->
+  <main id="wurzel"></main>
+  <!-- Kontrolle fuer O6: ein nacktes select ohne Baustein, nur mit der Regel aus tokens.css -->
+  <select id="nackt" aria-label="plain"><option>One</option><option>Two</option></select>
+  <script type="module" src="/buendel.js"></script>
+</body>
+</html>
