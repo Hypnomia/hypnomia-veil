@@ -1,5 +1,5 @@
-// Einheitstests des Aufloesers `presetDef` (Phase 11 E4b): gewaehlt und wirksam je Kennung und Pack-Stufe, Rueckfall Mosaik, Katalog, Verbot der
-// direkten Tabellenlesung ausserhalb von src/presets.ts und src/preset-def.ts, und der erwartet rote Test zum Befund aus speicher.ts.
+// Einheitstests des Aufloesers `presetDef` (Phase 11 E4b, E4c): gewaehlt und wirksam je Kennung und Pack-Stufe, der Schalter Eye bar, Rueckfall Mosaik, Katalog,
+// Verbot der direkten Tabellenlesung ausserhalb von src/presets.ts und src/preset-def.ts, und der Verhaltenstest der Stilwahl beim ersten Pack.
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { PRESETS, PRESET_IDS, behandlungFuerZone, ganzesBildBehandlung, nutztMiasGesicht, nutztSticker, presetFuerPack, presetOderMosaik, zonenFuerPreset } from '../../src/presets.ts';
 import { istFreigeschaltet as istFreigeschaltetAlt, presetDef, presetDefFuerKennung, presetKatalog } from '../../src/preset-def.ts';
 import { berechneFlaechen } from '../../src/erkenner/zonen.ts';
-import { STANDARD } from '../../src/einstellungen.ts';
+import { STANDARD, vervollstaendige, waehleBeimErstenPack } from '../../src/einstellungen.ts';
 import { wirksameZonen } from '../../src/steigerung.ts';
 import { ersatzFuer } from '../../src/schleier/video-zonen.ts';
 import { istFreigeschaltet, presetFuerPackKurz } from '../../src/pack/vertrag.ts';
@@ -32,8 +32,8 @@ function sollGilt(kennung, stufe) {
   return kennung;
 }
 
-test('presetDef: alle 13 Kennungen mal vier Pack-Stufen, gewaehlt ist die Tabelle, gilt folgt der Pack-Tabelle', () => {
-  assert.equal(PRESET_IDS.length, 13);
+test('presetDef: alle 12 Kennungen mal vier Pack-Stufen, gewaehlt ist die Tabelle, gilt folgt der Pack-Tabelle', () => {
+  assert.equal(PRESET_IDS.length, 12);
   for (const kennung of PRESET_IDS) {
     for (const [stufe, pack] of Object.entries(PACKS)) {
       const r = presetDef({ preset: kennung }, pack);
@@ -75,9 +75,9 @@ test('presetDef: ein beschaedigtes Pack (freischaltungen keine Liste) zaehlt als
   assert.equal(presetDef({ preset: 'mia-wort' }, {}).gilt.id, 'mosaik');
 });
 
-test('presetKatalog: alle 13 Definitionen in der Reihenfolge von PRESET_IDS, dieselben Objekte', () => {
+test('presetKatalog: alle 12 Definitionen in der Reihenfolge von PRESET_IDS, dieselben Objekte', () => {
   const k = presetKatalog();
-  assert.equal(k.length, 13);
+  assert.equal(k.length, 12);
   assert.deepEqual(k.map((d) => d.id), [...PRESET_IDS]);
   k.forEach((d, i) => assert.equal(d, PRESETS[PRESET_IDS[i]]));
 });
@@ -171,29 +171,70 @@ test('PRESETS wird ausserhalb von src/presets.ts und src/preset-def.ts nirgends 
   assert.deepEqual(funde, []);
 });
 
-// Erwartet rot bis (b) (E4c): wer ein erstes Pack importiert und Eye bar gewaehlt hat, verliert heute still den Balken, weil src/pack/speicher.ts
-// beim ersten Pack `waehlePreset(alt, PACK_PRESET)` ruft, ohne auf den bisherigen Stil zu sehen. Der Test liest die Stelle im Quelltext (die
-// Importlogik braucht IndexedDB und laeuft nicht in Node), entfernt vorher Kommentare (`//` und `/* */`) und verlangt, dass der Zweig den Stil Eye bar
-// kennt. Gekennzeichnet wie `erwartetRot` in tests/chromium/video-platz.spec.ts: mit Kennzeichnung besteht der Fall genau dann, wenn die Pruefung
-// fehlschlaegt; besteht sie, schlaegt der Fall fehl (Kennzeichnung entfernen). Mit VEIL_E4_OHNE_KENNZEICHNUNG=1 laeuft der Fall als normaler Test.
-// VEIL_E4_SPEICHER=<datei> liest eine andere Kopie von speicher.ts (nur zum Messen der Pruefung selbst).
-const OHNE_KENNZEICHNUNG = process.env.VEIL_E4_OHNE_KENNZEICHNUNG === '1';
-function e4cPruefung() {
-  const pfad = process.env.VEIL_E4_SPEICHER ?? join(WURZEL, 'src/pack/speicher.ts');
-  const quelle = readFileSync(pfad, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  const stelle = quelle.indexOf('waehlePreset(alt, PACK_PRESET)');
-  assert.ok(stelle > 0, 'die Stelle fuer das erste Pack ist da');
-  const zweig = quelle.slice(Math.max(0, stelle - 400), stelle + 400);
-  assert.ok(/augenbalken/.test(zweig), 'der Zweig fuer das erste Pack unterscheidet den Stil Eye bar');
-}
-test('E4c erwartet rot: ein erstes Pack nimmt einem Nutzer mit Eye bar den Balken nicht', () => {
-  if (OHNE_KENNZEICHNUNG) return e4cPruefung();
-  let gruen = false;
-  try {
-    e4cPruefung();
-    gruen = true;
-  } catch {
-    // erwartet: rot
+// E4c R7: der Aufloeser nimmt den Schalter Eye bar auf. Die gelieferte Definition traegt die wirksame Augen-Art, `gewaehlt` und `gilt` beide; ist der Schalter aus
+// oder fehlt er, ist es das Objekt der Tabelle selbst (Identitaet bleibt).
+test('presetDef mit dem Schalter Eye bar: Augen-Art balken-immer in jedem Stil, je Kennung dasselbe eingefrorene Objekt, ohne Schalter die Tabelle', () => {
+  for (const kennung of PRESET_IDS) {
+    for (const [stufe, pack] of Object.entries(PACKS)) {
+      const an = presetDef({ preset: kennung, augenbalken: true }, pack);
+      assert.equal(an.gewaehlt.augen, 'balken-immer', `${kennung}/${stufe} gewaehlt`);
+      assert.equal(an.gilt.augen, 'balken-immer', `${kennung}/${stufe} gilt`);
+      assert.equal(an.gewaehlt.id, kennung);
+      assert.equal(an.gilt.id, sollGilt(kennung, stufe));
+      // sonst unveraendert: jedes andere Feld gleicht der Tabelle
+      assert.deepEqual({ ...an.gewaehlt, augen: PRESETS[kennung].augen }, PRESETS[kennung]);
+      assert.equal(presetDef({ preset: kennung, augenbalken: true }, pack).gewaehlt, an.gewaehlt, 'dasselbe Objekt bei jedem Aufruf');
+      if (PRESETS[kennung].augen !== 'balken-immer') assert.ok(Object.isFrozen(an.gewaehlt), 'abgeleitet und eingefroren');
+      for (const aus of [false, undefined, null, 'ja', 1, {}]) {
+        const r = presetDef({ preset: kennung, augenbalken: aus }, pack);
+        assert.equal(r.gewaehlt, PRESETS[kennung], `${kennung}: Schalter ${String(aus)} ist aus`);
+        assert.equal(r.gilt, PRESETS[sollGilt(kennung, stufe)]);
+      }
+    }
   }
-  if (gruen) assert.fail('E4c ist gruen geworden: die Kennzeichnung (erwartet rot) in tests/einheit/preset-def.test.mjs entfernen');
+  // Zensurbalken ist schon balken-immer: dasselbe Objekt der Tabelle auch mit Schalter
+  assert.equal(presetDef({ preset: 'zensurbalken', augenbalken: true }).gewaehlt, PRESETS.zensurbalken);
+  // unbekannte Kennung: Mosaik mit Balken
+  assert.equal(presetDef({ preset: 'gibt-es-nicht', augenbalken: true }).gewaehlt.id, 'mosaik');
+  assert.equal(presetDef({ preset: 'gibt-es-nicht', augenbalken: true }).gewaehlt.augen, 'balken-immer');
+  // kein Stil hat mehr die Art `nur-balken`
+  assert.equal(PRESET_IDS.some((k) => PRESETS[k].augen === 'nur-balken'), false);
+});
+
+// E4c R8: die Wahl des Stils beim ersten Pack ist eine reine Funktion (src/einstellungen.ts waehleBeimErstenPack; speicher.ts ruft sie). Verhaltenstest: der Schalter Eye bar
+// bleibt, der Stil wechselt auf mia-wort, Face wird eingeschaltet, wo es aus war. Vorher nahm der Stilwechsel einem Eye-bar-Nutzer den Balken (Befund 3 der Karte).
+test('Stilwahl beim ersten Pack: Stil mia-wort, Face an, der Schalter Eye bar bleibt unberuehrt (auch aus dem Altstand mit dem Stil Eye bar)', () => {
+  const zeigt = (alt) => {
+    const r = waehleBeimErstenPack(alt);
+    // wie aendereEinstellungen: Teil auf den alten Stand legen, dann vervollstaendigen
+    return { neu: vervollstaendige({ ...alt, ...r.teil }), r };
+  };
+  // Nutzer mit dem Schalter an
+  const mitBalken = vervollstaendige({ preset: 'mosaik', augenbalken: true });
+  const a = zeigt(mitBalken);
+  assert.equal(a.neu.preset, 'mia-wort');
+  assert.equal(a.neu.augenbalken, true, 'der Balken bleibt');
+  assert.equal(a.neu.zonen.face.an, true);
+  assert.equal(a.r.faceEingeschaltet, true);
+  assert.equal('augenbalken' in a.r.teil, false, 'der Teil fasst den Schalter nicht an');
+  // Nutzer mit dem Schalter aus bleibt aus
+  assert.equal(zeigt(vervollstaendige({})).neu.augenbalken, false);
+  // Altstand: der Stil Eye bar (roh) wandert VOR dem ersten Pack, der Balken ueberlebt den Stilwechsel
+  const alt = vervollstaendige({ preset: 'augenbalken', zonen: { face: { an: true } } });
+  const b = zeigt(alt);
+  assert.equal(b.neu.preset, 'mia-wort');
+  assert.equal(b.neu.augenbalken, true);
+  assert.equal(b.r.faceEingeschaltet, false, 'Face war schon an');
+  assert.equal(b.neu.hinweise.augenbalken, 'offen', 'der Merker bleibt');
+  // Die Zonen-Schalter bleiben ausser Face, wie sie waren
+  const c = zeigt(vervollstaendige({ preset: 'blur', zonen: { breast: { an: false }, genitals: { an: true } } }));
+  assert.equal(c.neu.zonen.breast.an, false);
+  assert.equal(c.neu.zonen.genitals.an, true);
+});
+
+// Die Stelle in src/pack/speicher.ts ruft diese Funktion und nicht mehr waehlePreset/PACK_PRESET selbst (damit es nur eine Regel gibt).
+test('speicher.ts waehlt den Stil beim ersten Pack ueber waehleBeimErstenPack', () => {
+  const quelle = readFileSync(join(WURZEL, 'src/pack/speicher.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.ok(/waehleBeimErstenPack\(alt\)/.test(quelle));
+  assert.equal(/waehlePreset\(/.test(quelle), false);
 });

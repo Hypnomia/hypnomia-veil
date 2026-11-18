@@ -28,7 +28,8 @@ With **Face** off, faces stay as they are, and Eyes and Mouth get the same as ev
 
 - **Mosaic**, **Mosaic and words**, **Blur:** everything you switched on gets that. Without the pack, my word is MIA.
 - **Censor bars:** a black bar over the eyes of every face I find, always, and black over everything else you switched on.
-- **Eye bar:** only a black bar over the eyes. The switches under **What I cover** rest, my grip rests too, and a picture without a face stays untouched. Videos and drawings with a face I still cover whole, for now.
+
+Under the cards sits the **Eye bar** switch: a black bar over the eyes of every face I find, on top of any style, whatever your switches under **What I cover** say. Where I draw my own face over a face, my face goes over the bar, so the eyes are gone either way. Where I find no face, the switch adds nothing.
 
 **Whole person** works without the pack too. When I find something you switched on, I cover the whole person with one mosaic or one blur, not just that spot. I work out the person from the parts I recognize, so the edges can be off. When I’m unsure, I cover more rather than less.
 
@@ -81,7 +82,7 @@ With the Mia Pack in, my grip tightens by itself. My popup shows it under **Adul
 - **Down:** 12 hours without a counted minute bring me down one level. That clock runs on real time, browser closed or not, and my popup shows how long is left.
 - **Paused:** the clock stands still and picks up where it stopped.
 
-Each level covers more. Level 1 adds breasts, bottoms and genitals even when clothed, level 2 faces, eyes and mouths, level 3 belly, feet and armpits, clothed too. Level 4 covers every picture and video where I spot a woman, completely. My grip only adds, it never switches off what you switched on. With **Eye bar** as your style, my grip rests: I stay with the eyes, whatever the level.
+Each level covers more. Level 1 adds breasts, bottoms and genitals even when clothed, level 2 faces, eyes and mouths, level 3 belly, feet and armpits, clothed too. Level 4 covers every picture and video where I spot a woman, completely. My grip only adds, it never switches off what you switched on. The **Eye bar** switch takes part in every level: the bar stays, and the level adds on top.
 
 ## Strict times
 

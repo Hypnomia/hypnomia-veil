@@ -245,12 +245,12 @@ try {
 
   // 1. Oberflaeche ohne Pack
   const karten = await driver.findElements(By.css('#preset-karten input[name="preset"]'));
-  pruefe(karten.length === 13, `dreizehn Preset-Karten (${karten.length})`);
+  pruefe(karten.length === 12, `zwoelf Preset-Karten (${karten.length})`);
   pruefe((await driver.findElements(By.css('#preset-karten .preset-gruppe'))).length === 4, 'vier Gruppen');
   const gruppenTitel = [];
   for (const t of await driver.findElements(By.css('#preset-karten .preset-gruppe-titel'))) gruppenTitel.push(await t.getText());
   pruefe(JSON.stringify(gruppenTitel.map((t) => t.toLowerCase())) === JSON.stringify(['with my face', 'with my stickers', 'classic', 'whole person']), `Gruppen in der Reihenfolge mia, sticker, klassisch, person (${gruppenTitel})`); // die Ueberschriften stehen in Grossbuchstaben (CSS)
-  pruefe((await driver.findElements(By.css('#preset-karten .preset-bild svg'))).length === 13, 'dreizehn Vorschau-Figuren');
+  pruefe((await driver.findElements(By.css('#preset-karten .preset-bild svg'))).length === 12, 'zwoelf Vorschau-Figuren');
   const gesperrt = [];
   for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur', 'mia-sticker', 'sticker']) gesperrt.push(await driver.findElement(By.css(`#preset-${id}`)).getAttribute('disabled'));
   pruefe(gesperrt.every((g) => g === 'true'), 'ohne Pack sind die sechs Presets mit meinem Gesicht oder meinen Stickern gesperrt');
@@ -262,10 +262,12 @@ try {
   await bis('Zonen-Hinweis', () => sichtbar('#zonen-hinweis'));
   pruefe((await text('#zonen-hinweis')).includes('Censor bars'), 'Hinweis bei What I cover (Zensurbalken)');
   // Migration: alter `stil`
-  for (const [alt, neu] of [['blur', 'blur'], ['augenbalken', 'augenbalken'], ['mia-patch', 'mosaik']]) {
+  for (const [alt, neu] of [['blur', 'blur'], ['augenbalken', 'mosaik'], ['mia-patch', 'mosaik']]) {
     await imSeitenkontext(`await api.storage.local.set({ einstellungen: { version: 1, stil: args[0] } });`, alt);
     await driver.navigate().refresh();
     await bis(`Migration ${alt}`, async () => (await driver.findElement(By.css(`#preset-${neu}`)).isSelected()));
+    // E4c: der alte Stil Eye bar zeigt Mosaik und den Schalter an (Soll geaendert)
+    if (alt === 'augenbalken') await bis('Schalter Eye bar an', async () => (await driver.findElement(By.css('#augenbalken')).isSelected()));
   }
   pruefe(true, 'Migration: blur, augenbalken, mia-patch (ohne Pack Mosaik) angezeigt');
   await driver.findElement(By.css('label:has(#preset-blur)')).click();

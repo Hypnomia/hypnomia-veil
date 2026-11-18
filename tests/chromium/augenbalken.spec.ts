@@ -1,5 +1,5 @@
-// Chromium: Preset Augenbalken (Eye bar). Pixelmessung des Balkens (auch bei ausgeschalteten Augen, geneigtem Gesicht, mehreren Gesichtern, PNG mit Alpha),
-// bewegtes SVG, Seite mit Bild, Leinwand, Video und Pause, Hinweis in "My grip". Die Preset-Wahl in der Oberflaeche steht in presets.spec.ts.
+// Chromium: Eye bar (seit Phase 11 E4c der Schalter `augenbalken`, vorher der Stil `augenbalken`). Pixelmessung des Balkens (auch bei ausgeschalteten Augen, geneigtem Gesicht, mehreren Gesichtern, PNG mit Alpha),
+// bewegtes SVG, Seite mit Bild, Leinwand, Video und Pause, Kurzzeile und Satz im Popup, gespeicherter Altstand. Der Schalter in der Oberflaeche steht in presets.spec.ts.
 // Testbilder aus ../05 Testbilder (nie im Repo): fehlen sie, ist der Test ROT, nur mit VEIL_OHNE_TESTBILDER=1 wird er laut uebersprungen.
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { GRIP_AUGENBALKEN, GRIP_SATZ } from '../../entrypoints/popup/texte';
+import { ABDECKUNG_AUGENBALKEN, ABDECKUNG_KURZ, GRIP_SATZ } from '../../entrypoints/popup/texte';
+import { EYE_BAR_SATZ } from '../../src/oberflaeche/gemeinsam';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -42,6 +43,12 @@ const ausWorker = (n: unknown): Promise<any> => worker.evaluate((m) => (globalTh
 const speicher = (seite: Page, schluessel: string) =>
   seite.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as Record<string, any>)[k], schluessel);
 
+// Der Schalter Eye bar (E4c): Stil Mosaik mit `augenbalken: true` und den Zonen `an` (hier meist keine: dann kommt nur der Balken, wie beim alten Stil).
+function nachrichtBalken(quelle: unknown, an: string[], rendern = true, preset = 'mosaik') {
+  const n = nachricht(quelle, an, preset, rendern);
+  (n.einstellungen as Record<string, unknown>).augenbalken = true;
+  return n;
+}
 function nachricht(quelle: unknown, an: string[], preset: string, rendern = true) {
   return {
     ziel: 'erkenner',
@@ -82,6 +89,7 @@ const dataUrlVon = (png: Buffer): string => `data:image/png;base64,${png.toStrin
 interface Flaeche {
   zone: string;
   box: number[];
+  behandlung?: string;
   balken?: { mitte: number[]; breite: number; hoehe: number; winkel: number };
 }
 
@@ -198,8 +206,8 @@ test('Eye bar: schwarzer Balken ueber den Augen, sonst unveraenderte Pixel, auch
   test.setTimeout(120_000);
   const original = await brauchtBild('sfw', BILD_MIT_GESICHT);
   const orig = await rohPixel(original);
-  // Nur Brust an, Augen AUS: im Stil Eye bar gelten trotzdem nur die Augen.
-  const a = await ausWorker(nachricht(urlQuelle('sfw', BILD_MIT_GESICHT), ['breast'], 'augenbalken'));
+  // Alle Zonen AUS, auch die Augen: mit dem Schalter kommt trotzdem der Balken, und sonst nichts.
+  const a = await ausWorker(nachrichtBalken(urlQuelle('sfw', BILD_MIT_GESICHT), []));
   expect(a.ok, a.fehler).toBe(true);
   expect(a.flaechen.length).toBeGreaterThanOrEqual(1);
   expect((a.flaechen as Flaeche[]).every((f) => f.zone === 'eyes')).toBe(true);
@@ -219,20 +227,20 @@ test('Eye bar: schwarzer Balken ueber den Augen, sonst unveraenderte Pixel, auch
   for (const sx of [-0.6, 0.6]) for (const sy of [-0.6, 0.6]) punkte.push([mitteAugen[0]! + (sx * ew) / 2, mitteAugen[1]! + (sy * eh) / 2]);
   if (!f.balken) punkte.push([ex, ey], [ex + ew - 1, ey], [ex, ey + eh - 1], [ex + ew - 1, ey + eh - 1]);
   for (const [px, py] of punkte) expect(imBalken(f, Math.floor(px), Math.floor(py), 0), `Punkt ${px},${py} der Augenbox liegt im Balken`).toBe(true);
-  // Alle Zonen an: im Stil Eye bar ist es derselbe Balken (gleiche Flaechen)
-  const b = await ausWorker(nachricht(urlQuelle('sfw', BILD_MIT_GESICHT), ZONEN_ALLE, 'augenbalken', false));
-  expect(b.flaechen).toEqual(a.flaechen);
-  // Steigerung Stufe 4 (ganzVerdecken) macht im Stil Eye bar kein ganzes Bild daraus
-  const nachrichtGanz = nachricht(urlQuelle('sfw', BILD_MIT_GESICHT), ['breast'], 'augenbalken', false);
+  // Alle Zonen an (Soll geaendert, E4c: der Schalter ersetzt den Stil, die Zonen ruhen nicht mehr): derselbe Balken, dazu die Flaechen der Zonen als Mosaik.
+  const b = await ausWorker(nachrichtBalken(urlQuelle('sfw', BILD_MIT_GESICHT), ZONEN_ALLE, false));
+  for (const f of a.flaechen as Flaeche[]) expect(b.flaechen).toContainEqual(f);
+  // Steigerung Stufe 4 (ganzVerdecken): der Balken bleibt in jedem Fall (mit einer erkannten Frau steht das ganze Bild darunter, Soll geaendert, E4c R6)
+  const nachrichtGanz = nachrichtBalken(urlQuelle('sfw', BILD_MIT_GESICHT), [], false);
   (nachrichtGanz.einstellungen as Record<string, unknown>).ganzVerdecken = true;
   const ganz = await ausWorker(nachrichtGanz);
-  expect(ganz.flaechen).toEqual(a.flaechen);
+  for (const f of a.flaechen as Flaeche[]) expect(ganz.flaechen).toContainEqual(f);
 });
 
-test('Eye bar: ein Bild ohne Gesicht bleibt frei (keine Flaeche, kein Bild); ein Bild mit Koerperzonen bekommt nur Augenbalken', async () => {
+test('Eye bar: ein Bild ohne Gesicht bleibt frei (keine Flaeche, kein Bild); ein Bild mit Koerperzonen bekommt Mosaik auf die Zonen und Augenbalken, ohne Zonen nur Augenbalken', async () => {
   test.setTimeout(120_000);
   const leer = await sharp({ create: { width: 480, height: 360, channels: 3, background: { r: 120, g: 160, b: 200 } } }).png().toBuffer();
-  const a = await ausWorker(nachricht({ art: 'daten', dataUrl: dataUrlVon(leer) }, ZONEN_ALLE, 'augenbalken'));
+  const a = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: dataUrlVon(leer) }, ZONEN_ALLE));
   expect(a.ok, a.fehler).toBe(true);
   expect(a.flaechen).toEqual([]);
   expect(a.bild).toBeUndefined();
@@ -248,7 +256,11 @@ test('Eye bar: ein Bild ohne Gesicht bleibt frei (keine Flaeche, kein Bild); ein
   }
   const mosaik = await ausWorker(nachricht(urlQuelle('nsfw', BILD_NSFW), ZONEN_ALLE, 'mosaik', false));
   expect(mosaik.flaechen.some((f: Flaeche) => f.zone !== 'eyes')).toBe(true);
-  const balken = await ausWorker(nachricht(urlQuelle('nsfw', BILD_NSFW), ZONEN_ALLE, 'augenbalken'));
+  const mitZonen = await ausWorker(nachrichtBalken(urlQuelle('nsfw', BILD_NSFW), ZONEN_ALLE, false));
+  expect(mitZonen.ok, mitZonen.fehler).toBe(true);
+  expect((mitZonen.flaechen as Flaeche[]).some((f) => f.zone !== 'eyes'), 'mit den Zonen an gibt es mehr als Balken (Soll geaendert, E4c)').toBe(true);
+  for (const f of (mosaik.flaechen as Flaeche[]).filter((x) => x.zone !== 'eyes')) expect(mitZonen.flaechen, 'jede Flaeche ohne den Schalter bleibt').toContainEqual(f);
+  const balken = await ausWorker(nachrichtBalken(urlQuelle('nsfw', BILD_NSFW), []));
   expect(balken.ok, balken.fehler).toBe(true);
   expect((balken.flaechen as Flaeche[]).every((f) => f.zone === 'eyes')).toBe(true);
   console.log(`chromium: Eye bar ${BILD_NSFW}: ${balken.flaechen.length} Augenbalken, Mosaik haette ${mosaik.flaechen.length} Flaechen`);
@@ -266,7 +278,7 @@ test('Eye bar: ein geneigtes Gesicht bekommt einen gedrehten Balken entlang der 
   // 25 Grad im Uhrzeigersinn gedreht (die YuNet-Augenpunkte folgen der Neigung nur gedaempft: gemessen 8 Grad bei 25, unter 3 Grad bei 18), mit Randfarbe aufgefuellt; das gedrehte Bild ist die Eingabe und das Original dieser Messung.
   const gedreht = await sharp(original).rotate(25, { background: { r: 128, g: 128, b: 128 } }).jpeg({ quality: 92 }).toBuffer();
   const orig = await rohPixel(gedreht);
-  const a = await ausWorker(nachricht({ art: 'daten', dataUrl: `data:image/jpeg;base64,${gedreht.toString('base64')}` }, ['breast'], 'augenbalken'));
+  const a = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: `data:image/jpeg;base64,${gedreht.toString('base64')}` }, []));
   expect(a.ok, a.fehler).toBe(true);
   expect(a.flaechen.length).toBeGreaterThanOrEqual(1);
   const gedrehteFlaeche = (a.flaechen as Flaeche[]).find((f) => f.balken);
@@ -301,7 +313,8 @@ const urteil = (seite: Page, id: string) => seite.evaluate((i) => document.getEl
 test('Eye bar auf einer Seite: das Bild bekommt den Balken, die Canvas-Leinwand wird ganz verdeckt, das Video bekommt den Balken auf den Augen (Zonen-Leinwand), die Pause gibt alles frei', async () => {
   test.setTimeout(150_000);
   await brauchtBild('sfw', BILD_MIT_GESICHT);
-  await setze({ preset: 'augenbalken', pause: false });
+  // alle Zonen aus: nur der Balken (wie der alte Stil), der Schalter an
+  await setze({ preset: 'mosaik', augenbalken: true, zonen: zonenNur([]), pause: false });
   const seite = await context.newPage();
   try {
     await seite.goto(`${basis}/augenbalken.html`);
@@ -343,7 +356,7 @@ test('Eye bar auf einer Seite: das Bild bekommt den Balken, die Canvas-Leinwand 
     expect(await seite.evaluate(() => document.querySelectorAll('[data-veil]').length)).toBe(0);
     expect(await seite.evaluate(() => ['bild', 'leinwand', 'film'].every((id) => getComputedStyle(document.getElementById(id)!).filter === 'none' && getComputedStyle(document.getElementById(id)!).opacity === '1'))).toBe(true);
   } finally {
-    await setze({ pause: false, preset: 'mosaik' });
+    await setze({ pause: false, preset: 'mosaik', augenbalken: false, zonen: undefined });
     await seite.close();
   }
 });
@@ -363,7 +376,7 @@ test('Eye bar: mehrere Gesichter in einem Bild bekommen je einen Balken', async 
     .jpeg({ quality: 92 })
     .toBuffer();
   const orig = await rohPixel(zwei);
-  const a = await ausWorker(nachricht({ art: 'daten', dataUrl: `data:image/jpeg;base64,${zwei.toString('base64')}` }, ['breast'], 'augenbalken'));
+  const a = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: `data:image/jpeg;base64,${zwei.toString('base64')}` }, []));
   expect(a.ok, a.fehler).toBe(true);
   const eyes = (a.flaechen as Flaeche[]).filter((f) => f.zone === 'eyes');
   expect(eyes.length, `Balken je Gesicht (${JSON.stringify(a.flaechen)})`).toBeGreaterThanOrEqual(2);
@@ -378,7 +391,7 @@ test('Eye bar: mehrere Gesichter in einem Bild bekommen je einen Balken', async 
 test('Eye bar: bewegtes SVG wird ganz Mosaik (Sicherheit vor Eye bar), mit pinkem Rahmen und ohne schwarzen Balken', async () => {
   test.setTimeout(60_000);
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="300" height="200" fill="rgb(40,160,60)"><animate attributeName="x" from="0" to="20" dur="1s" repeatCount="indefinite"/></rect></svg>';
-  const a = await ausWorker(nachricht({ art: 'daten', dataUrl: `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` }, ['breast'], 'augenbalken'));
+  const a = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` }, []));
   expect(a.ok, a.fehler).toBe(true);
   expect(a.flaechen).toHaveLength(1);
   expect(a.flaechen[0].box).toEqual([0, 0, a.breite, a.hoehe]);
@@ -401,21 +414,21 @@ test('Eye bar: PNG mit durchsichtigen Pixeln kommt als PNG mit Alpha zurueck, ei
   const mitAlpha = await sharp(rgba, { raw: { width: meta.width!, height: meta.height!, channels: 4 } }).png().toBuffer();
   const deckend = await sharp(original).png().toBuffer();
   const dataUrl = (b: Buffer) => `data:image/png;base64,${b.toString('base64')}`;
-  const a = await ausWorker(nachricht({ art: 'daten', dataUrl: dataUrl(mitAlpha) }, ['breast'], 'augenbalken'));
+  const a = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: dataUrl(mitAlpha) }, []));
   expect(a.ok, a.fehler).toBe(true);
   expect(a.flaechen.length).toBeGreaterThanOrEqual(1);
   expect(String(a.bild).startsWith('data:image/png')).toBe(true);
   const roh = await sharp(ausDataUrl(a.bild)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   expect(roh.data[3]).toBe(0); // links oben noch durchsichtig
   expect(roh.data[((100 * roh.info.width) + 100) * 4 + 3]).toBe(255);
-  const b = await ausWorker(nachricht({ art: 'daten', dataUrl: dataUrl(deckend) }, ['breast'], 'augenbalken'));
+  const b = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: dataUrl(deckend) }, []));
   expect(String(b.bild).startsWith('data:image/jpeg')).toBe(true);
   const c = await ausWorker(nachricht({ art: 'daten', dataUrl: dataUrl(mitAlpha) }, ['face'], 'mosaik'));
   expect(String(c.bild).startsWith('data:image/jpeg')).toBe(true);
   console.log('chromium: Eye bar: PNG mit Alpha bleibt PNG, deckendes PNG und Mosaik bleiben JPEG');
 });
 
-test('Popup: "My grip" sagt bei Eye bar, dass der Griff ruht; bei anderen Stilen steht nur der gewohnte Satz', async () => {
+test('Popup: Kurzzeile und Satz folgen dem Schalter Eye bar; "My grip" ruht nicht mehr (Soll geaendert, E4c: der Stil Eye bar, der den Griff ruhen liess, ist entfallen)', async () => {
   const seite = await context.newPage();
   try {
     await seite.goto(popupUrl());
@@ -427,14 +440,151 @@ test('Popup: "My grip" sagt bei Eye bar, dass der Griff ruht; bei anderen Stilen
     await seite.reload();
     await expect(seite.locator('#steigerung')).toBeVisible();
     await expect(seite.locator('#grip-satz')).toHaveText(GRIP_SATZ);
-    await setze({ preset: 'augenbalken' });
-    await expect(seite.locator('#grip-satz')).toHaveText(`${GRIP_SATZ} ${GRIP_AUGENBALKEN}`);
-    await setze({ preset: 'mosaik' });
+    await setze({ preset: 'mosaik', augenbalken: false, zonen: zonenNur(['breast']) });
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_KURZ(['breasts']));
+    await setze({ augenbalken: true });
+    await expect(seite.locator('#grip-satz')).toHaveText(GRIP_SATZ);
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_KURZ(['breasts'], true));
+    await expect(seite.locator('#pack-hinweis')).toContainText(EYE_BAR_SATZ);
+    await setze({ zonen: zonenNur([]) });
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_AUGENBALKEN);
+    await setze({ preset: 'mosaik', augenbalken: false });
     await expect(seite.locator('#grip-satz')).toHaveText(GRIP_SATZ);
   } finally {
     await seite.evaluate(async () => {
       await (globalThis as any).chrome.storage.local.remove('pack');
     });
+    await seite.close();
+  }
+});
+
+// Kerne der Flaechen im Seitenbild: Anteil dunkler Pixel (alle Kanaele unter 50) und mittlere Abweichung gegen das Original, jeweils im Kern (innere Haelfte) der Flaeche.
+// Das Bild der Seite ist die Antwort des Schleiers (Data-URL) oder das unveraenderte Original (Adresse).
+async function kerneImSeitenbild(seite: Page, flaechen: Flaeche[], originalUrl: string): Promise<{ dunkel: number; diff: number; daten: boolean }[]> {
+  return seite.evaluate(
+    async ([fl, orig]) => {
+      const el = document.getElementById('bild') as HTMLImageElement;
+      const holen = async (u: string) => createImageBitmap(await (await fetch(u)).blob());
+      const a = await holen(el.src);
+      const o = await holen(orig as string);
+      const zeichne = (b: ImageBitmap) => {
+        const c = new OffscreenCanvas(o.width, o.height);
+        const g = c.getContext('2d')!;
+        g.drawImage(b, 0, 0, o.width, o.height);
+        return g;
+      };
+      const ga = zeichne(a);
+      const go = zeichne(o);
+      return (fl as { box: number[] }[]).map((f) => {
+        const [x, y, w, h] = f.box as [number, number, number, number];
+        const kx = Math.round(x + w / 4);
+        const ky = Math.round(y + h / 4);
+        const kw = Math.max(1, Math.round(w / 2));
+        const kh = Math.max(1, Math.round(h / 2));
+        const pa = ga.getImageData(kx, ky, kw, kh).data;
+        const po = go.getImageData(kx, ky, kw, kh).data;
+        let dunkel = 0;
+        let summe = 0;
+        for (let i = 0; i < pa.length; i += 4) {
+          if (pa[i]! < 50 && pa[i + 1]! < 50 && pa[i + 2]! < 50) dunkel++;
+          summe += (Math.abs(pa[i]! - po[i]!) + Math.abs(pa[i + 1]! - po[i + 1]!) + Math.abs(pa[i + 2]! - po[i + 2]!)) / 3;
+        }
+        return { dunkel: dunkel / (pa.length / 4), diff: summe / (pa.length / 4), daten: el.src.startsWith('data:') };
+      });
+    },
+    [flaechen, originalUrl] as [Flaeche[], string],
+  );
+}
+const ZONEN_AUS = (): Record<string, { an: boolean; bedeckt?: boolean }> => zonenNur([]);
+
+test('Schalter aus: dasselbe Bild mit Gesicht, alle Zonen aus: die Augen bleiben unveraendert (kein Balken, Pixel wie im Original); Schalter an: der Balken ist schwarz', async () => {
+  test.setTimeout(150_000);
+  await brauchtBild('sfw', BILD_MIT_GESICHT);
+  const original = `${basis}/testbild/sfw/${encodeURIComponent(BILD_MIT_GESICHT)}`;
+  // Wo die Augen sind: der Balken, den der Erkenner mit dem Schalter an fuer dieses Bild liefert
+  const mit = await ausWorker(nachrichtBalken(urlQuelle('sfw', BILD_MIT_GESICHT), [], false));
+  const balken = (mit.flaechen as Flaeche[]).filter((f) => f.behandlung === 'balken');
+  expect(balken.length).toBeGreaterThanOrEqual(1);
+  // Erkenner mit dem Schalter aus: keine Flaeche, kein Bild
+  const ohne = await ausWorker(nachricht(urlQuelle('sfw', BILD_MIT_GESICHT), [], 'mosaik'));
+  expect(ohne.ok, ohne.fehler).toBe(true);
+  expect(ohne.flaechen).toEqual([]);
+  expect(ohne.bild).toBeUndefined();
+  for (const an of [false, true]) {
+    await worker.evaluate(async (neu) => {
+      await (globalThis as any).chrome.storage.local.set({ einstellungen: neu });
+    }, { preset: 'mosaik', augenbalken: an, pause: false, zonen: ZONEN_AUS() });
+    const seite = await context.newPage();
+    try {
+      await seite.goto(`${basis}/augenbalken.html`);
+      await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 20_000 }).toBe('1');
+      await expect.poll(() => urteil(seite, 'bild'), { timeout: 30_000 }).toBe(an ? 'zensiert' : 'frei');
+      const k = await kerneImSeitenbild(seite, balken, original);
+      console.log(`chromium: Schalter ${an ? 'an' : 'aus'}: Kerne der Augenbalken ${JSON.stringify(k.map((x) => ({ d: +x.dunkel.toFixed(2), a: +x.diff.toFixed(1) })))}`);
+      for (const x of k) {
+        if (an) {
+          expect(x.daten).toBe(true);
+          expect(x.dunkel, 'Balken schwarz').toBeGreaterThan(0.95);
+        } else {
+          expect(x.daten, 'Original, keine Data-URL').toBe(false);
+          expect(x.dunkel, 'Augen nicht schwarz').toBeLessThan(0.5);
+          expect(x.diff, 'Pixel wie im Original').toBeLessThan(1);
+        }
+      }
+    } finally {
+      await seite.close();
+    }
+  }
+  await setze({ preset: 'mosaik', augenbalken: false, zonen: undefined });
+});
+
+test('Altstand ueber den echten Weg: storage.local traegt `preset: augenbalken` und eine eingeschaltete Zone, die Seite wird geladen: Balken da (Pixel), Flaeche der Zone verdeckt (Pixel), Einstellungsseite zeigt Mosaik und den Schalter an', async () => {
+  test.setTimeout(150_000);
+  await brauchtBild('sfw', BILD_MIT_GESICHT);
+  const original = `${basis}/testbild/sfw/${encodeURIComponent(BILD_MIT_GESICHT)}`;
+  // roh gespeichert, wie ihn Version 0.9 schrieb: der Stil, dazu die Zone Face an (das Portraet hat ein Gesicht, die Zone wirkt)
+  const roh = { version: 1, preset: 'augenbalken', pause: false, zonen: zonenNur(['face']) };
+  await worker.evaluate(async (r) => {
+    await (globalThis as any).chrome.storage.local.set({ einstellungen: r });
+  }, roh);
+  const seite = await context.newPage();
+  try {
+    // Die Flaechen, die der gespeicherte Stand ergibt (Erkenner liest den rohen Stand, vervollstaendige wandert ihn)
+    const gespeichert = await worker.evaluate(async () => ((await (globalThis as any).chrome.storage.local.get('einstellungen')) as any).einstellungen);
+    expect(gespeichert.preset).toBe('augenbalken');
+    const n = nachricht(urlQuelle('sfw', BILD_MIT_GESICHT), [], 'mosaik', false);
+    n.einstellungen = { ...gespeichert, schwelle: 0.1, rand: 0.15 } as typeof n.einstellungen;
+    const a = await ausWorker(n);
+    expect(a.ok, a.fehler).toBe(true);
+    const balken = (a.flaechen as Flaeche[]).filter((f) => f.behandlung === 'balken');
+    const zone = (a.flaechen as Flaeche[]).filter((f) => f.zone === 'face' && f.behandlung === 'mosaik');
+    expect(balken.length, `Balken in den Flaechen (${JSON.stringify(a.flaechen)})`).toBeGreaterThanOrEqual(1);
+    expect(zone.length, 'Flaeche der eingeschalteten Zone (Mosaik auf dem Gesicht)').toBeGreaterThanOrEqual(1);
+    // Die Seite: das Bild ist die Antwort des Schleiers
+    await seite.goto(`${basis}/augenbalken.html`);
+    await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 20_000 }).toBe('1');
+    await expect.poll(() => urteil(seite, 'bild'), { timeout: 30_000 }).toBe('zensiert');
+    const kb = await kerneImSeitenbild(seite, balken, original);
+    for (const x of kb) expect(x.dunkel, 'Balken schwarz auf der Seite').toBeGreaterThan(0.95);
+    // Kern der Gesichtsflaeche ausserhalb des Balkens: oberes Viertel der Flaeche (Stirn ueber den Augen) ist veraendert (Mosaik)
+    const stirn = zone.map((f) => ({ ...f, box: [f.box[0]!, f.box[1]!, f.box[2]!, Math.round(f.box[3]! / 4)] }));
+    const kz = await kerneImSeitenbild(seite, stirn, original);
+    console.log(`chromium: Altstand: Balken ${JSON.stringify(kb.map((x) => +x.dunkel.toFixed(2)))}, Zone Face (Stirn) Abweichung ${JSON.stringify(kz.map((x) => +x.diff.toFixed(1)))}`);
+    for (const x of kz) expect(x.diff, 'Zone Face verdeckt (Mosaik), Pixel weichen vom Original ab').toBeGreaterThan(6);
+    // Einstellungsseite: Mosaik gewaehlt, Schalter an, keine Karte Eye bar
+    await seite.goto(optionsUrl());
+    await expect(seite.locator('#preset-mosaik')).toBeChecked();
+    await expect(seite.locator('#augenbalken')).toBeChecked();
+    expect(await seite.locator('#preset-augenbalken').count()).toBe(0);
+    // Der Speicher bleibt roh, bis etwas geaendert wird; eine Aenderung schreibt den gewanderten Stand mit dem Merker
+    await seite.locator('#strict').evaluate((el: HTMLInputElement) => el.click());
+    await expect.poll(async () => (await speicher(seite, 'einstellungen'))?.augenbalken, { timeout: 5000 }).toBe(true);
+    const nach = await speicher(seite, 'einstellungen');
+    expect(nach.preset).toBe('mosaik');
+    expect(nach.hinweise?.augenbalken).toBe('offen');
+    expect(nach.zonen.face.an).toBe(true);
+  } finally {
+    await setze({ preset: 'mosaik', augenbalken: false, strict: false, zonen: undefined, hinweise: undefined });
     await seite.close();
   }
 });
@@ -458,7 +608,7 @@ test('Eye bar mit Alpha: ist das PNG groesser als die Grenze (3 MB), kommt JPEG 
     .png({ compressionLevel: 1 })
     .toBuffer();
   expect(gross.length, 'das Test-PNG ist groesser als die Grenze').toBeGreaterThan(3_000_000);
-  const a = await ausWorker(nachricht({ art: 'daten', dataUrl: `data:image/png;base64,${gross.toString('base64')}` }, ['breast'], 'augenbalken'));
+  const a = await ausWorker(nachrichtBalken({ art: 'daten', dataUrl: `data:image/png;base64,${gross.toString('base64')}` }, []));
   expect(a.ok, a.fehler).toBe(true);
   expect(a.flaechen.length).toBeGreaterThanOrEqual(1);
   console.log(`chromium: Eye bar mit grossem PNG (${(gross.length / 1e6).toFixed(1)} MB): Ausgabe ${String(a.bild).slice(0, 15)}, ${(String(a.bild).length / 1e6).toFixed(1)} MB`);

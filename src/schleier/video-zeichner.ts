@@ -149,40 +149,46 @@ export class Zeichner {
     ctx.restore();
   }
 
-  // Eine Flaeche nach ihrer Zeichenart (Rahmen wie bei Bildern: Mosaik und Mias Gesicht ja, Blur, Schwarz und Balken nein).
-  flaeche(ctx: Ctx, r: ZeichenRechteck, art: Zeichenart, mittel: FlaechenMittel): void {
+  // Eine Flaeche nach ihrer Zeichenart (Rahmen wie bei Bildern: Mosaik und Mias Gesicht ja, Blur, Schwarz und Balken nein). Gibt true zurueck, wenn Mias Gesicht
+  // wirklich gemalt wurde (E4c R12: das Malen von Mias Gesicht kann scheitern, dann wurde der Ersatz gemalt und der Aufrufer legt den Balken noch einmal obendrauf).
+  flaeche(ctx: Ctx, r: ZeichenRechteck, art: Zeichenart, mittel: FlaechenMittel): boolean {
     switch (art) {
       case 'schwarz':
       case 'balken':
-        return this.balken(ctx, r);
+        this.balken(ctx, r);
+        return false;
       case 'schwarz-wort':
         this.balken(ctx, r);
         this.wort(ctx, r, mittel, false);
-        return;
+        return false;
       case 'blur':
         this.blur(ctx, r);
-        return;
+        return false;
       case 'mosaik-wort':
         this.mosaik(ctx, r);
         this.rahmen(ctx, r);
         this.wort(ctx, r, mittel, true);
-        return;
+        return false;
       case 'sticker':
         // Flaeche und Rahmen sofort und ohne Abhaengigkeit vom Sticker (S1, S2); fehlt `sticker`, gilt ein fester Pastellton.
         {
           const wb = mittel.wortBox === undefined ? r : mittel.wortBox;
           zeichneSticker(ctx, [r.x, r.y, r.w, r.h], mittel.sticker?.farbe ?? stickerFarbe(''), mittel.sticker?.bild ?? null, mittel.sticker?.anzeige ?? 1, wb ? [wb.x, wb.y, wb.w, wb.h] : null);
         }
-        return;
+        return false;
       case 'mia-gesicht':
         // Kann das Gesicht nicht gezeichnet werden (leeres oder geschlossenes Bild), gilt die Ersatz-Behandlung der Flaeche: nie ein offenes Gesicht, nie leer.
-        if (mittel.gesicht && zeichneGesicht(ctx, { box: [r.x, r.y, r.w, r.h] }, mittel.gesicht.bild, mittel.gesicht.ausschnitt)) return;
-        if (mittel.ersatz && mittel.ersatz !== 'mia-gesicht') return this.flaeche(ctx, r, mittel.ersatz, { ...mittel, gesicht: null, ersatz: undefined });
+        if (mittel.gesicht && zeichneGesicht(ctx, { box: [r.x, r.y, r.w, r.h] }, mittel.gesicht.bild, mittel.gesicht.ausschnitt)) return true;
+        if (mittel.ersatz && mittel.ersatz !== 'mia-gesicht') {
+          this.flaeche(ctx, r, mittel.ersatz, { ...mittel, gesicht: null, ersatz: undefined });
+          return false;
+        }
         break;
       default:
     }
     this.mosaik(ctx, r);
     this.rahmen(ctx, r);
+    return false;
   }
 
   // Das Wort einer Flaeche in der wortBox (ohne Feld: mittig in der Flaeche, null: kein Wort).

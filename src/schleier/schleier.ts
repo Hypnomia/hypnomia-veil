@@ -1977,7 +1977,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     const { gilt } = presetDef(e, packKurz);
     const preset = gilt.id;
     // gesichterStand: Mias Gesicht nur nach der Gesichtssuche (bis dahin bekamen Pruefungen den Ersatz): wenn sie fertig meldet, bewerten offene Seiten neu
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, gilt.gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, e.augenbalken, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, gilt.gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
   }
 
   // Zeit der letzten Meldung "Gesichtssuche fertig" (storage.local.gesichterStand), 0 = keine

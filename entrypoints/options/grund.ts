@@ -52,6 +52,7 @@ const stimmungWert = el<HTMLOutputElement>('stimmung-wert');
 const strict = el<HTMLInputElement>('strict');
 const zonenListe = el<HTMLUListElement>('zonen');
 const videoSchalter = el<HTMLInputElement>('video-zonen');
+const augenbalkenSchalter = el<HTMLInputElement>('augenbalken');
 const stilHinweis = el<HTMLParagraphElement>('stil-hinweis');
 const packHinweisZeile = el<HTMLParagraphElement>('preset-pack-hinweis');
 const zonenHinweisZeile = el<HTMLParagraphElement>('zonen-hinweis');
@@ -199,6 +200,7 @@ function zeichne(e: Einstellungen, erzwingen = false): void {
 
   zeichnePreset(e);
   videoSchalter.checked = e.video === 'zonen';
+  augenbalkenSchalter.checked = e.augenbalken;
   strict.checked = e.strict;
 
   for (const zone of ZONEN) {
@@ -277,6 +279,12 @@ stimmung.addEventListener('change', () => {
 videoSchalter.addEventListener('change', () => {
   const video: VideoModus = videoSchalter.checked ? 'zonen' : 'ganz';
   void aendere(() => ({ video }));
+});
+
+// Eye bar (E4c): ein eigener Schalter unter dem Stilraster, kein Stil. Er aendert nur sich selbst; Stil und Zonen-Schalter bleiben, wie sie sind.
+augenbalkenSchalter.addEventListener('change', () => {
+  const an = augenbalkenSchalter.checked;
+  void aendere(() => ({ augenbalken: an }));
 });
 
 strict.addEventListener('change', () => {

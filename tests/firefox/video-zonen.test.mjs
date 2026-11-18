@@ -762,7 +762,7 @@ try {
   }
   async function messePreset(o) {
     await oeffneBild(o.satz, o.bild);
-    await setze({ preset: o.preset, zonen: zonenNur(o.an), rand: 0.15, schwelle: 0.1, pause: true, video: 'zonen', ...(o.extra ?? {}) });
+    await setze({ preset: o.preset, augenbalken: false, zonen: zonenNur(o.an), rand: 0.15, schwelle: 0.1, pause: true, video: 'zonen', ...(o.extra ?? {}) });
     await neuesVideo({ id: 'v1' });
     await bis('stiller Abschnitt', async () => (await ct()) > 2.9 && (await ct()) < 4.0, 30_000);
     const ref = await bild();
@@ -869,8 +869,8 @@ try {
     pruefe(k.wort - km.wort > 80, `das Wort fehlt (${k.wort} gegen ${km.wort})`);
   });
 
-  await test('P6 augenbalken: nur schwarze Balken; zensurbalken: Augen Balken, Gesicht schwarz', async () => {
-    const a = await messePreset({ satz: 'sfw', bild: GESICHT, preset: 'augenbalken', an: [], art: (x) => x.includes('balken') });
+  await test('P6 augenbalken (Schalter Eye bar, E4c; alle Zonen aus): nur schwarze Balken; zensurbalken: Augen Balken, Gesicht schwarz', async () => {
+    const a = await messePreset({ satz: 'sfw', bild: GESICHT, preset: 'mosaik', an: [], extra: { augenbalken: true }, art: (x) => x.includes('balken') });
     pruefe(a.v.arten.every((x) => x === 'balken'), `Arten ${a.v.arten}`);
     for (const f of a.v.flaechen) {
       pruefe(kenn(a.ref, a.aus, f, Math.round(Math.min(f[2], f[3]) * 0.25)).dunkel > 0.95, `Balken ${f} nicht schwarz`);

@@ -14,9 +14,9 @@ import {
 } from './db';
 import { PackFehler, filtereFreischaltungen, sha256, type Fortschritt, type GeprueftesPack } from './format';
 import { pruefeQuizBank, pruefeTexte } from '../quiz/vertrag';
-import { waehlePreset } from '../einstellungen';
+import { waehleBeimErstenPack } from '../einstellungen';
 import { leereGesichter } from './gesichter-ablage';
-import { PACK_PRESET, OHNE_PACK_PRESET, pruefeWoerter } from '../presets.ts';
+import { OHNE_PACK_PRESET, pruefeWoerter } from '../presets.ts';
 import { presetDef } from '../preset-def.ts';
 import { ersetztVorhandenes, vergleichePacks, type PackVergleich } from './ersetzen';
 import {
@@ -216,7 +216,7 @@ export async function importierePack(
   if (!ersetztVorhandenes(fall) && istFreigeschaltet(kurz, 'stil:mia-patch')) {
     try {
       await aendereEinstellungen((alt) => {
-        const r = waehlePreset(alt, PACK_PRESET); // schaltet Face mit ein (Entscheidung der Inhaberin)
+        const r = waehleBeimErstenPack(alt); // Stil mia-wort, schaltet Face mit ein (Entscheidung der Inhaberin); der Schalter Eye bar bleibt unberuehrt (E4c R8)
         faceEingeschaltet = r.faceEingeschaltet;
         faceAn = r.faceEingeschaltet || alt.zonen.face.an;
         return r.teil;

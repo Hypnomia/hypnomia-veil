@@ -9,13 +9,16 @@ export const BEDECKBARE_ZONEN: ReadonlySet<Zone> = new Set<Zone>(['breast', 'gen
 
 // Zensur-Preset (ZENSUR-PRESETS-BAUPLAN, ersetzt die frueheree Stil-Wahl): Tabelle und Logik in src/presets.ts. Mia-Presets gelten nur mit
 // Pack (presetFuerPack), sonst zeichnet der Erkenner Mosaik. Alte gespeicherte `stil`-Werte werden beim Laden zu Presets (presetAusStil).
-import { nutztMiasGesicht, STANDARD_PRESET, THEMA_ID_MUSTER, MAX_THEMEN, istPreset, presetAusStil, zonenFuerPreset as zonenFuerPresetAllgemein, type Preset } from './presets.ts';
+import { nutztMiasGesicht, PACK_PRESET, STANDARD_PRESET, THEMA_ID_MUSTER, MAX_THEMEN, istPreset, presetAusStil, zonenFuerPreset as zonenFuerPresetAllgemein, type Preset, type PresetDef } from './presets.ts';
 export { PRESET_IDS, type Preset } from './presets.ts';
 
 // Videos (Bauplan Video-Zonen): 'zonen' = laufende Videos werden nur an den erkannten Stellen verdeckt (Leinwand-Wiedergabe, Stil wie bei Bildern),
 // 'ganz' = das ganze Video unscharf wie bisher. Standard 'zonen'; ist ein Video nicht dafuer geeignet, gilt fuer dieses Video 'ganz'.
 export type VideoModus = 'zonen' | 'ganz';
 export const VIDEO_MODI: readonly VideoModus[] = ['zonen', 'ganz'];
+
+export type HinweisMerker = 'keiner' | 'offen';
+export const HINWEIS_MERKER: readonly HinweisMerker[] = ['keiner', 'offen'];
 
 export interface ZonenEinstellung {
   an: boolean;
@@ -28,6 +31,12 @@ export interface Einstellungen {
   strict: boolean;
   schwelle: number;
   preset: Preset;
+  // Schalter "Eye bar" (Phase 11 E4c): ein schwarzer Balken ueber den Augen jedes erkannten Gesichts, zusaetzlich zum gewaehlten Stil und unabhaengig von den
+  // Zonen-Schaltern. Standard aus. Frueher war Eye bar ein eigener Stil (`preset: 'augenbalken'`); `vervollstaendige` wandert den alten Stand.
+  augenbalken: boolean;
+  // Merker fuer spaetere Hinweise (E4c R3): gesetzt von der Wanderung, bewirkt sonst nichts. `augenbalken: 'offen'` = der Nutzer hatte den Stil Eye bar und
+  // wurde auf den Schalter gewandert, ein Hinweis darauf ist noch nicht gezeigt; Standard 'keiner'. Ob und wie ein Hinweis erscheint, steht in Schritt (e).
+  hinweise: { augenbalken: HinweisMerker };
   // Wort-Themen der Presets mit Woertern (Kennungen aus dem Pack). null: alle Themen des Packs (Standard), []: keins, dann steht "MIA" da.
   woerterThemen: string[] | null;
   video: VideoModus;
@@ -145,6 +154,8 @@ export const STANDARD: Einstellungen = {
   strict: false,
   schwelle: 0.1,
   preset: STANDARD_PRESET,
+  augenbalken: false,
+  hinweise: { augenbalken: 'keiner' },
   woerterThemen: null,
   video: 'zonen',
   rand: 0.15,
@@ -179,9 +190,17 @@ export function waehlePreset(alt: Pick<Einstellungen, 'preset' | 'zonen'>, neu: 
   return { teil: { preset: neu }, faceEingeschaltet: false };
 }
 
-// Zonen, die ein Preset wirklich auswertet (src/presets.ts, zonenFuerPreset): Augenbalken nur die Augen, Zensurbalken die Schalter plus
-// Augen, alle anderen die Schalter unveraendert (dasselbe Objekt). Unabhaengig von der Steigerung.
-export function zonenFuerPreset(preset: Preset | undefined, zonen: Record<Zone, ZonenEinstellung>): Record<Zone, ZonenEinstellung> {
+// Das Preset, das beim ersten Pack gewaehlt wird (src/pack/speicher.ts): `mia-wort`, Face wird mit eingeschaltet (waehlePreset). Rein, damit der Verhaltens-
+// test in Node laeuft. Der Teil enthaelt nur `preset` und (bei Face) `zonen`: der Schalter `augenbalken` bleibt unberuehrt, wer den Balken hatte, behaelt ihn
+// (Phase 11 E4c R8, Befund 3 der Karte: frueher nahm der Stilwechsel dem Eye-bar-Nutzer den Balken).
+export function waehleBeimErstenPack(alt: Pick<Einstellungen, 'preset' | 'zonen'>): { teil: Partial<Einstellungen>; faceEingeschaltet: boolean } {
+  return waehlePreset(alt, PACK_PRESET);
+}
+
+// Zonen, die eine Definition wirklich auswertet (src/presets.ts, zonenFuerPreset): bei `balken-immer` (Zensurbalken, Schalter Eye bar) die Schalter plus
+// Augen, sonst die Schalter unveraendert (dasselbe Objekt). Gegeben wird `presetDef(e).gewaehlt` (traegt den Schalter) oder eine Kennung (ohne Schalter).
+// Unabhaengig von der Steigerung.
+export function zonenFuerPreset(preset: Preset | PresetDef | undefined, zonen: Record<Zone, ZonenEinstellung>): Record<Zone, ZonenEinstellung> {
   return zonenFuerPresetAllgemein(preset, zonen) as Record<Zone, ZonenEinstellung>;
 }
 
@@ -210,13 +229,30 @@ export function vervollstaendige(roh: unknown): Einstellungen {
     zonen[z] = { an: typeof v.an === 'boolean' ? v.an : s.an };
     if (BEDECKBARE_ZONEN.has(z)) zonen[z].bedeckt = typeof v.bedeckt === 'boolean' ? v.bedeckt : !!s.bedeckt;
   }
+  // Wanderung (Phase 11 E4c): Eye bar war ein Stil (`preset: 'augenbalken'`, davor `stil: 'augenbalken'`), jetzt ist es der Schalter `augenbalken`. Sie steht VOR
+  // `istPreset`, sonst fiele die Kennung still auf Mosaik und der Balken ginge verloren. Wer Eye bar hatte, bekommt `{ preset: Mosaik, augenbalken: true }`: den
+  // Balken wie bisher und dazu Mosaik auf die Zonen laut seinen Schaltern, auch die Steigerung wirkt bei ihm (mehr Deckung, nie weniger). Die Zonen-Schalter
+  // bleiben, wie sie sind. `preset` gewinnt wie bei der Stil-Wanderung: nur `preset: 'augenbalken'`, oder `stil: 'augenbalken'` ohne gueltiges `preset`. Idempotent:
+  // das Ergebnis enthaelt die Kennung nicht mehr und fasst beim naechsten Lesen nichts mehr an; es gibt keinen Versionszaehler, die Wanderung laeuft bei jedem Lesen
+  // und geschrieben wird erst bei der naechsten Aenderung.
+  const rohStil = (r as { stil?: unknown }).stil;
+  const wandert = (r as { preset?: unknown }).preset === 'augenbalken' || (!istPreset(r.preset) && rohStil === 'augenbalken');
+  const rohHinweise = objekt((r as { hinweise?: unknown }).hinweise);
+  // Der Merker wird nur beim ersten Mal gesetzt: steht schon ein gueltiger Wert (auch 'keiner'), bleibt er.
+  const merker: HinweisMerker = (HINWEIS_MERKER as readonly unknown[]).includes(rohHinweise.augenbalken)
+    ? (rohHinweise.augenbalken as HinweisMerker)
+    : wandert
+      ? 'offen'
+      : STANDARD.hinweise.augenbalken;
   return {
     version: 1,
     pause: typeof r.pause === 'boolean' ? r.pause : STANDARD.pause,
     strict: typeof r.strict === 'boolean' ? r.strict : STANDARD.strict,
     schwelle: begrenze(r.schwelle, SCHWELLE_MIN, SCHWELLE_MAX, STANDARD.schwelle),
     // Altbestand: `stil` wird zum Preset (mia-patch zu mia-wort), `preset` gewinnt, wo beides steht.
-    preset: istPreset(r.preset) ? r.preset : presetAusStil((r as { stil?: unknown }).stil) ?? STANDARD_PRESET,
+    preset: wandert ? STANDARD_PRESET : istPreset(r.preset) ? r.preset : presetAusStil(rohStil) ?? STANDARD_PRESET,
+    augenbalken: wandert ? true : wahr((r as { augenbalken?: unknown }).augenbalken, STANDARD.augenbalken),
+    hinweise: { augenbalken: merker },
     woerterThemen: Array.isArray(r.woerterThemen)
       ? [...new Set(r.woerterThemen.filter((t): t is string => typeof t === 'string' && THEMA_ID_MUSTER.test(t)))].slice(0, MAX_THEMEN)
       : null,

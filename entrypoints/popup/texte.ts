@@ -3,7 +3,6 @@
 import {
   HINWEIS_FACE_AUS as GEMEINSAM_HINWEIS_FACE_AUS,
   HINWEIS_PACK_OHNE_PATCH,
-  HINWEIS_ZONEN_AUGENBALKEN as GEMEINSAM_HINWEIS_ZONEN_AUGENBALKEN,
   STIMMUNG_WOERTER,
 } from '../../src/oberflaeche/gemeinsam.ts';
 
@@ -24,15 +23,17 @@ export const ERW_HINWEIS_AUS = 'Adult-site mode is off. I still cover pictures t
 
 // Phase 9, Paket A (Entwuerfe, der Texter liest gegen).
 export const DIESE_SEITE_KEIN_ZUGRIFF = 'I can’t reach this page.';
-export const ABDECKUNG_KURZ = (namen: readonly string[]): string => (namen.length ? `I cover: ${namen.join(', ')}.` : 'I cover: nothing right now.');
 export const ABDECKUNG_AUGENBALKEN = 'I cover: the eyes, with a black bar.';
-export const HINWEIS_ZONEN_AUGENBALKEN = GEMEINSAM_HINWEIS_ZONEN_AUGENBALKEN;
+// Kurzzeile folgt dem Schalter Eye bar (E4c): ohne Balken wie bisher; mit Balken die Zonen laut Schaltern und der Balken dazu; nie "nothing", solange der Balken gilt.
+export const ABDECKUNG_KURZ = (namen: readonly string[], mitBalken = false): string => {
+  if (!mitBalken) return namen.length ? `I cover: ${namen.join(', ')}.` : 'I cover: nothing right now.';
+  return namen.length ? `I cover: ${namen.join(', ')}, plus the eyes with a black bar.` : ABDECKUNG_AUGENBALKEN;
+};
 export const AENDERN_ZU = 'Change';
 export const AENDERN_AUF = 'Done';
 export const PAUSE_ZEILE = 'Changes still save. They start when you let me back in.';
 export const PAUSE_KUERZEL = (kuerzel: string): string => `or press ${kuerzel}`;
 export const GRIP_SATZ = 'My grip tightens by itself and eases off with time.';
-export const GRIP_AUGENBALKEN = 'With Eye bar as your style, my grip rests, strict hours too: I stay with the eyes. Pick another style and I take hold again.';
 export const GRIP_HILFE = 'What is my grip?';
 export const NEUES_LINK = 'What’s new';
 // Werbe-Frage im Popup: dieselben Saetze wie auf der Einstellungsseite.

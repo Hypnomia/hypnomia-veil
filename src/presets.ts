@@ -22,7 +22,6 @@ export const PRESET_IDS = [
   'mosaik-wort',
   'blur',
   'zensurbalken',
-  'augenbalken',
   'person-mosaik',
   'person-blur',
 ] as const;
@@ -32,16 +31,16 @@ export type PresetGruppe = 'mia' | 'sticker' | 'klassisch' | 'person';
 
 // Wie die Augen behandelt werden:
 //   'wie-koerper'    wie jede andere Zone (laut Schalter), in den Mia-Presets liegen sie im getauschten Gesicht (dann nichts zusaetzlich)
-//   'balken-immer'   Augenbalken ueber jedem erkannten Gesicht, unabhaengig vom Schalter (Zensurbalken)
-//   'nur-balken'     nur der Augenbalken, alle anderen Zonen ruhen (Augenbalken)
-export type AugenArt = 'wie-koerper' | 'balken-immer' | 'nur-balken';
+//   'balken-immer'   Augenbalken ueber jedem erkannten Gesicht, unabhaengig vom Zonen-Schalter `eyes` (Zensurbalken, und jeder Stil mit dem Schalter
+//                    "Eye bar": den Schalter verrechnet `presetDef` in src/preset-def.ts, kein Aufrufer rechnet ihn selbst)
+export type AugenArt = 'wie-koerper' | 'balken-immer';
 
 export interface PresetDef {
   id: Preset;
   gruppe: PresetGruppe;
-  // Behandlung der Zone Face (nur wenn der Schalter an ist); null: Gesichter bleiben (nur bei `nur-balken`).
+  // Behandlung der Zone Face (nur wenn der Schalter an ist).
   gesicht: Behandlung | null;
-  // Behandlung aller anderen Zonen (laut Schaltern); null: keine (nur bei `nur-balken`).
+  // Behandlung aller anderen Zonen (laut Schaltern).
   koerper: Behandlung | null;
   augen: AugenArt;
   // Ganze Person: aus den Treffern eines Bildes werden Personen-Gruppen gebildet, jede Gruppe wird als Ganzes behandelt.
@@ -66,7 +65,6 @@ export const PRESETS: Readonly<Record<Preset, PresetDef>> = {
   'mosaik-wort': { id: 'mosaik-wort', gruppe: 'klassisch', gesicht: 'mosaik-wort', koerper: 'mosaik-wort', augen: 'wie-koerper', person: false, braucht: null, woerter: true, name: 'Mosaic and words', satz: 'Pixels over everything I cover, with a word of mine on top.' },
   blur: { id: 'blur', gruppe: 'klassisch', gesicht: 'blur', koerper: 'blur', augen: 'wie-koerper', person: false, braucht: null, woerter: false, name: 'Blur', satz: 'A soft blur over everything I cover.' },
   zensurbalken: { id: 'zensurbalken', gruppe: 'klassisch', gesicht: 'schwarz', koerper: 'schwarz', augen: 'balken-immer', person: false, braucht: null, woerter: false, name: 'Censor bars', satz: 'A black bar over the eyes, always. Everything else I cover turns black.' },
-  augenbalken: { id: 'augenbalken', gruppe: 'klassisch', gesicht: null, koerper: null, augen: 'nur-balken', person: false, braucht: null, woerter: false, name: 'Eye bar', satz: 'Just a black bar over the eyes. Everything else stays in view.' },
   'person-mosaik': { id: 'person-mosaik', gruppe: 'person', gesicht: 'mosaik', koerper: 'mosaik', augen: 'wie-koerper', person: true, braucht: null, woerter: false, name: 'Whole person, mosaic', satz: 'When I find something you picked, the whole person goes under mosaic.' },
   'person-blur': { id: 'person-blur', gruppe: 'person', gesicht: 'blur', koerper: 'blur', augen: 'wie-koerper', person: true, braucht: null, woerter: false, name: 'Whole person, blur', satz: 'When I find something you picked, the whole person goes under blur.' },
 };
@@ -91,7 +89,8 @@ export function presetOderMosaik(kennung: unknown): PresetDef {
   return typeof kennung === 'string' && Object.hasOwn(PRESETS, kennung) ? PRESETS[kennung as Preset] : PRESETS[STANDARD_PRESET];
 }
 
-// Migration: der alte Wert `stil` wird zum Preset. Unbekannt: null.
+// Migration: der alte Wert `stil` wird zum Preset. Unbekannt: null. (`augenbalken` ist seit Phase 11 E4c kein Stil mehr, sondern der Schalter
+// `Einstellungen.augenbalken`; die Wanderung steht in `vervollstaendige`, src/einstellungen.ts, und greift vor dieser Funktion.)
 export function presetAusStil(stil: unknown): Preset | null {
   switch (stil) {
     case 'mosaik':
@@ -100,8 +99,6 @@ export function presetAusStil(stil: unknown): Preset | null {
       return 'blur';
     case 'mia-patch':
       return 'mia-wort';
-    case 'augenbalken':
-      return 'augenbalken';
     default:
       return null;
   }
@@ -133,27 +130,55 @@ export function ganzesBildBehandlung(preset: Preset): Behandlung {
 }
 
 // Behandlung einer Flaeche der Zone `zone` im Preset, aus der Tabelle (die Videozensur nimmt sie, wenn eine Flaeche keine eigene Behandlung traegt;
-// der Erkenner setzt `behandlung` nach derselben Regel, siehe berechneFlaechen in src/erkenner/zonen.ts): Augenbalken immer Balken, Zensurbalken
-// auf den Augen Balken, Gesicht nach `gesicht`, alles andere nach `koerper`. Ohne Eintrag (Gesicht oder Koerper null) Mosaik, nie "nichts".
+// der Erkenner setzt `behandlung` nach derselben Regel, siehe berechneFlaechen in src/erkenner/zonen.ts): Zensurbalken auf den Augen Balken, Gesicht
+// nach `gesicht`, alles andere nach `koerper`. Ohne Eintrag (Gesicht oder Koerper null) Mosaik, nie "nichts".
 export function behandlungFuerZone(preset: Preset, zone: string): Behandlung {
   const d = presetOderMosaik(preset);
-  if (d.augen === 'nur-balken') return 'balken';
   if (zone === 'eyes' && d.augen === 'balken-immer') return 'balken';
   return (zone === 'face' ? d.gesicht : d.koerper) ?? 'mosaik';
 }
 
-// Zonen, die ein Preset wirklich auswertet (statt der Schalter): Augenbalken nur Augen; Zensurbalken die Schalter plus Augen.
-// Andere Presets: die Schalter unveraendert (dasselbe Objekt).
-export function zonenFuerPreset<T extends { an: boolean; bedeckt?: boolean }>(preset: Preset | undefined, zonen: Record<string, T>): Record<string, T> {
+// Hat der STIL selbst den Augenbalken (Zensurbalken, Tabelle von Anfang an)? Dann ersetzt der Balken die Augenflaeche dieses Stils (Phase 11 E1, unveraendert).
+// Der Schalter Eye bar (E4c) taucht hier nicht auf: er kommt nur dazu (R11), die Augenflaeche des Stils bleibt, der Balken liegt darueber.
+export const stilHatBalken = (d: PresetDef): boolean => d.augen === 'balken-immer' && presetOderMosaik(d.id).augen === 'balken-immer';
+
+// Zonen, die eine Definition wirklich auswertet (statt der Schalter): hat der Stil den Balken (Zensurbalken), kommen die Augen zu den Schaltern dazu. Mit dem Schalter
+// Eye bar bleiben die Schalter, wie der Nutzer sie hat (R11: der Schalter nimmt nie etwas weg und fuegt keine Augenflaeche hinzu). Sonst dasselbe Objekt.
+// Gegeben wird die aufgeloeste Definition (`presetDef(e).gewaehlt`) oder eine Kennung (dann ohne Schalter).
+export function zonenFuerPreset<T extends { an: boolean; bedeckt?: boolean }>(preset: Preset | PresetDef | undefined, zonen: Record<string, T>): Record<string, T> {
   if (!preset) return zonen;
-  const d = presetOderMosaik(preset);
-  if (d.augen === 'nur-balken') {
-    const nur: Record<string, T> = {};
-    for (const [z, e] of Object.entries(zonen)) nur[z] = z === 'eyes' ? ({ ...e, an: true } as T) : ({ ...e, an: false, ...('bedeckt' in e ? { bedeckt: false } : {}) } as T);
-    return nur;
-  }
-  if (d.augen === 'balken-immer') return { ...zonen, eyes: { ...zonen.eyes!, an: true } };
+  const d = typeof preset === 'string' ? presetOderMosaik(preset) : preset;
+  if (stilHatBalken(d)) return { ...zonen, eyes: { ...zonen.eyes!, an: true } };
   return zonen;
+}
+
+// Zonen fuer die GESICHTSSUCHE: bei jedem Stil mit Balken, auch mit dem Schalter, laufen die Augen mit (YuNet muss laufen, damit der Balken entsteht),
+// ohne dass daraus eine Augenflaeche wird. Nur der Erkenner ruft sie, fuer die Suche und sonst nirgends.
+export function zonenFuerSuche<T extends { an: boolean; bedeckt?: boolean }>(d: PresetDef, zonen: Record<string, T>): Record<string, T> {
+  return d.augen === 'balken-immer' ? { ...zonen, eyes: { ...zonen.eyes!, an: true } } : zonen;
+}
+
+// Malreihenfolge (E4c R12, Bild und Video gleich): erst die Behandlung der Zonen (auch der Ersatz fuer ein Mia-Gesicht, das nicht gemalt werden kann), dann die Augenbalken,
+// zuletzt Mias Gesicht. Ein deckendes Mia-Gesicht liegt so ueber dem Balken (kein Balken ueber Mias Gesicht, R5); ein nicht gemaltes, gescheitertes oder durchscheinendes
+// laesst den Balken sehen, nie die Augen. `gesichtMoeglich`: Mias Gesicht kann gemalt werden (Patch da und passt). Scheitert das Malen doch noch (`male(i, 'gesicht')` gibt
+// false), wird der Ersatz gemalt und danach alle Balken noch einmal (Schicht `balken`, `wiederholung` true), damit der Balken oben liegt.
+export type Schicht = 'zone' | 'balken' | 'gesicht';
+export interface MalEintrag {
+  behandlung: Behandlung;
+  gesichtMoeglich: boolean;
+}
+export function malLauf(eintraege: readonly MalEintrag[], male: (index: number, schicht: Schicht, wiederholung: boolean) => boolean): void {
+  const gesichter: number[] = [];
+  const balken: number[] = [];
+  eintraege.forEach((e, i) => {
+    if (e.behandlung === 'balken') balken.push(i);
+    else if (e.behandlung === 'mia-gesicht' && e.gesichtMoeglich) gesichter.push(i);
+    else male(i, 'zone', false);
+  });
+  for (const i of balken) male(i, 'balken', false);
+  let gescheitert = false;
+  for (const i of gesichter) if (!male(i, 'gesicht', false)) gescheitert = true;
+  if (gescheitert) for (const i of balken) male(i, 'balken', true);
 }
 
 // Wort-Vertrag (Pack, Rolle `woerter`): Grenzen und Pruefung. Themen und Woerter kommen nur aus dem Pack, nie aus dem Repo (Entscheidung 100).

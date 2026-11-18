@@ -169,6 +169,8 @@ export interface PruefEinstellungen {
   zonen: Einstellungen['zonen'];
   rand: number;
   preset: Einstellungen['preset'];
+  // Schalter "Eye bar" (E4c): Balken ueber den Augen jedes erkannten Gesichts, in jedem Stil. Fehlt = aus (die Nachricht bleibt wie vorher).
+  augenbalken?: boolean;
   // Wort-Themen (Kennungen), null = alle Themen des Packs, [] = keins (dann "MIA"). Nur fuer Presets mit Woertern.
   woerterThemen?: string[] | null;
   // Steigerung Stufe 4 (src/steigerung.ts): jedes Bild mit einer erkannten Frau wird ganz verdeckt. Fehlt = aus.

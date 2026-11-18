@@ -3,7 +3,7 @@
 
 import type { Einstellungen, Zone } from '../einstellungen';
 import { presetDef } from '../preset-def.ts';
-import { ganzesBildBehandlung, personenGruppen, type Preset } from '../presets.ts';
+import { ganzesBildBehandlung, personenGruppen, stilHatBalken, type Preset } from '../presets.ts';
 import type { Box, Flaeche, Treffer } from '../nachrichten';
 import type { YunetGesicht } from './yunet';
 import { setzeWortBoxen, verschmelze } from './verschmelzen.ts';
@@ -332,7 +332,7 @@ export function berechnePersonen(
 
 export function berechneFlaechen(
   treffer: readonly Treffer[],
-  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: Preset },
+  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: Preset; augenbalken?: boolean },
   breite: number,
   hoehe: number,
   // Ausdruecklich: true nur im Bild-Weg (Phase 11 E1: gleichrangige Flaechen verschmelzen zu Huellen, `wortBox` fuer Aufgelegtes). false: genau die
@@ -341,14 +341,19 @@ export function berechneFlaechen(
   verschmelzen: boolean,
 ): Flaeche[] {
   const d = presetDef(einstellungen).gewaehlt;
-  if (d.augen === 'nur-balken') return berechneAugenbalken(treffer, breite, hoehe);
-  if (d.person) return berechnePersonen(treffer, einstellungen.zonen, d.koerper!, breite, hoehe, einstellungen.rand, verschmelzen);
+  // Ganze Person: die Personen-Flaechen, bei `balken-immer` (Schalter Eye bar) dazu die Augenbalken, aufgelegt und nie verschmolzen (E4c R4: in jedem Stil).
+  if (d.person) {
+    const personen = berechnePersonen(treffer, einstellungen.zonen, d.koerper!, breite, hoehe, einstellungen.rand, verschmelzen);
+    return d.augen === 'balken-immer' ? [...personen, ...berechneAugenbalken(treffer, breite, hoehe)] : personen;
+  }
   const mia = d.gesicht === 'mia-gesicht';
   let zonen = einstellungen.zonen;
-  // Augenbalken uebernehmen die Augen; Mias Gesicht schluckt Augen und Mund (sie liegen im Gesicht). Abweichung vom Plan, der auch den Kopf nennt:
+  // Augenbalken (Zensurbalken, Schalter Eye bar) uebernehmen die Augen; Mias Gesicht schluckt Augen und Mund (sie liegen im Gesicht). Abweichung vom Plan, der auch den Kopf nennt:
   // Head bleibt eine eigene Flaeche mit Koerper-Behandlung (Haare und Umgebung des Gesichts werden zusaetzlich verdeckt, Mias Gesicht liegt zuletzt darueber).
   // Das ist sicherer als den Kopf wegzulassen; der Hinweis HINWEIS_ZONEN_MIA nennt darum nur Eyes und Mouth.
-  if (d.augen === 'balken-immer') zonen = { ...zonen, eyes: { an: false } };
+  // R11: nur ein Stil, der den Balken selbst hat (Zensurbalken), ersetzt seine Augenflaeche durch den Balken. Mit dem Schalter Eye bar bleibt die Augenflaeche des Stils
+  // (Augenbox plus Rand, wenn die Zone Eyes an ist) und der Balken liegt darueber: der Schalter nimmt nie etwas weg.
+  if (stilHatBalken(d)) zonen = { ...zonen, eyes: { an: false } };
   const gesichtTausch = mia && zonen.face.an;
   if (gesichtTausch) zonen = { ...zonen, face: { an: false }, eyes: { an: false }, mouth: { an: false } };
   const aktiv = aktiveZonenBoxen(treffer, zonen, breite, hoehe);
@@ -363,4 +368,23 @@ export function berechneFlaechen(
   if (gesichtTausch) aufgelegt.push(...berechneGesichter(treffer, d.koerper ?? undefined, breite, hoehe, einstellungen.rand));
   if (d.augen === 'balken-immer') aufgelegt.push(...berechneAugenbalken(treffer, breite, hoehe));
   return [...(verschmelzen ? setzeWortBoxen(gleichrangig, aufgelegt.map((f) => f.box)) : gleichrangig), ...aufgelegt];
+}
+
+// Die Flaechen eines Bildes samt Steigerung Stufe 4 (`ganzVerdecken`): ein Treffer einer Frau in den rohen 320n-Treffern (kombiniereGesichter ersetzt ein
+// FACE_FEMALE durch die geschlechtslosen YuNet-Treffer, darum die rohen) verdeckt das ganze Bild mit einer Flaeche; sonst die Zonen wie eingestellt
+// (berechneFlaechen). Ist der Schalter Eye bar an (`balken-immer`), kommen die Augenbalken auch dann dazu, wenn das ganze Bild verdeckt ist (E4c R4: in jeder
+// Stufe, nie ein Gesicht mit offenen Augen); der Balken liegt in der Liste hinter der ganzen Flaeche, also darueber. Rein, damit der Einheitstest die Regel pruefen kann.
+export function berechneBildFlaechen(
+  treffer: readonly Treffer[],
+  rohTreffer: readonly Treffer[],
+  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: Preset; augenbalken?: boolean },
+  ganzVerdecken: boolean,
+  breite: number,
+  hoehe: number,
+  verschmelzen: boolean,
+): Flaeche[] {
+  const frau = ganzVerdecken ? rohTreffer.find((t) => t.weiblich) : undefined;
+  if (!frau) return berechneFlaechen(treffer, einstellungen, breite, hoehe, verschmelzen);
+  const ganz: Flaeche = { zone: frau.zone, box: [0, 0, breite, hoehe], behandlung: ganzesBildBehandlung(einstellungen.preset ?? 'mosaik') };
+  return presetDef(einstellungen).gewaehlt.augen === 'balken-immer' ? [ganz, ...berechneAugenbalken(treffer, breite, hoehe)] : [ganz];
 }

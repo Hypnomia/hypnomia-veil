@@ -3,9 +3,9 @@
 // Ist eine Gesichtszone an, laeuft zusaetzlich das Gesichtsmodell YuNet (yunet.ts) fuer genauere Augen und Mund.
 
 import * as ort from 'onnxruntime-web/wasm';
-import { vervollstaendige, zonenFuerPreset, type Einstellungen } from '../einstellungen';
+import { vervollstaendige, type Einstellungen } from '../einstellungen';
 import { presetDef } from '../preset-def.ts';
-import { ganzesBildBehandlung, hatWort, nutztMiasGesicht, nutztSticker, waehleWort } from '../presets.ts';
+import { ganzesBildBehandlung, hatWort, nutztMiasGesicht, nutztSticker, waehleWort, zonenFuerSuche } from '../presets.ts';
 import { holeJeFlaeche, stickerPasst } from '../sticker.ts';
 import type {
   AntwortErkennerStatus,
@@ -30,7 +30,7 @@ import {
   type YunetGesicht,
   type YunetSitzung,
 } from './yunet';
-import { berechneFlaechen, kombiniereGesichter } from './zonen';
+import { berechneBildFlaechen, kombiniereGesichter } from './zonen';
 
 // Laengste Seite des Arbeitsbildes: so gross wird gerendert und so beziehen sich Boxen und `breite`/`hoehe` der Antwort.
 const MAX_SEITE = 1600;
@@ -467,23 +467,19 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     const tInf = jetzt();
     const rohTreffer: Treffer[] = nachverarbeite(lauf.daten, lauf.dims, geometrieFuer(arbeit.breite, arbeit.hoehe), e.schwelle);
     const tRoh = jetzt();
-    // Preset Augenbalken: nur die Augen gelten, egal was die Schalter (oder die Steigerung) sagen; Zensurbalken: Augen immer dazu. Also
-    // laeuft YuNet dann auch bei ausgeschalteten Augen, und der Augenbalken verdeckt nie ein ganzes Bild.
-    const zonenGilt = zonenFuerPreset(e.preset, e.zonen);
+    // Zensurbalken und der Schalter Eye bar (E4c): Augen immer dazu. Also laeuft YuNet dann auch bei ausgeschalteten Augen. Den Schalter traegt die
+    // aufgeloeste Definition (`presetDef`), nicht diese Stelle.
     const def = presetDef(e).gewaehlt;
+    const zonenGilt = zonenFuerSuche(def, e.zonen);
     const ganz = ganzesBildBehandlung(e.preset);
     const gesicht = await sucheGesichter(zonenGilt, arbeit.quelle, arbeit.breite, arbeit.hoehe);
     const tNachStart = jetzt();
     const alle = gesicht?.gesichter ? kombiniereGesichter(rohTreffer, gesicht.gesichter, arbeit.breite, arbeit.hoehe) : rohTreffer;
-    // Steigerung Stufe 4: ein Treffer einer Frau verdeckt das ganze Bild (eine Flaeche ueber alles), sonst die Zonen wie eingestellt.
-    // Aus den rohen 320n-Treffern: kombiniereGesichter ersetzt ein FACE_FEMALE durch die (geschlechtslosen) YuNet-Treffer.
-    const frau = n.einstellungen?.ganzVerdecken === true && def.augen !== 'nur-balken' ? rohTreffer.find((t) => t.weiblich) : undefined;
-    // Animiertes SVG (Fund 9): nie freigeben, ganzes Bild verdecken.
+    // Steigerung Stufe 4: ein Treffer einer Frau verdeckt das ganze Bild (eine Flaeche ueber alles), sonst die Zonen wie eingestellt; mit dem Schalter Eye bar
+    // kommen die Augenbalken auch dann dazu (berechneBildFlaechen). Animiertes SVG (Fund 9): nie freigeben, ganzes Bild verdecken.
     const flaechen = bewegtesSvg
       ? [{ zone: 'face' as const, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number], behandlung: ganz }]
-      : frau
-      ? [{ zone: frau.zone, box: [0, 0, arbeit.breite, arbeit.hoehe] as [number, number, number, number], behandlung: ganz }]
-      : berechneFlaechen(alle, e, arbeit.breite, arbeit.hoehe, n.verschmelzen === true);
+      : berechneBildFlaechen(alle, rohTreffer, e, n.einstellungen?.ganzVerdecken === true, arbeit.breite, arbeit.hoehe, n.verschmelzen === true);
     const tNach = jetzt();
     let bild: string | undefined;
     if (n.rendern && flaechen.length > 0) {

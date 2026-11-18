@@ -100,8 +100,6 @@ export function presetVorschau(preset: Preset, id = 'p'): string {
   let ueber = '';
   if (d.person) {
     ueber = flaeche(d.koerper!, PERSON, `${id}-f-${preset}`);
-  } else if (d.augen === 'nur-balken') {
-    ueber = schwarz(AUGEN);
   } else {
     // Zensurbalken: der Kopf bleibt (Gesicht nur mit Face an), nur die Augen bekommen den Balken.
     if (d.gesicht && d.augen !== 'balken-immer') ueber += flaeche(d.gesicht, KOPF, `${id}-f-${preset}-k`, 1);
@@ -139,7 +137,7 @@ export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
   const felder = new Map<Preset, HTMLInputElement>();
   const karten = new Map<Preset, HTMLLabelElement>();
   host.classList.add('preset-wahl');
-  // Eine einzige Radiogruppe (name gilt fuer alle dreizehn Karten), darin vier benannte Gruppen: so sagt der Screenreader "Auswahl 3 von 13".
+  // Eine einzige Radiogruppe (name gilt fuer alle zwoelf Karten), darin vier benannte Gruppen: so sagt der Screenreader "Auswahl 3 von 12".
   host.setAttribute('role', 'radiogroup');
   host.setAttribute('aria-labelledby', o.labelId);
   if (o.kompakt) host.classList.add('kompakt');

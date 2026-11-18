@@ -16,7 +16,7 @@ import {
 import { QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL } from '../../src/kontrolle/grenzen';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
-import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
+import { EYE_BAR_TEXT, EYE_BAR_TITEL, HINWEIS_FACE_AUS, HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { presetDef } from '../../src/preset-def';
 import { packHinweis as packHinweisText, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
@@ -428,12 +428,15 @@ function seite3(): Seite {
     if (letzt) zeichne(letzt.e, letzt.p);
   };
   let zeichne: (e: Einstellungen, p: PackKurz | null) => void = () => undefined;
-  k.append(kartenHost, satz, sperre, zonenText, faceText);
+  // Eye bar (E4c): derselbe Schalter wie auf der Einstellungsseite, direkt unter dem Raster.
+  const augenbalken = schalter('iv-augenbalken', EYE_BAR_TITEL, EYE_BAR_TEXT, (an) => speichere({ augenbalken: an }));
+  k.append(kartenHost, augenbalken.zeile, satz, sperre, zonenText, faceText);
   // Fund 7 und 8: ohne Pack ist Seite 3 die letzte, dort steht Calm mode (mit Pack steht er auf Seite 5).
   const ruhig = seiten < INTERVIEW_SEITEN ? schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an })) : null;
   if (ruhig) k.append(ruhig.zeile);
   zeichne = (e, p) => {
       if (ruhig) ruhig.feld.checked = e.ruhig;
+      augenbalken.feld.checked = e.augenbalken;
       const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
       const stickerFrei = istFreigeschaltet(p, 'zensur:sticker');
       karten.aktualisiere(e.preset, patchFrei, stickerFrei);

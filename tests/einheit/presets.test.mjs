@@ -41,13 +41,13 @@ const zonen = (an, bedeckt = []) => {
 const t = (zone, box, extra = {}) => ({ zone, bedeckt: false, score: 0.9, box, ...extra });
 const gesichtYunet = (box, re, le) => ({ score: 0.9, box, punkte: [re, le, [0, 0], [0, 0], [0, 0]] });
 
-test('Tabelle: dreizehn Presets in vier Gruppen, Mia-Presets brauchen das Pack, Sticker-Presets Sticker, nur Wort-Presets nutzen Woerter', () => {
-  assert.equal(PRESET_IDS.length, 13);
+test('Tabelle: zwoelf Presets in vier Gruppen, Mia-Presets brauchen das Pack, Sticker-Presets Sticker, nur Wort-Presets nutzen Woerter', () => {
+  assert.equal(PRESET_IDS.length, 12);
   assert.deepEqual(GRUPPEN, ['mia', 'sticker', 'klassisch', 'person']);
   const je = (g) => PRESET_IDS.filter((p) => PRESETS[p].gruppe === g);
   assert.deepEqual(je('mia'), ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur']);
   assert.deepEqual(je('sticker'), ['mia-sticker', 'sticker']);
-  assert.deepEqual(je('klassisch'), ['mosaik', 'mosaik-wort', 'blur', 'zensurbalken', 'augenbalken']);
+  assert.deepEqual(je('klassisch'), ['mosaik', 'mosaik-wort', 'blur', 'zensurbalken']);
   assert.deepEqual(je('person'), ['person-mosaik', 'person-blur']);
   for (const p of PRESET_IDS) assert.equal(PRESETS[p].braucht, PRESETS[p].gruppe === 'mia' ? 'pack' : PRESETS[p].gruppe === 'sticker' ? 'sticker' : null, p);
   assert.deepEqual(PRESET_IDS.filter((p) => PRESETS[p].woerter), ['mia-wort', 'mia-mosaik-wort', 'mosaik-wort']);
@@ -59,7 +59,10 @@ test('Tabelle: dreizehn Presets in vier Gruppen, Mia-Presets brauchen das Pack, 
   assert.deepEqual([PRESETS['mia-sticker'].gesicht, PRESETS['mia-sticker'].koerper, PRESETS['mia-sticker'].augen], ['mia-gesicht', 'sticker', 'wie-koerper']);
   assert.deepEqual([PRESETS.sticker.gesicht, PRESETS.sticker.koerper, PRESETS.sticker.augen], ['sticker', 'sticker', 'wie-koerper']);
   assert.deepEqual([PRESETS.zensurbalken.gesicht, PRESETS.zensurbalken.koerper, PRESETS.zensurbalken.augen], ['schwarz', 'schwarz', 'balken-immer']);
-  assert.deepEqual([PRESETS.augenbalken.gesicht, PRESETS.augenbalken.koerper, PRESETS.augenbalken.augen], [null, null, 'nur-balken']);
+  // E4c: Eye bar ist kein Stil mehr, sondern der Schalter `augenbalken` (tests/einheit/augenbalken-wanderung.test.mjs)
+  assert.equal('augenbalken' in PRESETS, false);
+  assert.equal(PRESET_IDS.includes('augenbalken'), false);
+  assert.equal(PRESET_IDS.some((p) => PRESETS[p].augen === 'nur-balken'), false);
   assert.equal(PRESETS['person-mosaik'].person && PRESETS['person-blur'].person, true);
   assert.equal(STANDARD.preset, 'mosaik');
   for (const p of PRESET_IDS) assert.ok(!/[\u2013\u2014]/.test(PRESETS[p].name + PRESETS[p].satz), `${p}: keine Gedankenstriche`);
@@ -73,7 +76,8 @@ test('Migration: stil wird preset, mia-patch wird mia-wort, Unbekanntes bleibt n
   assert.equal(presetAusStil('mosaik'), 'mosaik');
   assert.equal(presetAusStil('blur'), 'blur');
   assert.equal(presetAusStil('mia-patch'), 'mia-wort');
-  assert.equal(presetAusStil('augenbalken'), 'augenbalken');
+  // E4c: `augenbalken` ist kein Stil mehr; die Wanderung zum Schalter steht in vervollstaendige und greift vor presetAusStil
+  assert.equal(presetAusStil('augenbalken'), null);
   assert.equal(presetAusStil('xyz'), null);
   assert.equal(presetAusStil(undefined), null);
   assert.equal(vervollstaendige({ stil: 'blur' }).preset, 'blur');
@@ -107,7 +111,7 @@ test('Behandlungen: Wort-Behandlungen und ihre Variante ohne Wort, ganzes Bild n
   assert.equal(ohneWort('blur'), 'blur');
   assert.equal(ganzesBildBehandlung('mia-wort'), 'schwarz-wort');
   assert.equal(ganzesBildBehandlung('mia-blur'), 'blur');
-  assert.equal(ganzesBildBehandlung('augenbalken'), 'mosaik');
+  assert.equal(ganzesBildBehandlung('augenbalken'), 'mosaik'); // unbekannte Kennung gilt als Mosaik
   assert.equal(ganzesBildBehandlung('zensurbalken'), 'schwarz');
 });
 
@@ -278,10 +282,10 @@ test('berechneFlaechen Zensurbalken: Augenbalken immer (auch ohne Eyes-Schalter)
   assert.deepEqual(berechneFlaechen([tr[0]], { zonen: zonen(['breast']), rand: 0.15, preset: 'zensurbalken' }, 800, 800).map((x) => x.zone), ['breast']);
 });
 
-test('berechneFlaechen Augenbalken: nur Balken, Schalter ruhen', () => {
+test('berechneFlaechen mit dem Schalter Eye bar (E4c, vorher der Stil Eye bar): die Zonen laut Schaltern, dazu der Balken', () => {
   const tr = [t('breast', [100, 400, 200, 100]), ...yunetTreffer(gesichtYunet([300, 100, 120, 150], [335, 150], [385, 150]), 800, 800)];
-  const f = berechneFlaechen(tr, { zonen: zonen(['breast', 'face']), rand: 0.15, preset: 'augenbalken' }, 800, 800);
-  assert.deepEqual(f.map((x) => [x.zone, x.behandlung]), [['eyes', 'balken']]);
+  const f = berechneFlaechen(tr, { zonen: zonen(['breast', 'face']), rand: 0.15, preset: 'mosaik', augenbalken: true }, 800, 800);
+  assert.deepEqual(f.map((x) => [x.zone, x.behandlung]).sort(), [['breast', 'mosaik'], ['eyes', 'balken'], ['face', 'mosaik']]);
 });
 
 test('berechnePersonen: eine Flaeche je Gruppe, nur mit eingeschalteter Zone, auch bekleidete Teile gehoeren zur Person', () => {
@@ -374,7 +378,7 @@ test('waehlePreset: der Wechsel auf ein Mia-Preset schaltet Face ein (nur wenn e
   assert.equal(mia.faceEingeschaltet, false);
   assert.deepEqual(mia.teil, { preset: 'mia-mosaik' });
   // klassische und Personen-Presets schalten nichts
-  for (const p of ['mosaik', 'mosaik-wort', 'blur', 'zensurbalken', 'augenbalken', 'person-mosaik', 'person-blur']) {
+  for (const p of ['mosaik', 'mosaik-wort', 'blur', 'zensurbalken', 'person-mosaik', 'person-blur']) {
     const x = waehlePreset(aus, p);
     assert.equal(x.faceEingeschaltet, false, p);
     assert.deepEqual(x.teil, { preset: p }, p);

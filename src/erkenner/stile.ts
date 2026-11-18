@@ -3,7 +3,7 @@
 // er zur Flaeche passt, mit pinkem Rahmen) oder Sticker (deckende Pastell-Flaeche mit Rahmen, darauf mittig ein Sticker des Packs). Ausgabe als JPEG-Data-URL (PNG, wenn die Quelle Durchsichtiges hat und nur Balken oder Schwarz kommen).
 
 import { FARBEN, WERTE } from '../oberflaeche/design/werte.ts';
-import { ersatzMitMarke, ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
+import { malLauf, ersatzMitMarke, ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
 import { stickerFarbe, stickerPasst, stickerRechteck } from '../sticker.ts';
 import type { Box, Flaeche } from '../nachrichten';
 
@@ -353,14 +353,16 @@ export async function rendereZensur(
   const standard = ganzesBildBehandlung(preset);
   // Boxen der Flaechen, die schon ein Wort oder einen Sticker gemalt haben (Regel O2: je zusammenhaengender Flaeche hoechstens eine Marke).
   const markierte: Box[] = [];
-  flaechen.forEach((f, i) => {
+  // Eine Flaeche malen. `mitGesicht`: Mias Gesicht darf gemalt werden (Schicht `gesicht`); sonst gilt fuer `mia-gesicht` sofort der Ersatz. Gibt true zurueck, wenn Mias
+  // Gesicht wirklich gemalt wurde (E4c R12: das Rechteck zaehlt erst nach gelungenem Malen).
+  const male = (f: Flaeche, i: number, mitGesicht: boolean): boolean => {
     let b: Behandlung = f.behandlung ?? standard;
     let ohneSticker = false;
     if (b === 'mia-gesicht') {
-      const g = optionen.gesichter?.[i];
-      const w = f.balken ? f.balken.breite : f.box[2];
-      const h = f.balken ? f.balken.hoehe : f.box[3];
-      if (g && patchPasst([0, 0, w, h], g.ausschnitt[2], g.ausschnitt[3], optionen.anzeigeSkala) && zeichneGesicht(ctx, f, g.bild, g.ausschnitt)) return;
+      if (mitGesicht && kannGesicht(f, i)) {
+        const g = optionen.gesichter![i]!;
+        if (zeichneGesicht(ctx, f, g.bild, g.ausschnitt)) return true;
+      }
       const ersatz = ersatzMitMarke(f.ersatz && f.ersatz !== 'mia-gesicht' ? f.ersatz : 'mosaik', f.box, markierte);
       b = ersatz.behandlung;
       ohneSticker = ersatz.ohneSticker;
@@ -373,32 +375,46 @@ export async function rendereZensur(
       case 'schwarz':
       case 'balken':
         zeichneSchwarz(ctx, f);
-        return;
+        return false;
       case 'schwarz-wort':
         zeichneSchwarz(ctx, f);
         zeichneWort(ctx, wort, zb!, false);
         markierte.push(f.box);
-        return;
+        return false;
       case 'blur':
         if (blurOk) zeichneBlur(ctx, quelle, f.box, leinwand.width, leinwand.height);
         else zeichneMosaik(ctx, quelle, f.box);
-        return;
+        return false;
       case 'mosaik-wort':
         zeichneMosaik(ctx, quelle, f.box);
         zeichneWort(ctx, wort, zb!, true);
         markierte.push(f.box);
-        return;
+        return false;
       case 'sticker':
         {
           const bild = ohneSticker ? null : (optionen.sticker?.[i] ?? null);
           zeichneSticker(ctx, f.box, stickerFarbe(optionen.stickerSchluessel?.[i] ?? `${f.zone}|${f.box.join(',')}`), bild, optionen.anzeigeSkala, zb);
           if (bild && zb && stickerPasst(zb, optionen.anzeigeSkala)) markierte.push(f.box);
         }
-        return;
+        return false;
       default:
         zeichneMosaik(ctx, quelle, f.box);
+        return false;
     }
-  });
+  };
+  // Mias Gesicht kann gemalt werden, wenn ein Patch da ist und passt; sonst gilt der Ersatz schon in der Schicht der Zonen.
+  const kannGesicht = (f: Flaeche, i: number): boolean => {
+    const g = optionen.gesichter?.[i];
+    if (!g) return false;
+    const w = f.balken ? f.balken.breite : f.box[2];
+    const h = f.balken ? f.balken.hoehe : f.box[3];
+    return patchPasst([0, 0, w, h], g.ausschnitt[2], g.ausschnitt[3], optionen.anzeigeSkala);
+  };
+  // Reihenfolge (E4c R12, malLauf in src/presets.ts): Zonen samt Ersatz, dann die Augenbalken, zuletzt Mias Gesicht; scheitert es noch beim Malen, kommen die Balken noch einmal obendrauf.
+  malLauf(
+    flaechen.map((f, i) => ({ behandlung: f.behandlung ?? standard, gesichtMoeglich: kannGesicht(f, i) })),
+    (i, schicht) => male(flaechen[i]!, i, schicht === 'gesicht'),
+  );
   // Auf einer HTML-Leinwand kodiert toDataURL sofort. OffscreenCanvas.convertToBlob wartet in versteckten Dokumenten
   // (Offscreen-Dokument) auf gedrosselte Aufgaben und brauchte dort rund eine Sekunde.
   // `png`: bei einer Quelle mit durchsichtigen Pixeln verlustfrei und mit Alpha, damit ausser den Balken nichts anders aussieht.

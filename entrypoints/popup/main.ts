@@ -22,7 +22,7 @@ import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type Steige
 import { STUFEN_TEXT, formatiereRest, hatErwachsenFunktionen, posePopup, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import * as T from './texte';
-import { FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { EYE_BAR_SATZ, FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { packGenuegt } from '../../src/presets';
@@ -170,7 +170,8 @@ function zeichne(e: Einstellungen): void {
     }
   }
 
-  abdeckungKurz.textContent = presetDef(e).gewaehlt.augen === 'nur-balken' ? T.ABDECKUNG_AUGENBALKEN : T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()));
+  // Kurzzeile folgt dem Schalter Eye bar: die Zonen wie eingestellt (auch Eyes: seit R11 nimmt der Schalter keiner Zone etwas weg), der Balken kommt dazu.
+  abdeckungKurz.textContent = T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()), e.augenbalken);
   zeichneDieseSeite(e, seite);
   zeichneErwachsen(e);
 }
@@ -202,6 +203,8 @@ function zeichnePreset(e: Einstellungen): void {
   packHinweis_.textContent = gesperrt ? packHinweis(frei, pack, mitSticker, def.gewaehlt.braucht) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset gilt, aber Face steht aus: sagen, was dann gilt (der Satz der Karte klaenge sonst nach mehr)
   if (!gesperrt && def.gilt.gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
+  // Der Satz folgt dem Schalter Eye bar (E4c): ist er an, steht der Balken als eigener Satz dabei, in jedem Stil.
+  if (e.augenbalken) packHinweis_.textContent += ` ${EYE_BAR_SATZ}`;
   const zh = zonenHinweis(gilt);
   zonenHinweisZeile.hidden = zh === '';
   zonenHinweisZeile.textContent = zh;
@@ -276,7 +279,7 @@ function zeichneStufe(e: Einstellungen): void {
     strengText.textContent = '';
   }
   if (!hat) return;
-  gripSatz.textContent = presetDef(e).gewaehlt.augen === 'nur-balken' ? `${T.GRIP_SATZ} ${T.GRIP_AUGENBALKEN}` : T.GRIP_SATZ;
+  gripSatz.textContent = T.GRIP_SATZ;
   const stufeKlein = STUFE_TEXT(stufe);
   stufeZeile.textContent = stufeKlein.charAt(0).toUpperCase() + stufeKlein.slice(1);
   // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.

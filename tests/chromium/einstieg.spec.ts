@@ -164,9 +164,16 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   await expect(w.locator('#iv-preset-mosaik')).toBeChecked();
   await expect(w.locator('#iv-preset-mia-wort')).toBeDisabled();
   await expect(w.locator('#iv-stil-sperre')).toBeVisible();
-  await expect(w.locator('#iv-preset-karten input[name="iv-preset"]')).toHaveCount(13); // dieselben Karten wie auf der Einstellungsseite
+  await expect(w.locator('#iv-preset-karten input[name="iv-preset"]')).toHaveCount(12); // dieselben Karten wie auf der Einstellungsseite
   await w.locator('label', { has: w.locator('#iv-preset-blur') }).click();
   await expect.poll(async () => (await einst(v)).preset).toBe('blur');
+  // Eye bar (E4c): ein Schalter unter dem Raster, aendert nur sich selbst
+  await expect(w.locator('#iv-augenbalken')).not.toBeChecked();
+  await w.locator('label', { has: w.locator('#iv-augenbalken') }).click();
+  await expect.poll(async () => (await einst(v)).augenbalken).toBe(true);
+  expect((await einst(v)).preset).toBe('blur');
+  await w.locator('label', { has: w.locator('#iv-augenbalken') }).click();
+  await expect.poll(async () => (await einst(v)).augenbalken).toBe(false);
   await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Calm mode steht auf Seite 5 (Fund 23)
   // Mit Pack werden die Presets mit meinem Gesicht waehlbar und der Hinweis verschwindet (folgt dem Speicher)
   await schreibe(v, { pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch'], bilder: 1, groesse: 1, importiert: 1 } });

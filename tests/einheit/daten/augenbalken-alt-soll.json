@@ -1,0 +1,406 @@
+{
+ "erzeugtAus": "ad8fc11 (alter Stil Eye bar: berechneFlaechen mit preset augenbalken, unabhaengig von Zonen, Stufe und Verschmelzen)",
+ "szenen": {
+  "keine": {
+   "b": 800,
+   "h": 600,
+   "treffer": [],
+   "flaechen": []
+  },
+  "gesicht320": {
+   "b": 800,
+   "h": 600,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      300,
+      100,
+      160,
+      200
+     ],
+     "quelle": "320n"
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      293,
+      121,
+      174,
+      78
+     ],
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "gesichtYunet": {
+   "b": 800,
+   "h": 600,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      300,
+      100,
+      160,
+      200
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      320,
+      150,
+      120,
+      30
+     ],
+     "quelle": "yunet"
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      320,
+      145,
+      120,
+      40
+     ],
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "gesichtGeneigt": {
+   "b": 800,
+   "h": 600,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      300,
+      100,
+      160,
+      200
+     ],
+     "quelle": "yunet",
+     "winkel": 0.3
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      320,
+      150,
+      120,
+      30
+     ],
+     "quelle": "yunet",
+     "winkel": 0.3
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      316,
+      128,
+      128,
+      74
+     ],
+     "balken": {
+      "mitte": [
+       380,
+       165
+      ],
+      "breite": 120,
+      "hoehe": 39,
+      "winkel": 0.3
+     },
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "zweiGesichter": {
+   "b": 800,
+   "h": 600,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      80,
+      80,
+      140,
+      180
+     ],
+     "quelle": "320n"
+    },
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      500,
+      120,
+      150,
+      190
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      520,
+      165,
+      110,
+      28
+     ],
+     "quelle": "yunet",
+     "winkel": -0.2
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      74,
+      98,
+      152,
+      72
+     ],
+     "behandlung": "balken"
+    },
+    {
+     "zone": "eyes",
+     "box": [
+      517,
+      150,
+      116,
+      58
+     ],
+     "balken": {
+      "mitte": [
+       575,
+       179
+      ],
+      "breite": 110,
+      "hoehe": 36.4,
+      "winkel": -0.2
+     },
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "nurKoerper": {
+   "b": 800,
+   "h": 600,
+   "treffer": [
+    {
+     "zone": "breast",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      200,
+      300,
+      200,
+      150
+     ]
+    },
+    {
+     "zone": "genitals",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      250,
+      450,
+      120,
+      100
+     ]
+    }
+   ],
+   "flaechen": []
+  },
+  "gesichtUndFrau": {
+   "b": 800,
+   "h": 600,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      300,
+      100,
+      160,
+      200
+     ],
+     "quelle": "320n",
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      260,
+      320,
+      240,
+      160
+     ],
+     "weiblich": true
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      293,
+      121,
+      174,
+      78
+     ],
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "nurAugen": {
+   "b": 400,
+   "h": 400,
+   "treffer": [
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      150,
+      120,
+      100,
+      24
+     ],
+     "quelle": "yunet"
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      150,
+      116,
+      100,
+      32
+     ],
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "gesichtAmRand": {
+   "b": 400,
+   "h": 400,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      0,
+      0,
+      120,
+      150
+     ],
+     "quelle": "320n"
+    },
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      330,
+      250,
+      70,
+      150
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      340,
+      280,
+      55,
+      14
+     ],
+     "quelle": "yunet"
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      0,
+      16,
+      125,
+      58
+     ],
+     "behandlung": "balken"
+    },
+    {
+     "zone": "eyes",
+     "box": [
+      340,
+      277,
+      55,
+      20
+     ],
+     "behandlung": "balken"
+    }
+   ]
+  },
+  "winzig": {
+   "b": 400,
+   "h": 400,
+   "treffer": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.9,
+     "box": [
+      200,
+      200,
+      12,
+      14
+     ],
+     "quelle": "320n"
+    }
+   ],
+   "flaechen": [
+    {
+     "zone": "eyes",
+     "box": [
+      198,
+      200,
+      16,
+      8
+     ],
+     "behandlung": "balken"
+    }
+   ]
+  }
+ }
+}

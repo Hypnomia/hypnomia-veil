@@ -16,7 +16,10 @@ export function stimmungsWort(schwelle: number): string {
 export const HINWEIS_PACK_OHNE_PATCH = 'This Mia Pack has no pictures of my face to use, so the styles with my face stay locked. Classic and Whole person still work.';
 // Zensur-Presets (ZENSUR-PRESETS-BAUPLAN, Texte vom Texter freigegeben): Hinweise bei den Zonen und zum Pack. Namen und Saetze der Karten
 // stehen in src/presets.ts. In der Oberflaeche heisst es "style", "preset" bleibt intern.
-export const HINWEIS_ZONEN_AUGENBALKEN = 'Eye bar covers only the eyes. Your other zones rest until you pick another style.';
+// Schalter "Eye bar" (Phase 11 E4c, ersetzt den Stil Eye bar; Texter liest in Schritt (e) gegen): Name, Unterzeile an den Schaltern, ein Satz fuer das Popup.
+export const EYE_BAR_TITEL = 'Eye bar';
+export const EYE_BAR_TEXT = 'a black bar over the eyes of every face I find, on top of any style';
+export const EYE_BAR_SATZ = 'On top of that, a black bar goes over the eyes of every face I find.';
 export const HINWEIS_ZONEN_ZENSURBALKEN = 'Censor bars always black out the eyes. Your zones decide what else turns black.';
 export const HINWEIS_ZONEN_MIA = 'My face only goes where Face is on. While it is, Eyes and Mouth add nothing on top.';
 export const HINWEIS_MIA_PACK_FEHLT = 'The styles with my face and my stickers need the Mia Pack. Once it’s in, everything I cover can carry a bit of me.';

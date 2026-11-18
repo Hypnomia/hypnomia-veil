@@ -12,7 +12,7 @@
 import type { Zone } from '../einstellungen';
 import { patchPasst } from '../erkenner/stile';
 import { presetDefFuerKennung } from '../preset-def';
-import { ganzesBildBehandlung, hatWort, personenGruppen, wortPasst, type Preset } from '../presets';
+import { ganzesBildBehandlung, hatWort, malLauf, personenGruppen, wortPasst, type Preset } from '../presets';
 import { groesstesFreiesRechteck } from '../erkenner/verschmelzen';
 import {
   ATTR_LEINWAND,
@@ -755,9 +755,12 @@ export class ZonenVideo {
     const preset = this.h.preset();
     const mitAnzeige = this.spuren.spuren.filter((s) => s.anzeige);
     if (presetDefFuerKennung(preset).person) {
-      this.plan = { huellen: [], aufgelegt: [] };
-      const gruppen = personenGruppen(mitAnzeige.map((s) => [s.anzeige!.l, s.anzeige!.t, s.anzeige!.r - s.anzeige!.l, s.anzeige!.b - s.anzeige!.t] as const), mitAnzeige.map(() => true), vb, vh, 0);
-      return gruppen.map(([x, y, w, h]) => ({ l: x, t: y, r: x + w, b: y + h }));
+      // E4c: ein Augenbalken (Schalter Eye bar) geht nie in eine Personen-Huelle ein (dort wuerde er zu Mosaik oder Blur): er ist aufgelegt und wird als Balken gemalt.
+      const balken = mitAnzeige.filter((s) => wirksameBehandlung(preset, s.zone, s.behandlung) === 'balken');
+      const person = mitAnzeige.filter((s) => !balken.includes(s));
+      this.plan = { huellen: [], aufgelegt: balken };
+      const gruppen = personenGruppen(person.map((s) => [s.anzeige!.l, s.anzeige!.t, s.anzeige!.r - s.anzeige!.l, s.anzeige!.b - s.anzeige!.t] as const), person.map(() => true), vb, vh, 0);
+      return [...gruppen.map(([x, y, w, h]) => ({ l: x, t: y, r: x + w, b: y + h })), ...balken.map((s) => s.anzeige!)];
     }
     const gleich: HuellenSpur[] = [];
     const aufgelegt: Spur[] = [];
@@ -847,12 +850,18 @@ export class ZonenVideo {
     // (personenGruppen); die Huellen tragen schon ihren Rand, darum hier ohne zweiten. Behandlung: die der Koerper-Zonen des Presets.
     if (presetDefFuerKennung(preset).person) {
       const art = ganzesBildBehandlung(preset);
-      const huellen = personenGruppen(liste.map((e) => [e.rr.x, e.rr.y, e.rr.w, e.rr.h] as const), liste.map(() => true), c.width, c.height, 0);
+      // E4c: Augenbalken (Schalter Eye bar) nicht in die Huellen, sondern danach als schwarze Balken darueber.
+      const istBalken = (e: { spur: Spur }): boolean => wirksameBehandlung(preset, e.spur.zone, e.spur.behandlung) === 'balken';
+      const huellen = personenGruppen(liste.filter((e) => !istBalken(e)).map((e) => [e.rr.x, e.rr.y, e.rr.w, e.rr.h] as const), liste.filter((e) => !istBalken(e)).map(() => true), c.width, c.height, 0);
       for (const [x, y, w, h] of huellen) {
         const rr = Zeichner.begrenze({ x, y, w, h }, c.width, c.height);
         if (!rr) continue;
         this.zeichner.flaeche(ctx, rr, art, { gesicht: null, wort: '' });
         if (this.testAn) this.merkeGemalt(art, rr, -1, -1);
+      }
+      for (const e of liste.filter(istBalken)) {
+        this.zeichner.flaeche(ctx, e.rr, 'balken', { gesicht: null, wort: '' });
+        if (this.testAn) this.merkeGemalt('balken', e.rr, e.spur.id, e.spur.motiv);
       }
       return;
     }
@@ -886,8 +895,10 @@ export class ZonenVideo {
       this.zeichner.flaeche(ctx, rr, art, mittel);
       if (this.testAn) this.merkeGemalt(art, rr, h.ids[0]!, h.motiv);
     }
-    for (const e of liste) if (aufgelegt.has(e.spur.id)) reihe.push(e);
-    for (const { spur: s, rr } of reihe) {
+    // Reihenfolge (E4c R12, malLauf in src/presets.ts, wie im Bild): Zonen samt Ersatz fuer ein nicht malbares Mias Gesicht, dann die Augenbalken, zuletzt Mias Gesicht;
+    // scheitert das Malen von Mias Gesicht noch (Zeichner.flaeche gibt false), kommen die Balken noch einmal obendrauf.
+    const alle = [...reihe, ...liste.filter((e) => aufgelegt.has(e.spur.id))];
+    const plan = alle.map(({ spur: s, rr }) => {
       const beh = wirksameBehandlung(preset, s.zone, s.behandlung);
       const g = beh === 'mia-gesicht' ? this.h.gesicht(s.motiv) : null;
       const gesichtPasst = !!g && patchPasst([0, 0, rr.w, rr.h], g.ausschnitt[2], g.ausschnitt[3], anzeige);
@@ -904,9 +915,18 @@ export class ZonenVideo {
       const brauchtSticker = art === 'sticker' || (art === 'mia-gesicht' && ersatz === 'sticker');
       const stk = brauchtSticker ? this.h.sticker(s.motiv) : null;
       const mittel: FlaechenMittel = { gesicht: art === 'mia-gesicht' ? g : null, wort: wort ?? '', ersatz, ...(stk ? { sticker: { farbe: stk.farbe, bild: stk.bild, anzeige } } : {}) };
-      this.zeichner.flaeche(ctx, rr, art, mittel);
-      if (this.testAn) this.merkeGemalt(art, rr, s.id, s.motiv);
-    }
+      return { s, rr, beh, art, mittel };
+    });
+    malLauf(
+      plan.map((p) => ({ behandlung: p.beh, gesichtMoeglich: p.art === 'mia-gesicht' })),
+      (i, schicht, wiederholung) => {
+        const p = plan[i]!;
+        // Eine Flaeche mit Behandlung `mia-gesicht`, die nicht malbar ist, wird in der Schicht der Zonen mit ihrem Ersatz gemalt (art ist dann schon der Ersatz).
+        const gemalt = this.zeichner.flaeche(ctx, p.rr, p.art, p.mittel);
+        if (this.testAn && !wiederholung) this.merkeGemalt(p.art, p.rr, p.s.id, p.s.motiv);
+        return schicht === 'gesicht' ? gemalt : false;
+      },
+    );
   }
 
   private merkeGemalt(art: string, rr: ZeichenRechteck, id: number, motiv: number): void {

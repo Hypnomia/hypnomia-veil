@@ -1269,7 +1269,7 @@ async function augenblick(s: Page, art?: (arten: string[]) => boolean, nach_s = 
 }
 // Referenz (Pause an), dann Zensur mit dem Preset: wartet, bis die Zonen-Leinwand im stillen Abschnitt Flaechen mit den gewuenschten Zeichenarten zeigt.
 async function messePreset(o: { satz: string; bild: string; preset: string; an: string[]; extra?: Record<string, unknown>; art?: (arten: string[]) => boolean; abfrage?: string }): Promise<Messung> {
-  await setze({ preset: o.preset, zonen: zonenNur(o.an), rand: 0.15, schwelle: 0.1, pause: true, ...o.extra });
+  await setze({ preset: o.preset, augenbalken: false, zonen: zonenNur(o.an), rand: 0.15, schwelle: 0.1, pause: true, ...o.extra });
   const s = await oeffneBild(o.satz, o.bild, o.abfrage);
   await neuesVideo(s, { id: 'v1' });
   await warteFenster(s);
@@ -1721,9 +1721,9 @@ test('P5 Preset-Wechsel im laufenden Video: die Leinwand zeichnet neu, ohne Misc
   await m.s.close();
 });
 
-test('P6 augenbalken im Video (Eye bar): nur schwarze Balken auf den Augen, sonst nichts veraendert; zensurbalken: Augen Balken, Gesicht schwarz', async () => {
+test('P6 augenbalken im Video (Eye bar als Schalter, E4c; alle Zonen aus): nur schwarze Balken auf den Augen, sonst nichts veraendert; zensurbalken: Augen Balken, Gesicht schwarz', async () => {
   test.setTimeout(240_000);
-  const a = await messePreset({ satz: 'sfw', bild: GESICHT, preset: 'augenbalken', an: [], art: (x) => x.includes('balken') });
+  const a = await messePreset({ satz: 'sfw', bild: GESICHT, preset: 'mosaik', an: [], extra: { augenbalken: true }, art: (x) => x.includes('balken') });
   expect(a.v.arten.every((x) => x === 'balken')).toBe(true);
   for (const f of a.v.flaechen) {
     const k = kenn(a.ref, a.aus, f, Math.round(Math.min(f[2]!, f[3]!) * 0.25));

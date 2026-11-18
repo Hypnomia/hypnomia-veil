@@ -1,7 +1,9 @@
-// Einheitstests Stil Eye bar (Augenbalken): Einstellungen, wirksame Zonen, Balken-Geometrie, Neigung der Augenlinie.
+// Einheitstests Eye bar (Augenbalken; seit Phase 11 E4c der Schalter `augenbalken`, vorher ein Stil): Einstellungen, wirksame Zonen, Balken-Geometrie, Neigung der Augenlinie.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PRESET_IDS, STANDARD, ZONEN, vervollstaendige, zonenFuerPreset } from '../../src/einstellungen.ts';
+import { presetDef } from '../../src/preset-def.ts';
+import { zonenFuerSuche } from '../../src/presets.ts';
 import {
   AUGENBALKEN_BREITE_FAKTOR_320N,
   AUGENBALKEN_HOEHE_FAKTOR,
@@ -22,33 +24,41 @@ test('Einstellungen: alle Presets sind gueltig, alte `stil`-Werte werden zu Pres
   for (const preset of PRESET_IDS) assert.equal(vervollstaendige({ preset }).preset, preset);
   assert.equal(vervollstaendige({ preset: 'balken' }).preset, STANDARD.preset);
   assert.equal(vervollstaendige({}).preset, STANDARD.preset);
-  // Migration aus dem alten `stil` (siehe auch preset-migration in presets.test.mjs)
-  assert.equal(vervollstaendige({ stil: 'augenbalken' }).preset, 'augenbalken');
+  // Migration aus dem alten `stil` (siehe auch preset-migration in presets.test.mjs); `augenbalken` wandert seit E4c zum Schalter (augenbalken-wanderung.test.mjs)
+  assert.equal(vervollstaendige({ stil: 'augenbalken' }).preset, STANDARD.preset);
+  assert.equal(vervollstaendige({ stil: 'augenbalken' }).augenbalken, true);
   assert.equal(vervollstaendige({ stil: 'mia-patch' }).preset, 'mia-wort');
 });
 
-test('zonenFuerPreset: Augenbalken schaltet alles ausser den Augen ab, Zensurbalken schaltet die Augen dazu, andere Presets lassen die Zonen unveraendert', () => {
+test('zonenFuerPreset: beim Zensurbalken kommen die Augen dazu, mit dem Schalter Eye bar bleiben die Schalter (R11), die Gesichtssuche (zonenFuerSuche) laeuft in beiden Faellen mit Augen', () => {
   const z = alleAn();
-  const nur = zonenFuerPreset('augenbalken', z);
-  for (const name of ZONEN) assert.equal(nur[name].an, name === 'eyes', name);
-  assert.ok(ZONEN.every((n) => nur[n].bedeckt !== true));
-  // Auch bei ausgeschalteten Augen (Standard): im Preset Augenbalken laufen die Augen.
-  assert.equal(zonenFuerPreset('augenbalken', STANDARD.zonen).eyes.an, true);
-  const mit = zonenFuerPreset('zensurbalken', STANDARD.zonen);
+  // Mit dem Schalter (Standard, Augen aus): dasselbe Objekt, die Augen-Zone wird NICHT eingeschaltet (R11: keine zusaetzliche Augenflaeche), aber die Suche nimmt die Augen mit.
+  const mitDef = presetDef({ preset: 'mosaik', augenbalken: true }).gewaehlt;
+  assert.equal(zonenFuerPreset(mitDef, STANDARD.zonen), STANDARD.zonen);
+  const mit = zonenFuerSuche(mitDef, STANDARD.zonen);
   assert.equal(mit.eyes.an, true);
   assert.equal(mit.breast.an, STANDARD.zonen.breast.an);
+  assert.equal(mit.face.an, STANDARD.zonen.face.an);
+  assert.equal(zonenFuerSuche(presetDef({ preset: 'mosaik' }).gewaehlt, STANDARD.zonen), STANDARD.zonen, 'ohne Schalter dasselbe Objekt');
+  const zb = zonenFuerPreset('zensurbalken', STANDARD.zonen);
+  assert.equal(zb.eyes.an, true);
+  assert.equal(zb.breast.an, STANDARD.zonen.breast.an);
+  // ohne Schalter: dasselbe Objekt
   for (const preset of ['mosaik', 'blur', 'mia-wort', 'person-blur', undefined]) assert.equal(zonenFuerPreset(preset, z), z);
+  assert.equal(zonenFuerPreset(presetDef({ preset: 'blur', augenbalken: false }).gewaehlt, z), z);
   // Die Eingabe bleibt unberuehrt.
   assert.equal(z.breast.an, true);
+  assert.equal(STANDARD.zonen.eyes.an, false);
 });
 
-test('Steigerung: im Preset Augenbalken bleibt es bei den Augen, auch auf Stufe 4 (kein ganzes Bild)', () => {
+test('Steigerung mit dem Schalter Eye bar: die Steigerung wirkt wie ohne Schalter, die Zonen sind genau dieselben (R11), Stufe 4 verdeckt ganz', () => {
   for (const stufe of [0, 1, 2, 3, 4]) {
-    const w = wirksameZonen({ zonen: STANDARD.zonen, preset: 'augenbalken' }, stufe);
-    assert.equal(w.ganzVerdecken, false, `Stufe ${stufe}`);
-    for (const name of ZONEN) assert.equal(w.zonen[name].an, name === 'eyes', `${name} Stufe ${stufe}`);
+    const w = wirksameZonen({ zonen: STANDARD.zonen, preset: 'mosaik', augenbalken: true }, stufe);
+    const ohne = wirksameZonen({ zonen: STANDARD.zonen, preset: 'mosaik' }, stufe);
+    assert.equal(w.ganzVerdecken, stufe >= 4, `Stufe ${stufe}`);
+    for (const name of ZONEN) assert.deepEqual(w.zonen[name], ohne.zonen[name], `${name} Stufe ${stufe}`);
   }
-  // Andere Presets: Stufe 4 verdeckt weiter ganz, Stufe 2 fuegt Gesicht, Augen, Mund dazu.
+  // Ohne Schalter: Stufe 4 verdeckt weiter ganz, Stufe 2 fuegt Gesicht, Augen, Mund dazu.
   assert.equal(wirksameZonen({ zonen: STANDARD.zonen, preset: 'mosaik' }, 4).ganzVerdecken, true);
   assert.equal(wirksameZonen({ zonen: STANDARD.zonen }, 2).zonen.face.an, true);
   // Zensurbalken: Steigerung wie sonst, Augen immer an
@@ -118,18 +128,19 @@ test('yunetTreffer: Augen und Gesicht tragen den Winkel (Augenbalken, Mias Gesic
   assert.equal('winkel' in gerade.find((x) => x.zone === 'face'), false);
 });
 
-test('berechneFlaechen im Stil Eye bar: nur Augen, Zonen-Schalter egal, kein Gesicht gibt keine Flaeche', () => {
-  const ein = { zonen: alleAn(), rand: 0.15, preset: 'augenbalken' };
+test('berechneFlaechen mit dem Schalter Eye bar: der Balken kommt bei jedem Zonen-Stand, ohne Gesicht keiner, die Zonen laut Schaltern dazu', () => {
+  const ein = { zonen: alleAn(), rand: 0.15, preset: 'mosaik', augenbalken: true };
   const treffer = yunetTreffer(gesicht([100, 100, 120, 150], [130, 150], [190, 150]), 500, 500);
-  // dazu ein Treffer einer Brust: im Stil Eye bar ohne Wirkung
+  // dazu ein Treffer einer Brust: mit allen Zonen an wirkt sie (Mosaik), der Balken kommt dazu
   treffer.push({ zone: 'breast', bedeckt: false, score: 0.9, box: [0, 300, 200, 100] });
   const f = berechneFlaechen(treffer, ein, 500, 500);
-  assert.equal(f.length, 1);
-  assert.equal(f[0].zone, 'eyes');
-  // Mit allen Zonen aus, anderer Stil: Eye bar liefert trotzdem den Balken.
-  const aus = { zonen: vervollstaendige({}).zonen, rand: 0, preset: 'augenbalken' };
-  assert.equal(berechneFlaechen(treffer, aus, 500, 500).length, 1);
-  assert.equal(berechneFlaechen([{ zone: 'breast', bedeckt: false, score: 0.9, box: [0, 300, 200, 100] }], ein, 500, 500).length, 0);
+  assert.equal(f.filter((x) => x.behandlung === 'balken').length, 1);
+  assert.ok(f.some((x) => x.zone === 'breast' && x.behandlung === 'mosaik'));
+  // Mit allen Zonen aus: der Balken kommt trotzdem, sonst nichts.
+  const aus = { zonen: vervollstaendige({}).zonen, rand: 0, preset: 'mosaik', augenbalken: true };
+  for (const z of ZONEN) aus.zonen[z] = { ...aus.zonen[z], an: false };
+  assert.deepEqual(berechneFlaechen(treffer, aus, 500, 500).map((x) => [x.zone, x.behandlung]), [['eyes', 'balken']]);
+  assert.equal(berechneFlaechen([{ zone: 'breast', bedeckt: false, score: 0.9, box: [0, 300, 200, 100] }], aus, 500, 500).length, 0);
   assert.equal(berechneFlaechen([], ein, 500, 500).length, 0);
 });
 

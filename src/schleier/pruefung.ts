@@ -196,6 +196,7 @@ export async function sendePruefe(
       zonen: angepasst?.zonen ?? e.zonen,
       rand: e.rand,
       preset: presetAnpassung?.(e) ?? e.preset,
+      ...(e.augenbalken ? { augenbalken: true as const } : {}),
       ...(e.woerterThemen === null ? {} : { woerterThemen: e.woerterThemen }),
       ...(packStand === undefined ? {} : { packStand }),
       ...(angepasst?.ganzVerdecken ? { ganzVerdecken: true } : {}),

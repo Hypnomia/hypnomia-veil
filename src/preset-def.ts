@@ -16,15 +16,31 @@ export function istFreigeschaltet(pack: PackKurz | null | undefined, f: Freischa
   return !!pack && Array.isArray(pack.freischaltungen) && pack.freischaltungen.includes(f);
 }
 
-// `gewaehlt`: die Definition der eingestellten Kennung (so wie die Karte sie nennt). `gilt`: die Definition, die wirklich wirkt: Mia-Presets nur mit
-// Pack (`stil:mia-patch`), Sticker-Presets nur mit Stickern (`zensur:sticker`), sonst Mosaik. Ohne `pack` gilt: kein Pack.
-export function presetDef(e: { preset?: string | null }, pack?: PackKurz | null): { gewaehlt: PresetDef; gilt: PresetDef } {
-  const gewaehlt = presetOderMosaik(e.preset);
-  const gilt = presetOderMosaik(presetFuerPack(gewaehlt.id, istFreigeschaltet(pack, 'stil:mia-patch'), istFreigeschaltet(pack, 'zensur:sticker')));
-  return { gewaehlt, gilt };
+// Der Schalter "Eye bar" (Phase 11 E4c, `Einstellungen.augenbalken`): ist er an, traegt die Definition die wirksame Augen-Art `balken-immer` (der Balken
+// kommt ueber jedes erkannte Gesicht, auch bei ausgeschaltetem Zonen-Schalter `eyes`, derselbe Weg wie beim Zensurbalken). Je Kennung genau eine
+// abgeleitete Definition (dasselbe Objekt bei jedem Aufruf, eingefroren); ist der Schalter aus (oder fehlt er), kommt das Objekt der Tabelle selbst.
+// Nur der Wert `true` zaehlt (ein Nicht-Boolean gilt als aus, vervollstaendige macht daraus ohnehin false).
+const MIT_BALKEN = new Map<string, PresetDef>();
+function mitSchalter(d: PresetDef, augenbalken: unknown): PresetDef {
+  if (augenbalken !== true || d.augen === 'balken-immer') return d;
+  let abgeleitet = MIT_BALKEN.get(d.id);
+  if (!abgeleitet) {
+    abgeleitet = Object.freeze({ ...d, augen: 'balken-immer' as const });
+    MIT_BALKEN.set(d.id, abgeleitet);
+  }
+  return abgeleitet;
 }
 
-// Alle 13 Definitionen in der Reihenfolge von PRESET_IDS (Raster der Karten, Kartenbilder, Sperre je Karte).
+// `gewaehlt`: die Definition der eingestellten Kennung (so wie die Karte sie nennt). `gilt`: die Definition, die wirklich wirkt: Mia-Presets nur mit
+// Pack (`stil:mia-patch`), Sticker-Presets nur mit Stickern (`zensur:sticker`), sonst Mosaik. Ohne `pack` gilt: kein Pack. Beide tragen die Augen-Art
+// mit dem Schalter `augenbalken` (E4c): kein Aufrufer verrechnet den Schalter selbst.
+export function presetDef(e: { preset?: string | null; augenbalken?: boolean | null }, pack?: PackKurz | null): { gewaehlt: PresetDef; gilt: PresetDef } {
+  const gewaehlt = presetOderMosaik(e.preset);
+  const gilt = presetOderMosaik(presetFuerPack(gewaehlt.id, istFreigeschaltet(pack, 'stil:mia-patch'), istFreigeschaltet(pack, 'zensur:sticker')));
+  return { gewaehlt: mitSchalter(gewaehlt, e.augenbalken), gilt: mitSchalter(gilt, e.augenbalken) };
+}
+
+// Alle 12 Definitionen in der Reihenfolge von PRESET_IDS (Raster der Karten, Kartenbilder, Sperre je Karte); ohne Schalter, so wie die Karte sie nennt.
 export function presetKatalog(): readonly PresetDef[] {
   return PRESET_IDS.map((id) => presetOderMosaik(id));
 }

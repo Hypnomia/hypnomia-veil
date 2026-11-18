@@ -818,8 +818,8 @@ const alleFlaechen = (preset, faceAn) => {
 };
 const lageVoll = { gesichtPasst: true, wortDa: true, wortPasst: true };
 
-test('stilFuerZone: alle 13 Presets, Face an und aus: dieselbe Behandlung wie die Flaechen des Erkenners, aus der Tabelle auch ohne `behandlung`', () => {
-  assert.equal(PRESET_IDS.length, 13);
+test('stilFuerZone: alle 12 Presets, Face an und aus: dieselbe Behandlung wie die Flaechen des Erkenners, aus der Tabelle auch ohne `behandlung`', () => {
+  assert.equal(PRESET_IDS.length, 12);
   for (const preset of PRESET_IDS) {
     for (const faceAn of [true, false]) {
       const flaechen = alleFlaechen(preset, faceAn);
@@ -839,11 +839,12 @@ test('stilFuerZone: alle 13 Presets, Face an und aus: dieselbe Behandlung wie di
   }
 });
 
-test('stilFuerZone: die Zeichenarten je Preset (Zensurbalken: Augen Balken, Koerper schwarz; Augenbalken nur Balken; Person: Mosaik oder Blur)', () => {
+test('stilFuerZone: die Zeichenarten je Preset (Zensurbalken: Augen Balken, Koerper schwarz; Augenbalken des Schalters Eye bar tragen `balken` aus dem Erkenner; Person: Mosaik oder Blur)', () => {
   assert.equal(stilFuerZone('zensurbalken', 'eyes', lageVoll), 'balken');
   assert.equal(stilFuerZone('zensurbalken', 'face', lageVoll), 'schwarz');
   assert.equal(stilFuerZone('zensurbalken', 'breast', lageVoll), 'schwarz');
-  for (const z of ['eyes', 'face', 'breast']) assert.equal(stilFuerZone('augenbalken', z, lageVoll), 'balken');
+  // E4c: Eye bar ist ein Schalter; die Flaeche des Balkens traegt `behandlung: 'balken'` vom Erkenner und wird in jedem Stil als Balken gezeichnet.
+  for (const preset of PRESET_IDS) assert.equal(stilFuerZone(preset, 'eyes', { ...lageVoll, behandlung: 'balken' }), 'balken', preset);
   assert.equal(stilFuerZone('person-mosaik', 'breast', lageVoll), 'mosaik');
   assert.equal(stilFuerZone('person-blur', 'breast', lageVoll), 'blur');
   assert.equal(stilFuerZone('mia-wort', 'face', lageVoll), 'mia-gesicht');

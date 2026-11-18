@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { PRESETS, PRESET_IDS } from '../../src/presets';
 import { PERSON_GRENZE } from '../../src/presets';
-import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_MIA_PACK_FEHLT, HINWEIS_PACK_OHNE_STICKER, HINWEIS_WORT_OHNE_PACK, HINWEIS_ZONEN_AUGENBALKEN, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam';
+import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, EYE_BAR_TEXT, EYE_BAR_TITEL, HINWEIS_MIA_PACK_FEHLT, HINWEIS_PACK_OHNE_STICKER, HINWEIS_WORT_OHNE_PACK, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam';
 import { PACK_HINWEIS_BIS_DAHIN } from '../../entrypoints/popup/texte';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -224,17 +224,39 @@ test.afterAll(async () => {
 
 // ---------- Oberflaeche ohne Pack ----------
 
-test('Einstellungsseite ohne Pack: dreizehn Karten in vier Gruppen, Mia- und Sticker-Presets gesperrt, Wahl gespeichert, Hinweise je Preset', async () => {
+test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, sondern ein Schalter darunter) in vier Gruppen, Mia- und Sticker-Presets gesperrt, Wahl gespeichert, Hinweise je Preset', async () => {
   const seite = await context.newPage();
   try {
     await seite.goto(optionsUrl());
     const karten = seite.locator('#preset-karten input[name="preset"]');
-    await expect(karten).toHaveCount(13);
+    await expect(karten).toHaveCount(12);
     expect(await karten.evaluateAll((l) => l.map((f) => (f as HTMLInputElement).value))).toEqual([...PRESET_IDS]);
     await expect(seite.locator('#preset-karten .preset-gruppe')).toHaveCount(4);
     expect(await seite.locator('#preset-karten .preset-gruppe-titel').allTextContents()).toEqual(['With my face', 'With my stickers', 'Classic', 'Whole person']);
     // jede Karte hat eine Vorschau (SVG) und einen Namen
-    await expect(seite.locator('#preset-karten .preset-bild svg')).toHaveCount(13);
+    await expect(seite.locator('#preset-karten .preset-bild svg')).toHaveCount(12);
+    // Der Schalter Eye bar steht direkt unter dem Raster, ist aus und hat ein Fingerziel von mindestens 44 px Hoehe
+    await expect(seite.locator('#augenbalken')).not.toBeChecked();
+    await expect(seite.locator('#augenbalken-zeile strong')).toHaveText(EYE_BAR_TITEL);
+    await expect(seite.locator('#augenbalken-zeile small')).toHaveText(EYE_BAR_TEXT);
+    // Fingerziel (N1): im Desktop-Fenster hat der Schalter keine 44 px (die bestehenden Schalter auch nicht: gleiche Klasse `schalter`, gleiche CSS-Regel). Die Regel
+    // `@media (max-width: 480px) { .schalter { min-height: 44px } }` in entrypoints/options/style.css gibt dort 44 px; gemessen bei 360 px Breite weiter unten.
+    await expect(seite.locator('#augenbalken-zeile')).toHaveClass('schalter');
+    await expect(seite.locator('label.schalter:has(#strict)')).toHaveClass('schalter');
+    const hDesktop = (await seite.locator('#augenbalken-zeile').boundingBox())!.height;
+    const hStrict = (await seite.locator('label.schalter:has(#strict)').boundingBox())!.height;
+    console.log(`chromium: Hoehe Schalter Eye bar im Desktop-Fenster ${hDesktop.toFixed(1)} px, Strict ${hStrict.toFixed(1)} px`);
+    expect(await seite.locator('#augenbalken-zeile').evaluate((e) => getComputedStyle(e).minHeight)).toBe(await seite.locator('label.schalter:has(#strict)').evaluate((e) => getComputedStyle(e).minHeight));
+    await seite.setViewportSize({ width: 360, height: 800 });
+    const hHandy = (await seite.locator('#augenbalken-zeile').boundingBox())!.height;
+    console.log(`chromium: Hoehe Schalter Eye bar bei 360 px Breite ${hHandy.toFixed(1)} px`);
+    expect(hHandy).toBeGreaterThanOrEqual(44);
+    await seite.setViewportSize({ width: 1280, height: 720 });
+    await seite.locator('#augenbalken-zeile').click();
+    await expect.poll(async () => (await speicher(seite, 'einstellungen')).augenbalken).toBe(true);
+    await expect(seite.locator('#preset-mosaik')).toBeChecked(); // der Stil bleibt
+    await seite.locator('#augenbalken-zeile').click();
+    await expect.poll(async () => (await speicher(seite, 'einstellungen')).augenbalken).toBe(false);
     for (const id of PRESET_IDS) {
       await expect(seite.locator(`#preset-${id}`).locator('xpath=..').locator('strong')).toHaveText(PRESETS[id].name);
       const gesperrt = PRESETS[id].braucht !== null;
@@ -253,7 +275,7 @@ test('Einstellungsseite ohne Pack: dreizehn Karten in vier Gruppen, Mia- und Sti
     const hinweis = seite.locator('#zonen-hinweis');
     await expect(hinweis).toBeHidden();
     await expect(seite.locator('#zonen')).toHaveAttribute('aria-describedby', 'zonen-hinweis');
-    for (const [id, text] of [['augenbalken', HINWEIS_ZONEN_AUGENBALKEN], ['zensurbalken', HINWEIS_ZONEN_ZENSURBALKEN]] as const) {
+    for (const [id, text] of [['zensurbalken', HINWEIS_ZONEN_ZENSURBALKEN]] as const) {
       await seite.locator(`label:has(#preset-${id})`).click();
       await expect(hinweis).toHaveText(text);
     }
@@ -275,12 +297,14 @@ test('Migration: ein gespeicherter alter `stil` zeigt das richtige Preset, mia-p
   const seite = await context.newPage();
   try {
     await seite.goto(optionsUrl());
-    for (const [alt, neu] of [['blur', 'blur'], ['augenbalken', 'augenbalken'], ['mosaik', 'mosaik']] as const) {
+    // `augenbalken` ist seit E4c kein Stil mehr: der alte Stand zeigt Mosaik und den Schalter an (Soll geaendert)
+    for (const [alt, neu] of [['blur', 'blur'], ['augenbalken', 'mosaik'], ['mosaik', 'mosaik']] as const) {
       await seite.evaluate(async (stil) => {
         await (globalThis as any).chrome.storage.local.set({ einstellungen: { version: 1, stil } });
       }, alt);
       await seite.reload();
       await expect(seite.locator(`#preset-${neu}`)).toBeChecked();
+      if (alt === 'augenbalken') await expect(seite.locator('#augenbalken')).toBeChecked();
     }
     // mia-patch ohne Pack: gilt Mosaik (Mia-Preset ohne Pack)
     await seite.evaluate(async () => {
@@ -317,8 +341,9 @@ test('Popup ohne Pack: Zeile mit Vorschau, Name und Change style (zur Einstellun
     await expect(seite.locator('#pack-hinweis')).toHaveText(PRESETS.zensurbalken.satz);
     await seite.locator('#aendern').click();
     await expect(seite.locator('#zonen-hinweis')).toHaveText(HINWEIS_ZONEN_ZENSURBALKEN);
-    await setzeEinst(seite, { preset: 'augenbalken' });
+    await setzeEinst(seite, { preset: 'mosaik', augenbalken: true });
     await expect(seite.locator('#abdeckung-kurz')).toContainText('the eyes');
+    await setzeEinst(seite, { augenbalken: false });
     await setzeEinst(seite, { preset: 'mia-wort' }); // ohne Pack: gilt Mosaik, mit Hinweis auf das Pack
     await expect(seite.locator('#preset-name')).toHaveText(PRESETS.mosaik.name);
     await expect(seite.locator('#pack-hinweis')).toHaveText(HINWEIS_MIA_PACK_FEHLT + PACK_HINWEIS_BIS_DAHIN);
@@ -489,7 +514,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
       ['preset-gruppe-klassisch', 'Classic'],
       ['preset-gruppe-person', 'Whole person'],
     ]);
-    expect(await seiteB.locator('#preset-karten input[name="preset"]').count()).toBe(13);
+    expect(await seiteB.locator('#preset-karten input[name="preset"]').count()).toBe(12);
     // Kein Gesicht in den Patch-Bildern dieses Packs (synthetisch): ehrlicher Hinweis nach fertigem Scan
     await expect(seiteB.locator('#preset-kein-gesicht')).toHaveText(HINWEIS_KEIN_GESICHT, { timeout: 15_000 });
     // Wort-Presets zeigen ohne Chips (hier: mit Pack gibt es Chips) keine Zeile "ohne Pack"
@@ -617,6 +642,48 @@ test('Mias Gesicht, Patch-Passt-Regel: eine zu kleine Gesichtsflaeche (Anzeige u
   expect(aN.mittel).toBeGreaterThan(aK.mittel);
 });
 
+// E4c Nacharbeit (R5, R12): Stil mit Mias Gesicht, Schalter Eye bar an, Dummy-Pack mit Testbild-Patch (das Pack aus den Tests davor liegt noch da). Der Balken wird erzeugt und
+// zuerst gemalt, Mias Gesicht liegt zuletzt darueber: im gemalten Gesicht ist kein Balken zu sehen (Pixel wie mit Schalter aus). Wird Mias Gesicht nicht gemalt (Anzeige zu klein,
+// der Ersatz Mosaik steht), liegt der Balken obenauf. Eine Fixture mit einem zweiten Gesicht OHNE Mia-Gesicht im selben Bild gibt es nicht (jedes erkannte Gesicht bekommt bei Face an
+// ein Mia-Gesicht); der Fall "nicht gemalt" wird darum ueber die zu kleine Anzeige desselben Bildes gemessen.
+test('Mias Gesicht mit dem Schalter Eye bar: im gemalten Gesicht kein Balken (Pixel wie mit Schalter aus), nicht gemalt (Anzeige zu klein): der Balken obenauf', async () => {
+  test.setTimeout(150_000);
+  const original = await brauchtBild('sfw', BILD_GESICHT);
+  const meta = await sharp(original).metadata();
+  const orig = await rohPixel(original);
+  for (const preset of ['mia-wort', 'mia-mosaik']) {
+    const aus = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], preset));
+    const an = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], preset, { augenbalken: true }));
+    expect(an.ok, an.fehler).toBe(true);
+    const mia = (an.flaechen as Flaeche[]).find((x) => x.behandlung === 'mia-gesicht')!;
+    const balken = (an.flaechen as Flaeche[]).filter((x) => x.behandlung === 'balken');
+    expect(mia, `${preset}: Mias Gesicht`).toBeTruthy();
+    expect(balken.length, `${preset}: der Balken wird erzeugt`).toBeGreaterThanOrEqual(1);
+    expect((aus.flaechen as Flaeche[]).some((x) => x.behandlung === 'balken')).toBe(false);
+    const pAus = await rohPixel(ausDataUrl(aus.bild));
+    const pAn = await rohPixel(ausDataUrl(an.bild));
+    // Kern von Mias Gesicht (innere 60 Prozent): mit und ohne Schalter dieselben Pixel
+    const inset = Math.round(Math.min(mia.box[2]!, mia.box[3]!) * 0.2);
+    const unterschied = stat(pAus, pAn, mia.box as Box, inset);
+    console.log(`chromium: ${preset} mit Schalter: Kern von Mias Gesicht gegen Schalter aus: Abweichung ${unterschied.mittel.toFixed(2)}, gross ${(unterschied.gross * 100).toFixed(2)} %`);
+    expect(unterschied.mittel).toBeLessThan(1);
+    expect(unterschied.gross).toBeLessThan(0.002);
+    // und dort ist es Mias Gesicht, nicht das Original (der Balken liegt nicht darueber, die Augen sind weg)
+    expect(stat(orig, pAn, mia.box as Box, inset).mittel).toBeGreaterThan(20);
+  }
+  // Mias Gesicht nicht gemalt (angezeigt unter 24 px: der Ersatz Mosaik steht): der Balken liegt obenauf, schwarz
+  const klein = await ausWorker({ ...nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'mia-mosaik', { augenbalken: true }), breite: Math.round(meta.width! / 20), hoehe: Math.round(meta.height! / 20) });
+  expect(klein.ok, klein.fehler).toBe(true);
+  const balkenKlein = (klein.flaechen as Flaeche[]).filter((x) => x.behandlung === 'balken');
+  expect(balkenKlein.length).toBeGreaterThanOrEqual(1);
+  const pKlein = await rohPixel(ausDataUrl(klein.bild));
+  for (const b of balkenKlein) {
+    const k = stat(orig, pKlein, b.box as Box, Math.round(Math.min(b.box[2]!, b.box[3]!) * 0.25));
+    console.log(`chromium: Mias Gesicht nicht gemalt, Balken ${b.box}: dunkel ${k.dunkel.toFixed(2)}`);
+    expect(k.dunkel, 'Balken schwarz ueber dem Ersatz').toBeGreaterThan(0.95);
+  }
+});
+
 // ---------- Koerper: Wort, Mosaik-Wort, Blur, Zensurbalken, Person ----------
 
 test('Koerper-Behandlungen im Pixeltest: Schwarz mit Wort, Mosaik mit Wort und Unterlage, Blur ohne Rahmen, Zensurbalken schwarz; alles andere unveraendert', async () => {
@@ -676,8 +743,10 @@ test('Koerper-Behandlungen im Pixeltest: Schwarz mit Wort, Mosaik mit Wort und U
   expect(zb.innen.dunkel).toBeGreaterThan(0.95);
   expect(zb.innen.wort).toBeLessThan(5);
   expect(zb.aussen.mittel).toBeLessThan(4);
-  // Augenbalken: nur Augen, hier kein Gesicht erkannt, also keine Flaeche
-  const ab = await ausWorker(nachricht(quelle, an, 'augenbalken'));
+  // Schalter Eye bar ohne Zonen: nur Augen, hier kein Gesicht erkannt, also keine Flaeche
+  const abN = nachricht(quelle, [], 'mosaik');
+  (abN.einstellungen as Record<string, unknown>).augenbalken = true;
+  const ab = await ausWorker(abN);
   expect((ab.flaechen as Flaeche[]).every((x) => x.zone === 'eyes')).toBe(true);
 });
 

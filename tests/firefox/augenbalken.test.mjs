@@ -1,4 +1,4 @@
-// Firefox: Preset Augenbalken (Eye bar) ueber geckodriver/WebDriver. Das Preset ist auf der Einstellungsseite waehlbar und gespeichert; ein Bild mit
+// Firefox: Eye bar (seit Phase 11 E4c der Schalter `augenbalken`, vorher der Stil) ueber geckodriver/WebDriver. Der Schalter steht auf der Einstellungsseite und ist gespeichert; ein Bild mit
 // Gesicht bekommt einen schwarzen Balken ueber den Augen (auch bei ausgeschalteten Augen), alle anderen Pixel bleiben (Pixelmessung im
 // Seitenkontext); ein Bild ohne Gesicht bleibt frei; mehrere Gesichter, bewegtes SVG, PNG mit Alpha, Seite mit Bild, Leinwand, Video und Pause.
 // Die uebrigen Presets (Mias Gesicht, Woerter, Person, Zensurbalken) misst presets.test.mjs.
@@ -30,6 +30,8 @@ const GECKO_ID = 'veil@hypnomia';
 const TESTBILD = 'sfw-001-portraet.jpg';
 const ROSA = [255, 79, 163];
 const OHNE_TESTBILDER = process.env.VEIL_OHNE_TESTBILDER === '1';
+// Alle Zonen aus: mit dem Schalter Eye bar kommt trotzdem der Balken, sonst nichts (wie der alte Stil).
+const ZONEN_AUS = Object.fromEntries(['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'].map((n) => [n, ['eyes', 'mouth', 'face', 'head'].includes(n) ? { an: false } : { an: false, bedeckt: false }]));
 
 const paketJson = JSON.parse(readFileSync(path.join(wurzel, 'package.json'), 'utf8'));
 const paket = path.join(ausgabe, `${paketJson.name}-${paketJson.version}-firefox.zip`);
@@ -147,7 +149,7 @@ function lauf(preset, an, opt) {
       bitmapOrig = await createImageBitmap(await (await fetch(dataUrl)).blob());
     }
     const roh = await api.runtime.sendMessage({ ziel: 'erkenner', typ: 'pruefe', id: 'ff-' + Math.random(), quelle: { art: 'daten', dataUrl },
-      breite: 0, hoehe: 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, preset }, rendern: true });
+      breite: 0, hoehe: 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, ...(preset === 'augenbalken' ? { preset: 'mosaik', augenbalken: true } : { preset }) }, rendern: true });
     const a = JSON.parse(JSON.stringify(roh));
     if (!a.ok) return { fehler: a.fehler };
     const aus = { ok: true, zonen: a.flaechen.map((f) => f.zone), flaechen: a.flaechen, hatBild: typeof a.bild === 'string', yunetAugen: a.treffer.some((t) => t.zone === 'eyes' && t.quelle === 'yunet') };
@@ -212,25 +214,36 @@ try {
     return s && s.ok && s.gesichtBereit;
   });
 
-  // 1. Einstellungsseite: Preset Eye bar waehlbar, gespeichert, Hinweise
+  // 1. Einstellungsseite: Eye bar ist ein Schalter unter dem Raster, keine Karte; gespeichert; der alte Stand wandert
   const felder = await driver.findElements(By.css('#preset-karten input[name="preset"]'));
-  pruefe(felder.length === 13, `Einstellungsseite: dreizehn Preset-Karten (${felder.length})`);
+  pruefe(felder.length === 12, `Einstellungsseite: zwoelf Preset-Karten (${felder.length})`);
+  pruefe((await driver.findElements(By.css('#preset-augenbalken'))).length === 0, 'Eye bar ist keine Karte mehr');
   pruefe(!(await sichtbar('#zonen-hinweis')), 'Zonen-Hinweis ruht ohne Balken-Preset');
-  await driver.findElement(By.css('label:has(#preset-augenbalken)')).click();
-  await bis('Preset gespeichert', async () => (await speicher('einstellungen'))?.preset === 'augenbalken');
-  pruefe((await text('#stil-hinweis')) === 'Just a black bar over the eyes. Everything else stays in view.', 'Satz zum Preset unter den Karten');
-  await bis('Zonen-Hinweis', () => sichtbar('#zonen-hinweis'));
-  pruefe((await text('#zonen-hinweis')).includes('only the eyes'), 'Hinweis bei What I cover');
+  pruefe(!(await driver.findElement(By.css('#augenbalken')).isSelected()), 'Schalter Eye bar ist standardmaessig aus');
+  await driver.findElement(By.css('#augenbalken-zeile')).click();
+  await bis('Schalter gespeichert', async () => (await speicher('einstellungen'))?.augenbalken === true);
+  pruefe((await speicher('einstellungen'))?.preset === 'mosaik', 'der Stil bleibt Mosaik');
   await driver.navigate().refresh();
-  await bis('nach Neuladen gewaehlt', async () => (await driver.findElement(By.css('#preset-augenbalken')).isSelected()));
-  pruefe(true, 'Eye bar nach dem Neuladen noch gewaehlt');
+  await bis('nach Neuladen an', async () => (await driver.findElement(By.css('#augenbalken')).isSelected()));
+  pruefe(true, 'Eye bar nach dem Neuladen noch an');
+  // Altstand: gespeichert `preset: augenbalken` (roh): Mosaik gewaehlt, Schalter an, Zonen laut Schaltern, Merker offen nach der ersten Aenderung
+  await imSeitenkontext(`await api.storage.local.set({ einstellungen: { version: 1, preset: 'augenbalken' } });`);
+  await driver.navigate().refresh();
+  await bis('Altstand: Mosaik gewaehlt', async () => (await driver.findElement(By.css('#preset-mosaik')).isSelected()));
+  pruefe(await driver.findElement(By.css('#augenbalken')).isSelected(), 'Altstand: Schalter an');
+  await driver.findElement(By.css('label:has(#preset-blur)')).click();
+  await bis('Altstand nach Aenderung geschrieben', async () => (await speicher('einstellungen'))?.preset === 'blur');
+  const nachAenderung = await speicher('einstellungen');
+  pruefe(nachAenderung.augenbalken === true && nachAenderung.hinweise?.augenbalken === 'offen', `Altstand gewandert gespeichert (${JSON.stringify(nachAenderung.hinweise)})`);
+  await imSeitenkontext(`await api.storage.local.set({ einstellungen: { version: 1 } });`);
+  await driver.navigate().refresh();
 
   // 2. Ohne Gesicht bleibt das Bild frei
   const leer = await lauf('augenbalken', ['breast', 'eyes', 'mouth', 'face', 'head'], { leer: true });
   pruefe(leer.ok === true && leer.zonen.length === 0 && leer.hatBild === false, `Bild ohne Gesicht bleibt frei (${JSON.stringify(leer).slice(0, 120)})`);
 
   // 3. Balken: schwarz, sonst unveraendert, auch bei ausgeschalteten Augen
-  const a = await lauf('augenbalken', ['breast'], { messen: true });
+  const a = await lauf('augenbalken', [], { messen: true });
   if (a.keinBild) {
     if (OHNE_TESTBILDER) console.log(`firefox: AUSNAHME VEIL_OHNE_TESTBILDER=1: Eye-bar-Test uebersprungen (${a.grund})`);
     else pruefe(false, `Eye-bar-Test braucht das Testbild: ${a.grund}`);
@@ -242,8 +255,9 @@ try {
     pruefe(a.innen > 500 && a.innenSchwarz > 0.99, `Eye bar: deckendes Schwarz (${a.innenSchwarz})`);
     pruefe(a.mittel < 4 && a.gross < 0.005, `Eye bar: Rest unveraendert (${a.mittel}, ${a.gross})`);
     pruefe(a.rosa < 5, `Eye bar: kein pinker Rahmen (${a.rosa})`);
+    // Soll geaendert (E4c): alle Zonen an ergibt jede Flaeche des Balkens und mehr (die Zonen ruhen nicht mehr)
     const alle = await lauf('augenbalken', ['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'], {});
-    pruefe(JSON.stringify(alle.flaechen) === JSON.stringify(a.flaechen), 'Eye bar: alle Zonen an ergibt dieselben Flaechen');
+    pruefe(a.flaechen.every((f) => alle.flaechen.some((g) => JSON.stringify(g) === JSON.stringify(f))), 'Eye bar: alle Zonen an enthaelt jeden Balken ohne Zonen');
   }
 
   // 3b. Mehrere Gesichter, bewegtes SVG, PNG mit Alpha (Quellen werden im Seitenkontext gebaut)
@@ -253,9 +267,12 @@ try {
     const zonen = {};
     for (const n of ['eyes','mouth','face','head']) zonen[n] = { an: false };
     for (const n of ['breast','genitals','buttocks','belly','feet','armpits']) zonen[n] = { an: n === 'breast', bedeckt: false };
+    const zonenAus = {};
+    for (const n of ['eyes','mouth','face','head']) zonenAus[n] = { an: false };
+    for (const n of ['breast','genitals','buttocks','belly','feet','armpits']) zonenAus[n] = { an: false, bedeckt: false };
     const alsDataUrl = (blob) => new Promise((ok) => { const l = new FileReader(); l.onload = () => ok(String(l.result)); l.readAsDataURL(blob); });
     const sende = async (dataUrl, stil) => JSON.parse(JSON.stringify(await api.runtime.sendMessage({ ziel: 'erkenner', typ: 'pruefe', id: 'ff-s-' + Math.random(), quelle: { art: 'daten', dataUrl },
-      breite: 0, hoehe: 0, einstellungen: { schwelle: 0.1, zonen, rand: 0.15, stil }, rendern: true })));
+      breite: 0, hoehe: 0, einstellungen: stil === 'augenbalken' ? { schwelle: 0.1, zonen: zonenAus, rand: 0.15, preset: 'mosaik', augenbalken: true } : { schwelle: 0.1, zonen, rand: 0.15, stil }, rendern: true })));
     const antwort = await fetch(basis + '/testbild/sfw/' + encodeURIComponent(name));
     if (!antwort.ok) return { keinBild: true };
     const bmp = await createImageBitmap(await antwort.blob());
@@ -301,7 +318,7 @@ try {
   await driver.switchTo().newWindow('tab');
   await driver.get(`${basis}/augenbalken.html`);
   const hook = (einst) => driver.executeScript("document.dispatchEvent(new CustomEvent('veil-test', { detail: arguments[0] }))", JSON.stringify({ einstellungen: einst }));
-  await hook({ preset: 'augenbalken', pause: false });
+  await hook({ preset: 'mosaik', augenbalken: true, zonen: ZONEN_AUS, pause: false });
   await bis('Film bereit', () => driver.executeScript('return document.documentElement.dataset.filmBereit ?? null'), 20_000);
   const urteil = (id) => driver.executeScript('return document.getElementById(arguments[0]).dataset.veil ?? ""', id);
   try {
@@ -324,12 +341,107 @@ try {
     await hook({ pause: true });
     await bis('Pause gilt', async () => (await driver.executeScript('return document.documentElement.dataset.veilSeite ?? null')) === 'aus', 8000);
     const frei = await driver.executeScript(`return [document.getElementById('bild').src.startsWith('data:'), document.querySelectorAll('[data-veil]').length, ['bild','leinwand','film'].every((id) => getComputedStyle(document.getElementById(id)).filter === 'none')];`);
-    pruefe(frei[0] === false && frei[1] === 0 && frei[2] === true, `Pause im Stil Eye bar: alles frei (${JSON.stringify(frei)})`);
+    pruefe(frei[0] === false && frei[1] === 0 && frei[2] === true, `Pause mit Eye bar: alles frei (${JSON.stringify(frei)})`);
   } finally {
-    await hook({ pause: false, preset: 'mosaik' });
+    await hook({ pause: false, preset: 'mosaik', augenbalken: false });
     await driver.close();
     await driver.switchTo().window(optionenTab);
   }
+
+  // 3d. Schalter aus gegen Schalter an (Pixelfall, E4c Nacharbeit M3) und der Altstand ueber den echten Weg (M4): die Seite laedt das Bild, das Bild der Seite ist die Antwort des Schleiers.
+  const original = `${basis}/testbild/sfw/${encodeURIComponent(TESTBILD)}`;
+  // Kerne der Flaechen im Seitenbild: Anteil dunkler Pixel (alle Kanaele unter 50) und mittlere Abweichung gegen das Original, jeweils im Kern (innere Haelfte) der Flaeche.
+  const kerne = (flaechen) =>
+    driver.executeAsyncScript(
+      `const [fl, orig, fertig] = [arguments[0], arguments[1], arguments[arguments.length - 1]];
+       (async () => {
+         const el = document.getElementById('bild');
+         const holen = async (u) => createImageBitmap(await (await fetch(u)).blob());
+         const a = await holen(el.src); const o = await holen(orig);
+         const zeichne = (b) => { const c = new OffscreenCanvas(o.width, o.height); const g = c.getContext('2d'); g.drawImage(b, 0, 0, o.width, o.height); return g; };
+         const ga = zeichne(a), go = zeichne(o);
+         return fl.map((f) => {
+           const [x, y, w, h] = f.box;
+           const kx = Math.round(x + w / 4), ky = Math.round(y + h / 4), kw = Math.max(1, Math.round(w / 2)), kh = Math.max(1, Math.round(h / 2));
+           const pa = ga.getImageData(kx, ky, kw, kh).data, po = go.getImageData(kx, ky, kw, kh).data;
+           let dunkel = 0, summe = 0;
+           for (let i = 0; i < pa.length; i += 4) { if (pa[i] < 50 && pa[i+1] < 50 && pa[i+2] < 50) dunkel++; summe += (Math.abs(pa[i]-po[i]) + Math.abs(pa[i+1]-po[i+1]) + Math.abs(pa[i+2]-po[i+2])) / 3; }
+           return { dunkel: dunkel / (pa.length / 4), diff: summe / (pa.length / 4), daten: el.src.startsWith('data:') };
+         });
+       })().then(fertig, (e) => fertig({ fehler: String(e) }));`,
+      flaechen,
+      original,
+    );
+  const erkenner = (einst) =>
+    imSeitenkontext(
+      `const [basis, name, einst] = args;
+       const antwort = await fetch(basis + '/testbild/sfw/' + encodeURIComponent(name));
+       const bmp = await createImageBitmap(await antwort.blob());
+       const f = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+       const c = new OffscreenCanvas(Math.round(bmp.width * f), Math.round(bmp.height * f));
+       c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+       const l = new FileReader(); const dataUrl = await new Promise((ok) => { l.onload = () => ok(String(l.result)); c.convertToBlob({ type: 'image/jpeg', quality: 0.85 }).then((b) => l.readAsDataURL(b)); });
+       const roh = await api.runtime.sendMessage({ ziel: 'erkenner', typ: 'pruefe', id: 'ff-r-' + Math.random(), quelle: { art: 'daten', dataUrl }, breite: 0, hoehe: 0, einstellungen: einst, rendern: false });
+       return JSON.parse(JSON.stringify({ ok: roh.ok, flaechen: roh.flaechen ?? [], fehler: roh.fehler }));`,
+      basis,
+      TESTBILD,
+      einst,
+    );
+  const zonenNurFace = { ...ZONEN_AUS, face: { an: true } };
+  // Die Flaechen: der Balken, wie der Erkenner ihn mit dem Schalter an liefert; ohne den Schalter keine Flaeche
+  const mitS = await erkenner({ schwelle: 0.1, zonen: ZONEN_AUS, rand: 0.15, preset: 'mosaik', augenbalken: true });
+  const ohneS = await erkenner({ schwelle: 0.1, zonen: ZONEN_AUS, rand: 0.15, preset: 'mosaik', augenbalken: false });
+  const balkenFl = mitS.flaechen.filter((f) => f.behandlung === 'balken');
+  pruefe(mitS.ok && balkenFl.length >= 1, `Schalter an: Balken in den Flaechen (${JSON.stringify(mitS).slice(0, 120)})`);
+  pruefe(ohneS.ok && ohneS.flaechen.length === 0, `Schalter aus, alle Zonen aus: keine Flaeche (${ohneS.flaechen.length})`);
+  const optionenTab2 = await driver.getWindowHandle();
+  for (const an of [false, true]) {
+    await imSeitenkontext(`await api.storage.local.set({ einstellungen: args[0] });`, { version: 1, preset: 'mosaik', augenbalken: an, pause: false, zonen: ZONEN_AUS });
+    await driver.switchTo().newWindow('tab');
+    try {
+      await driver.get(`${basis}/augenbalken.html`);
+      await bis('Film bereit', () => driver.executeScript('return document.documentElement.dataset.filmBereit ?? null'), 20_000);
+      await bis(`Bild ${an ? 'zensiert' : 'frei'}`, async () => (await driver.executeScript('return document.getElementById("bild").dataset.veil ?? ""')) === (an ? 'zensiert' : 'frei'), 40_000);
+      const k = await kerne(balkenFl);
+      console.log(`firefox: Schalter ${an ? 'an' : 'aus'}: Kerne der Augenbalken ${JSON.stringify(k.map((x) => ({ d: +x.dunkel.toFixed(2), a: +x.diff.toFixed(1) })))}`);
+      for (const x of k) {
+        if (an) pruefe(x.daten === true && x.dunkel > 0.95, `Schalter an: Balken schwarz auf der Seite (${x.dunkel})`);
+        else pruefe(x.daten === false && x.dunkel < 0.5 && x.diff < 1, `Schalter aus: Augen unveraendert, Original (${JSON.stringify(x)})`);
+      }
+    } finally {
+      await driver.close();
+      await driver.switchTo().window(optionenTab2);
+    }
+  }
+  // Altstand roh gespeichert: der Stil, dazu die Zone Face an; Seite laden; Balken und Zone verdeckt (Pixel), Einstellungsseite zeigt Mosaik und den Schalter an
+  const roh = { version: 1, preset: 'augenbalken', pause: false, zonen: zonenNurFace };
+  await imSeitenkontext(`await api.storage.local.set({ einstellungen: args[0] });`, roh);
+  const gespeichert = await speicher('einstellungen');
+  pruefe(gespeichert.preset === 'augenbalken', 'Altstand roh gespeichert');
+  const fl = await erkenner({ ...gespeichert, schwelle: 0.1, rand: 0.15 });
+  const bAlt = fl.flaechen.filter((f) => f.behandlung === 'balken');
+  const zAlt = fl.flaechen.filter((f) => f.zone === 'face' && f.behandlung === 'mosaik');
+  pruefe(fl.ok && bAlt.length >= 1, `Altstand: Balken in den Flaechen (${JSON.stringify(fl.flaechen).slice(0, 160)})`);
+  pruefe(zAlt.length >= 1, 'Altstand: Flaeche der eingeschalteten Zone (Mosaik auf dem Gesicht)');
+  await driver.switchTo().newWindow('tab');
+  try {
+    await driver.get(`${basis}/augenbalken.html`);
+    await bis('Film bereit', () => driver.executeScript('return document.documentElement.dataset.filmBereit ?? null'), 20_000);
+    await bis('Altstand: Bild zensiert', async () => (await driver.executeScript('return document.getElementById("bild").dataset.veil ?? ""')) === 'zensiert', 40_000);
+    const kb = await kerne(bAlt);
+    const stirn = zAlt.map((f) => ({ ...f, box: [f.box[0], f.box[1], f.box[2], Math.round(f.box[3] / 4)] }));
+    const kz = await kerne(stirn);
+    console.log(`firefox: Altstand: Balken ${JSON.stringify(kb.map((x) => +x.dunkel.toFixed(2)))}, Zone Face (Stirn) Abweichung ${JSON.stringify(kz.map((x) => +x.diff.toFixed(1)))}`);
+    for (const x of kb) pruefe(x.dunkel > 0.95, `Altstand: Balken schwarz auf der Seite (${x.dunkel})`);
+    for (const x of kz) pruefe(x.diff > 6, `Altstand: Zone Face verdeckt, weicht vom Original ab (${x.diff})`);
+  } finally {
+    await driver.close();
+    await driver.switchTo().window(optionenTab2);
+  }
+  await driver.navigate().refresh();
+  await bis('Altstand: Mosaik gewaehlt', async () => (await driver.findElement(By.css('#preset-mosaik')).isSelected()));
+  pruefe(await driver.findElement(By.css('#augenbalken')).isSelected(), 'Altstand: Schalter an, Einstellungsseite');
+  await imSeitenkontext(`await api.storage.local.set({ einstellungen: { version: 1 } });`);
 
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

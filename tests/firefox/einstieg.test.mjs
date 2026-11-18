@@ -205,9 +205,15 @@ try {
   // Seite 3
   await bisSchritt('interview-3');
   pruefe((await eigenschaft('#iv-preset-mia-wort', 'disabled')) === true && (await sichtbar('#iv-stil-sperre')), 'ohne Pack: Presets mit meinem Gesicht gesperrt mit Hinweis');
-  pruefe((await driver.findElements(By.css('#iv-preset-karten input[name="iv-preset"]'))).length === 13, 'Seite 3 zeigt dreizehn Preset-Karten');
+  pruefe((await driver.findElements(By.css('#iv-preset-karten input[name="iv-preset"]'))).length === 12, 'Seite 3 zeigt zwoelf Preset-Karten');
   await klick('#iv-preset-blur');
   await bis('preset blur', async () => (await einst()).preset === 'blur');
+  // Eye bar (E4c): ein Schalter unter dem Raster, aendert nur sich selbst
+  await klick('#iv-augenbalken');
+  await bis('Eye bar an', async () => (await einst()).augenbalken === true);
+  pruefe((await einst()).preset === 'blur', 'Seite 3: der Schalter Eye bar laesst den Stil in Ruhe');
+  await klick('#iv-augenbalken');
+  await bis('Eye bar aus', async () => (await einst()).augenbalken === false);
   // Mit Pack: ein Mia-Preset schaltet Face ein (Entscheidung der Inhaberin), mit kurzem Hinweis; Radiogruppe mit Ueberschrift
   pruefe((await driver.findElement(By.css('#iv-preset-karten')).getAttribute('role')) === 'radiogroup' && (await driver.findElement(By.css('#iv-preset-karten')).getAttribute('aria-labelledby')) === 'schritt-titel', 'Seite 3: eine Radiogruppe mit Ueberschrift');
   await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen ?? {}; await api.storage.local.set({ einstellungen: { ...a, zonen: { ...(a.zonen ?? {}), face: { an: false } } }, pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch'], bilder: 1, groesse: 1, importiert: 1 } });`);
