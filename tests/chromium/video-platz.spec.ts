@@ -43,7 +43,7 @@ interface Verstoss {
   t: number;
   bis: number | null;
   id: string;
-  art: 'zensiert-ohne-leinwand' | 'frei' | 'leinwand-sichtbar' | 'ohne-urteil-sichtbar';
+  art: 'zensiert-ohne-leinwand' | 'frei' | 'leinwand-sichtbar' | 'ohne-urteil-sichtbar' | 'kopie-sichtbar';
   quelle: string;
   ct: number;
   veil: string | null;
@@ -143,6 +143,35 @@ async function oeffnePlatz(abfrage = '', breite = 800, hoehe = 800, bild = BILD)
 
 // ---------- Aufnahme: jedes Bild, das der Browser zeigt (wie in video-zonen.spec.ts) ----------
 
+class KeineBilder extends Error {
+  constructor() {
+    super('Die Aufnahme enthielt kein einziges Bild');
+  }
+}
+// Wie `test`, fuer Faelle mit Aufnahme: liefert die Aufnahme 0 Bilder, beginnt der Fall einmal von vorn; der zweite Versuch ohne Bilder ist rot.
+let zweiterVersuch = false;
+// Zeitgrenze des Falls; im zweiten Versuch kommt die Zeit zur schon verbrauchten dazu.
+function zeit(ms: number): void {
+  test.setTimeout(zweiterVersuch ? test.info().timeout + ms : ms);
+}
+function testA(name: string, fn: () => Promise<void>): void {
+  test(name, async () => {
+    zweiterVersuch = false;
+    try {
+      await fn();
+    } catch (e) {
+      if (!(e instanceof KeineBilder)) throw e;
+      console.log(`chromium: ${name.slice(0, 40)}: Aufnahme ohne Bilder, der Fall beginnt einmal von vorn`);
+      zweiterVersuch = true;
+      try {
+        await fn();
+      } finally {
+        zweiterVersuch = false;
+      }
+    }
+  });
+}
+
 async function starteAufnahme(s: Page) {
   const cdp = await context.newCDPSession(s);
   const roh: Array<{ ts: number; daten: string }> = [];
@@ -155,6 +184,8 @@ async function starteAufnahme(s: Page) {
     async stoppe(): Promise<Bild[]> {
       await cdp.send('Page.stopScreencast').catch(() => {});
       await cdp.detach().catch(() => {});
+      // Eine Aufnahme ohne ein einziges Bild beweist nichts ("nie scharf" waere leer erfuellt): der Fall beginnt einmal von vorn (testA), ein zweites Mal ohne Bilder ist rot.
+      if (roh.length === 0) throw new KeineBilder();
       const aus: Bild[] = [];
       for (const b of roh) aus.push({ ts: b.ts, ...(await messeBild(Buffer.from(b.daten, 'base64'))) });
       return aus;
@@ -218,8 +249,8 @@ function zensurBeginn(l: PlatzEintrag[]): number | null {
 // Gegenprobe der Messung selbst: ohne Erweiterung (Pause) muss das Schachbrett als scharf erkannt werden, sonst waeren alle "nie scharf"-Aussagen leer erfuellt.
 // Einmal je Datei (Zustand: seit der Gegenprobe gilt die Messung als belegt).
 let messungBelegt = false;
-test('Gegenprobe der Messung: ohne Erweiterung (Pause) ist das Schachbrett scharf zu erkennen', async () => {
-  test.setTimeout(90_000);
+testA('Gegenprobe der Messung: ohne Erweiterung (Pause) ist das Schachbrett scharf zu erkennen', async () => {
+  zeit(90_000);
   await setze({ pause: true });
   const s = await oeffnePlatz();
   const rec = await starteAufnahme(s);
@@ -262,7 +293,7 @@ function keineScharfen(bilder: Bild[], tz: number | null, text: string): void {
 // Voraussetzung fuer V1, V3, V4, V7a: ein nie gespieltes Video (preload auto, Sprung auf das Bild mit der Person) bekommt von sich aus die Leinwand und
 // behaelt sie, ohne dass jemand spielt.
 test('V1 Voraussetzung: ein nie gespieltes Vorschau-Video mit Person im ersten Bild nimmt die Leinwand und behaelt sie', async () => {
-  test.setTimeout(90_000);
+  zeit(90_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 3.0 });
   await wartePoll(() => hatLeinwand(s, 'v1'), 30_000);
@@ -275,8 +306,8 @@ test('V1 Voraussetzung: ein nie gespieltes Vorschau-Video mit Person im ersten B
   await s.close();
 });
 
-test('V1 und V3 Platzwechsel beim Spielen: Video 2 bekommt die Leinwand in 3 s, Video 1 ist verdeckt; dabei nie ein Video unbedeckt, nie zensiert ohne Leinwand, nie ein scharfes Schachbrett', async () => {
-  test.setTimeout(120_000);
+testA('V1 und V3 Platzwechsel beim Spielen: Video 2 bekommt die Leinwand in 3 s, Video 1 ist verdeckt; dabei nie ein Video unbedeckt, nie zensiert ohne Leinwand, nie ein scharfes Schachbrett', async () => {
+  zeit(120_000);
   if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
   const s = await oeffnePlatz();
   const rec = await starteAufnahme(s);
@@ -315,7 +346,7 @@ test('V1 und V3 Platzwechsel beim Spielen: Video 2 bekommt die Leinwand in 3 s, 
 });
 
 test('V2 Halter pausiert und aus dem Bild gescrollt, dann startet Video 2: die Leinwand wechselt zu Video 2', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1' });
   await wartePoll(async () => (await attr(s, 'v1', 'data-veil-video-modus')) === 'zonen', 30_000); // Voraussetzung: Video 1 hat die Leinwand und zeigt Zonen
@@ -343,7 +374,7 @@ test('V2 Halter pausiert und aus dem Bild gescrollt, dann startet Video 2: die L
 });
 
 test('V4 fuenf Videos untereinander, eines pausiert als Vorschau mit erster Antwort, eines im Bild wird gespielt: das spielende bekommt die Leinwand in 3 s', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 3.0 });
   await wartePoll(() => hatLeinwand(s, 'v1'), 30_000); // Voraussetzung: das Vorschau-Video hat zuerst geantwortet und die Leinwand
@@ -368,7 +399,7 @@ test('V4 fuenf Videos untereinander, eines pausiert als Vorschau mit erster Antw
 });
 
 test('V5 zwei Videos spielen zugleich: genau eine Leinwand, 5 s beim selben Video, das andere verdeckt und mit Etikett', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1', ct0: 2.5 });
   await neuesVideo(s, { id: 'v2', ct0: 2.5 });
@@ -391,7 +422,7 @@ test('V5 zwei Videos spielen zugleich: genau eine Leinwand, 5 s beim selben Vide
 });
 
 test('V6 der Halter wird aus dem DOM entfernt, Video 2 spielt: Leinwand bei Video 2 in 3 s', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1' });
   await wartePoll(async () => (await attr(s, 'v1', 'data-veil-video-modus')) === 'zonen', 30_000); // Voraussetzung: Video 1 hat die Leinwand
@@ -428,7 +459,7 @@ async function starteSauberVerlauf(s: Page, id: string) {
     w.__sauber[i].push({ t: w.epoche(), s: lies('data-veil-video-sauber'), m: lies('data-veil-video-modus'), b: 0 });
     let stapel = 0;
     const nach = (recs: MutationRecord[], k: number, name: string): string | null => {
-      for (let j = k + 1; j < recs.length; j++) if (recs[j]!.attributeName === name) return recs[j]!.oldValue;
+      for (let j = k + 1; j < recs.length; j++) if (recs[j]!.attributeName === name && recs[j]!.target === recs[k]!.target) return recs[j]!.oldValue;
       return lies(name);
     };
     const beob = new MutationObserver((recs) => {
@@ -445,7 +476,7 @@ async function starteSauberVerlauf(s: Page, id: string) {
 const sauberVerlauf = (s: Page, id: string) => s.evaluate((i) => (window as any).__sauber[i] as Array<{ t: number; s: string | null; m: string | null; b: number }>, id);
 
 test('V7a Verlierer des Platzes: nach dem Verlust zaehlt die Freigabe von vorn (drei saubere Pruefungen im Takt, nicht eine)', async () => {
-  test.setTimeout(150_000);
+  zeit(150_000);
   // Video 1 oben (0 bis 360), Video 2 ab 700: beide im Bild bei Scrollstand 0 und 200, bei 400 nur Video 2.
   const s = await oeffnePlatz('luecke=340');
   await starteSauberVerlauf(s, 'v1');
@@ -491,7 +522,7 @@ test('V7a Verlierer des Platzes: nach dem Verlust zaehlt die Freigabe von vorn (
 test('V7b nach dem Rueckfall "langsam" gibt eine einzige saubere Pruefung nicht frei (Zaehler steht auf 0)', async () => {
   // Heute gruen (Waechter): nach dem Rueckfall "langsam" werden drei saubere Pruefungen gebraucht (gemessen: frei nach 3 Pruefungen, rund 2,5 s). Die Karte vermutete
   // freiNach minus 1 (Risiko B); an diesem Rueckfallweg stimmt das nicht. Der Fall bewacht, dass es bei E3a so bleibt (P7).
-  test.setTimeout(150_000);
+  zeit(150_000);
   const s = await oeffnePlatz();
   await testEreignis(s, { videoVerzoegerungMs: 600 });
   await neuesVideo(s, { id: 'v1' });
@@ -519,8 +550,8 @@ test('V7b nach dem Rueckfall "langsam" gibt eine einzige saubere Pruefung nicht 
   await s.close();
 });
 
-test('P8 Start der Leinwand: das Video bleibt weichgezeichnet, bis die Leinwand ihr erstes Bild gemalt hat (keine leere und keine scharfe Flaeche)', async () => {
-  test.setTimeout(120_000);
+testA('P8 Start der Leinwand: das Video bleibt weichgezeichnet, bis die Leinwand ihr erstes Bild gemalt hat (keine leere und keine scharfe Flaeche)', async () => {
+  zeit(120_000);
   if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
   const s = await oeffnePlatz();
   const rec = await starteAufnahme(s);
@@ -554,7 +585,7 @@ test('P8 Start der Leinwand: das Video bleibt weichgezeichnet, bis die Leinwand 
 });
 
 test('P6 Rueckfall: erst verdeckt, dann die Leinwand weg (nie zensiert ohne Leinwand, nie die Leinwand weg vor dem Weichzeichner)', async () => {
-  test.setTimeout(150_000);
+  zeit(150_000);
   const s = await oeffnePlatz();
   await testEreignis(s, { videoVerzoegerungMs: 600 });
   await neuesVideo(s, { id: 'v1' });
@@ -570,7 +601,7 @@ test('P6 Rueckfall: erst verdeckt, dann die Leinwand weg (nie zensiert ohne Lein
 });
 
 test('P7 Dauerfall: Rueckfall ueber die Eignung (controls) bei Zaehlerstand 2 setzt den Zaehler auf 0 (die Leinwand endet ohne Freigabe)', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await starteSauberVerlauf(s, 'v1');
   await neuesVideo(s, { id: 'v1', ct0: 2.5 });
@@ -595,12 +626,11 @@ test('P7 Dauerfall: Rueckfall ueber die Eignung (controls) bei Zaehlerstand 2 se
   expect(davor[davor.length - 1]?.s, `P7: die letzte Zahl vor dem Stapel ist nicht die 2 (Verlauf ${JSON.stringify(v)})`).toBe('2');
   await abwarten(1500); // die Video-Bremse von 1000 ms ist abgelaufen: ohne P7 stuende das Video nach spaetestens drei sauberen Pruefungen frei, hier nach 1500 ms ohne Freigabe
   expect(await attr(s, 'v1', 'data-veil'), 'P7: das Video wurde nach dem Rueckfall zu frueh frei').toBe('verdeckt');
-  expect(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
   await s.close();
 });
 
 test('R1 ein ungeeignetes Video (controls) hat zuerst geantwortet, ein geeignetes pausiertes dahinter: das geeignete bekommt den Platz', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1', controls: true, preload: 'auto', abspielen: false, ct0: 3.0 });
   await wartePoll(async () => ((await attr(s, 'v1', 'data-veil-video-etikett')) ?? '') !== '', 30_000); // v1 hat geantwortet und ist ganz verdeckt, mit Etikett
@@ -615,7 +645,7 @@ test('R1 ein ungeeignetes Video (controls) hat zuerst geantwortet, ein geeignete
 });
 
 test('R2 ein einzelnes Video mit Leinwand wird aus dem DOM entfernt: der Host der Leinwand ist binnen 200 ms weg', async () => {
-  test.setTimeout(90_000);
+  zeit(90_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1' });
   await wartePoll(async () => (await attr(s, 'v1', 'data-veil-video-modus')) === 'zonen', 30_000);
@@ -628,7 +658,7 @@ test('R2 ein einzelnes Video mit Leinwand wird aus dem DOM entfernt: der Host de
 });
 
 test('R2b ein nur umgehaengtes Video (in derselben Aufgabe wieder im Dokument) behaelt seine Leinwand', async () => {
-  test.setTimeout(90_000);
+  zeit(90_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1' });
   await wartePoll(async () => (await attr(s, 'v1', 'data-veil-video-modus')) === 'zonen', 30_000);
@@ -648,7 +678,7 @@ test('R2b ein nur umgehaengtes Video (in derselben Aufgabe wieder im Dokument) b
 });
 
 test('R11 (Waechter) der Halter wird entfernt: Host binnen 200 ms weg, der Kandidat (womoeglich noch gebremst) bleibt verdeckt, danach bekommt er die Leinwand', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   await neuesVideo(s, { id: 'v1', ct0: 2.5 });
   await neuesVideo(s, { id: 'v2', ct0: 2.5 });
@@ -666,7 +696,7 @@ test('R11 (Waechter) der Halter wird entfernt: Host binnen 200 ms weg, der Kandi
   expect(await hosts(), 'Voraussetzung: der Host des Halters steht').toBe(1);
   const tRaus = await s.evaluate((i) => (window as any).entferne(i) as number, zweiter);
   await abwarten(200);
-  expect(await hosts(), 'R11: der Host des entfernten Halters steht 200 ms nach dem Entfernen noch im DOM (der Kandidat ist gebremst)').toBe(0);
+  expect(await hosts(), 'R11: der Host des entfernten Halters steht 200 ms nach dem Entfernen noch im DOM').toBe(0);
   const z = (await zustaende(s)).find((x) => x.id === erster)!;
   const l = await plog(s);
   const zwischen = leinwandErster(l, erster, tRaus);
@@ -681,7 +711,7 @@ test('R11 (Waechter) der Halter wird entfernt: Host binnen 200 ms weg, der Kandi
 });
 
 test('R12 Antworten laenger als 400 ms: das erste spielende geeignete Video bekommt trotzdem die Leinwand (Start direkt beim Eintreffen der eigenen Antwort)', async () => {
-  test.setTimeout(120_000);
+  zeit(120_000);
   const s = await oeffnePlatz();
   // v0: ungeeignet (controls), bleibt bekannt, damit mehr als ein Video bekannt ist (die Frische gilt nur dann). Es nimmt nie die Leinwand.
   await neuesVideo(s, { id: 'v0', controls: true, preload: 'auto', abspielen: false, ct0: 3.0 });
@@ -698,8 +728,8 @@ test('R12 Antworten laenger als 400 ms: das erste spielende geeignete Video beko
   await s.close();
 });
 
-test('V8 zehn schnelle Wechsel der Berechtigung in 2 s: hoechstens vier Platzwechsel, jedes Video zu jedem Zeitpunkt verdeckt oder mit Leinwand', async () => {
-  test.setTimeout(150_000);
+testA('V8 zehn schnelle Wechsel der Berechtigung in 2 s: hoechstens vier Platzwechsel, jedes Video zu jedem Zeitpunkt verdeckt oder mit Leinwand', async () => {
+  zeit(150_000);
   if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
   // Heute gruen (es gibt keine Platzwechsel); der Fall bewacht die Grenze (P10) und den Schutz (I1) fuer E3a.
   const s = await oeffnePlatz();
@@ -737,10 +767,17 @@ test('V8 zehn schnelle Wechsel der Berechtigung in 2 s: hoechstens vier Platzwec
 });
 
 // ====================================================================================================================================================
-// E3c: Pause nach Regel S2. Ausgangslage heute: in der Pause wird nicht geprueft; ein Standbild wird nur geprueft, wenn davor Play oder Seeked eine Sofort-
-// pruefung schuldete. Alle S2-Faelle ohne Leinwand laufen mit der Einstellung `video: 'ganz'` (nie Zonen), damit die Lage eindeutig "verdeckt ohne Leinwand" ist.
-// Der Film: Person von 2 bis 12 s, danach neutral bis 15 s (Standbild bei 12,5 s ist sauber), Wiederholung ab 0.
+// E3c: Pause nach Regel S2, Regel K (Nacharbeit Runde 1): das Video wird in der Pause NIE frei. Nach drei sauberen Pruefungen desselben Standbilds zeigt eine KOPIE des
+// geprueften Bilds (eigener Host, Testhaken data-veil-video-standbild="kopie"), das Video darunter bleibt `verdeckt` und ist unsichtbar. Alle Faelle laufen mit `video: 'ganz'`.
+// Toleranz null: jedes Bild der Aufnahme ab dem Augenblick der Aenderung zaehlt; das Waechter-Schachbrett steht nur in den Bildern mit Person (2 bis 12 s, Film kurz 2 bis 6 s),
+// die Kopie eines sauberen Standbilds enthaelt es nie (ausser dem einen Fall mit `wn=1`).
 // ====================================================================================================================================================
+
+// Die Bilder nach dem Zeitpunkt `t` bis zur naechsten Freigabe des Videos auf dem normalen Weg (laufender Takt, drei saubere Pruefungen des laufenden Videos) oder bis zum Ende der Aufnahme.
+function bilderBisWiederFrei(bilder: Bild[], l: PlatzEintrag[], t: number): { fenster: Bild[]; wiederFreiNach: number | null } {
+  const f = l.find((e) => e.id === 'v1' && e.was === 'data-veil' && e.v === 'frei' && e.t > t + 20);
+  return { fenster: bilder.filter((b) => b.ts >= t && (!f || b.ts <= f.t)), wiederFreiNach: f ? Math.round(f.t - t) : null };
+}
 
 interface PauseStand {
   s: Page;
@@ -748,99 +785,178 @@ interface PauseStand {
   ctPause: number;
   pruefPause: number;
 }
-// Ein Video ohne Leinwand wird verdeckt (Person bei 10,5 s), laeuft in den neutralen Abschnitt und wird bei 12,5 s pausiert: sauberes Standbild, Hysterese noch nicht frei.
-async function pausiereAufSauberemStandbild(): Promise<PauseStand> {
+interface PauseOpt {
+  // Film mit 6 s: pausiert zwischen `von` und `bis` nach der Schleife (Anfang, neutral), Start bei 4,5 s (Person). Sonst der lange Film, pausiert bei `bei` (Standard 12,5 s).
+  kurz?: boolean;
+  von?: number;
+  bis?: number;
+  bei?: number;
+  // Fixture ?puls=1: ein Punkt wechselt in jedem Bild, damit die Aufnahme auch im Stand Bilder liefert.
+  puls?: boolean;
+  // Fixture ?wn=1: das Schachbrett auch im sauberen Standbild.
+  wn?: boolean;
+  // Weitere Optionen des Videos (controls ...).
+  video?: Record<string, unknown>;
+}
+// Ein Video ohne Leinwand wird verdeckt (Person), laeuft in den neutralen Abschnitt und wird pausiert: sauberes Standbild, Hysterese noch nicht frei.
+async function pausiereAufSauberemStandbild(o: PauseOpt = {}): Promise<PauseStand> {
   await setze({ video: 'ganz' });
-  const s = await oeffnePlatz();
-  await neuesVideo(s, { id: 'v1', ct0: 10.5 });
-  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50], message: 'Voraussetzung: das Video wird beim Anlaufen verdeckt (Person bei 10,5 s)' }).toBe('verdeckt');
-  const p = await s.evaluate(() => (window as any).pausiereBei('v1', 12.5) as Promise<{ t: number; ct: number; pruef: number | null } | null>);
-  expect(p, 'Voraussetzung: das Video erreichte 12,5 s nicht').not.toBeNull();
-  expect(await attr(s, 'v1', 'data-veil'), 'Voraussetzung: beim Pausieren ist das Video noch verdeckt (nicht schon frei)').toBe('verdeckt');
+  const abfrage = [o.kurz ? 'kurz=1' : '', o.puls ? 'puls=1' : '', o.wn ? 'wn=1' : ''].filter(Boolean).join('&');
+  const s = await oeffnePlatz(abfrage);
+  await starteSauberVerlauf(s, 'v1');
+  await neuesVideo(s, { id: 'v1', ct0: o.kurz ? 4.5 : 10.5, ...(o.video ?? {}) });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50], message: 'Voraussetzung: das Video wird beim Anlaufen verdeckt (Person)' }).toBe('verdeckt');
+  const p = await s.evaluate(
+    (a) => (a.kurz ? (window as any).pausiereIm('v1', a.von, a.bis) : (window as any).pausiereBei('v1', a.bei)) as Promise<{ t: number; ct: number; pruef: number | null } | null>,
+    { kurz: !!o.kurz, von: o.von ?? 0.05, bis: o.bis ?? 0.45, bei: o.bei ?? 12.5 },
+  );
+  expect(p, 'Voraussetzung: das Video erreichte den Haltepunkt nicht').not.toBeNull();
+  expect(await attr(s, 'v1', 'data-veil'), 'Voraussetzung: beim Pausieren ist das Video noch verdeckt').toBe('verdeckt');
   expect(await hatLeinwand(s, 'v1'), 'Voraussetzung: bei video "ganz" gibt es keine Leinwand').toBe(false);
   return { s, tPause: p!.t, ctPause: p!.ct, pruefPause: p!.pruef ?? 0 };
 }
 
+const kopieDa = async (s: Page, id = 'v1') => (await attr(s, id, 'data-veil-video-standbild')) === 'kopie';
+// Hosts im Behaelter: die eigenen Hosts (Kopie, Leinwand) sind Geschwister der Videos (div, nicht die Bedienflaeche).
+const hostAnzahl = (s: Page) => s.evaluate(() => [...document.getElementById('platz')!.children].filter((c) => c.localName === 'div' && c.id !== 'bedienung').length);
+const nieFrei = (l: PlatzEintrag[], von = 0) => l.filter((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= von).length;
+
+// Wie die Pause, danach (als Voraussetzung, nicht als Erfolg) steht die Kopie; zurueck gibt es Stand, Seite und Aufnahme.
+async function kopieAufStandbild(o: PauseOpt = {}): Promise<PauseStand & { rec: Awaited<ReturnType<typeof starteAufnahme>> }> {
+  const st = await pausiereAufSauberemStandbild(o);
+  const rec = await starteAufnahme(st.s);
+  await expect.poll(() => kopieDa(st.s), { timeout: 20_000, intervals: [50], message: 'Voraussetzung (S2a): das Standbild bekommt in der Pause seine Kopie' }).toBe(true);
+  return { ...st, rec };
+}
+
 test('S2a Voraussetzung: ein verdecktes Video ohne Leinwand haelt auf einem sauberen Standbild, ohne Leinwand, ohne in der Pause weiterzulaufen', async () => {
-  test.setTimeout(90_000);
+  zeit(90_000);
   const { s, ctPause } = await pausiereAufSauberemStandbild();
-  await abwarten(1500);
+  await abwarten(500);
   expect(await ct(s)).toBe(ctPause);
   expect(await s.evaluate(() => document.getElementById('v1')!.hasAttribute('data-veil-leinwand'))).toBe(false);
   await s.close();
 });
 
-test('S2a Pause auf sauberem Standbild: in der Pause wird geprueft, nach drei sauberen Pruefungen desselben Bilds ist das Video frei', async () => {
-  erwartetRot('E3c', 'heute wird in der Pause nicht geprueft, das Video bleibt auf dem sauberen Standbild verdeckt');
-  test.setTimeout(90_000);
+test('S2a Pause auf sauberem Standbild: in der Pause wird geprueft, nach drei sauberen Pruefungen desselben Bilds steht die Kopie, das Video bleibt verdeckt (nie frei)', async () => {
+  zeit(90_000);
   const { s, tPause, ctPause, pruefPause } = await pausiereAufSauberemStandbild();
-  await expect.soft.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 15_000, intervals: [100], message: 'S2a: das Video blieb 15 s lang auf dem sauberen Standbild verdeckt' }).toBe('frei');
+  await expect.soft.poll(() => kopieDa(s), { timeout: 15_000, intervals: [50], message: 'S2a: das Standbild bekam in 15 s keine Kopie' }).toBe(true);
+  const tKopie = (await plog(s)).find((e) => e.id === 'v1' && e.was === 'data-veil-video-standbild' && e.v === 'kopie' && e.t >= tPause)?.t;
   expect.soft(await ct(s), 'S2a: das Standbild hat sich bewegt').toBe(ctPause);
-  const frei = (await plog(s)).find((e) => e.id === 'v1' && e.was === 'data-veil' && e.v === 'frei' && e.t >= tPause);
-  if (frei) {
-    const geprueft = await pruefungenZwischen(s, tPause, frei.t);
-    expect.soft(geprueft, `S2a: frei nach ${geprueft} Pruefung(en) in der Pause, erwartet mindestens drei saubere (Zaehler videoZeiten)`).toBeGreaterThanOrEqual(3);
-  }
-  expect.soft((await status(s))!.videoPruefungen - pruefPause, 'S2a: keine Pruefung in der Pause').toBeGreaterThanOrEqual(3);
+  expect.soft(await attr(s, 'v1', 'data-veil'), 'S2a: das Urteil des Videos ist nicht verdeckt').toBe('verdeckt');
+  expect.soft(await hostAnzahl(s), 'S2a: es gibt nicht genau einen Host (die Kopie)').toBe(1);
+  expect.soft(await s.evaluate(() => getComputedStyle(document.getElementById('v1')!).opacity), 'S2a: das Video unter der Kopie ist nicht unsichtbar').toBe('0');
+  expect.soft(nieFrei(await plog(s), tPause), 'S2a: das Video war in der Pause frei (K1: das Video wird auf diesem Weg nie frei)').toBe(0);
+  if (tKopie) expect.soft(await pruefungenZwischen(s, tPause, tKopie), 'S2a: Kopie nach weniger als drei Pruefungen des Standbilds').toBeGreaterThanOrEqual(3);
+  expect.soft((await status(s))!.videoPruefungen - pruefPause, 'S2a: keine Pruefungen in der Pause').toBeGreaterThanOrEqual(3);
+  const v = await verstoesse(s);
+  expect.soft(unerlaubt(v, ['v1'], ['frei', 'zensiert-ohne-leinwand', 'leinwand-sichtbar', 'kopie-sichtbar']), zeigeVerstoesse(v)).toEqual([]);
   await s.close();
 });
 
-// Wie S2a, danach (als Voraussetzung, nicht als Erfolg) steht das Video frei auf dem Standbild; zurueck gibt es Stand, Seite und Aufnahme.
-async function freiAufStandbild(): Promise<PauseStand & { rec: Awaited<ReturnType<typeof starteAufnahme>> }> {
-  const st = await pausiereAufSauberemStandbild();
+// Die Aufnahme zeigt die Kopie des Standbilds scharf (das Schachbrett ist im sauberen Standbild: Film mit ?wn=1) und davor, solange das Video noch weichgezeichnet steht, nicht.
+testA('S2a Kopie: die Aufnahme zeigt das saubere Standbild scharf, vor der Kopie nicht', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const st = await pausiereAufSauberemStandbild({ wn: true, puls: true });
   const rec = await starteAufnahme(st.s);
-  await expect.poll(() => attr(st.s, 'v1', 'data-veil'), { timeout: 15_000, intervals: [100], message: 'Voraussetzung (S2a): das Video wird in der Pause frei' }).toBe('frei');
-  return { ...st, rec };
-}
-
-test('S2b aus dem freien Standbild Play: im selben Schritt wieder verdeckt, nie ein scharfes Schachbrett eines spaeteren Bilds', async () => {
-  erwartetRot('E3c', 'heute wird das Standbild in der Pause nie frei (Voraussetzung S2a fehlt); die Hauptaussage ist erst mit E3c pruefbar');
-  test.setTimeout(120_000);
-  const { s, rec } = await freiAufStandbild();
-  const tPlay = await s.evaluate(() => (window as any).spiele('v1') as number);
-  await expect.soft.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 2000, intervals: [20], message: 'S2b: nach Play nicht verdeckt' }).toBe('verdeckt');
-  const v = await verstoesse(s);
-  const freiEintrag = [...v].reverse().find((x) => x.id === 'v1' && x.art === 'frei');
-  expect.soft(freiEintrag?.bis != null && freiEintrag.bis - tPlay <= 150, `S2b: das Video blieb nach Play noch ${freiEintrag?.bis == null ? 'unbegrenzt' : Math.round(freiEintrag.bis - tPlay)} ms frei (erwartet: im selben Schritt, hoechstens 150 ms)`).toBe(true);
-  // bis zum naechsten Bild mit Person (Schleife ab 0, Person ab 2 s): das Waechter-Schachbrett darf nie scharf sein
-  await wartePoll(async () => (await ct(s)) > 3.5 && (await ct(s)) < 6, 40_000);
+  const diag = () =>
+    st.s.evaluate(() => {
+      const punkt = [...document.body.children].find((c) => (c as HTMLElement).style?.position === 'fixed' && (c as HTMLElement).style.width === '120px') as HTMLElement | undefined;
+      const r = punkt?.getBoundingClientRect();
+      return { t: (window as any).epoche() as number, sicht: document.visibilityState, fokus: document.hasFocus(), puls: (window as any).pulsSchritte as number, b: innerWidth, h: innerHeight, punkt: r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] : null };
+    });
+  const d0 = await diag();
+  await expect.poll(() => kopieDa(st.s), { timeout: 20_000, intervals: [50] }).toBe(true);
+  const tKopie = (await plog(st.s)).find((e) => e.id === 'v1' && e.was === 'data-veil-video-standbild' && e.v === 'kopie' && e.t >= st.tPause)!.t;
+  await abwarten(1200);
+  const d1 = await diag();
+  const seiten = context.pages().map((p) => p.url().replace(/\?.*/, '').slice(-40));
   const bilder = await rec.stoppe();
-  const nach = bilder.filter((b) => b.ts >= tPlay + BEGINN_TOLERANZ_MS);
-  expect.soft(nach.length, 'S2b: zu wenige Bilder nach Play').toBeGreaterThan(30);
+  const vorher = bilder.filter((b) => b.ts >= st.tPause + BEGINN_TOLERANZ_MS && b.ts < tKopie - 40);
+  const nachher = bilder.filter((b) => b.ts >= tKopie + 120);
+  console.log(`chromium: S2a Kopie: ${vorher.length} Bilder vor der Kopie (scharf: ${vorher.filter(scharf).length}), ${nachher.length} danach (scharf: ${nachher.filter(scharf).length})`);
+  // Ein Fenster ohne ein einziges Bild beweist nichts (die Aufnahme lieferte nach dem Start keine Bilder): der Fall beginnt einmal von vorn (testA), danach ist er rot.
+  if (vorher.length === 0 || nachher.length === 0) {
+    console.log(`chromium: S2a Kopie Diagnose: Start ${JSON.stringify({ ...d0, t: Math.round(d0.t - st.tPause) })}, Ende ${JSON.stringify({ ...d1, t: Math.round(d1.t - st.tPause) })}, Pulsschritte im Fenster ${d1.puls - d0.puls}, Seiten ${context.pages().length} ${JSON.stringify(seiten)}`);
+    console.log(`chromium: S2a Kopie Aufnahme: ${bilder.length} Bilder insgesamt, erstes ${bilder.length ? Math.round(bilder[0]!.ts - st.tPause) : '-'} ms, letztes ${bilder.length ? Math.round(bilder[bilder.length - 1]!.ts - st.tPause) : '-'} ms gegen die Pause, Kopie bei ${Math.round(tKopie - st.tPause)} ms`);
+    throw new KeineBilder();
+  }
+  expect.soft(vorher.length, 'S2a Kopie: zu wenige Bilder vor der Kopie').toBeGreaterThan(10);
+  expect.soft(vorher.filter(scharf).length, 'S2a Kopie: vor der Kopie ist das Standbild scharf zu sehen').toBe(0);
+  expect.soft(nachher.length, 'S2a Kopie: zu wenige Bilder nach der Kopie').toBeGreaterThan(10);
+  expect.soft(nachher.filter(scharf).length, 'S2a Kopie: die Kopie zeigt das Standbild nicht scharf').toBe(nachher.length);
+  expect.soft(await attr(st.s, 'v1', 'data-veil')).toBe('verdeckt');
+  await st.s.close();
+});
+
+testA('S2b aus der Kopie Play: die Kopie ist sofort weg, das Video steht verdeckt da, kein einziges scharfes Bild des neuen Inhalts', async () => {
+  zeit(120_000);
+  const { s, rec } = await kopieAufStandbild({ kurz: true });
+  const tPlay = await s.evaluate(() => (window as any).spiele('v1') as number);
+  await expect.soft.poll(() => kopieDa(s), { timeout: 2000, intervals: [20], message: 'S2b: die Kopie steht nach Play noch' }).toBe(false);
+  expect.soft(await attr(s, 'v1', 'data-veil'), 'S2b: nach Play nicht verdeckt').toBe('verdeckt');
+  expect.soft(await hostAnzahl(s), 'S2b: nach Play steht der Host der Kopie noch').toBe(0);
+  // bis zum Bild mit Person (ab 2 s, Film kurz): das Waechter-Schachbrett darf nie scharf sein
+  await wartePoll(async () => (await ct(s)) > 2.6 && (await ct(s)) < 5.5, 40_000);
+  const bilder = await rec.stoppe();
+  const l = await plog(s);
+  expect.soft(nieFrei(l, tPlay), 'S2b: das Video war nach Play frei').toBe(0);
+  const { fenster: nach, wiederFreiNach } = bilderBisWiederFrei(bilder, l, tPlay);
+  console.log(`chromium: S2b Toleranz 0, wieder frei auf dem normalen Weg nach ${wiederFreiNach} ms, ${nach.length} Bilder im Fenster`);
+  expect.soft(nach.length, 'S2b: zu wenige Bilder im Fenster nach Play').toBeGreaterThan(5);
   expect.soft(nach.filter(scharf).length, 'S2b: scharfe Bilder nach Play').toBe(0);
   await s.close();
 });
 
-// Der Zaehlerstand ("wie vor der Pause") ist von aussen nicht zu sehen: es gibt keinen Testhaken fuer die Zahl der sauberen Pruefungen je Video.
-test.fixme('S2b Zaehler: nach Play steht der Zaehler sauberer Pruefungen wie vor der Pause (nicht auf drei, nicht auf null)', async () => {
-  // Fehlender Testhaken: ein Attribut am Video (z. B. data-veil-video-sauber="<Zahl>", nur im Testbau) mit dem Stand von VideoLauf.sauber. Dann: vor der Pause lesen,
-  // nach Play lesen, gleich erwarten. Bis dahin ist nur die Folge sichtbar (S2b oben: nach Play verdeckt).
+// Der Zaehler sauberer Pruefungen des laufenden Videos (Testhaken data-veil-video-sauber): die drei Pruefungen des Standbilds zaehlen nicht fuer ihn. Der Wert wird im Augenblick
+// der Pause gelesen, in einer Szene, in der er dort 1 oder 2 ist (Film lang, Pause bei 13,3 s: die Person endet bei 12 s, die ersten sauberen Pruefungen im Takt liegen davor), und mit dem Wert
+// in den ersten 300 ms nach Play verglichen. Ein Fehler, der nach Play auf 0 oder auf 3 setzt, wird so sichtbar (die Messung in der kurzen Szene stand fast immer auf 0).
+test('S2b Zaehler: nach Play steht der Zaehler sauberer Pruefungen wie im Augenblick der Pause (1 oder 2, nicht null, nicht drei)', async () => {
+  zeit(120_000);
+  const st = await pausiereAufSauberemStandbild({ bei: 13.3 });
+  const { s } = st;
+  const vorPause = await attr(s, 'v1', 'data-veil-video-sauber');
+  expect(['1', '2'], `Voraussetzung: im Augenblick der Pause steht der Zaehler auf ${vorPause}, erwartet 1 oder 2`).toContain(vorPause);
+  await expect.poll(() => kopieDa(s), { timeout: 20_000, intervals: [50] }).toBe(true);
+  expect(await attr(s, 'v1', 'data-veil-video-sauber'), 'in der Pause mit Kopie hat sich der Zaehler des laufenden Videos geaendert (die Pruefungen des Standbilds duerfen ihn nicht zaehlen)').toBe(vorPause);
+  const tPlay = await s.evaluate(() => (window as any).spiele('v1') as number);
+  await expect.poll(() => kopieDa(s), { timeout: 2000, intervals: [20] }).toBe(false);
+  await abwarten(150);
+  const verlauf = await sauberVerlauf(s, 'v1');
+  const imFenster = verlauf.filter((x) => x.t >= tPlay && x.t <= tPlay + 300 && x.s !== null).map((x) => x.s);
+  expect.soft(imFenster.every((w) => w === vorPause), `S2b Zaehler: Zaehlerwerte in den ersten 300 ms nach Play ${JSON.stringify(imFenster)}, erwartet nur ${vorPause}`).toBe(true);
+  expect.soft(await attr(s, 'v1', 'data-veil-video-sauber'), 'S2b Zaehler: der Zaehler nach Play weicht vom Stand im Augenblick der Pause ab').toBe(vorPause);
+  await s.close();
 });
 
-test('S2c aus dem freien Standbild springen: sofort verdeckt, dann neue Pruefung des neuen Standbilds, Person bleibt verdeckt', async () => {
-  erwartetRot('E3c', 'heute wird das Standbild in der Pause nie frei (Voraussetzung S2a fehlt); die Hauptaussage ist erst mit E3c pruefbar');
-  test.setTimeout(120_000);
-  const { s, rec } = await freiAufStandbild();
+testA('S2c aus der Kopie springen: die Kopie ist sofort weg, das Video verdeckt, dann neue Pruefung des neuen Standbilds, kein einziges scharfes Bild', async () => {
+  zeit(120_000);
+  const { s, rec } = await kopieAufStandbild({ puls: true });
   const vorher = (await status(s))!.videoPruefungen;
   const tSprung = await s.evaluate(() => {
     (document.getElementById('v1') as HTMLVideoElement).currentTime = 3.5; // Standbild mit Person und Waechter
     return (window as any).epoche() as number;
   });
-  await expect.soft.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 2000, intervals: [20], message: 'S2c: nach dem Sprung nicht verdeckt' }).toBe('verdeckt');
-  const freiEintrag = [...(await verstoesse(s))].reverse().find((x) => x.id === 'v1' && x.art === 'frei');
-  expect.soft(freiEintrag?.bis != null && freiEintrag.bis - tSprung <= 150, `S2c: das Video blieb nach dem Sprung noch ${freiEintrag?.bis == null ? 'unbegrenzt' : Math.round(freiEintrag.bis - tSprung)} ms frei (erwartet: sofort)`).toBe(true);
+  await expect.soft.poll(() => kopieDa(s), { timeout: 2000, intervals: [20], message: 'S2c: die Kopie steht nach dem Sprung noch' }).toBe(false);
+  expect.soft(await attr(s, 'v1', 'data-veil'), 'S2c: nach dem Sprung nicht verdeckt').toBe('verdeckt');
   await abwarten(3500);
   expect.soft((await status(s))!.videoPruefungen - vorher, 'S2c: keine neue Pruefung des neuen Standbilds').toBeGreaterThanOrEqual(1);
   expect.soft(await attr(s, 'v1', 'data-veil'), 'S2c: das Standbild mit Person ist nicht verdeckt').toBe('verdeckt');
+  expect.soft(await kopieDa(s), 'S2c: das Standbild mit Person hat eine Kopie').toBe(false);
+  const l = await plog(s);
+  expect.soft(nieFrei(l, tSprung), 'S2c: das Video war nach dem Sprung frei').toBe(0);
   const bilder = await rec.stoppe();
-  const nach = bilder.filter((b) => b.ts >= tSprung + BEGINN_TOLERANZ_MS);
+  const nach = bilder.filter((b) => b.ts >= tSprung);
+  console.log(`chromium: S2c Toleranz 0: ${nach.length} Bilder ab dem Sprung, scharf: ${nach.filter(scharf).length}`);
   expect.soft(nach.length, 'S2c: zu wenige Bilder nach dem Sprung').toBeGreaterThanOrEqual(3);
   expect.soft(nach.filter(scharf).length, 'S2c: scharfe Bilder nach dem Sprung').toBe(0);
   await s.close();
 });
 
-test('S2d (Waechter) Standbild mit Person bleibt in der Pause verdeckt, nie frei, nie scharf', async () => {
-  test.setTimeout(90_000);
+testA('S2d (Waechter) Standbild mit Person bleibt in der Pause verdeckt, nie frei, nie scharf', async () => {
+  zeit(90_000);
   expect(messungBelegt || OHNE_KENNZEICHNUNG, 'Gegenprobe der Messung fehlt').toBe(true);
   await setze({ video: 'ganz' });
   const s = await oeffnePlatz();
@@ -865,8 +981,8 @@ test('S2d (Waechter) Standbild mit Person bleibt in der Pause verdeckt, nie frei
   await s.close();
 });
 
-test('S2e (Waechter) Video mit Leinwand behaelt in der Pause die Zonen fuer das Standbild, nie scharf', async () => {
-  test.setTimeout(90_000);
+testA('S2e (Waechter) Video mit Leinwand behaelt in der Pause die Zonen fuer das Standbild, nie scharf', async () => {
+  zeit(90_000);
   expect(messungBelegt || OHNE_KENNZEICHNUNG, 'Gegenprobe der Messung fehlt').toBe(true);
   const s = await oeffnePlatz();
   const rec = await starteAufnahme(s);
@@ -888,6 +1004,617 @@ test('S2e (Waechter) Video mit Leinwand behaelt in der Pause die Zonen fuer das 
   const fenster = bilder.filter((b) => b.ts >= tz! + BEGINN_TOLERANZ_MS);
   expect(fenster.length, 'zu wenige Bilder (ein Standbild erzeugt nur wenige neue Bilder)').toBeGreaterThanOrEqual(3);
   expect(fenster.filter(scharf).length, 'scharfe Bilder in der Pause').toBe(0);
+  await s.close();
+});
+
+// ---------- E3c, weitere Faelle (a) bis (l) ----------
+
+const POSTER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+// Hoechstens so viele Pruefungen in der Pause (je Standbild: 3 saubere, dazu eine laufende des Takts vor der Pause): kein Dauerpruefen eines unveraenderten Bilds.
+const PAUSE_PRUEF_MAX = 6;
+
+// (a) Ein nie gespieltes Video mit poster-Attribut: es zeigt das Poster, nicht ein Bild des Films. Es wird bei 3 s (Person) verdeckt, springt zurueck an den Anfang (0 s, nie gespielt,
+// erstes Bild sauber): ohne Poster waere das ein Standbild zum Pruefen (Kontrolle a2), mit Poster bleibt es verdeckt und bekommt keine Kopie.
+async function nieGespieltAufNull(poster: boolean) {
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 3.0, ...(poster ? { poster: POSTER } : {}) });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50], message: 'Voraussetzung: das nie gespielte Video mit Person im ersten Bild wird verdeckt' }).toBe('verdeckt');
+  expect(await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).played.length), 'Voraussetzung: das Video wurde nie gespielt').toBe(0);
+  const vorher = (await status(s))!.videoPruefungen;
+  const tSprung = await s.evaluate(() => {
+    (document.getElementById('v1') as HTMLVideoElement).currentTime = 0;
+    return (window as any).epoche() as number;
+  });
+  return { s, rec, tSprung, vorher };
+}
+
+test('(a) nie gespieltes Video mit Poster, erstes Bild sauber: bleibt verdeckt, keine Kopie, auch nach vielen Sekunden, nie frei, nie scharf', async () => {
+  zeit(90_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const { s, rec, tSprung, vorher } = await nieGespieltAufNull(true);
+  await expect.poll(() => ct(s), { timeout: 5000, intervals: [50], message: 'Voraussetzung: das Video steht auf 0 s' }).toBeLessThan(0.05);
+  await abwarten(9000);
+  expect(await attr(s, 'v1', 'data-veil'), '(a): das nie gespielte Video mit Poster wurde frei').toBe('verdeckt');
+  expect(await kopieDa(s), '(a): das Poster-Video bekam eine Kopie').toBe(false);
+  expect(await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).paused)).toBe(true);
+  const l = await plog(s);
+  expect(nieFrei(l, tSprung), '(a): das Video war nach dem Sprung auf das erste Bild frei').toBe(0);
+  const v = await verstoesse(s);
+  expect(unerlaubt(v, ['v1'], ['frei', 'zensiert-ohne-leinwand', 'leinwand-sichtbar', 'kopie-sichtbar']), zeigeVerstoesse(v)).toEqual([]);
+  console.log(`chromium: (a) Pruefungen in 9 s auf dem Poster-Standbild: ${(await status(s))!.videoPruefungen - vorher}`);
+  const bilder = await rec.stoppe();
+  const fenster = bilder.filter((b) => b.ts >= (zensurBeginn(l) ?? tSprung) + BEGINN_TOLERANZ_MS);
+  expect(fenster.filter(scharf).length, '(a): scharfe Bilder').toBe(0);
+  await s.close();
+});
+
+// Kontrolle zu (a): dasselbe ohne poster-Attribut ist ein Standbild des Films und bekommt nach drei sauberen Pruefungen seine Kopie (das Video bleibt verdeckt).
+test('(a2) Kontrolle: dasselbe ohne poster-Attribut, erstes Bild des Films sauber: nach drei sauberen Pruefungen steht die Kopie', async () => {
+  zeit(90_000);
+  const { s, rec, tSprung } = await nieGespieltAufNull(false);
+  await expect.soft.poll(() => kopieDa(s), { timeout: 15_000, intervals: [100], message: '(a2): ohne Poster blieb das Standbild 15 s ohne Kopie' }).toBe(true);
+  expect.soft(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
+  expect.soft(nieFrei(await plog(s), tSprung)).toBe(0);
+  await rec.stoppe();
+  await s.close();
+});
+
+// (b) Ein Standbild mit Person bleibt verdeckt, auch nach vielen Sekunden; der Treffer beendet die Pruefung dieses Standbilds (kein Dauerpruefen).
+testA('(b) Standbild mit Person: nach 15 s Pause nie frei, keine Kopie, nie scharf, und keine Dauerpruefung des unveraenderten Bilds', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', ct0: 3.0 });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50] }).toBe('verdeckt');
+  const p = await s.evaluate(() => (window as any).pausiereBei('v1', 3.4) as Promise<{ t: number; ct: number; pruef: number | null } | null>);
+  expect(p, 'das Video erreichte 3,4 s nicht').not.toBeNull();
+  await abwarten(15_000);
+  expect(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
+  expect(await kopieDa(s), '(b): das Standbild mit Person hat eine Kopie').toBe(false);
+  const l = await plog(s);
+  expect(nieFrei(l), '(b): das Standbild mit Person war frei').toBe(0);
+  const pruefInPause = (await status(s))!.videoPruefungen - (p!.pruef ?? 0);
+  console.log(`chromium: (b) Pruefungen in 15 s Pause auf dem Standbild mit Person: ${pruefInPause}`);
+  expect(pruefInPause, `(b): ${pruefInPause} Pruefungen in 15 s auf einem unveraenderten Standbild (Treffer beendet die Pruefung)`).toBeLessThanOrEqual(PAUSE_PRUEF_MAX);
+  const bilder = await rec.stoppe();
+  const tz = zensurBeginn(l);
+  expect(tz).not.toBeNull();
+  expect(bilder.filter((b) => b.ts >= tz! + BEGINN_TOLERANZ_MS).filter(scharf).length, '(b): scharfe Bilder in der Pause').toBe(0);
+  const v = await verstoesse(s);
+  expect(unerlaubt(v, ['v1'], ['frei', 'zensiert-ohne-leinwand', 'leinwand-sichtbar', 'kopie-sichtbar']), zeigeVerstoesse(v)).toEqual([]);
+  await s.close();
+});
+
+// (c) Bild fuer Bild in der Pause: mehrere Spruenge kurz hintereinander, abwechselnd auf saubere Bilder (12,6 bis 12,8 s) und auf Bilder mit Person und Waechter (3,5 bis 3,7 s).
+// Nach dem ersten Sprung ist die Kopie weg und kommt waehrend der Spruenge nie wieder (jedes Standbild braucht drei Pruefungen, die Spruenge folgen im Abstand von 200 ms);
+// kein Bild ab dem ersten Sprung zeigt das Schachbrett scharf.
+testA('(c) Bild fuer Bild in der Pause (sechs Spruenge in 1,2 s): die Kopie sofort weg und nie wieder, nie frei, kein scharfes Bild', async () => {
+  zeit(150_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const { s, rec } = await kopieAufStandbild({ puls: true });
+  const zeiten = [12.6, 3.5, 12.7, 3.6, 12.8, 3.7];
+  const t = await s.evaluate(async (liste) => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    const start = (window as any).epoche() as number;
+    let kopieWiederDa = false;
+    for (const z of liste) {
+      v.currentTime = z;
+      await new Promise((r) => setTimeout(r, 200));
+      if (v.getAttribute('data-veil-video-standbild') === 'kopie') kopieWiederDa = true;
+    }
+    return { start, ende: (window as any).epoche() as number, kopieWiederDa };
+  }, zeiten);
+  expect.soft(t.kopieWiederDa, '(c): waehrend der Spruenge stand wieder eine Kopie da').toBe(false);
+  expect.soft(await attr(s, 'v1', 'data-veil'), '(c): nach dem letzten Sprung (Bild mit Person) nicht verdeckt').toBe('verdeckt');
+  expect.soft(nieFrei(await plog(s), t.start - 50), '(c): das Video war waehrend der Spruenge frei').toBe(0);
+  await abwarten(3000);
+  expect.soft(await attr(s, 'v1', 'data-veil'), '(c): das Standbild mit Person (letzter Sprung) ist nicht verdeckt').toBe('verdeckt');
+  expect.soft(await kopieDa(s), '(c): das Standbild mit Person hat eine Kopie').toBe(false);
+  const bilder = await rec.stoppe();
+  const nach = bilder.filter((b) => b.ts >= t.start);
+  expect.soft(nach.length, '(c): zu wenige Bilder nach dem ersten Sprung').toBeGreaterThanOrEqual(5);
+  expect.soft(nach.filter(scharf).length, '(c): scharfe Bilder nach dem ersten Sprung').toBe(0);
+  await s.close();
+});
+
+// (d) Play unmittelbar nach dem Erscheinen der Kopie: ein Beobachter in der Seite ruft play(), sobald das Attribut der Kopie steht (im selben Mikroschritt). Danach ist die Kopie weg und
+// kein Bild der Folge (Film kurz: die Person kommt bei 2 s, etwa 1,4 s nach Play) zeigt das Schachbrett scharf, solange das Video nicht auf dem normalen Weg wieder frei wird.
+testA('(d) Play unmittelbar nach dem Erscheinen der Kopie (im selben Mikroschritt): die Kopie weg, verdeckt, kein scharfes Bild eines spaeteren Bilds', async () => {
+  zeit(150_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const st = await pausiereAufSauberemStandbild({ kurz: true });
+  const { s } = st;
+  await s.evaluate(() => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    (window as any).__playBeiKopie = 0;
+    new MutationObserver(() => {
+      if (v.getAttribute('data-veil-video-standbild') === 'kopie' && v.paused && !(window as any).__playBeiKopie) {
+        (window as any).__playBeiKopie = (window as any).epoche();
+        v.play().catch(() => {});
+      }
+    }).observe(v, { attributes: true, attributeFilter: ['data-veil-video-standbild'] });
+  });
+  const rec = await starteAufnahme(s);
+  await expect.poll(() => s.evaluate(() => (window as any).__playBeiKopie as number), { timeout: 20_000, intervals: [50], message: '(d): das Standbild bekam in der Pause nie eine Kopie' }).toBeGreaterThan(0);
+  const tPlay = await s.evaluate(() => (window as any).__playBeiKopie as number);
+  await expect.soft.poll(() => kopieDa(s), { timeout: 2000, intervals: [20], message: '(d): nach Play steht die Kopie noch' }).toBe(false);
+  expect.soft(await attr(s, 'v1', 'data-veil'), '(d): nach Play nicht verdeckt').toBe('verdeckt');
+  await wartePoll(async () => (await ct(s)) > 2.6 && (await ct(s)) < 5.5, 40_000);
+  const bilder = await rec.stoppe();
+  const l = await plog(s);
+  expect.soft(nieFrei(l, tPlay), '(d): das Video war nach Play frei').toBe(0);
+  const { fenster: nach, wiederFreiNach } = bilderBisWiederFrei(bilder, l, tPlay);
+  console.log(`chromium: (d) Toleranz 0, wieder frei auf dem normalen Weg nach ${wiederFreiNach} ms, ${nach.length} Bilder im Fenster`);
+  expect.soft(nach.length, '(d): zu wenige Bilder im Fenster nach Play').toBeGreaterThan(5);
+  expect.soft(nach.filter(scharf).length, '(d): scharfe Bilder nach Play, solange das Video verdeckt ist').toBe(0);
+  await s.close();
+});
+
+// (e) Die Quelle wechselt in der Pause: die neue Quelle (derselbe Film als frisches Blob, Start bei 3,5 s per Fragment) zeigt im ersten Bild die Person mit Waechter. Sofort keine Kopie,
+// nie frei, kein scharfes Bild.
+testA('(e) Quelle wechselt in der Pause (neue Quelle zeigt im ersten Bild die Person mit Waechter): sofort keine Kopie, nie frei, kein scharfes Bild', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const { s, rec } = await kopieAufStandbild({ puls: true });
+  const tWechsel = await s.evaluate(() => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    v.src = (window as any).neueQuelle() + '#t=3.5';
+    return (window as any).epoche() as number;
+  });
+  await expect.soft.poll(() => kopieDa(s), { timeout: 2000, intervals: [20], message: '(e): die Kopie steht nach dem Quellenwechsel noch' }).toBe(false);
+  await abwarten(3500);
+  const v = await verstoesse(s);
+  expect.soft(unerlaubt(v.filter((x) => x.t >= tWechsel), ['v1'], ['frei', 'ohne-urteil-sichtbar', 'zensiert-ohne-leinwand', 'leinwand-sichtbar', 'kopie-sichtbar']), `(e): ${zeigeVerstoesse(v)}`).toEqual([]);
+  expect.soft(await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).currentTime), '(e): die neue Quelle steht nicht auf der Person (Voraussetzung)').toBeGreaterThan(3.0);
+  const bilder = await rec.stoppe();
+  const nach = bilder.filter((b) => b.ts >= tWechsel);
+  console.log(`chromium: (e) Toleranz 0: ${nach.length} Bilder ab dem Quellenwechsel, scharf: ${nach.filter(scharf).length}`);
+  expect.soft(nach.filter(scharf).length, '(e): scharfe Bilder nach dem Quellenwechsel').toBe(0);
+  await s.close();
+});
+
+// (f) Ohne Bildwaechter (Testschalter ohneRvfc: auch fuer die Kopie wird dann kein requestVideoFrameCallback gestellt, Pfad von Firefox 128): die Kopie kommt und geht allein ueber
+// die Ereignisse am Fenster und die Nachschau. Das ist etwas anderes als S2a (dort stellt der Bildwaechter mit): hier steht nach Play und nach einem Sprung die Kopie nie laenger als
+// die Ereignisse brauchen, und kein Bild des neuen Inhalts ist scharf.
+testA('(f) ohne Bildwaechter (Testschalter): die Kopie kommt und geht allein ueber Ereignisse und Nachschau, nie frei, kein scharfes Bild', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz('puls=1');
+  await testEreignis(s, { ohneRvfc: true });
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', ct0: 10.5 });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50] }).toBe('verdeckt');
+  const p = await s.evaluate(() => (window as any).pausiereBei('v1', 12.5) as Promise<{ t: number; ct: number; pruef: number | null } | null>);
+  expect(p, 'das Video erreichte 12,5 s nicht').not.toBeNull();
+  await expect.poll(() => kopieDa(s), { timeout: 20_000, intervals: [100], message: '(f): ohne Bildwaechter keine Kopie' }).toBe(true);
+  expect(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
+  const tSprung = await s.evaluate(() => {
+    (document.getElementById('v1') as HTMLVideoElement).currentTime = 3.5;
+    return (window as any).epoche() as number;
+  });
+  await expect.soft.poll(() => kopieDa(s), { timeout: 1000, intervals: [10], message: '(f): die Kopie steht nach dem Sprung noch' }).toBe(false);
+  await abwarten(1500);
+  const l = await plog(s);
+  expect(nieFrei(l, p!.t), '(f): frei').toBe(0);
+  const bilder = await rec.stoppe();
+  expect(bilder.filter((b) => b.ts >= tSprung).filter(scharf).length, '(f): scharfe Bilder des neuen Inhalts').toBe(0);
+  await s.close();
+});
+
+// V1 (R5): eine Pruefung, die beim Laufen beginnt und deren Antwort nach der Pause kommt (verzoegerte Antwort ueber den Testhaken videoVerzoegerungMs), zaehlt nicht im
+// Zaehler `sauber` des laufenden Videos. Ein Treffer wirkt weiter sofort; hier ist die Antwort sauber (Bild nach 12 s).
+test('V1 (R5) eine Pruefung beginnt beim Laufen, die Antwort kommt nach der Pause: der Zaehler sauberer Pruefungen steigt nicht', async () => {
+  zeit(120_000);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  await starteSauberVerlauf(s, 'v1');
+  await testEreignis(s, { videoVerzoegerungMs: 1700 }); // knapp unter der Frist von 2000 ms: es ist praktisch immer eine Pruefung unterwegs
+  await neuesVideo(s, { id: 'v1', ct0: 10.5 });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 40_000, intervals: [50] }).toBe('verdeckt');
+  const p = await s.evaluate(() => (window as any).pausiereBei('v1', 13.0) as Promise<{ t: number; ct: number } | null>);
+  expect(p, 'das Video erreichte 13 s nicht').not.toBeNull();
+  const vorPause = await attr(s, 'v1', 'data-veil-video-sauber');
+  await abwarten(300); // der Status wird gedrosselt geschrieben
+  const ursprung = await s.evaluate(() => performance.timeOrigin);
+  const imFlug = (await status(s))!.videoZeiten.filter((z) => ursprung + z.t > p!.t - 1700 && ursprung + z.t < p!.t);
+  expect(imFlug.length, 'Voraussetzung: beim Pausieren war eine Pruefung unterwegs (begonnen beim Laufen, Antwort noch offen)').toBeGreaterThanOrEqual(1);
+  await abwarten(2300); // die Antwort kommt nach der Pause (1700 ms), danach laufen noch die Pruefungen des Standbilds (zaehlen nie im laufenden Zaehler)
+  const verlauf = await sauberVerlauf(s, 'v1');
+  const danach = verlauf.filter((x) => x.t > p!.t && x.s !== null).map((x) => Number(x.s));
+  expect(Math.max(Number(vorPause), ...danach), `V1: der Zaehler stieg nach der Pause von ${vorPause} auf ${JSON.stringify(danach)}`).toBeLessThanOrEqual(Number(vorPause));
+  expect(await attr(s, 'v1', 'data-veil-video-sauber'), 'V1: der Zaehler nach der Pause weicht ab').toBe(vorPause);
+  await s.close();
+});
+
+// ---------- E3d: Poster eines nie gespielten Videos (Regel P) ----------
+// p1 bis p4 und die beiden Waechter-Faelle (P-Poster). Das Poster zeigt in den Faellen mit Waechter die Person mit Schachbrett (erzeugePoster), sonst ein kleines neutrales Bild.
+
+test('p1 Poster neutral, Film neutral: bleibt bis zum Abspielen verdeckt, danach frei nach drei sauberen Pruefungen ab null', async () => {
+  zeit(120_000);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  await starteSauberVerlauf(s, 'v1');
+  await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 13.0, poster: POSTER });
+  await expect.poll(() => s.evaluate(() => { const v = document.getElementById('v1') as HTMLVideoElement; return v.readyState >= 2 && v.getAttribute('data-veil') !== null; }), { timeout: 30_000, intervals: [100] }).toBe(true);
+  await abwarten(6000);
+  expect(await attr(s, 'v1', 'data-veil'), 'p1: das nie gespielte Video mit Poster ist nicht verdeckt').toBe('verdeckt');
+  expect(nieFrei(await plog(s)), 'p1: das Video war vor dem Abspielen frei').toBe(0);
+  const tPlay = await s.evaluate(() => (window as any).spiele('v1') as number);
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 20_000, intervals: [50], message: 'p1: das Video wurde nach dem Abspielen nicht frei' }).toBe('frei');
+  const tFrei = (await plog(s)).find((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= tPlay)!.t;
+  console.log(`chromium: p1 frei ${Math.round(tFrei - tPlay)} ms nach Play, Zaehlerfolge ${JSON.stringify((await sauberVerlauf(s, 'v1')).filter((x) => x.t >= tPlay).map((x) => x.s))}`);
+  expect(tFrei - tPlay, 'p1: frei nach weniger als zwei Taktzeiten (der Zaehler steht beim Abspielen auf null, drei saubere Pruefungen)').toBeGreaterThanOrEqual(1800);
+  await s.close();
+});
+
+testA('p2 Poster nachtraeglich auf ein freies, nie gespieltes Video gesetzt: sofort verdeckt, in der Aufnahme kein scharfes Poster', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz('puls=1');
+  const poster = await s.evaluate(() => (window as any).erzeugePoster() as Promise<string>);
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 13.0 });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50], message: 'Voraussetzung: das nie gespielte Video ohne Poster wird frei' }).toBe('frei');
+  await abwarten(500);
+  const t = await s.evaluate((pst) => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    const t0 = (window as any).epoche() as number;
+    v.setAttribute('poster', pst);
+    return t0;
+  }, poster);
+  await expect.soft.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 1000, intervals: [5], message: 'p2: nach dem Setzen des Posters nicht verdeckt' }).toBe('verdeckt');
+  const verdeckt = (await plog(s)).find((e) => e.was === 'data-veil' && e.v === 'verdeckt' && e.t >= t);
+  console.log(`chromium: p2 verdeckt ${verdeckt ? Math.round(verdeckt.t - t) : 'nie'} ms nach dem Setzen des Posters`);
+  expect.soft(verdeckt && verdeckt.t - t <= 50, 'p2: das Video blieb nach dem Setzen des Posters laenger als 50 ms frei').toBe(true);
+  await abwarten(4000);
+  expect.soft(await attr(s, 'v1', 'data-veil'), 'p2: das Video ist spaeter nicht verdeckt').toBe('verdeckt');
+  const bilder = await rec.stoppe();
+  const nach = bilder.filter((b) => b.ts >= t);
+  console.log(`chromium: p2 Toleranz 0: ${nach.length} Bilder ab dem Setzen, scharf: ${nach.filter(scharf).length}`);
+  expect.soft(nach.filter(scharf).length, 'p2: scharfe Bilder des Posters').toBe(0);
+  await s.close();
+});
+
+test('p3 Poster entfernt: das Erst-Urteil gilt wie ohne Poster (frei bei sauberem ersten Bild)', async () => {
+  zeit(120_000);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 13.0, poster: POSTER });
+  await expect.poll(() => s.evaluate(() => { const v = document.getElementById('v1') as HTMLVideoElement; return v.readyState >= 2 && v.getAttribute('data-veil') !== null; }), { timeout: 30_000, intervals: [100] }).toBe(true);
+  await abwarten(2000);
+  expect(await attr(s, 'v1', 'data-veil'), 'Voraussetzung: mit Poster verdeckt').toBe('verdeckt');
+  const t = await s.evaluate(() => {
+    document.getElementById('v1')!.removeAttribute('poster');
+    return (window as any).epoche() as number;
+  });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 15_000, intervals: [50], message: 'p3: nach dem Entfernen des Posters wurde das Video nie frei' }).toBe('frei');
+  console.log(`chromium: p3 frei ${Math.round((await plog(s)).find((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= t)!.t - t)} ms nach dem Entfernen des Posters`);
+  await s.close();
+});
+
+test('p4 leeres poster-Attribut: das Video bleibt verdeckt, nie frei', async () => {
+  zeit(120_000);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, ct0: 13.0, posterLeer: true });
+  await expect.poll(() => s.evaluate(() => { const v = document.getElementById('v1') as HTMLVideoElement; return v.readyState >= 2 && v.getAttribute('data-veil') !== null; }), { timeout: 30_000, intervals: [100] }).toBe(true);
+  await abwarten(6000);
+  expect(await attr(s, 'v1', 'poster'), 'Voraussetzung: das poster-Attribut ist leer und gesetzt').toBe('');
+  expect(await attr(s, 'v1', 'data-veil'), 'p4: das Video mit leerem poster ist nicht verdeckt').toBe('verdeckt');
+  expect(nieFrei(await plog(s)), 'p4: das Video war frei').toBe(0);
+  await s.close();
+});
+
+// (g) Die Seite blockiert den Hauptfaden direkt nach dem Sprung oder nach play(): der Browser reicht neue Videobilder weiter, Ereignisse laufen erst danach. Das Video unter der Kopie ist
+// unsichtbar (Attribut), die Kopie zeigt das alte, gepruefte Bild: in keinem Bild der Aufnahme (Toleranz null) steht das Schachbrett des neuen Inhalts scharf.
+for (const art of ['Sprung', 'Play'] as const) {
+  testA(`(g) ${art} aus der Kopie, waehrend die Seite den Hauptfaden blockiert: kein einziges scharfes Bild des neuen Inhalts`, async () => {
+    zeit(150_000);
+    if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+    // Play: Pause kurz vor der Person (1,4 bis 1,5 s, Person ab 2 s): die Person kommt waehrend der Blockade von 800 ms.
+    const { s, rec } = await kopieAufStandbild(art === 'Play' ? { kurz: true, von: 1.3, bis: 1.5, puls: true } : { puls: true });
+    const t = await s.evaluate((a) => {
+      const v = document.getElementById('v1') as HTMLVideoElement;
+      const t0 = (window as any).epoche() as number;
+      if (a === 'Sprung') v.currentTime = 3.5;
+      else v.play().catch(() => {});
+      const b = performance.now();
+      while (performance.now() - b < 800) {
+        // Hauptfaden blockiert: Ereignisse und Rueckrufe laufen erst danach
+      }
+      return t0;
+    }, art);
+    await abwarten(1500);
+    expect.soft(await kopieDa(s), `(g) ${art}: die Kopie steht nach der Blockade noch`).toBe(false);
+    expect.soft(await attr(s, 'v1', 'data-veil'), `(g) ${art}: das Video ist nicht verdeckt`).toBe('verdeckt');
+    const l = await plog(s);
+    expect.soft(nieFrei(l, t), `(g) ${art}: das Video war frei`).toBe(0);
+    const bilder = await rec.stoppe();
+    const nach = bilder.filter((b) => b.ts >= t);
+    console.log(`chromium: (g) ${art} Toleranz 0: ${nach.length} Bilder ab dem Ausloeser (Blockade 800 ms), scharf: ${nach.filter(scharf).length}`);
+    expect.soft(nach.filter(scharf).length, `(g) ${art}: scharfe Bilder des neuen Inhalts`).toBe(0);
+    const v = await verstoesse(s);
+    expect.soft(unerlaubt(v, ['v1'], ['frei', 'kopie-sichtbar', 'ohne-urteil-sichtbar']), zeigeVerstoesse(v)).toEqual([]);
+    await s.close();
+  });
+}
+
+// (h) Die Seite stoppt seeking, seeked, play, playing und timeupdate in der Capture-Phase am window (spaeter angemeldet als die Horcher der Erweiterung, die ab dem Start des
+// Content-Scripts am Fenster haengen): die Kopie ist trotzdem sofort weg, spaetestens nach der Nachschau, und nichts Scharfes erscheint.
+testA('(h) die Seite stoppt die Ereignisse am window in der Capture-Phase: die Kopie ist trotzdem weg, kein scharfes Bild', async () => {
+  zeit(150_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const { s, rec } = await kopieAufStandbild({ puls: true });
+  await s.evaluate(() => {
+    for (const n of ['seeking', 'seeked', 'play', 'playing', 'timeupdate']) window.addEventListener(n, (e) => e.stopImmediatePropagation(), true);
+  });
+  const t = await s.evaluate(() => {
+    (document.getElementById('v1') as HTMLVideoElement).currentTime = 3.5;
+    return (window as any).epoche() as number;
+  });
+  await expect.soft.poll(() => kopieDa(s), { timeout: 1000, intervals: [10], message: '(h): die Kopie steht nach der Nachschau noch' }).toBe(false);
+  const tWeg = (await plog(s)).find((e) => e.id === 'v1' && e.was === 'data-veil-video-standbild' && e.v === null && e.t >= t)?.t;
+  console.log(`chromium: (h) Kopie weg nach ${tWeg ? Math.round(tWeg - t) : 'nie'} ms`);
+  await abwarten(2500);
+  expect.soft(await attr(s, 'v1', 'data-veil')).toBe('verdeckt');
+  expect.soft(nieFrei(await plog(s), t)).toBe(0);
+  const bilder = await rec.stoppe();
+  const nach = bilder.filter((b) => b.ts >= t);
+  expect.soft(nach.filter(scharf).length, '(h): scharfe Bilder des neuen Inhalts').toBe(0);
+  await s.close();
+});
+
+// (i) Die Seite entfernt den Host der Kopie oder das Attribut am Video und springt dann: nichts Scharfes. Ohne Host ist das Video noch unsichtbar (Attribut), bis die Nachschau das
+// Attribut nimmt, danach weichgezeichnet; ohne Attribut ist das Video weichgezeichnet (sein Urteil blieb verdeckt).
+for (const art of ['Host', 'Attribut'] as const) {
+  testA(`(i) die Seite entfernt ${art === 'Host' ? 'den Host der Kopie' : 'das Attribut am Video'} und springt: nichts Scharfes`, async () => {
+    zeit(150_000);
+    if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+    const { s, rec } = await kopieAufStandbild({ puls: true });
+    const t = await s.evaluate((a) => {
+      const v = document.getElementById('v1') as HTMLVideoElement;
+      const t0 = (window as any).epoche() as number;
+      if (a === 'Host') [...document.getElementById('platz')!.children].find((c) => c.localName === 'div' && c.id !== 'bedienung')!.remove();
+      else v.removeAttribute('data-veil-kopie');
+      v.currentTime = 3.5;
+      return t0;
+    }, art);
+    await abwarten(2500);
+    expect.soft(await attr(s, 'v1', 'data-veil'), `(i) ${art}: das Video ist nicht verdeckt`).toBe('verdeckt');
+    expect.soft(await kopieDa(s), `(i) ${art}: die Kopie gilt noch`).toBe(false);
+    expect.soft(await hostAnzahl(s), `(i) ${art}: ein Host ist uebrig`).toBe(0);
+    expect.soft(await attr(s, 'v1', 'data-veil-kopie'), `(i) ${art}: das Attribut data-veil-kopie steht noch`).toBeNull();
+    expect.soft(nieFrei(await plog(s), t)).toBe(0);
+    const bilder = await rec.stoppe();
+    const nach = bilder.filter((b) => b.ts >= t);
+    console.log(`chromium: (i) ${art} Toleranz 0: ${nach.length} Bilder, scharf: ${nach.filter(scharf).length}`);
+    expect.soft(nach.filter(scharf).length, `(i) ${art}: scharfe Bilder`).toBe(0);
+    await s.close();
+  });
+}
+
+// (j) Ein Video mit nativen controls bekommt in der Pause keine Kopie (sie deckte die Bedienleiste): es bleibt verdeckt, nie frei.
+test('(j) Video mit nativen controls: in der Pause verdeckt, keine Kopie, nie frei', async () => {
+  zeit(90_000);
+  const st = await pausiereAufSauberemStandbild({ video: { controls: true } });
+  await abwarten(8000);
+  expect(await attr(st.s, 'v1', 'data-veil'), '(j): das Video mit controls ist nicht verdeckt').toBe('verdeckt');
+  expect(await kopieDa(st.s), '(j): das Video mit controls bekam eine Kopie').toBe(false);
+  expect(await hostAnzahl(st.s), '(j): ein Host steht').toBe(0);
+  expect(nieFrei(await plog(st.s), st.tPause), '(j): frei in der Pause').toBe(0);
+  await st.s.close();
+});
+
+// (k) Fuenf pausierte, saubere Videos: hoechstens vier Kopien je Dokument, das fuenfte bleibt verdeckt.
+test('(k) fuenf pausierte saubere Videos: hoechstens vier Kopien, nie ein Video frei', async () => {
+  zeit(150_000);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz('', 800, 2100);
+  const ids = ['v1', 'v2', 'v3', 'v4', 'v5'];
+  for (const id of ids) await neuesVideo(s, { id, ct0: 10.5 });
+  for (const id of ids) await expect.poll(() => attr(s, id, 'data-veil'), { timeout: 40_000, intervals: [100], message: `Voraussetzung: ${id} wird verdeckt` }).toBe('verdeckt');
+  for (const id of ids) {
+    const p = await s.evaluate((i) => (window as any).pausiereBei(i, 12.5) as Promise<{ ct: number } | null>, id);
+    expect(p, `${id} erreichte 12,5 s nicht`).not.toBeNull();
+  }
+  await abwarten(14_000);
+  const kopien = [];
+  for (const id of ids) if (await kopieDa(s, id)) kopien.push(id);
+  console.log(`chromium: (k) Kopien nach 14 s: ${kopien.join(',')}`);
+  expect(kopien.length, `(k): ${kopien.length} Kopien, erlaubt sind hoechstens vier`).toBeLessThanOrEqual(4);
+  expect(kopien.length, '(k): weniger als vier Kopien von fuenf sauberen Videos').toBe(4);
+  expect(await hostAnzahl(s), '(k): Zahl der Hosts weicht von der Zahl der Kopien ab').toBe(kopien.length);
+  for (const id of ids) expect(await attr(s, id, 'data-veil'), `(k): ${id} nicht verdeckt`).toBe('verdeckt');
+  const l = await plog(s);
+  expect(nieFrei(l, 0), '(k): ein Video war frei').toBe(0);
+  await s.close();
+});
+
+// (l) Aushaengen und Wiedereinhaengen mit Kopie: der Host der Kopie geht mit dem Video (binnen 400 ms), nach dem Wiedereinhaengen ist das Video verdeckt, keine verwaiste Kopie.
+testA('(l) Aushaengen und Wiedereinhaengen mit Kopie: verdeckt, keine verwaiste Kopie, nie frei', async () => {
+  zeit(120_000);
+  const { s, tPause } = await kopieAufStandbild({ puls: true });
+  await s.evaluate(() => {
+    (window as any).__el = document.getElementById('v1');
+    (window as any).__el.remove();
+  });
+  await abwarten(500);
+  expect(await hostAnzahl(s), '(l): der Host der Kopie steht 500 ms nach dem Aushaengen noch').toBe(0);
+  await s.evaluate(() => document.getElementById('platz')!.appendChild((window as any).__el));
+  await abwarten(1500);
+  expect(await attr(s, 'v1', 'data-veil'), '(l): das wieder eingehaengte Video ist nicht verdeckt').toBe('verdeckt');
+  const kopie = await kopieDa(s);
+  expect(await hostAnzahl(s), `(l): Hosts ${await hostAnzahl(s)} bei Kopie=${kopie}: eine verwaiste Kopie`).toBe(kopie ? 1 : 0);
+  expect(await attr(s, 'v1', 'data-veil-kopie') !== null, '(l): Attribut und Kopie stimmen nicht ueberein').toBe(kopie);
+  expect(nieFrei(await plog(s), tPause), '(l): frei nach dem Wiedereinhaengen').toBe(0);
+  await s.close();
+});
+
+// P8 (Runde 3): ein Video nur mit Ton (videoWidth 0) zeigt sein Poster auch beim Abspielen. Reine Tonquelle: WAV-Blob als video-Element (Fixture neuesTonVideo), Poster mit Person und
+// Waechter. Vor und waehrend des Abspielens nie frei, kein scharfes Bild (Toleranz null); Poster entfernt: frei wie ein Ton-Video ohne Poster.
+testA('P8 Tonquelle mit Poster (Person mit Waechter): vor und waehrend des Abspielens nie frei, kein scharfes Poster; Poster entfernt: frei wie ohne Poster', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz('puls=1');
+  const poster = await s.evaluate(() => (window as any).erzeugePoster() as Promise<string>);
+  const rec = await starteAufnahme(s);
+  await s.evaluate((p) => void (window as any).neuesTonVideo({ id: 'v1', poster: p }), poster);
+  await expect.poll(() => s.evaluate(() => { const v = document.getElementById('v1') as HTMLVideoElement; return v.readyState >= 2 && v.getAttribute('data-veil') !== null; }), { timeout: 20_000, intervals: [50] }).toBe(true);
+  expect(await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).videoWidth), 'Voraussetzung: reine Tonquelle (videoWidth 0)').toBe(0);
+  await abwarten(2500);
+  expect(await attr(s, 'v1', 'data-veil'), 'P8: das Ton-Video mit Poster ist vor dem Abspielen nicht verdeckt').toBe('verdeckt');
+  const tPlay = await s.evaluate(() => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    v.play().catch(() => {});
+    return (window as any).epoche() as number;
+  });
+  await abwarten(3500);
+  expect(await s.evaluate(() => !(document.getElementById('v1') as HTMLVideoElement).paused), 'Voraussetzung: das Ton-Video spielt').toBe(true);
+  expect(await attr(s, 'v1', 'data-veil'), 'P8: das spielende Ton-Video mit Poster ist nicht verdeckt').toBe('verdeckt');
+  const l = await plog(s);
+  expect(nieFrei(l), 'P8: das Ton-Video mit Poster war frei').toBe(0);
+  const bilder = await rec.stoppe();
+  console.log(`chromium: P8 ${bilder.length} Bilder (vor und nach Play ${Math.round(tPlay % 100000)}), scharf: ${bilder.filter(scharf).length}`);
+  expect(bilder.filter(scharf).length, 'P8: scharfe Bilder des Posters').toBe(0);
+  const t = await s.evaluate(() => {
+    document.getElementById('v1')!.removeAttribute('poster');
+    return (window as any).epoche() as number;
+  });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 10_000, intervals: [50], message: 'P8: nach dem Entfernen des Posters wurde das Ton-Video nie frei' }).toBe('frei');
+  console.log(`chromium: P8 frei ${Math.round((await plog(s)).find((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= t)!.t - t)} ms nach dem Entfernen des Posters`);
+  await s.close();
+});
+
+// h2 (P9): ein verdecktes, spielendes Video (Film kurz, Person ab 2 s, Anfang neutral): die Seite wechselt waehrend des Abspielens zweimal das poster. Ein Video, das schon gespielt hat und
+// Bildmasse hat, wird davon nicht beruehrt: kein neues Erst-Urteil (data-veil verschwindet nie), kein frei vor drei sauberen Pruefungen in Folge (nicht in den ersten 800 ms), die Person
+// (ab 2 s) steht nie scharf in der Aufnahme (Toleranz null, bis zur naechsten Freigabe auf dem normalen Weg). Vor P9 gab vergiss und ein neues Erst-Urteil sofort frei.
+testA('h2 (P9) poster waehrend des Abspielens zweimal gewechselt: kein neues Erst-Urteil, kein frei vor der Hysterese, kein scharfes Bild der Person', async () => {
+  zeit(150_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz('kurz=1&puls=1');
+  const poster = await s.evaluate(() => (window as any).erzeugePoster() as Promise<string>);
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', ct0: 4.5 });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 30_000, intervals: [50], message: 'Voraussetzung: das Video wird beim Anlaufen verdeckt (Person)' }).toBe('verdeckt');
+  const t = await s.evaluate(
+    (pst) =>
+      new Promise<number>((fertig) => {
+        const v = document.getElementById('v1') as HTMLVideoElement;
+        let hoch = false;
+        let t0 = 0;
+        let a = false;
+        const schritt = () => {
+          if (v.currentTime > 3) hoch = true;
+          if (hoch && !a && v.currentTime >= 0.5 && v.currentTime < 1.2) {
+            a = true;
+            t0 = (window as any).epoche();
+            v.setAttribute('poster', pst);
+          }
+          if (a && v.currentTime >= 0.8 && v.currentTime < 1.6) {
+            v.setAttribute('poster', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+            return fertig(t0);
+          }
+          requestAnimationFrame(schritt);
+        };
+        schritt();
+      }),
+    poster,
+  );
+  await wartePoll(async () => (await ct(s)) > 2.6 && (await ct(s)) < 5.5, 40_000);
+  const l = await plog(s);
+  expect(l.filter((e) => e.was === 'data-veil' && e.v === null && e.t >= t).length, 'h2: das Video bekam ein neues Erst-Urteil (data-veil verschwand)').toBe(0);
+  expect(l.filter((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= t && e.t <= t + 800).length, 'h2: das Video war binnen 800 ms nach dem Postertausch frei (Hysterese umgangen)').toBe(0);
+  const bilder = await rec.stoppe();
+  const { fenster, wiederFreiNach } = bilderBisWiederFrei(bilder, l, t);
+  console.log(`chromium: h2 Toleranz 0, wieder frei auf dem normalen Weg nach ${wiederFreiNach} ms, ${fenster.length} Bilder im Fenster`);
+  expect(fenster.length, 'h2: zu wenige Bilder im Fenster').toBeGreaterThan(5);
+  expect(fenster.filter(scharf).length, 'h2: scharfe Bilder').toBe(0);
+  await s.close();
+});
+
+// h3 (P10): ein freies, gespieltes Video (Film ganz neutral, kurz, ohne Schleife) mit Poster (Person mit Waechter): ended, dann load(). Nach emptied ist das Urteil verfallen: das Video
+// steht sofort nicht mehr frei, in der Aufnahme ist das Poster nie scharf (Toleranz null), es bleibt verdeckt (P1) und played ist wieder leer. Ohne Poster: nach load() erst ein neues
+// Erst-Urteil (data-veil verschwindet), dann frei.
+async function neutralesFreiesEnde(mitPoster: boolean) {
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz('kurz=1&neutral=1&puls=1');
+  const poster = mitPoster ? await s.evaluate(() => (window as any).erzeugePoster() as Promise<string>) : null;
+  await neuesVideo(s, { id: 'v1', preload: 'auto', loop: false, abspielen: false, ...(poster ? { poster } : {}) });
+  await expect.poll(() => s.evaluate(() => { const v = document.getElementById('v1') as HTMLVideoElement; return v.readyState >= 2 && v.getAttribute('data-veil') !== null; }), { timeout: 30_000, intervals: [100] }).toBe(true);
+  await s.evaluate(() => void (window as any).spiele('v1'));
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 20_000, intervals: [50], message: 'Voraussetzung: das gespielte Video wird frei' }).toBe('frei');
+  await expect.poll(() => s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).ended), { timeout: 20_000, intervals: [100], message: 'Voraussetzung: das Video erreicht ended' }).toBe(true);
+  expect(await attr(s, 'v1', 'data-veil'), 'Voraussetzung: das Video ist am Ende noch frei').toBe('frei');
+  return s;
+}
+
+testA('h3 (P10) freies gespieltes Video mit Poster: ended, dann load(): sofort nicht mehr frei, kein scharfes Poster, verdeckt', async () => {
+  zeit(150_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  const s = await neutralesFreiesEnde(true);
+  const rec = await starteAufnahme(s);
+  const t = await s.evaluate(() => {
+    const v = document.getElementById('v1') as HTMLVideoElement;
+    v.load();
+    return (window as any).epoche() as number;
+  });
+  await abwarten(3000);
+  const l = await plog(s);
+  expect(l.filter((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= t).length, 'h3: das Video war nach load() frei').toBe(0);
+  expect(await attr(s, 'v1', 'data-veil'), 'h3: das Video mit Poster ist nach load() nicht verdeckt').toBe('verdeckt');
+  expect(await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).played.length), 'h3: played ist nach load() nicht leer').toBe(0);
+  const bilder = await rec.stoppe();
+  const nach = bilder.filter((b) => b.ts >= t);
+  console.log(`chromium: h3 Toleranz 0: ${nach.length} Bilder ab load(), scharf: ${nach.filter(scharf).length}`);
+  expect(nach.filter(scharf).length, 'h3: scharfe Bilder des Posters').toBe(0);
+  await s.close();
+});
+
+test('h3 (P10) ohne Poster: nach load() erst ein neues Erst-Urteil (data-veil verschwindet), dann frei', async () => {
+  zeit(150_000);
+  const s = await neutralesFreiesEnde(false);
+  const t = await s.evaluate(() => {
+    (document.getElementById('v1') as HTMLVideoElement).load();
+    return (window as any).epoche() as number;
+  });
+  await expect.poll(() => attr(s, 'v1', 'data-veil'), { timeout: 15_000, intervals: [50], message: 'h3: das Video wurde nach load() nie wieder frei' }).toBe('frei');
+  const l = (await plog(s)).filter((e) => e.was === 'data-veil' && e.t >= t);
+  const iNull = l.findIndex((e) => e.v === null);
+  const iFrei = l.findIndex((e) => e.v === 'frei');
+  console.log(`chromium: h3 ohne Poster: Folge nach load() ${JSON.stringify(l.map((e) => [Math.round(e.t - t), e.v]))}`);
+  expect(iNull, 'h3: nach load() verschwand data-veil nicht (das alte Urteil blieb)').toBeGreaterThanOrEqual(0);
+  expect(iFrei, 'h3: frei kam vor dem Verschwinden von data-veil').toBeGreaterThan(iNull);
+  await s.close();
+});
+
+// ---------- Messauftrag zum Poster (Bestandspunkt des Pruefers, kein Produktcode von E3c) ----------
+// Ein nie gespieltes Video mit poster-Attribut, dessen Poster die Person mit Waechter zeigt und dessen erstes Filmbild neutral ist. Das Erst-Urteil prueft das erste Filmbild (sauber:
+// frei), gezeigt wurde aber das Poster, das nirgends geprueft wird. Seit E3d (Regel P) bleibt ein Video, das sein Poster zeigt, verdeckt: nie ein scharfes Poster, nie frei, Toleranz null.
+testA('P-Poster (Waechter) nie gespieltes Video mit Poster (Person mit Waechter), erstes Filmbild neutral: das Poster ist nie scharf zu sehen', async () => {
+  zeit(90_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
+  await setze({ video: 'ganz' });
+  const s = await oeffnePlatz();
+  const poster = await s.evaluate(() => (window as any).erzeugePoster() as Promise<string>);
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', preload: 'auto', abspielen: false, poster });
+  await abwarten(7000);
+  const urteil = await attr(s, 'v1', 'data-veil');
+  const l = await plog(s);
+  const bilder = await rec.stoppe();
+  const scharfe = bilder.filter(scharf);
+  console.log(`chromium: P-Poster Urteil ${urteil}, Wechsel ${JSON.stringify(l.filter((e) => e.was === 'data-veil').map((e) => [Math.round(e.t % 100000), e.v]))}, ${bilder.length} Bilder, scharf: ${scharfe.length}`);
+  expect.soft(scharfe.length, `P-Poster: ${scharfe.length} von ${bilder.length} Bildern zeigen das Poster scharf (Urteil ${urteil})`).toBe(0);
+  expect.soft(urteil, 'P-Poster: das Urteil ist nicht verdeckt').toBe('verdeckt');
+  expect.soft(nieFrei(l), 'P-Poster: das Video war frei').toBe(0);
   await s.close();
 });
 
@@ -1008,8 +1735,8 @@ const F3_SZENEN: SzenenDef[] = [
   ['nsfw', 'IMG_8501.JPG', 'mosaik', ALLE_ZONEN, 1.0], // sechs Spuren, Summe 0,8, vereinigt 0,62 bis 0,65
 ] ;
 
-test('F2 Voraussetzung: zwei bis drei stark ueberlappende Zonen, Summe ueber 60 Prozent, vereinigte Flaeche darunter, der Waechter liegt in einer erkannten Zone', async () => {
-  test.setTimeout(120_000);
+testA('F2 Voraussetzung: zwei bis drei stark ueberlappende Zonen, Summe ueber 60 Prozent, vereinigte Flaeche darunter, der Waechter liegt in einer erkannten Zone', async () => {
+  zeit(120_000);
   const e = await holeSzene(...F2_SCENE);
   const mitBoxen = e.proben.filter((p) => p.boxen.length >= 2);
   expect(mitBoxen.length, `zu wenige Proben mit mehreren Spuren (${zaehle(e.proben)})`).toBeGreaterThanOrEqual(8);
@@ -1019,8 +1746,8 @@ test('F2 Voraussetzung: zwei bis drei stark ueberlappende Zonen, Summe ueber 60 
   expect(passend.filter((p) => liegtIn(w, p.boxen)).length, `der Waechter ${JSON.stringify(w)} liegt nicht in den erkannten Zonen: ${JSON.stringify(passend[0]!.boxen)}`).toBeGreaterThanOrEqual(5);
 });
 
-test('F2 Summe ueber 60 Prozent, vereinigte Flaeche darunter: die Leinwand zeigt Zonen statt "ganz"; jede erkannte Stelle ist verdeckt', async () => {
-  test.setTimeout(120_000);
+testA('F2 Summe ueber 60 Prozent, vereinigte Flaeche darunter: die Leinwand zeigt Zonen statt "ganz"; jede erkannte Stelle ist verdeckt', async () => {
+  zeit(120_000);
   const e = await holeSzene(...F2_SCENE);
   const passend = e.proben.filter((p) => p.boxen.length >= 2 && flaecheSumme(p.boxen) > SCHWELLE + 0.05 && flaecheVereint(p.boxen) < SCHWELLE - 0.03);
   const zonen = passend.filter((p) => p.ansicht === 'zonen' && p.modus === 'zonen');
@@ -1039,8 +1766,8 @@ test('F2 Summe ueber 60 Prozent, vereinigte Flaeche darunter: die Leinwand zeigt
   expect.soft(unerlaubt(e.verstoss, ['v1'], ['zensiert-ohne-leinwand', 'leinwand-sichtbar']), `F2: Verstoss ${zeigeVerstoesse(e.verstoss)}`).toEqual([]);
 });
 
-test('F3 (Waechter) vereinigte Flaeche ueber 60 Prozent bleibt "ganz" (Mosaik), nie ein Bild mit Zonen bei grosser Flaeche, nie scharf', async () => {
-  test.setTimeout(180_000);
+testA('F3 (Waechter) vereinigte Flaeche ueber 60 Prozent bleibt "ganz" (Mosaik), nie ein Bild mit Zonen bei grosser Flaeche, nie scharf', async () => {
+  zeit(180_000);
   if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
   for (const sz of F3_SZENEN) {
     const e = await holeSzene(...sz);
@@ -1055,8 +1782,8 @@ test('F3 (Waechter) vereinigte Flaeche ueber 60 Prozent bleibt "ganz" (Mosaik), 
 
 const F4_SCENE = ['sfw', 'sfw-001-portraet.jpg', 'mosaik', ALLE_ZONEN, 0.15] as const; // drei Spuren, davon zwei sich schneidend (Summe 0,46, vereinigt 0,41)
 
-test('F4 Voraussetzung: die Szene liefert im Zonen-Zustand mehrere Spuren, von denen sich mindestens zwei schneiden, heute je Spur eine gemalte Flaeche', async () => {
-  test.setTimeout(120_000);
+testA('F4 Voraussetzung: die Szene liefert im Zonen-Zustand mehrere Spuren, von denen sich mindestens zwei schneiden, heute je Spur eine gemalte Flaeche', async () => {
+  zeit(120_000);
   const e = await holeSzene(...F4_SCENE);
   const zonen = e.proben.filter((p) => p.ansicht === 'zonen' && p.boxen.length >= 2);
   expect(zonen.length, `zu wenige Proben im Zonen-Zustand (${zaehle(e.proben)})`).toBeGreaterThanOrEqual(8);
@@ -1064,8 +1791,8 @@ test('F4 Voraussetzung: die Szene liefert im Zonen-Zustand mehrere Spuren, von d
   expect(schnitt.length, `zu wenige Proben mit sich schneidenden Spuren: ${JSON.stringify(zonen.slice(0, 4).map((p) => p.boxen))}`).toBeGreaterThanOrEqual(6);
 });
 
-test('F4 (O1 im Video) zwei sich schneidende gleichrangige Spuren werden als eine Huelle gemalt: weniger Flaechen als Spuren, jede Spur gedeckt', async () => {
-  test.setTimeout(120_000);
+testA('F4 (O1 im Video) zwei sich schneidende gleichrangige Spuren werden als eine Huelle gemalt: weniger Flaechen als Spuren, jede Spur gedeckt', async () => {
+  zeit(120_000);
   const e = await holeSzene(...F4_SCENE);
   const schnitt = e.proben.filter((p) => p.ansicht === 'zonen' && p.boxen.length >= 2 && gruppenZahl(p.boxen) < p.boxen.length && p.flaechen.length > 0);
   const huellen = schnitt.filter((p) => p.flaechen.length <= gruppenZahl(p.boxen));
@@ -1080,8 +1807,8 @@ test('F4 (O1 im Video) zwei sich schneidende gleichrangige Spuren werden als ein
   keineScharfen(e.bilder, zensurBeginn(e.log), 'F4');
 });
 
-test('F5 (Waechter) die Zahl der gemalten Flaechen wechselt hoechstens zweimal je Sekunde (kein Flackern der Huellen bei Spuren, die sich um einen Bildpunkt schneiden und trennen)', async () => {
-  test.setTimeout(120_000);
+testA('F5 (Waechter) die Zahl der gemalten Flaechen wechselt hoechstens zweimal je Sekunde (kein Flackern der Huellen bei Spuren, die sich um einen Bildpunkt schneiden und trennen)', async () => {
+  zeit(120_000);
   const e = await holeSzene(...F4_SCENE);
   // Nur Proben im Zonen-Zustand; Wechsel der Zahl gemalter Flaechen zwischen aufeinanderfolgenden Proben.
   const folge = e.proben.filter((p) => p.ansicht === 'zonen' && p.flaechen.length > 0);
@@ -1095,11 +1822,11 @@ test('F5 (Waechter) die Zahl der gemalten Flaechen wechselt hoechstens zweimal j
 // F7 (Vorschlag des Pruefers, E3b), T3: belegt ehrlich nur: (1) jede Spurmitte liegt in einer gemalten Flaeche, (2) gemalte Flaechen schneiden sich nie (hoechstens 2 Pixel Rundung),
 // (3) hoechstens 2 Wechsel der Flaechenzahl je Sekunde. Ob in einem Lauf eine Huelle entsteht, haengt von den grenzwertigen Spuren ab; der Lauf meldet es im Protokoll ("mit Huelle"),
 // die PFLICHT zur Huelle liegt bei F4. die Szene von P4 (Koerper aus _DSC6278.JPG, alle bedeckbaren Zonen) bei der Standard-Schwelle 0,1. Dort kommen und gehen grenzwertige
-// Spuren zwischen den beiden echten (Sonde P4, MESSUNG-PHASE-11-E3.md). Erwartet: nie zwei gemalte Flaechen, die sich schneiden (gleichrangig: jede Gruppe eine Huelle,
-// ein Wort je Huelle), nie ein Bild, in dem eine Spur nicht von einer gemalten Flaeche gedeckt ist, und hoechstens 2 Wechsel der Zahl gemalter Flaechen je Sekunde.
+// Spuren zwischen den beiden echten (Sonde P4, MESSUNG-PHASE-11-E3.md). Erwartet: nie zwei gemalte Flaechen, die sich schneiden (gleichrangig: jede Gruppe eine Huelle),
+// nie ein Bild, in dem eine Spur nicht von einer gemalten Flaeche gedeckt ist, und hoechstens 2 Wechsel der Zahl gemalter Flaechen je Sekunde.
 const F7_SZENE = ['nsfw', '_DSC6278.JPG', 'mosaik-wort', BEDECKBAR, 0.15] as const;
-test('F7 Schwelle 0,1 an der Szene von P4: jede Spurmitte liegt in einer gemalten Flaeche; entsteht eine Huelle, dann ohne Ueberschneidung und mit hoechstens 2 Wechseln der Flaechenzahl je Sekunde', async () => {
-  test.setTimeout(150_000);
+testA('F7 Schwelle 0,1 an der Szene von P4: jede Spurmitte liegt in einer gemalten Flaeche; entsteht eine Huelle, dann ohne Ueberschneidung und mit hoechstens 2 Wechseln der Flaechenzahl je Sekunde', async () => {
+  zeit(150_000);
   const e = await holeSzene(...F7_SZENE);
   const folge = e.proben.filter((p) => p.ansicht === 'zonen' && p.flaechen.length > 0);
   expect(folge.length, `zu wenige Proben im Zonen-Zustand (${zaehle(e.proben)})`).toBeGreaterThanOrEqual(8);
@@ -1168,20 +1895,21 @@ async function messeGanzSchwarz(preset: string): Promise<{ schwarz: number; ansi
   return ergebnis!;
 }
 
-test('F6 Voraussetzung: mit dem Preset Mosaik ist "ganz" bunt (kaum schwarze Bildpunkte)', async () => {
-  test.setTimeout(120_000);
+testA('F6 Voraussetzung: mit dem Preset Mosaik ist "ganz" bunt (kaum schwarze Bildpunkte)', async () => {
+  zeit(120_000);
   const m = await messeGanzSchwarz('mosaik');
   expect(m.schwarz, `Mosaik: Anteil schwarz ${m.schwarz}`).toBeLessThan(0.3);
 });
 
-test('F6 "ganz" in der Leinwand folgt dem Stil des Presets: mit Zensurbalken ist das ganze Bild schwarz, nicht Mosaik', async () => {
-  test.setTimeout(120_000);
+testA('F6 "ganz" in der Leinwand folgt dem Stil des Presets: mit Zensurbalken ist das ganze Bild schwarz, nicht Mosaik', async () => {
+  zeit(120_000);
   const m = await messeGanzSchwarz('zensurbalken');
   expect.soft(m.schwarz, `F6: Anteil schwarzer Bildpunkte in "ganz" bei Zensurbalken: ${m.schwarz.toFixed(2)} (Mosaik: bunt)`).toBeGreaterThanOrEqual(0.85);
 });
 
-test('F6 "ganz" mit dem Preset Weichzeichner ist weichgezeichnet (keine Kante, kein scharfer Waechter), nicht Mosaik und nicht scharf', async () => {
-  test.setTimeout(120_000);
+testA('F6 "ganz" mit dem Preset Weichzeichner ist weichgezeichnet (keine Kante, kein scharfer Waechter), nicht Mosaik und nicht scharf', async () => {
+  zeit(120_000);
+  if (!OHNE_KENNZEICHNUNG) expect(messungBelegt, 'Gegenprobe der Messung fehlt').toBe(true);
   const m = await messeGanzGlatt('blur');
   expect.soft(m.waechterScharf, 'F6: das Waechter-Schachbrett ist im weichgezeichneten "ganz" noch scharf zu erkennen').toBe(false);
   expect.soft(m.kante, `F6: mittlerer Helligkeitsunterschied benachbarter Bildpunkte in "ganz" bei Blur: ${m.kante.toFixed(2)} (Mosaik hat harte Blockkanten, ein scharfes Bild hohe Werte)`).toBeLessThan(1.5);

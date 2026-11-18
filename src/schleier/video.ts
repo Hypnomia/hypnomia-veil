@@ -4,6 +4,27 @@
 // (Hysterese, Budget, Wechsel-Zeitpunkt) in den Einheitstests ohne Browser laeuft.
 
 import type { Zustand } from './zustand';
+import {
+  bewerteStandbildPruefung,
+  deckeZuBeiEreignis,
+  deckeZuBeiNachschau,
+  neuesStandbild,
+  standbildBerechtigt,
+  STAND_ABWEICHUNG_MAX,
+  zeigtPoster,
+  zeigtPosterAm,
+  KOPIEN_MAX,
+  STAND_EREIGNISSE,
+  STAND_NACHSCHAU_MS,
+  zaehlerBeiSeekingImStand,
+  zaehlerNachZudecken,
+  zaehltSauberImLaufenden,
+  type StandAufnahme,
+  type StandErgebnis,
+  type StandFakten,
+  type StandbildStand,
+  type ZuGrund,
+} from './video-standbild.ts';
 
 export type VideoUrteil = 'frei' | 'verdeckt';
 export type VideoErgebnis = 'treffer' | 'sauber' | 'fehler';
@@ -19,6 +40,15 @@ export interface VideoGrenzen {
   schnellMs?: number;
   // Freie Videos: nach einem erkannten Schnitt fruehestens so lange nach der letzten Pruefung die Sofortpruefung (V2). Optional, Standard 300 ms.
   schnittMinMs?: number;
+}
+
+// Eine gemalte Kopie des Standbilds (video-kopie.ts).
+export interface KopieHandle {
+  daumen(): Float32Array | null;
+  intakt(): boolean;
+  pflege(): boolean;
+  zeige(): void;
+  entferne(): void;
 }
 
 export interface VideoHaken {
@@ -47,6 +77,19 @@ export interface VideoHaken {
   haelt?(el: HTMLVideoElement, z: Zustand): boolean;
   // Optional (Testhaken): der Zaehler sauberer Pruefungen des Videos hat sich geaendert (null = der Lauf ist zu Ende).
   beiSauber?(el: HTMLVideoElement, sauber: number | null): void;
+  // Optional (Pause nach Regel S2, E3c): hat das Video eine Zonen-Leinwand? Fehlt der Haken, gilt "ja" (keine Pause-Pruefung).
+  hatLeinwand?(el: HTMLVideoElement): boolean;
+  // Optional (E3c): Daumen des gerade gezeigten Bilds (im selben Augenblick wie das Lesen der Pixel). null = nicht lesbar.
+  daumen?(el: HTMLVideoElement): Float32Array | null;
+  // Optional (E3c): sind zwei Daumen dasselbe Bild?
+  daumenGleich?(a: Float32Array, b: Float32Array): boolean;
+  // Optional (E3c Runde 1, Regel K5): gilt die technische Eignung der Zonen-Leinwand (lesbar, kein DRM, keine controls, keine Untertitel, kein Spiegel, nicht gedreht,
+  // nicht im Vollbild, gross genug, keine Vorschau), unabhaengig von der Einstellung `video` und vom Platz? Fehlt der Haken, gilt "nein" (keine Kopie).
+  kopieEignung?(el: HTMLVideoElement): boolean;
+  // Optional (E3c Runde 1, K2): malt die Kopie des gezeigten Bilds (Host unsichtbar). null = nicht moeglich. `beiAenderung`: Groesse oder Lage haben sich geaendert.
+  kopieMale?(el: HTMLVideoElement, beiAenderung: () => void): KopieHandle | null;
+  // Optional: die Kopie wurde gezeigt oder weggenommen (das Etikett richtet sich danach).
+  beiKopie?(el: HTMLVideoElement, z: Zustand): void;
 }
 
 // ---------- reine Logik ----------
@@ -151,7 +194,7 @@ export interface VideoLauf {
   wechselTimer: Frist | null;
   tot: boolean;
   readonly rvfc: boolean;
-  readonly hoerer: Array<[string, () => void]>;
+  readonly hoerer: Array<[string, (e: Event) => void, boolean]>;
   // Zonen-Video: die naechste Pruefung startet mit dem naechsten Bild nach der Antwort (kein fester Takt, nicht im Budget). Der Bildtakt
   // kommt dann von der Leinwand (`bildBereit`), nicht von diesem Modul.
   schnell: boolean;
@@ -159,6 +202,30 @@ export interface VideoLauf {
   schnitt: boolean;
   // Rueckrufschleife der Schnitterkennung (nur freie, laufende Videos mit rVFC).
   waechterHandle: number | null;
+  // ---- Pause nach Regel S2 (E3c, video-standbild.ts) ----
+  // Das Standbild, das gerade geprueft wird (eigener Zaehler, nicht `sauber`), oder null.
+  standbild: StandbildStand | null;
+  // Die Kopie des Standbilds (K1): nach der dritten sauberen Pruefung gemalt, gezeigt unter den Bremsen jeder Freigabe. Das Urteil des Videos bleibt `verdeckt`.
+  kopie: KopieStand | null;
+  // Aufnahme der laufenden Standbild-Pruefung (null = die laufende Pruefung ist eine gewoehnliche).
+  standAufnahme: StandAufnahme | null;
+  // Stand des Videos beim Start der laufenden Pruefung: stand es schon, galt die Pruefung (auch eine gewoehnliche, etwa nach einem Sprung) genau diesem Bild.
+  startStand: { steht: boolean; lief: boolean; ct: number } | null;
+  // Nachschau im Takt und Bildwaechter, solange `kopie` besteht.
+  standNachschau: ReturnType<typeof setInterval> | null;
+  standWaechter: number | null;
+  // Zaehlt loadstart und emptied (Quellenwechsel).
+  epoche: number;
+}
+
+interface KopieStand {
+  h: KopieHandle;
+  ct: number;
+  epoche: number;
+  quelle: string;
+  gezeigt: boolean;
+  // Wartet auf die Bremse der Freigabe (Mindestabstand, Blitz-Sperre).
+  timer: Frist | null;
 }
 
 export class VideoTakt {
@@ -177,6 +244,9 @@ export class VideoTakt {
   };
 
   private readonly haken: VideoHaken;
+  // Testhaken (nur ueber den Testbau gesetzt): kein Bildwaechter fuer die Kopie, sie geht dann nur ueber Ereignisse und Nachschau.
+  private ohneBildwaechter = false;
+  private readonly fensterHoerer: Array<[string, (ev: Event) => void]> = [];
   private readonly g: VideoGrenzen;
 
   // Rueckrufe fuer Spiegel-Leinwaende (spiegel.ts, gesetzt vom Schleier): `beiWechsel` unmittelbar nach jedem Urteilswechsel im Takt (im selben
@@ -189,6 +259,30 @@ export class VideoTakt {
     this.haken = haken;
     this.g = g;
     this.budget = new Budget(g.budgetJeS);
+    // Fruehe Horcher am Fenster (Capture, ab Start des Content-Scripts, vor jedem Skript der Seite): die Seite kann diese Ereignisse dort nicht mehr vor uns stoppen (M2).
+    // Dazu je Video ein Horcher am Element (Shadow Roots: dorthin reicht das Fenster nicht).
+    for (const name of STAND_EREIGNISSE) {
+      const fn = (ev: Event): void => this.beiFensterEreignis(ev);
+      window.addEventListener(name, fn, true);
+      this.fensterHoerer.push([name, fn]);
+    }
+  }
+
+  setzeOhneBildwaechter(aus: boolean): void {
+    this.ohneBildwaechter = aus;
+  }
+
+  // Endgueltiger Abbau des Schleiers (R3): alle Laeufe enden und die Horcher am Fenster gehen.
+  abbauen(): void {
+    this.stoppAlle();
+    for (const [name, fn] of this.fensterHoerer) window.removeEventListener(name, fn, true);
+    this.fensterHoerer.length = 0;
+  }
+
+  private beiFensterEreignis(ev: Event): void {
+    const el = ev.target;
+    if (!(el instanceof HTMLVideoElement)) return;
+    for (const lauf of this.laeufe) if (lauf.el === el) return this.beiStandEreignis(lauf, ev.type);
   }
 
   private standVon(el: HTMLVideoElement): ElementStand {
@@ -268,6 +362,8 @@ export class VideoTakt {
   // Wiederaufnahme); es wird unter den Wechsel-Grenzen gezeigt: Verdecken sofort, Freigeben gebremst.
   registriere(el: HTMLVideoElement, z: Zustand, ziel: VideoUrteil): void {
     if (z.video) this.beendeLauf(z.video);
+    // E3d (P1): ein Video, das sein Poster zeigt (poster-Attribut, nie gespielt), wird nie frei: das Erst-Urteil ist `verdeckt`.
+    if (ziel === 'frei' && zeigtPosterAm(el)) ziel = 'verdeckt';
     const lauf: VideoLauf = {
       el,
       z,
@@ -291,13 +387,26 @@ export class VideoTakt {
       schnell: false,
       schnitt: false,
       waechterHandle: null,
+      standbild: null,
+      kopie: null,
+      standAufnahme: null,
+      startStand: null,
+      standNachschau: null,
+      standWaechter: null,
+      epoche: 0,
     };
     z.video = lauf;
     this.laeufe.add(lauf);
     const auf = (name: string, fn: () => void): void => {
       el.addEventListener(name, fn);
-      lauf.hoerer.push([name, fn]);
+      lauf.hoerer.push([name, fn, false]);
     };
+    // Fruehe Horcher (Capture, vor allen anderen am Video) fuer die Pause-Pruefung: sie decken im selben Schritt wieder zu (Punkt 5 der Regel).
+    for (const name of STAND_EREIGNISSE) {
+      const fn = (ev: Event): void => this.beiStandEreignis(lauf, ev.type);
+      el.addEventListener(name, fn, true);
+      lauf.hoerer.push([name, fn, true]);
+    }
     auf('play', () => this.sofort(lauf));
     auf('playing', () => this.plane(lauf));
     auf('pause', () => this.beiStopp(lauf));
@@ -316,6 +425,7 @@ export class VideoTakt {
       // Der Zaehler z.sprung steht im Zustand (der Schleier zaehlt seeking und seeked schon vor dem ersten Urteil); der Umlauf bei loop ist kein Sprung.
       if (z.schleife) return;
       this.verwirfWartendeFreigabe(lauf);
+      this.standbildPlane(lauf); // im Stand: das neue Standbild wird neu geprueft (E3c)
       this.sofort(lauf);
     });
     if (!lauf.rvfc) auf('timeupdate', () => this.beiZeit(lauf));
@@ -326,6 +436,7 @@ export class VideoTakt {
     this.meldeSauber(lauf);
     this.gleicheAn(lauf);
     this.plane(lauf);
+    this.standbildPlane(lauf); // schon pausiert (zum Beispiel nie gespielt, ohne Poster): das Standbild wird geprueft
   }
 
   // Der Schleier hat das Urteil verworfen oder das Element geht weg: Takt, Timer und Hoerer enden.
@@ -355,6 +466,7 @@ export class VideoTakt {
       this.alsFaellig(lauf, true);
     } else {
       this.plane(lauf);
+      this.standbildPlane(lauf);
     }
   }
 
@@ -373,6 +485,7 @@ export class VideoTakt {
       lauf.verpasst = false;
       this.alsFaellig(lauf, true);
     }
+    this.standbildPlane(lauf); // E3c: im Stand wird das Standbild geprueft (nur unter den Bedingungen der Regel)
   }
 
   private beiZeit(lauf: VideoLauf): void {
@@ -390,6 +503,7 @@ export class VideoTakt {
     const lauf = [...this.laeufe].find((l) => l.el === el);
     if (!lauf || lauf.schnell === an) return;
     lauf.schnell = an;
+    if (an) this.kopieWeg(lauf, 'play'); // K7/K4: ein Video, das die Leinwand bekommt, verliert zuerst seine Kopie
     this.entwaffne(lauf);
     if (!an) this.plane(lauf);
     else if (!lauf.laeuft) this.armiere(lauf);
@@ -610,6 +724,10 @@ export class VideoTakt {
     lauf.schnitt = false;
     const sprung = lauf.z.sprung;
     const generation = lauf.z.generation;
+    // E3c: gilt diese Pruefung dem Standbild? Dann wird im selben Augenblick, in dem die Pixel gelesen werden (fuehreAus ruft die Pruefung sofort), der Daumen
+    // des gezeigten Bilds aufgenommen. Ob die Pruefung zaehlt, entscheidet erst die Antwort (bewerteStandbildPruefung).
+    lauf.standAufnahme = this.standAufnahmeJetzt(lauf);
+    lauf.startStand = { steht: lauf.el.paused || lauf.el.ended, lief: !lauf.el.paused && !lauf.el.ended && !lauf.el.seeking, ct: lauf.el.currentTime };
     // Frist: bleibt die Antwort ueber 2 Taktzeiten aus (haengender Erkenner), gilt das wie ein Fehler: sofort verdecken. Eine zweite
     // Anfrage startet erst, wenn diese beendet ist (laeuft bleibt gesetzt); ihre spaete Antwort wird nicht mehr gewertet.
     lauf.fristTimer = setTimeout(() => {
@@ -617,20 +735,30 @@ export class VideoTakt {
       if (lauf.tot || !lauf.laeuft || lauf.verfallen) return;
       lauf.verfallen = true;
       this.haken.beiFrist();
+      if (lauf.standAufnahme) {
+        // Haengende Pruefung eines Standbilds: das Standbild bleibt verdeckt (seine Pruefung ist beendet), der Zaehler des laufenden Videos bleibt unberuehrt.
+        lauf.standAufnahme = null;
+        if (lauf.standbild) lauf.standbild = { ...lauf.standbild, sauber: 0, daumen: null, beendet: true };
+        return;
+      }
       const neu = entscheideHysterese(lauf, 'fehler', this.g.freiNach);
       lauf.soll = neu.soll;
       lauf.sauber = neu.sauber;
       this.meldeSauber(lauf);
       this.gleicheAn(lauf);
     }, this.g.taktMs * 2);
+    const aufn = lauf.standAufnahme;
     this.fuehreAus(lauf.stand, 'takt', () => this.haken.pruefe(lauf.el), !lauf.schnell).then(
-      (ergebnis) => this.fertig(lauf, ergebnis, sprung, generation),
-      () => this.fertig(lauf, 'fehler', sprung, generation),
+      (ergebnis) => this.fertig(lauf, ergebnis, sprung, generation, aufn),
+      () => this.fertig(lauf, 'fehler', sprung, generation, aufn),
     );
   }
 
-  private fertig(lauf: VideoLauf, ergebnis: VideoErgebnis | 'unlesbar', sprung: number, generation: number): void {
+  private fertig(lauf: VideoLauf, ergebnis: VideoErgebnis | 'unlesbar', sprung: number, generation: number, aufn: StandAufnahme | null = null): void {
     lauf.laeuft = false;
+    lauf.standAufnahme = null;
+    const startStand = lauf.startStand;
+    lauf.startStand = null;
     if (lauf.fristTimer) clearTimeout(lauf.fristTimer);
     lauf.fristTimer = null;
     if (lauf.tot || lauf.z.generation !== generation || !this.haken.aktiv()) return;
@@ -639,20 +767,29 @@ export class VideoTakt {
     if (lauf.verfallen) {
       // Die Antwort kam nach der Frist: das Video ist schon verdeckt, die Antwort zeigt ein altes Bild und zaehlt nicht.
       lauf.verfallen = false;
+    } else if (aufn) {
+      // Pruefung des Standbilds (E3c): eigener Zaehler, der Zaehler des laufenden Videos bleibt unberuehrt.
+      this.standbildErgebnis(lauf, aufn, ergebnis, sprung);
     } else if (lauf.z.sprung !== sprung) {
       // Das Bild stammt von vor dem Sprung: ein Treffer (oder Fehler) gilt trotzdem, ein "sauber" wird verworfen. Danach neu pruefen.
       if (e !== 'sauber') {
         this.uebernimm(lauf, e);
       }
       lauf.nochmal = true;
+    } else if (e === 'sauber' && !zaehltSauberImLaufenden(startStand?.lief ?? false, !lauf.el.paused && !lauf.el.ended && !lauf.el.seeking)) {
+      // V1: ein "sauber" zaehlt im laufenden Zaehler nur, wenn das Video bei Start und Antwort lief; sonst wird es fuer den Zaehler verworfen (ein Treffer wirkt weiter).
     } else {
       this.uebernimm(lauf, e);
+      // E3c: eine gewoehnliche Pruefung, die einem stehenden Bild galt (zum Beispiel nach einem Sprung im Stand) und es nicht sauber fand, beendet die Pruefung dieses
+      // Standbilds schon: eine zweite Pruefung desselben Bilds brauchte niemand.
+      if (e !== 'sauber' && startStand?.steht && this.steht(lauf) && lauf.el.currentTime === startStand.ct && !lauf.el.seeking) this.standbildBeenden(lauf);
     }
     if (lauf.nochmal) {
       lauf.nochmal = false;
       this.alsFaellig(lauf, true);
     } else {
       this.plane(lauf);
+      this.standbildPlane(lauf); // E3c: die naechste Pruefung desselben Standbilds, falls noch eine fehlt
     }
   }
 
@@ -676,7 +813,9 @@ export class VideoTakt {
   // Sprung oder emptied: eine entschiedene, aber noch wartende Freigabe gilt nicht mehr (das Bild hat sich geaendert). Ein schon verdecktes Video
   // bleibt verdeckt, seine Hysterese beginnt neu. Ein Video, dessen Erst-Urteil noch nicht gezeigt wurde, wird neu beurteilt.
   private verwirfWartendeFreigabe(lauf: VideoLauf): void {
-    if (lauf.tot || lauf.soll !== 'frei') return;
+    if (lauf.tot) return;
+    if (lauf.kopie) this.kopieWeg(lauf, 'seeked'); // die Kopie gilt nach einem Sprung oder Quellenwechsel nie weiter
+    if (lauf.soll !== 'frei') return;
     const zeigt = this.haken.angezeigt(lauf.el, lauf.z);
     if (zeigt === 'frei') return;
     if (zeigt === null || lauf.z.urteil === null) {
@@ -695,6 +834,12 @@ export class VideoTakt {
     if (lauf.tot) return;
     if (lauf.wechselTimer) clearTimeout(lauf.wechselTimer);
     lauf.wechselTimer = null;
+    // E3d (P1, P4): solange das Video sein Poster zeigt, haelt jede Freigabe zurueck; der Zaehler steht dann auf null (er zaehlt erst ab dem Abspielen).
+    if (lauf.soll === 'frei' && zeigtPosterAm(lauf.el)) {
+      lauf.soll = 'verdeckt';
+      lauf.sauber = 0;
+      this.meldeSauber(lauf);
+    }
     if (this.haken.angezeigt(lauf.el, lauf.z) === lauf.soll) {
       // Zeigt schon das Richtige; fehlt nur das Urteil im Zustand (vorlaeufig verdeckt), wird es ohne Wechsel nachgetragen.
       if (lauf.z.urteil === null) this.haken.wende(lauf.el, lauf.z, lauf.soll);
@@ -716,6 +861,290 @@ export class VideoTakt {
     }, ab - jetzt + 1);
   }
 
+  // ---------- Pause nach Regel S2 (E3c, Regel K) ----------
+  // Ein pausiertes Video ohne Leinwand im Urteil `verdeckt`, das ein sauberes Standbild zeigt, bekommt nach drei sauberen Pruefungen desselben Standbilds (eigener Zaehler) eine
+  // KOPIE dieses Bilds (video-kopie.ts). Das Video selbst wird auf diesem Weg NIE frei: `soll` und `data-veil` bleiben `verdeckt`, `wende('frei')` wird nicht gerufen. Alles Weitere
+  // entscheidet video-standbild.ts; hier laufen Zaehler, Timer und Kopie. Jedes Zeichen einer Aenderung nimmt die Kopie sofort und ohne Bremse weg (kopieWeg).
+
+  private standFakten(lauf: VideoLauf): StandFakten {
+    const el = lauf.el;
+    return {
+      steht: el.paused || el.ended,
+      seeking: el.seeking,
+      readyState: el.readyState,
+      videoWidth: el.videoWidth,
+      gespielt: el.played.length > 0,
+      hatPoster: el.hasAttribute('poster'),
+      hatLeinwand: this.haken.hatLeinwand?.(el) ?? true,
+      istStrom: !!el.srcObject,
+      verdeckt: lauf.soll === 'verdeckt' && lauf.z.urteil === 'verdeckt' && this.haken.angezeigt(el, lauf.z) === 'verdeckt',
+      schnell: lauf.schnell,
+    };
+  }
+
+  private steht(lauf: VideoLauf): boolean {
+    return lauf.el.paused || lauf.el.ended;
+  }
+
+  // Die Pruefung des gerade stehenden Bilds ist zu Ende (es bleibt verdeckt, bis sich etwas aendert).
+  private standbildBeenden(lauf: VideoLauf): void {
+    if (lauf.kopie) return;
+    const el = lauf.el;
+    lauf.standbild = { ...neuesStandbild(el.currentTime, lauf.epoche, el.currentSrc), beendet: true };
+  }
+
+  private standGleich(lauf: VideoLauf, st: { ct: number; epoche: number; quelle: string }): boolean {
+    return st.ct === lauf.el.currentTime && st.epoche === lauf.epoche && st.quelle === lauf.el.currentSrc;
+  }
+
+  // Wie viele Kopien gibt es in diesem Dokument gerade (K7)?
+  private kopienZahl(): number {
+    let n = 0;
+    for (const l of this.laeufe) if (l.kopie) n++;
+    return n;
+  }
+
+  // Zeigt dieses Video gerade seine Kopie? (Das Etikett fragt danach, K8.)
+  kopieZeigt(el: HTMLVideoElement): boolean {
+    for (const l of this.laeufe) if (l.el === el) return !!l.kopie?.gezeigt;
+    return false;
+  }
+
+  // Eine Pruefung des Standbilds soll laufen (oder weiterlaufen): legt das Standbild an, wenn es keines gibt, und reiht die naechste Pruefung ein
+  // (im bestehenden Takt und Budget: je Video hoechstens eine je Taktzeit). Gilt die Regel fuer das Video nicht, endet ein angelegtes Standbild.
+  private standbildPlane(lauf: VideoLauf): void {
+    if (lauf.tot || lauf.kopie) return;
+    if (!standbildBerechtigt(this.standFakten(lauf))) {
+      lauf.standbild = null;
+      return;
+    }
+    const st = lauf.standbild;
+    if (st && this.standGleich(lauf, st)) {
+      if (st.beendet) return; // Treffer, Fehler oder zu viele Abweichungen: verdeckt, bis sich etwas aendert
+      if (!lauf.laeuft) this.alsFaellig(lauf, true);
+      return;
+    }
+    lauf.standbild = neuesStandbild(lauf.el.currentTime, lauf.epoche, lauf.el.currentSrc);
+    this.alsFaellig(lauf, true);
+  }
+
+  // Aufnahme fuer die Pruefung, die jetzt startet, oder null (gewoehnliche Pruefung).
+  private standAufnahmeJetzt(lauf: VideoLauf): StandAufnahme | null {
+    const st = lauf.standbild;
+    if (!st || st.beendet || lauf.kopie) return null;
+    if (!this.standGleich(lauf, st) || !standbildBerechtigt(this.standFakten(lauf))) return null;
+    let daumen: Float32Array | null = null;
+    try {
+      daumen = this.haken.daumen?.(lauf.el) ?? null;
+    } catch {
+      daumen = null;
+    }
+    return { ct: lauf.el.currentTime, epoche: lauf.epoche, quelle: lauf.el.currentSrc, daumen };
+  }
+
+  private standbildErgebnis(lauf: VideoLauf, aufn: StandAufnahme, ergebnis: StandErgebnis, sprung: number): void {
+    const st = lauf.standbild;
+    const gleich = this.haken.daumenGleich;
+    if (!st || !gleich) return;
+    const el = lauf.el;
+    const b = bewerteStandbildPruefung(
+      st,
+      aufn,
+      {
+        steht: el.paused || el.ended,
+        seeking: el.seeking || lauf.z.sprung !== sprung,
+        ct: el.currentTime,
+        epoche: lauf.epoche,
+        quelle: el.currentSrc,
+        hatLeinwand: this.haken.hatLeinwand?.(el) ?? true,
+      },
+      ergebnis,
+      gleich,
+      this.g.freiNach,
+    );
+    lauf.standbild = b.stand;
+    if (b.aktion === 'drei') this.kopieAnlegen(lauf);
+  }
+
+  // Drei saubere Pruefungen desselben Standbilds: erst malen (K3 Schritt 1, der Host ist unsichtbar), dann pruefen (Schritt 2: alles gilt noch, der Daumen der gemalten Kopie
+  // gleicht dem der ersten sauberen Pruefung), dann zeigen (Schritt 3, unter den Bremsen jeder Freigabe). Schlaegt etwas fehl: keine Kopie, Zaehler des Standbilds auf null.
+  private kopieAnlegen(lauf: VideoLauf): void {
+    const st = lauf.standbild;
+    if (!st || lauf.kopie) return;
+    const el = lauf.el;
+    const beende = (): void => {
+      lauf.standbild = { ...st, sauber: 0, daumen: null, beendet: true };
+    };
+    // K5: technische Eignung (wie die Zonen-Leinwand, ohne Einstellung und Platz), hoechstens vier Kopien je Dokument (K7). Sonst bleibt das Video verdeckt.
+    if (!this.haken.kopieMale || !this.haken.kopieEignung?.(el) || this.kopienZahl() >= KOPIEN_MAX) return beende();
+    let h: KopieHandle | null = null;
+    try {
+      h = this.haken.kopieMale(el, () => this.kopieWeg(lauf, 'nachschau'));
+    } catch {
+      h = null;
+    }
+    if (!h) return beende();
+    const dk = h.daumen();
+    const gleich = this.haken.daumenGleich;
+    const gilt = this.steht(lauf) && !el.seeking && this.standGleich(lauf, st) && !(this.haken.hatLeinwand?.(el) ?? true) && !!st.daumen && !!dk && !!gleich && gleich(st.daumen, dk);
+    if (!gilt) {
+      h.entferne();
+      const abweichungen = st.abweichungen + 1;
+      lauf.standbild = { ...st, sauber: 0, daumen: null, abweichungen, beendet: abweichungen >= STAND_ABWEICHUNG_MAX || !dk };
+      return;
+    }
+    lauf.kopie = { h, ct: st.ct, epoche: st.epoche, quelle: st.quelle, gezeigt: false, timer: null };
+    lauf.standbild = { ...st, beendet: true }; // keine weitere Pruefung dieses Standbilds
+    this.starteStandWache(lauf);
+    this.kopieZeigeVersuch(lauf);
+  }
+
+  // Das Zeigen der Kopie ist ein Wechsel von verdeckt zu scharf: gleiche Bremsen wie jede Freigabe (Mindestabstand je Video, Blitz-Sperre im Dokument).
+  private kopieZeigeVersuch(lauf: VideoLauf): void {
+    const k = lauf.kopie;
+    if (!k || k.gezeigt || lauf.tot) return;
+    if (k.timer) clearTimeout(k.timer);
+    k.timer = null;
+    if (this.kopieUngueltig(lauf)) return this.kopieWeg(lauf, 'nachschau');
+    const jetzt = performance.now();
+    const ab = fruehestensWechsel('frei', lauf.stand.letzterWechsel, this.letzteFreigabe, this.g);
+    if (jetzt < ab) {
+      k.timer = setTimeout(() => {
+        k.timer = null;
+        this.kopieZeigeVersuch(lauf);
+      }, ab - jetzt + 1);
+      return;
+    }
+    lauf.stand.letzterWechsel = jetzt;
+    this.letzteFreigabe = jetzt;
+    k.gezeigt = true;
+    k.h.zeige();
+    this.haken.beiKopie?.(lauf.el, lauf.z);
+  }
+
+  // Gilt die Kopie noch? Das Video steht, Zeit, Quelle, Eignung, Poster, Lage; Host und Attribut an ihrem Platz.
+  private kopieUngueltig(lauf: VideoLauf): boolean {
+    const k = lauf.kopie;
+    if (!k) return false;
+    const el = lauf.el;
+    const f = this.standFakten(lauf);
+    if (
+      deckeZuBeiNachschau({
+        aktiv: this.haken.aktiv(),
+        eignungOk: this.haken.kopieEignung?.(el) ?? false,
+        poster: zeigtPoster(f),
+        verbunden: el.isConnected,
+        steht: f.steht,
+        seeking: f.seeking,
+        ct: el.currentTime,
+        ctStand: k.ct,
+        epoche: lauf.epoche,
+        epocheStand: k.epoche,
+        quelle: el.currentSrc,
+        quelleStand: k.quelle,
+        hatLeinwand: f.hatLeinwand,
+        readyState: el.readyState,
+      })
+    )
+      return true;
+    return !k.h.intakt() || !k.h.pflege();
+  }
+
+  // Fruehe Horcher (Capture) fuer play, playing, seeking, seeked, timeupdate, ratechange, loadstart, emptied: am Fenster und am Element.
+  private beiStandEreignis(lauf: VideoLauf, name: string): void {
+    if (lauf.tot) return;
+    const el = lauf.el;
+    // V2: ein Sprung im Stand setzt den Zaehler des laufenden Videos immer auf null, auch ohne angelegtes Standbild.
+    if (name === 'seeking' && !lauf.z.schleife) {
+      const neu = zaehlerBeiSeekingImStand(el.paused || el.ended, lauf.sauber);
+      if (neu !== lauf.sauber) {
+        lauf.sauber = neu;
+        this.meldeSauber(lauf);
+      }
+    }
+    // Quellenwechsel (Fenster und Element melden dasselbe Ereignis, die Epoche zaehlt dann zweimal: sie wird nur auf Ungleichheit verglichen).
+    if (name === 'loadstart' || name === 'emptied') lauf.epoche++;
+    if (lauf.kopie) {
+      if (deckeZuBeiEreignis(name, el.currentTime, lauf.kopie.ct)) this.kopieWeg(lauf, name as ZuGrund);
+      return;
+    }
+    const st = lauf.standbild;
+    if (!st) return;
+    // Standbild in Pruefung: jede Aenderung (ausser timeupdate bei gleicher Zeit) verwirft es.
+    if (deckeZuBeiEreignis(name, el.currentTime, st.ct)) {
+      lauf.standbild = null;
+      lauf.standAufnahme = null;
+    }
+  }
+
+  // Die Kopie sofort und ohne Bremse wegnehmen: das Video steht dann weichgezeichnet da (sein Urteil blieb `verdeckt`). Der Zaehler des laufenden Videos (`sauber`) wurde von der
+  // Pause-Pruefung nie angefasst: nach Play steht er, wie er vor der Pause war, nach einem Sprung oder einer Aenderung im Stand steht er auf null.
+  private kopieWeg(lauf: VideoLauf, grund: ZuGrund): void {
+    const k = lauf.kopie;
+    this.stoppeStandWache(lauf);
+    lauf.kopie = null;
+    lauf.standbild = null;
+    if (!k) return;
+    if (k.timer) clearTimeout(k.timer);
+    k.timer = null;
+    try {
+      k.h.entferne();
+    } catch {
+      // Element schon weg
+    }
+    if (lauf.tot) return;
+    lauf.sauber = zaehlerNachZudecken(grund, lauf.el.paused || lauf.el.ended, lauf.sauber);
+    this.meldeSauber(lauf);
+    if (k.gezeigt) this.haken.beiKopie?.(lauf.el, lauf.z);
+  }
+
+  // Nachschau im Takt (fuer alles, was kein Ereignis meldet) und Bildwaechter (wo vorhanden: jedes neue gezeigte Bild nimmt die Kopie weg).
+  private starteStandWache(lauf: VideoLauf): void {
+    this.stoppeStandWache(lauf);
+    lauf.standNachschau = setInterval(() => {
+      if (lauf.tot || !lauf.kopie) return this.stoppeStandWache(lauf);
+      if (this.kopieUngueltig(lauf)) this.kopieWeg(lauf, 'nachschau');
+    }, STAND_NACHSCHAU_MS);
+    if (!lauf.rvfc || this.ohneBildwaechter) return;
+    try {
+      lauf.standWaechter = lauf.el.requestVideoFrameCallback(() => {
+        lauf.standWaechter = null;
+        if (!lauf.tot && lauf.kopie) this.kopieWeg(lauf, 'bildwaechter');
+      });
+    } catch {
+      lauf.standWaechter = null;
+    }
+  }
+
+  private stoppeStandWache(lauf: VideoLauf): void {
+    if (lauf.standNachschau) clearInterval(lauf.standNachschau);
+    lauf.standNachschau = null;
+    if (lauf.standWaechter !== null) {
+      try {
+        lauf.el.cancelVideoFrameCallback(lauf.standWaechter);
+      } catch {
+        // Element schon weg
+      }
+    }
+    lauf.standWaechter = null;
+  }
+
+  // E3d (P3): das Attribut `poster` hat sich geaendert (Attribut-Beobachtung des Schleiers). Zeigt das Video jetzt sein Poster, ist es sofort und ohne Bremse `verdeckt`
+  // (auch ein freies, nie gespieltes Video), der Zaehler steht auf null, eine Kopie faellt weg. Gibt es keinen Lauf, tut der Schleier das Noetige selbst.
+  posterGeaendert(el: HTMLVideoElement): boolean {
+    const lauf = [...this.laeufe].find((l) => l.el === el);
+    if (!lauf || lauf.tot) return false;
+    if (!zeigtPosterAm(el)) return true;
+    this.kopieWeg(lauf, 'seeked');
+    lauf.soll = 'verdeckt';
+    lauf.sauber = 0;
+    if (lauf.wechselTimer) clearTimeout(lauf.wechselTimer);
+    lauf.wechselTimer = null;
+    this.meldeSauber(lauf);
+    this.gleicheAn(lauf);
+    return true;
+  }
+
   // ---------- Abbau ----------
 
   private beendeLauf(lauf: VideoLauf): void {
@@ -723,6 +1152,10 @@ export class VideoTakt {
     lauf.sofortOffen = false;
     this.haken.beiSauber?.(lauf.el, null);
     this.entwaffne(lauf);
+    this.kopieWeg(lauf, 'emptied'); // M3: eine Kopie geht mit dem Lauf (Aushaengen, Vergessen, Abbau), nie verwaist
+    this.stoppeStandWache(lauf);
+    lauf.standbild = null;
+    lauf.standAufnahme = null;
     if (lauf.fristTimer) clearTimeout(lauf.fristTimer);
     lauf.fristTimer = null;
     if (lauf.z.urteil === null) this.haken.beendet(lauf.el, lauf.z);
@@ -730,7 +1163,7 @@ export class VideoTakt {
     lauf.wechselTimer = null;
     this.faellig.delete(lauf);
     this.laeufe.delete(lauf);
-    for (const [name, fn] of lauf.hoerer) lauf.el.removeEventListener(name, fn);
+    for (const [name, fn, frueh] of lauf.hoerer) lauf.el.removeEventListener(name, fn, frueh);
     lauf.hoerer.length = 0;
     if (lauf.z.video === lauf) lauf.z.video = null;
     if (!this.laeufe.size) {

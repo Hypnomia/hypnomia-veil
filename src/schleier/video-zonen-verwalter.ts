@@ -53,6 +53,8 @@ export interface VerwalterHaken {
   verdeckeNotfall(el: HTMLVideoElement): void;
   // Ende einer Leinwand ohne Freigabe (Rueckfall, Platzverlust, P7): der Zaehler sauberer Pruefungen steht danach auf 0.
   verwirfFreigabe(el: HTMLVideoElement): void;
+  // Zeigt das Video gerade die Kopie seines Standbilds (E3c Runde 1)? Dann traegt es kein Etikett.
+  kopieZeigt(el: HTMLVideoElement): boolean;
   // Die Dokument-Bremse (BLITZ_SPERRE_MS nach dem letzten grossen Wechsel eines Videos im Dokument) erlaubt einen Wechsel zur Leinwand?
   dokumentBremseOk(): boolean;
   // Ein Rueckfall wegen Langsamkeit (Popup-Hinweis, Status).
@@ -155,6 +157,15 @@ export class VideoZonen {
       this.eignungRunde?.set(el, basis);
     }
     return { ...basis, andereAktiv: !ohneAndere && [...this.lauf.keys()].some((v) => v !== el) && this.lauf.size >= VIDEO_ZONEN_MAX_JE_DOKUMENT };
+  }
+
+  // Technische Eignung fuer die Kopie des Standbilds (E3c Runde 1, K5): wie die Zonen-Leinwand, aber unabhaengig von der Einstellung `video` und vom Platz.
+  eignungFuerKopie(el: HTMLVideoElement): boolean {
+    try {
+      return pruefeEignung({ ...this.baueFakten(el), einstellung: 'zonen', andereAktiv: false }).ok;
+    } catch {
+      return false;
+    }
   }
 
   // Eine Runde der Platzregel: die Eignung eines Videos wird darin nur einmal gerechnet.
@@ -499,6 +510,7 @@ export class VideoZonen {
   // Etikett fuer ein ganz verdecktes Video, das trotz "Only the naughty bits" ganz bleibt (nicht lesbar, zu knifflig): nur nach dem Urteil.
   // Ein Video, das nur auf seine Leinwand wartet (geeignet), bekommt keins.
   etikett(el: HTMLVideoElement, z: Zustand): void {
+    if (this.haken.kopieZeigt(el)) return this.etiketten.entferne(el); // K8: solange die Kopie gezeigt wird, kein Etikett
     if (z.urteil !== 'verdeckt' || this.lauf.has(el) || this.haken.einstellungen()?.video !== 'zonen' || !this.haken.aktiv()) return this.etiketten.entferne(el);
     // Ohne Bilddaten gibt es nichts zu erklaeren (vorlaeufig verdeckt, Werbeflaeche ohne Quelle): kein Etikett, das Dokument bleibt unberuehrt.
     if (el.readyState < 2 || !(el.videoWidth > 0) || this.haken.anzeige(el)) return this.etiketten.entferne(el);

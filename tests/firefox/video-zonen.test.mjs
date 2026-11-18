@@ -1253,22 +1253,7 @@ try {
   });
 
   // ---------- Etappe 3 (E3r): Platz fuer die Leinwand und Pause nach Regel S2, Fixture video-platz.html ----------
-  // Erwartete Fehlschlaege: Firefox kennt kein `test.fail`. `testRot` laeuft den Fall wie einen normalen und meldet "ERWARTET ROT (E3a)" statt eines Fehlers, wenn er
-  // scheitert; wird er gruen, ist das ein Fehler ("UNERWARTET GRUEN: Kennzeichnung entfernen"), damit der Bauer sie herausnimmt. VEIL_E3_OHNE_KENNZEICHNUNG=1
-  // laeuft die Faelle als normale Tests (Rohlauf, jede Meldung ist dann ein Fehler). Die Chromium-Faelle stehen in tests/chromium/video-platz.spec.ts.
-  async function testRot(name, etappe, fn) {
-    if (process.env.VEIL_E3_OHNE_KENNZEICHNUNG === '1') return test(name, fn);
-    if (process.env.VEIL_NUR && !process.env.VEIL_NUR.split(',').some((n) => name.startsWith(n))) return;
-    const t0 = Date.now();
-    try {
-      await fn();
-    } catch (fehler) {
-      console.log(`firefox: ERWARTET ROT (${etappe}) ${name} (${Date.now() - t0} ms): ${String(fehler?.message ?? fehler).slice(0, 300)}`);
-      return;
-    }
-    console.error(`firefox: FEHLER ${name}: UNERWARTET GRUEN, die Kennzeichnung ${etappe} entfernen`);
-    fehlerListe.push(`${name} (unerwartet gruen)`);
-  }
+  // Die Chromium-Faelle stehen in tests/chromium/video-platz.spec.ts. Die Pause nach Regel S2 (E3c) braucht requestVideoFrameCallback am Video (Punkt 2 der Regel).
   async function oeffnePlatz(abfrage = '') {
     await driver.get(`${basis}/video-platz.html?bild=${encodeURIComponent(BILD)}${abfrage ? `&${abfrage}` : ''}`);
     await bis('Film bereit', () => driver.executeScript('return document.documentElement.dataset.filmBereit ?? null'), 60_000);
@@ -1317,7 +1302,7 @@ try {
     pruefe((anderes.etikett ?? '') !== '', 'V5: das andere Video traegt kein Etikett');
   });
 
-  await testRot('S2a Pause auf sauberem Standbild: in der Pause wird geprueft, nach drei sauberen Pruefungen ist das Video frei', 'E3c', async () => {
+  await test('S2a Pause auf sauberem Standbild: nach drei sauberen Pruefungen steht die Kopie, das Video bleibt verdeckt (nie frei); Play und Sprung nehmen sie weg (auch ohne Bildwaechter)', async () => {
     await oeffnePlatz();
     await setze({ video: 'ganz' });
     await neuesVideo({ id: 'v1', ct0: 10.5 });
@@ -1327,8 +1312,85 @@ try {
     );
     pruefe(p !== null, 'Voraussetzung: das Video erreichte 12,5 s nicht');
     pruefe((await attr('v1', 'data-veil')) === 'verdeckt' && !(await hatLeinwand('v1')), 'Voraussetzung: beim Pausieren verdeckt, ohne Leinwand');
-    await bis('S2a: das Video blieb 15 s auf dem sauberen Standbild verdeckt', async () => (await attr('v1', 'data-veil')) === 'frei', 15_000);
+    const bildwaechter = await driver.executeScript("return typeof HTMLVideoElement.prototype.requestVideoFrameCallback === 'function'");
+    console.log(`firefox: S2a requestVideoFrameCallback am Video: ${bildwaechter ? 'ja' : 'nein'} (K6: keine Bedingung)`);
+    const kopie = () => attr('v1', 'data-veil-video-standbild');
+    const t0 = Date.now();
+    await bis('S2a: das Standbild bekam in 15 s keine Kopie', async () => (await kopie()) === 'kopie', 15_000);
+    console.log(`firefox: S2a Zeit von Pause bis Kopie: ${Date.now() - t0} ms`);
     pruefe((await ct('v1')) === p.ct, 'S2a: das Standbild hat sich bewegt');
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt', 'S2a: das Urteil des Videos ist nicht verdeckt (K1: nie frei)');
+    const log = await driver.executeScript('return window.__platz');
+    pruefe(log.filter((e) => e.was === 'data-veil' && e.v === 'frei' && e.t >= p.t).length === 0, 'S2a: das Video war in der Pause frei');
+    // Play: die Kopie ist sofort weg
+    await driver.executeScript("window.spiele('v1')");
+    await bis('S2a: nach Play steht die Kopie noch', async () => (await kopie()) === null, 2000);
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt', 'S2a: nach Play nicht verdeckt');
+  });
+
+  // V1/V2 (Verschaerfung im Bestand): ein "sauber" einer Pruefung, die einem stehenden Bild galt, zaehlt nicht im Zaehler des laufenden Videos; ein Sprung im Stand setzt ihn auf null.
+  await test('V1/V2 Sprung im Stand setzt den Zaehler des laufenden Videos auf null, die Pruefung des neuen Standbilds zaehlt nicht darin', async () => {
+    await oeffnePlatz();
+    await setze({ video: 'ganz' });
+    await neuesVideo({ id: 'v1', ct0: 10.5 });
+    await bis('Voraussetzung: verdeckt', async () => (await attr('v1', 'data-veil')) === 'verdeckt', 30_000);
+    const p = await driver.executeAsyncScript(`const fertig = arguments[arguments.length - 1]; window.pausiereBei('v1', 13.3).then(fertig);`);
+    pruefe(p !== null, 'Voraussetzung: das Video erreichte 13,3 s nicht');
+    await bis('Kopie', async () => (await attr('v1', 'data-veil-video-standbild')) === 'kopie', 15_000);
+    await driver.executeScript("document.getElementById('v1').currentTime = 3.5");
+    await bis('Kopie weg', async () => (await attr('v1', 'data-veil-video-standbild')) === null, 2000);
+    pruefe((await attr('v1', 'data-veil-video-sauber')) === '0', `V2: Zaehler nach dem Sprung im Stand ${await attr('v1', 'data-veil-video-sauber')}, erwartet 0`);
+    await warte(2500);
+    pruefe((await attr('v1', 'data-veil-video-sauber')) === '0', `V1: Zaehler 2,5 s nach dem Sprung im Stand ${await attr('v1', 'data-veil-video-sauber')}, erwartet 0 (kein Zaehlen im Stand)`);
+    pruefe((await attr('v1', 'data-veil')) === 'verdeckt', 'V1/V2: das Video ist nicht verdeckt');
+  });
+
+  // E3d (Regel P): ein nie gespieltes Video mit Poster (Person mit Waechter) und neutralem ersten Filmbild bleibt verdeckt, das Poster ist nie scharf zu sehen (vorher: Urteil frei,
+  // 8 von 8 Stichproben scharf).
+  await test('P-Poster (Waechter) nie gespieltes Video mit Poster (Person mit Waechter), erstes Filmbild neutral: das Poster ist nie scharf zu sehen, das Video nie frei', async () => {
+    await oeffnePlatz();
+    await setze({ video: 'ganz' });
+    const poster = await driver.executeAsyncScript(`const fertig = arguments[arguments.length - 1]; window.erzeugePoster().then(fertig);`);
+    await neuesVideo({ id: 'v1', preload: 'auto', abspielen: false, poster });
+    const proben = [];
+    for (let k = 0; k < 8; k++) {
+      await warte(800);
+      proben.push(await messe());
+    }
+    const urteil = await attr('v1', 'data-veil');
+    const log = await driver.executeScript('return window.__platz');
+    const scharfe = proben.filter(scharf).length;
+    console.log(`firefox: P-Poster Urteil ${urteil}, ${proben.length} Stichproben, scharf: ${scharfe} ${JSON.stringify(proben.map((b) => [b.quer, b.hoch]))}`);
+    pruefe(scharfe === 0, `${scharfe} von ${proben.length} Stichproben zeigen das Poster scharf (Urteil ${urteil})`);
+    pruefe(urteil === 'verdeckt', `das Video mit Poster ist nicht verdeckt (${urteil})`);
+    pruefe(log.filter((e) => e.was === 'data-veil' && e.v === 'frei').length === 0, 'das Video mit Poster war frei');
+  });
+  // E3d Nachtrag 2 (P10, h3): ein freies, gespieltes Video (Film ganz neutral, kurz, ohne Schleife) mit Poster (Person mit Waechter): ended, dann load(). Nach emptied ist das Urteil
+  // verfallen: sofort nicht mehr frei, das Poster nie scharf, verdeckt, played wieder leer (belegt zugleich, dass played nach load() in Firefox leer ist).
+  await test('h3 (P10) freies gespieltes Video mit Poster: ended, dann load(): nicht mehr frei, kein scharfes Poster, verdeckt, played leer', async () => {
+    await oeffnePlatz('kurz=1&neutral=1');
+    await setze({ video: 'ganz' });
+    const poster = await driver.executeAsyncScript(`const fertig = arguments[arguments.length - 1]; window.erzeugePoster().then(fertig);`);
+    await neuesVideo({ id: 'v1', preload: 'auto', loop: false, abspielen: false, poster });
+    await bis('Voraussetzung: Urteil da', async () => (await driver.executeScript("const v = document.getElementById('v1'); return v.readyState >= 2 && v.getAttribute('data-veil') !== null")) === true, 30_000);
+    await driver.executeScript("window.spiele('v1')");
+    await bis('Voraussetzung: das gespielte Video wird frei', async () => (await attr('v1', 'data-veil')) === 'frei', 20_000);
+    await bis('Voraussetzung: ended', async () => (await driver.executeScript("return document.getElementById('v1').ended")) === true, 20_000);
+    const freiVorher = (await driver.executeScript('return window.__platz')).filter((e) => e.was === 'data-veil' && e.v === 'frei').length;
+    await driver.executeScript("document.getElementById('v1').load()");
+    const proben = [];
+    for (let k = 0; k < 8; k++) {
+      proben.push(await messe());
+      await warte(250);
+    }
+    const urteil = await attr('v1', 'data-veil');
+    const gespielt = await driver.executeScript("return document.getElementById('v1').played.length");
+    const log = await driver.executeScript('return window.__platz');
+    console.log(`firefox: h3 Urteil ${urteil}, played ${gespielt}, ${proben.length} Stichproben, scharf: ${proben.filter(scharf).length}`);
+    pruefe(proben.filter(scharf).length === 0, 'h3: Stichproben zeigen das Poster scharf');
+    pruefe(urteil === 'verdeckt', `h3: das Video mit Poster ist nach load() nicht verdeckt (${urteil})`);
+    pruefe(gespielt === 0, `h3: played ist nach load() nicht leer (${gespielt})`);
+    pruefe(log.filter((e) => e.was === 'data-veil' && e.v === 'frei').length === freiVorher, 'h3: nach load() wurde das Video wieder frei');
   });
   await rm(ordner, { recursive: true, force: true });
 } catch (fehler) {

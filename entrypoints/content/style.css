@@ -20,6 +20,9 @@
 /* Zonen-Leinwand (src/schleier/video-leinwand.ts): das Video selbst bleibt unsichtbar, eine Leinwand daneben zeigt das Bild mit den Zensurflaechen.
    Pause und Ausnahme heben es auf wie alle anderen Regeln. */
 video[data-veil-leinwand]:not(:root[data-veil-seite="aus"] *) { opacity: 0 !important; }
+/* Kopie des geprueften Standbilds eines pausierten Videos (src/schleier/video-kopie.ts): das Video darunter bleibt `verdeckt` und ist unsichtbar, die Kopie liegt als
+   eigener Host darueber. Faellt die Kopie weg, steht das Video weichgezeichnet da (nie ein ungeprueftes Bild). */
+video[data-veil-kopie]:not(:root[data-veil-seite="aus"] *) { opacity: 0 !important; }
 html[data-veil-strict]:not([data-veil-seite]) { opacity: 0 !important; }
 /* Lebenszeichen der Erweiterung: diese Manifest-CSS verschwindet, wenn die Erweiterung entfernt oder abgeschaltet wird. Der Haken fuer Shadow Roots in der
    Seitenwelt (entrypoints/wurzel-haken.content.ts) liest die Eigenschaft und wird ohne sie wirkungslos. */

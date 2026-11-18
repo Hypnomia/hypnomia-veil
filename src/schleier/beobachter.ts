@@ -11,7 +11,7 @@ import { istSvgBild } from './svg-bild';
 // svg feImage: Bilder in Filtern (Nacht 18, N4); sie laufen als Art svgbild mit.
 const KANDIDAT = `img, video, canvas, svg image, svg feImage, ${HG_SELEKTOR}`;
 // href, attributeName, id: SMIL-Animationen, die spaeter auf ein Bild in Inline-SVG umgelenkt werden oder dessen id treffen (svg-bild.ts).
-const ATTRIBUTE = ['src', 'srcset', 'style', 'class', 'href', 'attributeName', 'id'];
+const ATTRIBUTE = ['src', 'srcset', 'poster', 'style', 'class', 'href', 'attributeName', 'id'];
 // Elemente, die nie eine Shadow Root tragen oder fuer die sich die Suche nicht lohnt.
 const KEIN_HOST = new Set(['img', 'script', 'style', 'link', 'meta', 'br', 'hr', 'source', 'track', 'title', 'head', 'wbr']);
 const FRAME_BUDGET_MS = 3;

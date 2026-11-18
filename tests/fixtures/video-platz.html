@@ -48,6 +48,7 @@
             id: v.id,
             veil: v.getAttribute('data-veil'),
             leinwand: v.hasAttribute('data-veil-leinwand'),
+            kopie: v.hasAttribute('data-veil-kopie'),
             modus: v.getAttribute('data-veil-video-modus'),
             etikett: v.getAttribute('data-veil-video-etikett'),
             opacity: getComputedStyle(v).opacity,
@@ -69,6 +70,7 @@
             var arten = [];
             if (z.veil === 'zensiert' && !z.leinwand) arten.push('zensiert-ohne-leinwand');
             if (z.veil === 'frei') arten.push('frei');
+            if (z.kopie && z.opacity !== '0') arten.push('kopie-sichtbar');
             if (z.leinwand && z.opacity !== '0') arten.push('leinwand-sichtbar');
             if (z.veil === null && !z.leinwand && z.opacity !== '0') arten.push('ohne-urteil-sichtbar');
             for (var k = 0; k < arten.length; k++) {
@@ -100,7 +102,7 @@
             }
           }
           pruefeZustaende('mutation');
-        }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-veil', 'data-veil-leinwand', 'data-veil-video-modus', 'data-veil-video-etikett'] });
+        }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-veil', 'data-veil-leinwand', 'data-veil-video-modus', 'data-veil-video-etikett', 'data-veil-kopie', 'data-veil-video-standbild'] });
         function schrittPruefung() { pruefeZustaende('bild'); requestAnimationFrame(schrittPruefung); }
         requestAnimationFrame(schrittPruefung);
       })();
@@ -126,6 +128,20 @@
          Aufnahme einmal je Browserprofil (localStorage), danach steht data-film-bereit="1" sofort. Die Videos legt der Test an: window.neuesVideo(opt). -->
     <!-- Layout: #platz oben (Videos stapeln sich darin untereinander, je 640 mal 360), dann #luecke (?luecke=<px>, Standard 1200), dann #platz2 (Anker fuer
          ein Video, das erst nach dem Scrollen ins Bild kommt), dann #abstand. -->
+    <!-- ?puls=1: ein 120 mal 120 Bildpunkte grosses Feld unten rechts (rechts neben den Videos von 640 Bildpunkten) wechselt in jedem Bild die Farbe (ein 4 mal 4 Punkt liess den Screencast in einzelnen Laeufen ohne Bilder, gemessen Runde 4). Ein pausiertes Video erzeugt sonst fast keine neuen Bilder der Aufnahme
+         (CDP-Screencast sendet nur bei Aenderung); so liefert die Aufnahme auch im Stand laufend Bilder. Der Punkt liegt ausserhalb von Video und Waechter. -->
+    <script>
+      if (/[?&]puls=1/.test(location.search)) {
+        document.addEventListener('DOMContentLoaded', function () {
+          var punkt = document.createElement('div');
+          punkt.style.cssText = 'position:fixed;right:0;bottom:0;width:120px;height:120px;z-index:9;';
+          document.body.appendChild(punkt);
+          var an = false;
+          window.pulsSchritte = 0;
+          (function schritt() { an = !an; window.pulsSchritte++; punkt.style.background = an ? '#444' : '#bbb'; requestAnimationFrame(schritt); })();
+        });
+      }
+    </script>
     <div id="platz"><div id="bedienung">Play</div></div>
     <div id="luecke"></div>
     <div id="platz2"></div>
@@ -137,6 +153,8 @@
         var satz = param.get('satz') || 'nsfw'; // Ordner der Testbilder (nsfw oder sfw)
         var ohne = param.get('ohne') === '1';
         var kurz = param.get('kurz') === '1';
+        var neutral = param.get('neutral') === '1'; // Film ganz neutral: nur Farbverlauf, nie das Testbild (und kein Schachbrett)
+        var wn = param.get('wn') === '1'; // Waechter auch in den neutralen Abschnitten (fest links oben): ein sauberes Standbild mit Schachbrett, dessen Kopie scharf zu sehen sein muss
         var schnell = param.get('modus') === 'schnell'; // schnelle Schnitte: ab 1 s alle 400 ms zwischen hellem und dunklem Bild mit dem Testbild links und rechts
         var WU = Number(param.get('wu') || '0.5');
         var WV = Number(param.get('wv') || '0.55');
@@ -147,7 +165,7 @@
         var B = AUFL === 1080 ? 1920 : AUFL === 720 ? 1280 : 640;
         var H = AUFL === 1080 ? 1080 : AUFL === 720 ? 720 : 360;
         var DAUER_MS = kurz || schnell ? 6000 : 15000;
-        var SCHLUESSEL = 'video-zonen-3:' + satz + '/' + bild + ':' + (schnell ? 'schnell' : kurz ? 'kurz' : 'lang') + ':' + AUFL + ':' + SPEED + ':' + (ohne ? 'o' : 'w') + ':' + WU + ':' + WV;
+        var SCHLUESSEL = 'video-zonen-3:' + satz + '/' + bild + ':' + (schnell ? 'schnell' : kurz ? 'kurz' : 'lang') + ':' + AUFL + ':' + SPEED + ':' + (ohne ? 'o' : 'w') + ':' + WU + ':' + WV + (wn ? ':wn' : '') + (neutral ? ':neutral' : '');
         var platz = document.getElementById('platz');
         document.getElementById('luecke').style.height = Number(param.get('luecke') || '1200') + 'px';
         var adresse = null;
@@ -212,6 +230,7 @@
                 verlauf(g, B, H, (t * 12) % 360);
                 g.fillStyle = '#000';
                 g.fillRect((t * 100) % (B - 8), H - 8, 8, 8);
+                if (wn) waechter(g, 0.1 * B, 0.2 * H);
               } else if (t < 5) {
                 verlauf(g, B, H, 200 + (t * 12) % 60);
                 // wanderndes Streifenmuster rechts (kraeftige Kanten, dient als Kontrast fuer "scharf")
@@ -234,7 +253,7 @@
                   bx = Math.round(20 + (m <= spanne ? m : 2 * spanne - m));
                 }
               }
-              if (bx !== null) {
+              if (bx !== null && !neutral) {
                 g.drawImage(img, bx, 0, bb, bh);
                 if (!ohne) waechter(g, bx + WU * bb - 16, WV * bh - 16);
               }
@@ -302,6 +321,8 @@
           // nie gespielt wird und als Vorschau sein erstes Bild zeigt, das Bild mit der Person bei 2 bis 5 s).
           if (opt.preload) v.preload = opt.preload;
           if (typeof opt.ct0 === 'number') v.addEventListener('loadedmetadata', function () { try { v.currentTime = opt.ct0; } catch (e) { /* ohne Sprung */ } }, { once: true });
+          if (opt.posterLeer) v.setAttribute('poster', ''); // leeres poster-Attribut: gilt wie jedes poster
+          if (opt.poster) v.poster = opt.poster; // Poster (zum Beispiel ein data:-Bild): ein nie gespieltes Video zeigt es statt des ersten Bilds
           if (opt.controls) v.controls = true;
           if (opt.breite) v.style.width = opt.breite + 'px';
           if (opt.hoehe) v.style.height = opt.hoehe + 'px';
@@ -358,6 +379,22 @@
             schritt();
           });
         };
+        // Wie pausiereBei, aber nur im Zeitfenster [von, bis]: ein Video, das schon ueber `bis` steht, wird nicht angehalten (es muss erst die Schleife durchlaufen).
+        window.pausiereIm = function (id, von, bis) {
+          return new Promise(function (fertig) {
+            var v = document.getElementById(id);
+            var t0 = performance.now();
+            function schritt() {
+              if (v.currentTime >= von && v.currentTime <= bis && !v.paused) {
+                v.pause();
+                var roh = document.documentElement.dataset.veilStatus;
+                fertig({ t: window.epoche(), ct: v.currentTime, pruef: roh ? JSON.parse(roh).videoPruefungen : null });
+              } else if (performance.now() - t0 > 30000) fertig(null);
+              else requestAnimationFrame(schritt);
+            }
+            schritt();
+          });
+        };
         // Zehn schnelle Wechsel der Berechtigung: Schritt i spielt a und pausiert b (gerade i) oder umgekehrt, alle `abstand` ms; liefert nach dem letzten
         // Schritt { start, ende } (Epoche).
         window.wechselFolge = function (a, b, schritte, abstand) {
@@ -371,6 +408,41 @@
               setTimeout(schritt, abstand);
             }
             schritt();
+          });
+        };
+
+        // Reine Tonquelle (WAV, 1 s Stille, 8 kHz, 8 Bit) als video-Element: videoWidth ist 0. opt.poster als Poster, opt.id, opt.loop.
+        window.neuesTonVideo = function (opt) {
+          var n = 8000;
+          var buf = new ArrayBuffer(44 + n);
+          var d = new DataView(buf);
+          function t(o, x) { for (var i = 0; i < x.length; i++) d.setUint8(o + i, x.charCodeAt(i)); }
+          t(0, 'RIFF'); d.setUint32(4, 36 + n, true); t(8, 'WAVE'); t(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+          d.setUint32(24, 8000, true); d.setUint32(28, 8000, true); d.setUint16(32, 1, true); d.setUint16(34, 8, true); t(36, 'data'); d.setUint32(40, n, true);
+          for (var i = 0; i < n; i++) d.setUint8(44 + i, 128);
+          var v = document.createElement('video');
+          v.id = opt.id;
+          v.muted = true;
+          v.loop = true;
+          if (opt.poster) v.poster = opt.poster;
+          platz.appendChild(v);
+          v.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+          return v;
+        };
+
+        // Poster mit der Person und dem Waechter (data:-Adresse): ein nie gespieltes Video, dessen Poster etwas zeigt, das sein erstes Filmbild (neutral) nicht zeigt.
+        window.erzeugePoster = function () {
+          return ladeBild(bild).then(function (img) {
+            var c = document.createElement('canvas');
+            c.width = B;
+            c.height = H;
+            var g = c.getContext('2d');
+            verlauf(g, B, H, 200);
+            var bb = Math.round(img.naturalWidth * (H / img.naturalHeight));
+            var bx = Math.round(B / 4 - bb / 2);
+            g.drawImage(img, bx, 0, bb, H);
+            waechter(g, bx + WU * bb - 16, WV * H - 16);
+            return c.toDataURL('image/jpeg', 0.95);
           });
         };
 

@@ -14,11 +14,17 @@ export const ATTR_MS = TESTHAKEN ? 'data-veil-ms' : '';
 export const ATTR_STATUS = TESTHAKEN ? 'data-veil-status' : '';
 // Video unter einer Zonen-Leinwand: das Video selbst ist unsichtbar (opacity 0 per CSS), die Leinwand daneben zeigt das zensierte Bild.
 export const ATTR_LEINWAND = 'data-veil-leinwand';
+// Kopie des geprueften Standbilds (video-kopie.ts): das Video darunter ist unsichtbar (style.css), sein Urteil bleibt `verdeckt`.
+export const ATTR_KOPIE = 'data-veil-kopie';
 // Testhaken der Zonen-Leinwand (nur Testbau, nur Testhost): Ansicht des Videos (frei, zonen, mosaik, ganz) und die gezeigten Boxen (JSON).
 export const ATTR_VIDEO_MODUS = TESTHAKEN ? 'data-veil-video-modus' : '';
 export const ATTR_VIDEO_BOXEN = TESTHAKEN ? 'data-veil-video-boxen' : '';
 // Testhaken: Stand des Zaehlers sauberer Pruefungen der Freigabe-Hysterese (video.ts VideoLauf.sauber), am Video, nur bei Aenderung geschrieben.
 export const ATTR_VIDEO_SAUBER = TESTHAKEN ? 'data-veil-video-sauber' : '';
+// Testhaken: `kopie`, solange die Kopie des Standbilds gezeigt wird (nur Testbau).
+export const ATTR_VIDEO_STANDBILD = TESTHAKEN ? 'data-veil-video-standbild' : '';
+// Testhaken: Zeit (ms) und Leinwandgroesse beim Malen der Kopie, JSON (nur Testbau).
+export const ATTR_VIDEO_STANDBILD_MS = TESTHAKEN ? 'data-veil-video-standbild-ms' : '';
 
 // Inline-Hintergrund (auch Kurzform `background: url(...)`): dieselbe Auswahl steht in entrypoints/content/style.css.
 // Die Gross-/Kleinschreibung im Attributwert ist egal (`i`). Den Wert liest der Schleier ueber die Langform background-image des Style-Objekts.

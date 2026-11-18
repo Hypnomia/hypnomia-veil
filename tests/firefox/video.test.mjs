@@ -183,7 +183,10 @@ try {
   // Firefox springt in einer Aufnahme ohne Suchindex nicht bildgenau (jeder Sprung landet auf demselben neutralen Bild): der Sprung auf den
   // Treffer-Abschnitt ist dort nicht pruefbar (Chromium prueft ihn). Hier: ein pausiertes Video wird durch drei Spruenge mit sauberem Bild
   // (jeder loest eine Sofortpruefung aus) nach der Hysterese wieder frei, und im Stand gibt es sonst keine Pruefungen.
-  await test('d) pausiertes Video: keine Pruefungen im Stand; jeder Sprung (seeked) loest eine Pruefung aus, drei saubere geben frei', async () => {
+  // E3c (Pause nach Regel S2, Regel K): ein verdecktes, pausiertes Video prueft sein Standbild (hoechstens eine Pruefung je Sekunde) und bekommt nach drei sauberen Pruefungen DESSELBEN
+  // Standbilds eine Kopie; das Video selbst wird in der Pause nie frei, in allen Browsern (V3, auch ohne requestVideoFrameCallback, Firefox 128). Jeder Sprung beginnt ein neues
+  // Standbild: drei Spruenge mit je einer sauberen Pruefung geben keine Kopie und nie frei. Alter Soll: "im Stand keine Pruefungen, drei saubere Spruenge geben frei".
+  await test('d) pausiertes Video: im Stand die Pruefungen des Standbilds und seine Kopie, nie frei; jeder Sprung (seeked) loest eine Pruefung aus und beginnt ein neues Standbild', async () => {
     await oeffne();
     await neuesVideo({ id: 'p1' });
     await bis('frei', async () => (await urteil('p1')) === 'frei', 30_000);
@@ -192,9 +195,10 @@ try {
     await warte(500);
     const p0 = await pruefungen();
     await warte(3500);
-    pruefe((await pruefungen()) === p0, 'Pruefungen im Stand');
-    const t0 = Date.now();
-    let letzte = p0;
+    // Hoechstens die eine Pruefung des Standbilds (ein Treffer beendet sie).
+    pruefe((await pruefungen()) <= p0 + 1, `Pruefungen im Stand (${p0} auf ${await pruefungen()})`);
+    const kopie = () => driver.executeScript("return document.getElementById('p1').getAttribute('data-veil-video-standbild')");
+    let letzte = await pruefungen();
     // Ziele nahe dem Anfang: dort liegt das erste Schluesselbild (neutral). Wohin Firefox bei anderen Zielen springt, haengt von der
     // Aufnahme ab (ohne Suchindex landet es auf irgendeinem Schluesselbild, auch im Treffer-Abschnitt): die Landestelle wird darum geprueft.
     const ziele = [0.5, 0.4, 0.3];
@@ -206,14 +210,17 @@ try {
       pruefe(rot === false, `Sprung ${i + 1} landete im Treffer-Abschnitt (Landestelle rot)`);
       await bis(`Pruefung nach Sprung ${i + 1}`, async () => (await pruefungen()) > letzte, 5000);
       letzte = await pruefungen();
-      await warte(2000); // das Ergebnis abwarten: ein weiterer Sprung vor der Antwort verwirft es (Bild veraltet)
-      if (i < 2) pruefe((await urteil('p1')) === 'verdeckt', `nach ${i + 1} sauberer Pruefung schon ${await urteil('p1')}`);
+      await warte(600); // weniger als der Takt von einer Sekunde: das neue Standbild hat erst eine saubere Pruefung
+      pruefe((await urteil('p1')) === 'verdeckt', `nach ${i + 1} sauberer Pruefung schon ${await urteil('p1')}`);
+      pruefe((await kopie()) === null, `nach Sprung ${i + 1} steht schon eine Kopie`);
     }
-    await bis('frei nach drei sauberen Spruengen', async () => (await urteil('p1')) === 'frei', 5000);
-    console.log(`firefox: drei Spruenge im Stand, frei nach ${Date.now() - t0} ms`);
+    const t0 = Date.now();
+    await bis('Kopie nach drei sauberen Pruefungen desselben Standbilds', async () => (await kopie()) === 'kopie', 10_000);
+    console.log(`firefox: drei Spruenge im Stand, dann Kopie nach ${Date.now() - t0} ms`);
+    pruefe((await urteil('p1')) === 'verdeckt', 'mit der Kopie ist das Urteil nicht mehr verdeckt (das Video wird nie frei)');
     const p2 = await pruefungen();
     await warte(2500);
-    pruefe((await pruefungen()) === p2, 'Pruefungen im Stand nach den Spruengen');
+    pruefe((await pruefungen()) === p2, 'Pruefungen im Stand nach der Kopie');
   });
 
   // Firefox springt in einer Aufnahme ohne Suchindex nur auf ein Schluesselbild, in dieser Aufnahme auf das erste. Darum liegt der Treffer in der
@@ -319,7 +326,9 @@ try {
     const e = await wechsel('q1');
     const abstand = e[2].t - e[1].t;
     console.log(`firefox: Quellenwechsel, Freigabe ${abstand.toFixed(0)} ms nach dem Verbergen`);
-    pruefe(abstand >= 1000, `Freigabe schon ${abstand} ms nach dem Verbergen`);
+    // Firefox rundet die Zeitstempel der Seite auf ganze Millisekunden (wie in j), darum 1 ms Spielraum: die Sperre im Code bleibt 1000 ms
+    // (VIDEO_WECHSEL_MIN_MS). Gemessen in 16 Laeufen der Session 21: dreimal genau 1000 ms, im Hook-Lauf 13 einmal 999 ms.
+    pruefe(abstand >= 999, `Freigabe schon ${abstand} ms nach dem Verbergen`);
     await waechterOk();
   });
 

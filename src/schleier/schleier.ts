@@ -47,6 +47,8 @@ import { GrauLeser, daumenAusGrau, vergleicheDaumen } from './daumen';
 import { istDrm } from './pip-sperre';
 import { VideoZonen } from './video-zonen-verwalter';
 import { setzeMalenAus, setzeRvfcAus } from './video-leinwand';
+import { VideoKopie } from './video-kopie';
+import { neuBeurteilenBeiBildmasse, posterAenderungWirkt, zeigtPosterAm } from './video-standbild';
 import { Beobachter } from './beobachter';
 import {
   ATTR_MS,
@@ -238,6 +240,18 @@ export function starteSchleier(ctx: KontextLeicht): void {
       angezeigt: (el, z) => videoAngezeigt(el, z),
       beiBild: (el) => schnittBeiBild(el),
       haelt: (el) => zonen.haelt(el),
+      // Pause nach Regel S2 (E3c): nur Videos ohne Leinwand; Daumen des gerade gezeigten Bilds und sein Vergleich (Szenenpruefung wie bisher).
+      hatLeinwand: (el) => zonen.hat(el),
+      daumen: (el) => standDaumen(el),
+      // Kopie des geprueften Standbilds (E3c Runde 1): Eignung wie die Zonen-Leinwand, Kopie als eigener Host (video-kopie.ts), Etikett richtet sich danach.
+      kopieEignung: (el) => zonen.eignungFuerKopie(el),
+      kopieMale: (el, beiAenderung) => {
+        const k = VideoKopie.male(el, { lebt: () => aktiv && lebt(), beiAenderung });
+        return k;
+      },
+      beiKopie: (el, z) => zonen.etikett(el, z),
+      daumenGleich: (alt, neu) =>
+        vergleicheDaumen(alt, neu, { szene: VIDEO_ZONEN_SZENE_SCHWELLE, zelle: VIDEO_ZONEN_ZELLE_SCHWELLE, anteil: VIDEO_ZONEN_ZELLEN_ANTEIL }).art === 'keiner',
       beendet: (_el, z) => {
         // Der Lauf endete, bevor sein Erst-Urteil gezeigt wurde (Element entfernt): das Video muss beim Wiedereinhaengen neu bewertet werden.
         z.eingereiht = false;
@@ -325,6 +339,18 @@ export function starteSchleier(ctx: KontextLeicht): void {
     return vergleicheDaumen(alt, d, { szene: VIDEO_ZONEN_SZENE_SCHWELLE, zelle: VIDEO_ZONEN_ZELLE_SCHWELLE, anteil: VIDEO_ZONEN_ZELLEN_ANTEIL }).art !== 'keiner';
   }
 
+  // Daumen des gerade gezeigten Bilds fuer die Pause-Pruefung (E3c). Wird im selben Augenblick gelesen wie die Pixel der Pruefung; null = nicht lesbar.
+  function standDaumen(el: HTMLVideoElement): Float32Array | null {
+    if (unlesbareVideos.has(el) || el.readyState < 2 || !(el.videoWidth > 0) || el.srcObject || istDrm(el) || !pixelLesenErlaubt(videoAdresse(el))) return null;
+    let leser = schnittLeser.get(el);
+    if (!leser) {
+      leser = new GrauLeser(VIDEO_ZONEN_DAUMEN_B);
+      schnittLeser.set(el, leser);
+    }
+    const g = leser.lies(el);
+    return g ? daumenAusGrau(g, VIDEO_ZONEN_DAUMEN_B, VIDEO_ZONEN_DAUMEN_H) : null;
+  }
+
   // Hover-Vorschau oder Anzeigen-Video einer Erwachsenenseite, nie im Player (Entscheidung 193): gibt keinen Ton und bekommt nie Zonen.
   function istVorschauVideo(v: HTMLVideoElement): boolean {
     const adapter = adapterFuer(erwachsenStatus().liste);
@@ -374,6 +400,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (el.getAttribute(ATTR_URTEIL) === 'zensiert') el.setAttribute(ATTR_URTEIL, 'verdeckt');
     },
     verwirfFreigabe: (el) => video.verwirfFreigabe(el),
+    kopieZeigt: (el) => video.kopieZeigt(el),
     dokumentBremseOk: () => performance.now() - letzteVideoFreigabe >= BLITZ_SPERRE_MS,
     meldeLangsam: () => {
       // Hinweis fuer das Popup (Zeitstempel, nur obere Seite): "Too slow to follow closely here."
@@ -911,6 +938,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
     reihe(el, z);
   }
 
+  // Videos, die ohne Bildmasse beurteilt wurden (nur Ton, ohne Takt): bei neuer Bildmasse (loadedmetadata, resize) neu beurteilt (P8 mit Poster verdeckt, P11 auch frei).
+  const tonVideos = new WeakSet<HTMLVideoElement>();
+
   function bewerteVideo(el: HTMLVideoElement, z: Zustand): void {
     if (el.readyState < 2) {
       // Noch keine Bilddaten (preload none oder metadata: erst nach dem Abspielen). Nach load und kurzer Frist unscharf zeigen,
@@ -919,7 +949,15 @@ export function starteSchleier(ctx: KontextLeicht): void {
       return;
     }
     // Nur Ton und kleine Videos (unter 32 x 32) werden ohne Pruefung und ohne Bremse freigegeben: dort gibt es keinen vollflaechigen Wechsel.
-    if (el.videoWidth === 0) return urteilFrei(el, z); // nur Ton
+    if (el.videoWidth === 0) {
+      tonVideos.add(el);
+      // Nur Ton: ein Poster (P8) wird auch beim Abspielen gezeigt, also bleibt das Video verdeckt; bekommt es spaeter Bildmasse (loadedmetadata, resize) oder verliert das
+      // Poster, wird neu beurteilt.
+      if (zeigtPosterAm(el)) {
+        return urteilVerdeckt(el, z);
+      }
+      return urteilFrei(el, z);
+    }
     if (istKlein(el)) return urteilFrei(el, z);
     reihe(el, z);
   }
@@ -1592,9 +1630,21 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (z.adresse !== null && adresse !== z.adresse && e.type === 'loadstart') {
         vergiss(el, z, false);
         bewerte(el, z);
+      } else if (e.type === 'emptied' && z.urteil !== null) {
+        // P10: nach emptied (auch load() mit derselben Quelle) ist das Urteil verfallen: wie eine neue Quelle, sofort verdeckt ohne Bremse (vergiss: Kopie weg, Lauf und Zaehler weg),
+        // dann neues Erst-Urteil nach den gewoehnlichen Regeln (mit Poster bleibt es verdeckt, P1).
+        vergiss(el, z, false);
+        bewerte(el, z);
       }
     } else if (z.art === 'video' && e.type === 'loadeddata') {
       bilddatenDa(el, z);
+    } else if (z.art === 'video' && (e.type === 'loadedmetadata' || e.type === 'resize')) {
+      // P8: ein Ton-Video mit Poster bekommt Bildmasse: neu beurteilen (gewoehnliche Regeln).
+      if (tonVideos.has(el as HTMLVideoElement) && neuBeurteilenBeiBildmasse(true, (el as HTMLVideoElement).videoWidth, !!z.video)) {
+        tonVideos.delete(el as HTMLVideoElement);
+        vergiss(el, z, false);
+        bewerte(el, z);
+      }
     }
   }
 
@@ -1621,7 +1671,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (e.target instanceof Element) pruefeAnimationsZiel(e.target);
   }
 
-  const MEDIEN_EREIGNISSE = ['load', 'error', 'loadeddata', 'loadstart', 'emptied', 'seeking', 'seeked'] as const;
+  const MEDIEN_EREIGNISSE = ['load', 'error', 'loadeddata', 'loadstart', 'emptied', 'seeking', 'seeked', 'loadedmetadata', 'resize'] as const;
   const ANIMATIONS_EREIGNISSE = ['beginEvent', 'repeatEvent'] as const;
   function hoereAb(ziel: Document | ShadowRoot): void {
     for (const name of MEDIEN_EREIGNISSE) ziel.addEventListener(name, beiMedienEreignis, true);
@@ -1683,6 +1733,26 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (!aktiv) return;
       if (attribut === 'class') {
         if (geladen) klassen.planeElement(el);
+        return;
+      }
+      // E3d (P3): `poster` eines Videos. Setzen: ein freies, nie gespieltes Video ist sofort wieder verdeckt (ohne Bremse, noch in diesem Mikrotask der Beobachtung).
+      // Entfernen: das Video wird neu beurteilt (neues Erst-Urteil, bis dahin verdeckt).
+      if (attribut === 'poster') {
+        if (!(el instanceof HTMLVideoElement)) return;
+        const zv = zustaende.get(el);
+        if (!zv || zv.art !== 'video') return;
+        // P9: hat das Video schon gespielt und Bildmasse, aendert ein neues oder entferntes poster nichts (kein vergiss, kein neues Erst-Urteil, Lauf und Zaehler bleiben).
+        if (!posterAenderungWirkt(el.played.length > 0, el.videoWidth)) return;
+        if (zeigtPosterAm(el)) {
+          if (!video.posterGeaendert(el) && zv.urteil === 'frei') {
+            // Ohne Lauf (zum Beispiel nur Ton): neu beurteilen, das Erst-Urteil beachtet das Poster.
+            vergiss(el, zv, false);
+            bewerte(el, zv);
+          }
+        } else if (zv.urteil === 'verdeckt') {
+          vergiss(el, zv, false);
+          bewerte(el, zv);
+        }
         return;
       }
       // SMIL: eine Animation wird umgelenkt (href) oder bekommt einen anderen Attributnamen; ein SVG-Bild bekommt die id, auf die eine Animation zielt.
@@ -2056,7 +2126,10 @@ export function starteSchleier(ctx: KontextLeicht): void {
       if (typeof d?.videoVerzoegerungMs === 'number' && d.videoVerzoegerungMs >= 0) videoVerzoegerungMs = d.videoVerzoegerungMs;
       if (typeof d?.malenAus === 'boolean') setzeMalenAus(d.malenAus); // Zonen-Leinwand malt nichts (Frist fuer das erste Bild)
       if (typeof d?.erzwingeSauber === 'boolean') erzwungenSauber = d.erzwingeSauber; // Erkenner meldet jedes Video-Bild als sauber (Hysterese-Tests)
-      if (typeof d?.ohneRvfc === 'boolean') setzeRvfcAus(d.ohneRvfc); // Zonen-Leinwand: rAF-Pfad erzwingen (Firefox 128)
+      if (typeof d?.ohneRvfc === 'boolean') {
+        setzeRvfcAus(d.ohneRvfc); // Zonen-Leinwand: rAF-Pfad erzwingen (Firefox 128)
+        video.setzeOhneBildwaechter(d.ohneRvfc); // Kopie des Standbilds: ohne Bildwaechter, nur Ereignisse und Nachschau
+      }
       // Vorrang-Tests: kuenstlich langsamer Erkenner (Bilder, Hintergruende) und angehaltene Warteschlange (Ende des Halts startet die Auswahl).
       if (typeof d?.pruefVerzoegerungMs === 'number' && d.pruefVerzoegerungMs >= 0) pruefVerzoegerungMs = d.pruefVerzoegerungMs;
       if (typeof d?.warteschlangeHalt === 'boolean') {
@@ -2172,7 +2245,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     document.removeEventListener('visibilitychange', beiSichtbarkeit);
     beobachter.stopp();
     klassen.stopp();
-    video.stoppAlle();
+    video.abbauen();
     zonen.alleBeenden();
     sichtBeobachter?.disconnect();
     for (const t of timer) clearTimeout(t);

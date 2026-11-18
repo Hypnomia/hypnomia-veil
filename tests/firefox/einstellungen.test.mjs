@@ -293,7 +293,8 @@ try {
 
   // ---- Popup und Einstellungsseite: derselbe Stand ----
   const popup = await oeffne('popup.html');
-  await bis('Popup gezeichnet', async () => (await text('#pause')).length > 0);
+  // Der neue Tab kann beim ersten Blick noch about:blank sein (Hook-Lauf 11): ein fehlender Knopf zaehlt als "noch nicht gezeichnet", nicht als Fehler.
+  await bis('Popup gezeichnet', async () => (await driver.executeScript(`return document.querySelector('#pause')?.textContent.trim() ?? ''`)).length > 0);
   // Phase 9 (Paket A): Mood, Zonen und Strict liegen im Popup hinter "Change".
   if ((await driver.findElement(By.css('#aendern')).getAttribute('aria-expanded')) !== 'true') await driver.findElement(By.css('#aendern')).click();
   await driver.switchTo().window(optionenSeite);

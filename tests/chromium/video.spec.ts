@@ -197,7 +197,11 @@ test('d) pausiertes Video: keine Pruefungen; seeked im Stand auf den Treffer-Abs
   await seite.close();
 });
 
-test('d2) pausiertes Video: jeder Sprung loest eine Pruefung aus, drei saubere geben nach der Hysterese frei', async () => {
+// E3c (Pause nach Regel S2, Regel K): ein verdecktes, pausiertes Video ohne Leinwand prueft sein Standbild (hoechstens eine Pruefung je Sekunde) und bekommt nach drei sauberen
+// Pruefungen DESSELBEN Standbilds eine Kopie; das Video selbst wird in der Pause nie frei (V3: in allen Browsern, auch ohne requestVideoFrameCallback). Jeder Sprung beginnt ein
+// neues Standbild: drei Spruenge mit je einer sauberen Pruefung geben keine Kopie und nie frei.
+// Alter Soll (vor E3c): "in der Pause keine Pruefungen, drei Spruenge mit je einer Pruefung geben nach der Hysterese frei".
+test('d2) pausiertes Video: jeder Sprung beginnt ein neues Standbild (drei Spruenge geben nichts frei), drei saubere Pruefungen desselben Standbilds geben die Kopie, nie frei', async () => {
   test.setTimeout(90_000);
   const seite = await oeffne();
   await neuesVideo(seite, { id: 'p2' });
@@ -206,19 +210,21 @@ test('d2) pausiertes Video: jeder Sprung loest eine Pruefung aus, drei saubere g
   await seite.evaluate(() => (document.getElementById('p2') as HTMLVideoElement).pause());
   await abwarten(500);
   let letzte = await pruefungen(seite);
-  await abwarten(3500);
-  expect(await pruefungen(seite)).toBe(letzte);
-  const t0 = Date.now();
+  const kopie = () => seite.evaluate(() => document.getElementById('p2')!.getAttribute('data-veil-video-standbild'));
   for (let i = 0; i < 3; i++) {
     await seite.evaluate((z) => { (document.getElementById('p2') as HTMLVideoElement).currentTime = z; }, 1 + i * 0.5);
     const vorher = letzte;
     await expect.poll(() => pruefungen(seite), { timeout: 5000, intervals: [100] }).toBeGreaterThan(vorher);
     letzte = await pruefungen(seite);
-    await abwarten(2000); // das Ergebnis abwarten: ein weiterer Sprung vor der Antwort verwirft sie (Bild veraltet); unter Last reichen 800 ms nicht
-    if (i < 2) expect(await urteil(seite, 'p2')).toBe('verdeckt');
+    await abwarten(600); // weniger als der Takt von einer Sekunde: auf dem neuen Standbild ist erst eine saubere Pruefung gelaufen
+    expect(await urteil(seite, 'p2'), `nach dem Sprung ${i + 1} (eine saubere Pruefung des neuen Standbilds) nicht verdeckt`).toBe('verdeckt');
+    expect(await kopie(), `nach dem Sprung ${i + 1} steht schon eine Kopie`).toBeNull();
   }
-  await expect.poll(() => urteil(seite, 'p2'), { timeout: 5000 }).toBe('frei');
-  console.log(`chromium: drei Spruenge im Stand, frei nach ${Date.now() - t0} ms`);
+  // Jetzt bleibt das Video auf dem letzten Standbild stehen: nach drei sauberen Pruefungen desselben Bilds steht die Kopie, das Urteil bleibt verdeckt.
+  const t0 = Date.now();
+  await expect.poll(kopie, { timeout: 10_000, intervals: [100] }).toBe('kopie');
+  console.log(`chromium: drei Spruenge im Stand, dann drei saubere Pruefungen desselben Standbilds, Kopie nach ${Date.now() - t0} ms`);
+  expect(await urteil(seite, 'p2'), 'mit der Kopie ist das Urteil nicht mehr verdeckt (das Video wird nie frei)').toBe('verdeckt');
   await seite.close();
 });
 
