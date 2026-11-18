@@ -38,7 +38,7 @@ import {
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
 import { GESICHTER_STAND_SCHLUESSEL, PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../pack/vertrag';
-import { PRESETS } from '../presets.ts';
+import { presetDef } from '../preset-def.ts';
 import { SteigerungMelder } from './steigerung-melder';
 import { setzeUrteilMelder, setzeZensiertMelder } from './anwenden';
 import { setzePresetAnpassung, setzeZonenAnpassung } from './pruefung';
@@ -1965,15 +1965,19 @@ export function starteSchleier(ctx: KontextLeicht): void {
     if (einstellungen) wendeEinstellungenAn(einstellungen);
   });
   // Presets, die das Pack brauchen (Mias Gesicht) oder Woerter nutzen: dann gehoert das Pack zum Pruefstand.
-  const nutztPack = (e: Einstellungen): boolean => PRESETS[e.preset].braucht !== null || PRESETS[e.preset].woerter;
+  const nutztPack = (e: Einstellungen): boolean => {
+    const d = presetDef(e).gewaehlt;
+    return d.braucht !== null || d.woerter;
+  };
   // packStand fuer die Anfrage an den Erkenner: nur bei Presets, die das Pack nutzen (importiert des Packs, sonst 0), sonst weggelassen.
   function packStandFuer(e: Einstellungen): number | undefined {
     return nutztPack(e) ? (packKurz?.importiert ?? 0) : undefined;
   }
   function pruefRelevant(e: Einstellungen): string {
-    const preset = presetFuerPackKurz(e.preset, packKurz);
+    const { gilt } = presetDef(e, packKurz);
+    const preset = gilt.id;
     // gesichterStand: Mias Gesicht nur nach der Gesichtssuche (bis dahin bekamen Pruefungen den Ersatz): wenn sie fertig meldet, bewerten offene Seiten neu
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, PRESETS[preset].gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, gilt.gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
   }
 
   // Zeit der letzten Meldung "Gesichtssuche fertig" (storage.local.gesichterStand), 0 = keine

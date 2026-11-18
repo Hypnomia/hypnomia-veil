@@ -4,7 +4,8 @@
 
 import * as ort from 'onnxruntime-web/wasm';
 import { vervollstaendige, zonenFuerPreset, type Einstellungen } from '../einstellungen';
-import { PRESETS, ganzesBildBehandlung, hatWort, nutztMiasGesicht, nutztSticker, waehleWort } from '../presets.ts';
+import { presetDef } from '../preset-def.ts';
+import { ganzesBildBehandlung, hatWort, nutztMiasGesicht, nutztSticker, waehleWort } from '../presets.ts';
 import { holeJeFlaeche, stickerPasst } from '../sticker.ts';
 import type {
   AntwortErkennerStatus,
@@ -469,7 +470,7 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     // Preset Augenbalken: nur die Augen gelten, egal was die Schalter (oder die Steigerung) sagen; Zensurbalken: Augen immer dazu. Also
     // laeuft YuNet dann auch bei ausgeschalteten Augen, und der Augenbalken verdeckt nie ein ganzes Bild.
     const zonenGilt = zonenFuerPreset(e.preset, e.zonen);
-    const def = PRESETS[e.preset];
+    const def = presetDef(e).gewaehlt;
     const ganz = ganzesBildBehandlung(e.preset);
     const gesicht = await sucheGesichter(zonenGilt, arbeit.quelle, arbeit.breite, arbeit.hoehe);
     const tNachStart = jetzt();

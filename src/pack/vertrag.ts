@@ -3,7 +3,8 @@
 // Ablage: Dateien in IndexedDB (Erweiterungs-Ursprung, `unlimitedStorage`, Entscheidung 25), eine kleine Kurzfassung
 // in storage.local unter `pack`, damit Popup und Content-Script ohne IndexedDB wissen, was freigeschaltet ist.
 
-import { OHNE_PACK_PRESET, PRESETS, packGenuegt, type Preset } from '../presets.ts';
+import type { Preset } from '../presets.ts';
+import { istFreigeschaltet, presetDef } from '../preset-def.ts';
 import type { SatzGruppe } from '../quiz/vertrag';
 
 // ---------- Ablage ----------
@@ -202,14 +203,13 @@ export interface PackKurz {
   importiert: number;
 }
 
-export function istFreigeschaltet(pack: PackKurz | null | undefined, f: Freischaltung): boolean {
-  return !!pack && Array.isArray(pack.freischaltungen) && pack.freischaltungen.includes(f);
-}
+// Die Regel steht in src/preset-def.ts (rein, ohne Laufzeit-Import auf diese Datei) und wird hier unter dem alten Namen weitergereicht.
+export { istFreigeschaltet };
 
 // Preset, das tatsaechlich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), Sticker-Presets nur mit Stickern im Pack
 // (`zensur:sticker`), sonst Mosaik (Demo: Klassisch und Ganze Person).
 export function presetFuerPackKurz(preset: Preset, pack: PackKurz | null | undefined): Preset {
-  return packGenuegt(PRESETS[preset].braucht, istFreigeschaltet(pack, 'stil:mia-patch'), istFreigeschaltet(pack, 'zensur:sticker')) ? preset : OHNE_PACK_PRESET;
+  return presetDef({ preset }, pack).gilt.id;
 }
 
 // Liest die Kurzfassung aus storage.local (Popup, Optionsseite, Content-Script).

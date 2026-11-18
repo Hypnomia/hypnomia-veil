@@ -14,11 +14,11 @@ import {
   type Einstellungen,
 } from '../../src/einstellungen';
 import { QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL } from '../../src/kontrolle/grenzen';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../../src/pack/vertrag';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
 import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
-import { PRESETS } from '../../src/presets';
+import { presetDef } from '../../src/preset-def';
 import { packHinweis as packHinweisText, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
 import { WILLKOMMEN_KANAL, aendereEinstieg } from '../../src/einstieg/speicher';
 import { einstiegFertig, ladeEinstieg, type EinstiegStand } from '../../src/einstieg/vertrag';
@@ -437,7 +437,8 @@ function seite3(): Seite {
       const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
       const stickerFrei = istFreigeschaltet(p, 'zensur:sticker');
       karten.aktualisiere(e.preset, patchFrei, stickerFrei);
-      const wirksam = presetFuerPackKurz(e.preset, p);
+      const def = presetDef(e, p).gilt;
+      const wirksam = def.id;
       if (patchFrei && !beobachtet) {
         beobachtet = beobachteGesichter((st) => {
           gesichter = st;
@@ -452,7 +453,7 @@ function seite3(): Seite {
       const zh = zonenHinweis(wirksam);
       zonenText.textContent = zh;
       zonenText.hidden = zh === '';
-      const mia = PRESETS[wirksam].gesicht === 'mia-gesicht';
+      const mia = def.gesicht === 'mia-gesicht';
       const ft = mia ? (faceHinweisAn && e.zonen.face.an ? HINWEIS_FACE_EIN : e.zonen.face.an ? '' : HINWEIS_FACE_AUS) : '';
       faceText.textContent = ft;
       faceText.hidden = ft === '';

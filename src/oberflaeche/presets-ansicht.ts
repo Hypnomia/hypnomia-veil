@@ -2,7 +2,8 @@
 // gemeinsam fuer Einstellungsseite und Einstieg (kompakt), dazu die Vorschau-Figur fuer die Zeile im Popup. Farben nur aus werte.ts.
 // Die Vorschau ist eine stilisierte Figur (nichts Explizites): Kopf, Augenlinie, Oberkoerper, Unterkoerper mit der Behandlung des Presets.
 import { FARBEN } from './design/werte';
-import { GRUPPEN, GRUPPEN_NAMEN, PRESETS, PRESET_IDS, packGenuegt, presetFuerPack, type Behandlung, type Preset } from '../presets.ts';
+import { presetDefFuerKennung, presetKatalog } from '../preset-def.ts';
+import { GRUPPEN, GRUPPEN_NAMEN, packGenuegt, presetFuerPack, type Behandlung, type Preset } from '../presets.ts';
 
 const F = FARBEN;
 
@@ -92,7 +93,7 @@ function flaeche(b: Behandlung, r: Rechteck, id: string, ton = 0): string {
 
 // SVG-Vorschau eines Presets. `id` macht die Filter-Kennung eindeutig (mehrere Vorschauen in einer Seite).
 export function presetVorschau(preset: Preset, id = 'p'): string {
-  const d = PRESETS[preset];
+  const d = presetDefFuerKennung(preset);
   const fig =
     `<rect x="14" y="30" width="32" height="38" rx="12" fill="${F['rosa-100']}" stroke="${F['rosa-300']}" stroke-width="1.2"/>` +
     `<circle cx="30" cy="15" r="11" fill="${F['rosa-200']}" stroke="${F['rosa-300']}" stroke-width="1.2"/>`;
@@ -150,8 +151,8 @@ export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
     titel.id = titelId;
     gruppe.setAttribute('aria-labelledby', titelId);
     const liste = neu('div', 'preset-liste');
-    for (const id of PRESET_IDS.filter((p) => PRESETS[p].gruppe === g)) {
-      const d = PRESETS[id];
+    for (const d of presetKatalog().filter((p) => p.gruppe === g)) {
+      const id = d.id;
       const label = neu('label', 'preset-karte');
       const feld = neu('input');
       feld.type = 'radio';
@@ -182,7 +183,7 @@ export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
       const gilt = presetFuerPack(aktuell, miaPack, mitSticker);
       for (const [id, feld] of felder) {
         feld.checked = id === gilt;
-        const gesperrt = !packGenuegt(PRESETS[id].braucht, miaPack, mitSticker);
+        const gesperrt = !packGenuegt(presetDefFuerKennung(id).braucht, miaPack, mitSticker);
         feld.disabled = gesperrt;
         karten.get(id)!.classList.toggle('gesperrt', gesperrt);
       }

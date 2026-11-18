@@ -1,11 +1,12 @@
 // Steigerung der Zensur (PHASE-4-BAUPLAN Abschnitt 9, Entscheidung 101). Vertrag vom Orchestrator: Typen, Ablage-Schluessel,
 // reine Funktionen `wirksameZonen`, `wirksameStufe`, `anzeigeStufe`. Auftrag S baut darauf das Zaehlen (Anstieg mit Zufall, Pause,
 // Hintergrund-Handler src/hintergrund/steigerung.ts) und darf diese Datei ergaenzen; andere Auftraege lesen nur.
-// Laufzeit-Abhaengigkeiten nur `zonenFuerPreset` (einstellungen.ts) und die Preset-Tabelle (presets.ts), beide rein und mit `.ts`-Endung importiert,
+// Laufzeit-Abhaengigkeiten nur `zonenFuerPreset` (einstellungen.ts), der Aufloeser `presetDef` (preset-def.ts) und die Preset-Tabelle (presets.ts), alle rein und mit `.ts`-Endung importiert,
 // damit die Einheitstests mit `node --experimental-strip-types` laufen. Ablage nur lokal (storage.local), kein Netzverkehr.
 
 import { zonenFuerPreset, type Einstellungen, type Zone, type ZonenEinstellung } from './einstellungen.ts';
-import { PRESETS, type Preset } from './presets.ts';
+import { type Preset } from './presets.ts';
+import { presetDef } from './preset-def.ts';
 
 export const STEIGERUNG_SCHLUESSEL = 'steigerung';
 export const MAX_STUFE = 4;
@@ -105,7 +106,7 @@ export interface WirksameZonen {
 // auch eine Anfrage ohne Steigerung nur die Augen sucht. Der Popup-Abschnitt "My grip" sagt das (entrypoints/popup/texte.ts).
 // Zensurbalken: die Steigerung wirkt wie gewohnt, die Augen bleiben zusaetzlich immer an.
 export function wirksameZonen(einstellungen: Pick<Einstellungen, 'zonen'> & { preset?: Preset }, stufe: SteigerungStufe): WirksameZonen {
-  if (einstellungen.preset && PRESETS[einstellungen.preset].augen === 'nur-balken') {
+  if (presetDef(einstellungen).gewaehlt.augen === 'nur-balken') {
     return { zonen: zonenFuerPreset(einstellungen.preset, einstellungen.zonen), ganzVerdecken: false };
   }
   const zonen = Object.fromEntries(

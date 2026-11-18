@@ -18,10 +18,11 @@ import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
 import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
-import { PRESETS } from '../../src/presets';
+import { presetDef } from '../../src/preset-def';
+import type { PresetDef } from '../../src/presets';
 import { ladeThemen } from '../../src/pack/woerter';
 import { speichere } from './grund-speichern';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, kurzAusRoh, type PackKurz } from '../../src/pack/vertrag';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, kurzAusRoh, type PackKurz } from '../../src/pack/vertrag';
 
 const ZONEN_NAMEN: Record<Zone, string> = {
   eyes: 'Eyes',
@@ -115,16 +116,17 @@ function beobachteNeu(): void {
 function zeichnePreset(e: Einstellungen): void {
   const frei = istFreigeschaltet(pack, 'stil:mia-patch');
   const mitSticker = istFreigeschaltet(pack, 'zensur:sticker');
-  const gilt = presetFuerPackKurz(e.preset, pack);
+  const def = presetDef(e, pack).gilt;
+  const gilt = def.id;
   karten.aktualisiere(e.preset, frei, mitSticker);
   stilHinweis.textContent = presetSatz(gilt, frei, gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset: gerade eingeschaltet (kurz), oder Face steht aus (bewusst oder Altbestand): sagen, was dann gilt
-  const mia = PRESETS[gilt].gesicht === 'mia-gesicht';
+  const mia = def.gesicht === 'mia-gesicht';
   const ft = !mia ? '' : faceHinweisAn && e.zonen.face.an ? HINWEIS_FACE_EIN : e.zonen.face.an ? '' : HINWEIS_FACE_AUS;
   faceHinweisZeile.hidden = ft === '';
   faceHinweisZeile.textContent = ft;
   // Pack da, Scan fertig, aber in keinem Patch-Bild ein brauchbares Gesicht: ehrlich sagen
-  const keins = frei && PRESETS[gilt].gesicht === 'mia-gesicht' && gesichter?.fertig === true && gesichter.gesamt > 0 && gesichter.mit === 0;
+  const keins = frei && def.gesicht === 'mia-gesicht' && gesichter?.fertig === true && gesichter.gesamt > 0 && gesichter.mit === 0;
   keinGesichtZeile.hidden = !keins;
   keinGesichtZeile.textContent = keins ? HINWEIS_KEIN_GESICHT : '';
   const packText = packHinweis(frei, pack, mitSticker);
@@ -133,14 +135,14 @@ function zeichnePreset(e: Einstellungen): void {
   const zh = zonenHinweis(gilt);
   zonenHinweisZeile.hidden = zh === '';
   zonenHinweisZeile.textContent = zh;
-  zeichneWoerter(e, gilt);
+  zeichneWoerter(e, def);
 }
 
 // Wort-Themen als Chips: nur mit einem Preset mit Woertern und einem Pack mit Wort-Themen. null in den Einstellungen heisst alle Themen.
-function zeichneWoerter(e: Einstellungen, gilt: ReturnType<typeof presetFuerPackKurz>): void {
-  const zeigen = PRESETS[gilt].woerter && themen.length > 0;
+function zeichneWoerter(e: Einstellungen, def: PresetDef): void {
+  const zeigen = def.woerter && themen.length > 0;
   // Ohne Pack (oder ohne Wort-Themen) schreibt ein Wort-Preset immer MIA: die Zeile sagt es, wo sonst die Chips stuenden
-  wortOhnePackZeile.hidden = !(PRESETS[gilt].woerter && themen.length === 0);
+  wortOhnePackZeile.hidden = !(def.woerter && themen.length === 0);
   wortOhnePackZeile.textContent = wortOhnePackZeile.hidden ? '' : HINWEIS_WORT_OHNE_PACK;
   wortBereich.hidden = !zeigen;
   if (!zeigen) return;

@@ -16,7 +16,8 @@ import { PackFehler, filtereFreischaltungen, sha256, type Fortschritt, type Gepr
 import { pruefeQuizBank, pruefeTexte } from '../quiz/vertrag';
 import { waehlePreset } from '../einstellungen';
 import { leereGesichter } from './gesichter-ablage';
-import { PACK_PRESET, OHNE_PACK_PRESET, PRESETS, pruefeWoerter } from '../presets.ts';
+import { PACK_PRESET, OHNE_PACK_PRESET, pruefeWoerter } from '../presets.ts';
+import { presetDef } from '../preset-def.ts';
 import { ersetztVorhandenes, vergleichePacks, type PackVergleich } from './ersetzen';
 import {
   filtereNachGruppen,
@@ -239,7 +240,7 @@ async function leereAblage(): Promise<void> {
 
 // Preset von einem Pack-Preset (Mia oder Sticker) zurueck auf Mosaik, aber nur, wenn es auch so steht (jede Speicherung setzt alle Seiten neu).
 async function setzeStilZurueck(): Promise<void> {
-  if (PRESETS[(await ladeEinstellungen()).preset].braucht !== null) await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
+  if (presetDef(await ladeEinstellungen()).gewaehlt.braucht !== null) await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
 }
 
 // Entfernt das Pack: zuerst IndexedDB leeren, dann Kurzfassung weg, dann Stil zurueck auf Mosaik. Bleibt nach dem Leeren etwas

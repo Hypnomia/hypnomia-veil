@@ -2,7 +2,8 @@
 // Vorbild fuer das Zusammenfuehren ist clean_boxes des alten Tools (gleiche Zone verschmelzen, Verschachteltes in Kopf oder Gesicht weglassen).
 
 import type { Einstellungen, Zone } from '../einstellungen';
-import { PRESETS, ganzesBildBehandlung, personenGruppen, type Preset } from '../presets.ts';
+import { presetDef } from '../preset-def.ts';
+import { ganzesBildBehandlung, personenGruppen, type Preset } from '../presets.ts';
 import type { Box, Flaeche, Treffer } from '../nachrichten';
 import type { YunetGesicht } from './yunet';
 import { setzeWortBoxen, verschmelze } from './verschmelzen.ts';
@@ -339,7 +340,7 @@ export function berechneFlaechen(
   // die Huellen in der Leinwand eigens behandelt (sonst sinkt der Anteil und das Video kippt von "ganz" auf Zonen, weniger Deckung als zuvor).
   verschmelzen: boolean,
 ): Flaeche[] {
-  const d = PRESETS[einstellungen.preset ?? 'mosaik'];
+  const d = presetDef(einstellungen).gewaehlt;
   if (d.augen === 'nur-balken') return berechneAugenbalken(treffer, breite, hoehe);
   if (d.person) return berechnePersonen(treffer, einstellungen.zonen, d.koerper!, breite, hoehe, einstellungen.rand, verschmelzen);
   const mia = d.gesicht === 'mia-gesicht';

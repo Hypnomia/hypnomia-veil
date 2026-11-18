@@ -11,7 +11,8 @@
 
 import type { Zone } from '../einstellungen';
 import { patchPasst } from '../erkenner/stile';
-import { PRESETS, ganzesBildBehandlung, hatWort, personenGruppen, wortPasst, type Preset } from '../presets';
+import { presetDefFuerKennung } from '../preset-def';
+import { ganzesBildBehandlung, hatWort, personenGruppen, wortPasst, type Preset } from '../presets';
 import { groesstesFreiesRechteck } from '../erkenner/verschmelzen';
 import {
   ATTR_LEINWAND,
@@ -753,7 +754,7 @@ export class ZonenVideo {
   private planeFlaechen(vb: number, vh: number, jetzt: number): Kanten[] {
     const preset = this.h.preset();
     const mitAnzeige = this.spuren.spuren.filter((s) => s.anzeige);
-    if (PRESETS[preset].person) {
+    if (presetDefFuerKennung(preset).person) {
       this.plan = { huellen: [], aufgelegt: [] };
       const gruppen = personenGruppen(mitAnzeige.map((s) => [s.anzeige!.l, s.anzeige!.t, s.anzeige!.r - s.anzeige!.l, s.anzeige!.b - s.anzeige!.t] as const), mitAnzeige.map(() => true), vb, vh, 0);
       return gruppen.map(([x, y, w, h]) => ({ l: x, t: y, r: x + w, b: y + h }));
@@ -844,7 +845,7 @@ export class ZonenVideo {
     }
     // Ganze Person: je Bild werden die Huellen der Spuren neu zusammengefasst (Spuren, die einander nahe kamen, werden eine Huelle), wie bei Bildern
     // (personenGruppen); die Huellen tragen schon ihren Rand, darum hier ohne zweiten. Behandlung: die der Koerper-Zonen des Presets.
-    if (PRESETS[preset].person) {
+    if (presetDefFuerKennung(preset).person) {
       const art = ganzesBildBehandlung(preset);
       const huellen = personenGruppen(liste.map((e) => [e.rr.x, e.rr.y, e.rr.w, e.rr.h] as const), liste.map(() => true), c.width, c.height, 0);
       for (const [x, y, w, h] of huellen) {

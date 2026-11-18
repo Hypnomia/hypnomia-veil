@@ -24,8 +24,9 @@ import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import * as T from './texte';
 import { FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import type { Texte } from '../../src/quiz/vertrag';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../../src/pack/vertrag';
-import { PRESETS, packGenuegt } from '../../src/presets';
+import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
+import { packGenuegt } from '../../src/presets';
+import { presetDef } from '../../src/preset-def';
 import { presetVorschau } from '../../src/oberflaeche/presets-ansicht';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
@@ -169,7 +170,7 @@ function zeichne(e: Einstellungen): void {
     }
   }
 
-  abdeckungKurz.textContent = PRESETS[e.preset].augen === 'nur-balken' ? T.ABDECKUNG_AUGENBALKEN : T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()));
+  abdeckungKurz.textContent = presetDef(e).gewaehlt.augen === 'nur-balken' ? T.ABDECKUNG_AUGENBALKEN : T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()));
   zeichneDieseSeite(e, seite);
   zeichneErwachsen(e);
 }
@@ -191,15 +192,16 @@ function zeichnePreset(e: Einstellungen): void {
   aktuellE = e;
   const frei = istFreigeschaltet(pack, 'stil:mia-patch');
   const mitSticker = istFreigeschaltet(pack, 'zensur:sticker');
-  const gilt = presetFuerPackKurz(e.preset, pack);
+  const def = presetDef(e, pack);
+  const gilt = def.gilt.id;
   presetBild.innerHTML = presetVorschau(gilt, 'popup');
-  presetName.textContent = PRESETS[gilt].name;
+  presetName.textContent = def.gilt.name;
   // Sperre der Pack-Presets (Mia, Sticker): der Hinweis auf das Pack hat Vorrang, sonst der Satz zum Preset.
-  const gesperrt = !packGenuegt(PRESETS[e.preset].braucht, frei, mitSticker);
+  const gesperrt = !packGenuegt(def.gewaehlt.braucht, frei, mitSticker);
   // Ohne Pack steht dabei, was bis dahin gilt (Mosaik); mit Pack aber ohne brauchbares Patch der Hinweis des Packs allein.
-  packHinweis_.textContent = gesperrt ? packHinweis(frei, pack, mitSticker, PRESETS[e.preset].braucht) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
+  packHinweis_.textContent = gesperrt ? packHinweis(frei, pack, mitSticker, def.gewaehlt.braucht) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset gilt, aber Face steht aus: sagen, was dann gilt (der Satz der Karte klaenge sonst nach mehr)
-  if (!gesperrt && PRESETS[gilt].gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
+  if (!gesperrt && def.gilt.gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
   const zh = zonenHinweis(gilt);
   zonenHinweisZeile.hidden = zh === '';
   zonenHinweisZeile.textContent = zh;
@@ -274,7 +276,7 @@ function zeichneStufe(e: Einstellungen): void {
     strengText.textContent = '';
   }
   if (!hat) return;
-  gripSatz.textContent = PRESETS[e.preset].augen === 'nur-balken' ? `${T.GRIP_SATZ} ${T.GRIP_AUGENBALKEN}` : T.GRIP_SATZ;
+  gripSatz.textContent = presetDef(e).gewaehlt.augen === 'nur-balken' ? `${T.GRIP_SATZ} ${T.GRIP_AUGENBALKEN}` : T.GRIP_SATZ;
   const stufeKlein = STUFE_TEXT(stufe);
   stufeZeile.textContent = stufeKlein.charAt(0).toUpperCase() + stufeKlein.slice(1);
   // Pause zaehlt sofort (Einstellungen), nicht erst, wenn der Hintergrund `pauseSeit` geschrieben hat.

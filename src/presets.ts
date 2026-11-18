@@ -85,6 +85,12 @@ export function istPreset(x: unknown): x is Preset {
   return typeof x === 'string' && (PRESET_IDS as readonly string[]).includes(x);
 }
 
+// DIE Nachschlage-Funktion der Tabelle (Phase 11 E4b, Sicherheitsregel S3: im Zweifel Mosaik): eine fehlende oder unbekannte Kennung (auch
+// Prototyp-Namen wie `constructor`, `__proto__`, `toString`) liefert die Definition von Mosaik. Jede Stelle, die die Tabelle liest, geht hierueber.
+export function presetOderMosaik(kennung: unknown): PresetDef {
+  return typeof kennung === 'string' && Object.hasOwn(PRESETS, kennung) ? PRESETS[kennung as Preset] : PRESETS[STANDARD_PRESET];
+}
+
 // Migration: der alte Wert `stil` wird zum Preset. Unbekannt: null.
 export function presetAusStil(stil: unknown): Preset | null {
   switch (stil) {
@@ -104,7 +110,8 @@ export function presetAusStil(stil: unknown): Preset | null {
 // Das Preset, das wirklich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), Sticker-Presets nur mit Stickern im Pack
 // (`zensur:sticker`), sonst Mosaik. `mitSticker` fehlt = keine Sticker (sicherer Standard).
 export function presetFuerPack(preset: Preset, mitMiaPack: boolean, mitSticker = false): Preset {
-  return !packGenuegt(PRESETS[preset].braucht, mitMiaPack, mitSticker) ? OHNE_PACK_PRESET : preset;
+  const d = presetOderMosaik(preset);
+  return !packGenuegt(d.braucht, mitMiaPack, mitSticker) ? OHNE_PACK_PRESET : d.id;
 }
 
 // Reicht das Pack fuer die Anforderung eines Presets (`braucht`)?
@@ -113,15 +120,15 @@ export function packGenuegt(braucht: PresetDef['braucht'], mitMiaPack: boolean, 
 }
 
 // Nutzt dieses Preset Sticker (Flaechen mit der Behandlung `sticker`, auch als Ersatz fuer Mias Gesicht)?
-export const nutztSticker = (preset: Preset): boolean => PRESETS[preset].gesicht === 'sticker' || PRESETS[preset].koerper === 'sticker';
+export const nutztSticker = (preset: Preset): boolean => presetOderMosaik(preset).gesicht === 'sticker' || presetOderMosaik(preset).koerper === 'sticker';
 
 // Zeichnet dieses Preset Mias Gesicht?
-export const nutztMiasGesicht = (preset: Preset): boolean => PRESETS[preset].gesicht === 'mia-gesicht';
+export const nutztMiasGesicht = (preset: Preset): boolean => presetOderMosaik(preset).gesicht === 'mia-gesicht';
 
 // Behandlung fuer ein ganz verdecktes Bild (Steigerung Stufe 4, bewegtes SVG): die Behandlung der Koerper-Zonen, ersatzweise Mosaik.
 // Mias Gesicht, der Augenbalken und der Sticker passen nicht auf ein ganzes Bild (STICKER-BAUPLAN Entscheidung 6: dort bleibt es Mosaik).
 export function ganzesBildBehandlung(preset: Preset): Behandlung {
-  const k = PRESETS[preset].koerper;
+  const k = presetOderMosaik(preset).koerper;
   return k === null || k === 'mia-gesicht' || k === 'balken' || k === 'sticker' ? 'mosaik' : k;
 }
 
@@ -129,7 +136,7 @@ export function ganzesBildBehandlung(preset: Preset): Behandlung {
 // der Erkenner setzt `behandlung` nach derselben Regel, siehe berechneFlaechen in src/erkenner/zonen.ts): Augenbalken immer Balken, Zensurbalken
 // auf den Augen Balken, Gesicht nach `gesicht`, alles andere nach `koerper`. Ohne Eintrag (Gesicht oder Koerper null) Mosaik, nie "nichts".
 export function behandlungFuerZone(preset: Preset, zone: string): Behandlung {
-  const d = PRESETS[preset];
+  const d = presetOderMosaik(preset);
   if (d.augen === 'nur-balken') return 'balken';
   if (zone === 'eyes' && d.augen === 'balken-immer') return 'balken';
   return (zone === 'face' ? d.gesicht : d.koerper) ?? 'mosaik';
@@ -139,7 +146,7 @@ export function behandlungFuerZone(preset: Preset, zone: string): Behandlung {
 // Andere Presets: die Schalter unveraendert (dasselbe Objekt).
 export function zonenFuerPreset<T extends { an: boolean; bedeckt?: boolean }>(preset: Preset | undefined, zonen: Record<string, T>): Record<string, T> {
   if (!preset) return zonen;
-  const d = PRESETS[preset];
+  const d = presetOderMosaik(preset);
   if (d.augen === 'nur-balken') {
     const nur: Record<string, T> = {};
     for (const [z, e] of Object.entries(zonen)) nur[z] = z === 'eyes' ? ({ ...e, an: true } as T) : ({ ...e, an: false, ...('bedeckt' in e ? { bedeckt: false } : {}) } as T);

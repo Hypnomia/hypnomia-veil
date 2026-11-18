@@ -1,5 +1,6 @@
 // Texte zur Preset-Wahl, gemeinsam fuer Einstellungsseite, Popup und Einstieg (ZENSUR-PRESETS-BAUPLAN). Reine Funktionen.
-import { PERSON_GRENZE, PRESETS, type Preset } from '../presets.ts';
+import { PERSON_GRENZE, type Preset } from '../presets.ts';
+import { presetDefFuerKennung } from '../preset-def.ts';
 import type { PackKurz } from '../pack/vertrag';
 import {
   HINWEIS_PACK_OHNE_PATCH,
@@ -13,7 +14,7 @@ import {
 // Satz zum gewaehlten (wirksamen) Preset: sein Satz, bei Mia-Presets mit Pack die Zahl der Bilder, bei "Ganze Person" die Grenze.
 // `gesichtBilder`: Zahl der Patch-Bilder mit gefundenem Gesicht (nach fertigem Scan), null solange sie unbekannt ist oder ohne Pack.
 export function presetSatz(gilt: Preset, mitPack: boolean, gesichtBilder: number | null): string {
-  const d = PRESETS[gilt];
+  const d = presetDefFuerKennung(gilt);
   if (d.person) return `${d.satz} ${PERSON_GRENZE}`;
   if (d.gesicht === 'mia-gesicht' && mitPack) {
     return `${d.satz} I choose my face from ${gesichtBilder !== null && gesichtBilder > 0 ? (gesichtBilder === 1 ? '1 picture' : `${gesichtBilder} pictures`) : 'the pictures'} in your Mia Pack.`;
@@ -22,7 +23,7 @@ export function presetSatz(gilt: Preset, mitPack: boolean, gesichtBilder: number
 }
 
 // Hinweis zum Pack unter der Wahl, wenn Presets gesperrt sind (mit meinem Gesicht: kein Patch-Bild im Pack; mit Stickern: keine Sticker im Pack); sonst ''.
-// Fehlt das Pack ganz, sagt ein Satz alles. `braucht`: das gewaehlte Preset (PRESETS[p].braucht), dann steht nur der Hinweis dazu (Popup); ohne Angabe
+// Fehlt das Pack ganz, sagt ein Satz alles. `braucht`: das gewaehlte Preset (Feld `braucht` der Definition), dann steht nur der Hinweis dazu (Popup); ohne Angabe
 // stehen beide, wo beide zutreffen (Einstellungsseite und Einstieg zeigen alle Karten).
 export function packHinweis(mitPatch: boolean, pack: PackKurz | null | undefined, mitSticker = true, braucht?: 'pack' | 'sticker' | null): string {
   if (braucht === 'pack') mitSticker = true;
@@ -33,7 +34,7 @@ export function packHinweis(mitPatch: boolean, pack: PackKurz | null | undefined
 
 // Hinweis bei "What I cover" je Preset; '' wenn die Schalter ganz normal gelten.
 export function zonenHinweis(gilt: Preset): string {
-  const d = PRESETS[gilt];
+  const d = presetDefFuerKennung(gilt);
   if (d.augen === 'nur-balken') return HINWEIS_ZONEN_AUGENBALKEN;
   if (d.augen === 'balken-immer') return HINWEIS_ZONEN_ZENSURBALKEN;
   if (d.gesicht === 'mia-gesicht') return HINWEIS_ZONEN_MIA;

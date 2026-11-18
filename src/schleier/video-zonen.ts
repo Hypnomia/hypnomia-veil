@@ -4,7 +4,8 @@
 // Alle Zeiten in Sekunden Medienzeit, ausser `Ms` im Namen. Boxen in Bildpunkten des Videos, ausser wo anders vermerkt.
 
 import type { Zone } from '../einstellungen';
-import { BEHANDLUNGEN, PRESETS, behandlungFuerZone, ganzesBildBehandlung, hatWort, ohneWort, type Behandlung, type Preset } from '../presets.ts';
+import { presetDefFuerKennung } from '../preset-def.ts';
+import { BEHANDLUNGEN, behandlungFuerZone, ganzesBildBehandlung, hatWort, ohneWort, type Behandlung, type Preset } from '../presets.ts';
 import type { GrauBild } from './daumen.ts';
 import { verfolgeBox, type BoxF, type VerfolgungsOptionen } from './verfolgung.ts';
 
@@ -165,7 +166,7 @@ export function wirksameBehandlung(preset: Preset, zone: Zone, behandlung?: Beha
 export function ersatzFuer(preset: Preset, ersatz?: Behandlung): Behandlung {
   if (ersatz && ersatz !== 'mia-gesicht') return ersatz;
   // Sticker-Zensur: ohne Angabe des Erkenners ist der Ersatz der Sticker (die Koerper-Behandlung des Presets), nicht das Mosaik des ganzen Bildes.
-  return PRESETS[preset].koerper === 'sticker' ? 'sticker' : ganzesBildBehandlung(preset);
+  return presetDefFuerKennung(preset).koerper === 'sticker' ? 'sticker' : ganzesBildBehandlung(preset);
 }
 
 // Braucht die Flaeche ein Wort (auch als Ersatz fuer ein fehlendes Mia-Gesicht)? Dann holt der Aufrufer es, sonst nicht.
