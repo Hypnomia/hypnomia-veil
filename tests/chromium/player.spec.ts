@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -74,7 +75,7 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
 async function importierePack(pfad: string = packPfad) {
   // Das Mia Pack wartet auf den Einstieg (Entscheidung 133): erledigt setzen.
   await worker.evaluate((e) => (globalThis as any).chrome.storage.local.set({ einstieg: e }), { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'uebersprungen', zeit: 1 });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -86,7 +87,7 @@ async function importierePack(pfad: string = packPfad) {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#entfernen').click();
@@ -127,7 +128,7 @@ const video = (s: Page, id: string) =>
     return { paused: v.paused, t: v.currentTime, muted: v.muted, ended: v.ended };
   }, id);
 async function oeffneSeite(url = SEITE): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url);
   await s.waitForFunction(() => document.documentElement.dataset.filmBereit === '1', null, { timeout: 30_000 });
   return s;
@@ -403,7 +404,7 @@ test('Verdeckte Schleife mit Ton auf der Erwachsenenseite ist stumm, Pause gibt 
   test.skip(!existsSync(path.resolve(wurzel, '../05 Testbilder/nsfw/IMG_0260.jpg')), 'ohne Testbilder');
   // Das Beitragsvideo soll hier "verdeckt" sein (ganzes Video); mit der Zonen-Leinwand waere es "zensiert". Vorschau-Videos bleiben in beiden Modi ganz verdeckt.
   await setzeEinstellungen({ video: 'ganz' });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(`http://pornhub.veil-erwachsen.test:${port}/erwachsen-ton.html`);
     await s.waitForFunction(() => document.documentElement.dataset.tonBereit === '1', null, { timeout: 30_000 });

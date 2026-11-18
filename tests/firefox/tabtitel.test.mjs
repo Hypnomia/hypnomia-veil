@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 // Session 12: die Einstellungsseite hat eine klebende Leiste; Knoepfe vor dem Klick in die Mitte holen, sonst verdeckt die Leiste sie.
 async function mitteKlick(sel) {
@@ -247,6 +248,7 @@ try {
   optionen.setPreference('network.dns.localDomains', 'pornhub.veil-erwachsen.test');
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
   hauptFenster = (await driver.getAllWindowHandles())[0];
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);

@@ -8,6 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -59,7 +60,7 @@ const KONTROLLE = { werbung: false, blitz: 'aus', leerlauf: false, tabtitel: fal
 const setzeArt = (cursor: string) => setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, cursor } });
 
 async function importierePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -70,11 +71,12 @@ async function importierePack() {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     await abwarten(300);
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
@@ -106,7 +108,7 @@ const rahmen = (s: Page, teil: string): Frame => s.frames().find((f) => f.url().
 
 test('ohne Pack: normaler Zeiger, keine Blaetter', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, cursor: 'spirale' } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await abwarten(2500);
   for (const sel of ['body', '#link', '#knopf']) expect(await art(s, sel), sel).not.toMatch(/spirale|herz|url\?/);
@@ -118,7 +120,7 @@ test('ohne Pack: normaler Zeiger, keine Blaetter', async () => {
 test('mit Pack: Spirale an Body, Link, Knopf; Text an Feldern; Groesse hoechstens 32 px; keine neuen Elemente', async () => {
   await importierePack();
   await setzeArt('spirale');
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   const vorher = await elemente(s);
   await warteArt(s, 'body', 'spirale');
@@ -143,7 +145,7 @@ test('mit Pack: Spirale an Body, Link, Knopf; Text an Feldern; Groesse hoechsten
 });
 
 test('Wechsel Spirale, Herz, aus, wieder Spirale auf geoeffneter Seite', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await warteArt(s, '#link', 'spirale');
   const t0 = Date.now();
@@ -162,7 +164,7 @@ test('Wechsel Spirale, Herz, aus, wieder Spirale auf geoeffneter Seite', async (
 
 test('Pause, Ende der Pause, lokale Pause, eigene Ausnahme geben den Zeiger sofort zurueck', async () => {
   await setzeArt('spirale');
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await warteArt(s, '#link', 'spirale');
   const nach = async (name: string, tu: () => Promise<void>, rueckgabe: () => Promise<void>) => {
@@ -186,7 +188,7 @@ test('Pause, Ende der Pause, lokale Pause, eigene Ausnahme geben den Zeiger sofo
 
 test('Rahmen gleicher und fremder Herkunft, Ausnahme des Tabs gilt in fremden Rahmen', async () => {
   await setzeArt('herz');
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await expect.poll(() => s.frames().length, { timeout: 15_000 }).toBe(3);
   await expect.poll(() => s.frames().every((f) => f.url().includes('cursor')), { timeout: 15_000 }).toBe(true);
@@ -208,7 +210,7 @@ test('Rahmen gleicher und fremder Herkunft, Ausnahme des Tabs gilt in fremden Ra
 
 test('offene Shadow Root bekommt den Zeiger nach der Beruehrung; Seite ersetzt adoptedStyleSheets: Blatt kommt wieder', async () => {
   await setzeArt('spirale');
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await warteArt(s, '#link', 'spirale');
   await s.hover('#s-link');
@@ -227,7 +229,7 @@ test('offene Shadow Root bekommt den Zeiger nach der Beruehrung; Seite ersetzt a
 });
 
 test('Pack entfernt: Zeiger normal', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await warteArt(s, '#link', 'spirale');
   await entfernePack();
@@ -239,7 +241,7 @@ test('Pack entfernt: Zeiger normal', async () => {
 test('Vollbild: im Vollbild kein Zeiger-Blatt (cursor: none der Player bleibt wirksam), beim Verlassen sofort wieder', async () => {
   await importierePack(); // der Test davor hat das Pack entfernt
   await setzeArt('spirale');
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite);
   await warteArt(s, '#link', 'spirale');
   await s.click('#voll');

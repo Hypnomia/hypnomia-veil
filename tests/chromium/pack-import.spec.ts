@@ -18,6 +18,7 @@ import {
   ersetzenHinweis,
 } from '../../entrypoints/options/pack-texte';
 import { datumLang } from '../../src/oberflaeche/gemeinsam';
+import { mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -95,7 +96,7 @@ function leseMetaIdb(seite: Page): Promise<{ id: string; version: string; dateie
 
 // Oeffnet die Einstellungsseite und wartet auf den Pack-Status (Wettlauf aus Session 11).
 async function oeffne(): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(optionsUrl());
   await expect(seite.locator('#pack-status')).not.toHaveText('');
   // Das Dateifeld ist bis zum Lesen des Einstiegs gesperrt (grund-pack.ts)
@@ -180,12 +181,15 @@ test.afterAll(async () => {
 test('Lizenz jederzeit: ohne Pack verborgen, nach dem Import auf- und zuklappen, Text gleich dem im Pack, nach Entfernen zu', async () => {
   const seite = await oeffne();
   try {
+    await reiterFuer(seite, '#lizenz-zeile');
     await expect(seite.locator('#lizenz-zeile')).toBeHidden();
     await seite.locator('#datei').setInputFiles(pfad.v100!);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     // Runde 3, N3: nach der Pruefung steht der Fokus auf "Before it goes in".
     await expect(seite.locator('#lizenz-block h3')).toBeFocused();
     // Erstes Pack: kein Hinweis zum Ersetzen, Knopf wie immer
+    await reiterFuer(seite, '#ersetzen-hinweis');
     await expect(seite.locator('#ersetzen-hinweis')).toBeHidden();
     await expect(seite.locator('#annehmen')).toHaveText(KNOPF_ANNEHMEN);
     const lizenzImPack = await seite.locator('#lizenz-text').textContent();
@@ -197,17 +201,21 @@ test('Lizenz jederzeit: ohne Pack verborgen, nach dem Import auf- und zuklappen,
     await expect(seite.locator('#pack-version')).toHaveText('1.0.0');
 
     const knopf = seite.locator('#lizenz-zeigen');
+    await reiterFuer(seite, '#lizenz-zeile');
     await expect(seite.locator('#lizenz-zeile')).toBeVisible();
     await expect(knopf).toHaveText(KNOPF_LIZENZ_ZEIGEN);
     await expect(knopf).toHaveAttribute('aria-expanded', 'false');
+    await reiterFuer(seite, '#lizenz-ansicht');
     await expect(seite.locator('#lizenz-ansicht')).toBeHidden();
     await knopf.click();
     await expect(knopf).toHaveAttribute('aria-expanded', 'true');
+    await reiterFuer(seite, '#lizenz-ansicht');
     await expect(seite.locator('#lizenz-ansicht')).toBeVisible();
     await expect(seite.locator('#lizenz-ansicht-text')).toHaveText(lizenzImPack!);
     console.log(`chromium: Lizenz in der Ansicht ${lizenzImPack!.length} Zeichen, gleich dem Text im Pack`);
     await knopf.click();
     await expect(knopf).toHaveAttribute('aria-expanded', 'false');
+    await reiterFuer(seite, '#lizenz-ansicht');
     await expect(seite.locator('#lizenz-ansicht')).toBeHidden();
 
     // Datum amerikanisch (Fund 28): so wie datumLang es liefert, kein "05/11/2026"
@@ -217,11 +225,14 @@ test('Lizenz jederzeit: ohne Pack verborgen, nach dem Import auf- und zuklappen,
 
     // Nach Entfernen klappt die Ansicht zu und die Zeile verschwindet
     await knopf.click();
+    await reiterFuer(seite, '#lizenz-ansicht');
     await expect(seite.locator('#lizenz-ansicht')).toBeVisible();
     await seite.locator('#entfernen').click();
     await seite.locator('#entfernen-ja').click();
     await expect(seite.locator('#pack-status')).toContainText('No pack yet');
+    await reiterFuer(seite, '#lizenz-ansicht');
     await expect(seite.locator('#lizenz-ansicht')).toBeHidden();
+    await reiterFuer(seite, '#lizenz-zeile');
     await expect(seite.locator('#lizenz-zeile')).toBeHidden();
     await expect(knopf).toHaveAttribute('aria-expanded', 'false');
   } finally {
@@ -284,6 +295,7 @@ test('Ersetzen: 1.0.0 mit geaenderten Einstellungen, dann 1.1.0 (Hinweis neuer),
 
     // 1.1.0 (ohne Klaenge): Hinweis "neuer", noch nichts ersetzt
     await seite.locator('#datei').setInputFiles(pfad.v110!);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     await expect(seite.locator('#ersetzen-hinweis')).toHaveText(ersetzenHinweis('neuer', { titel, version: '1.0.0' }, { titel, version: '1.1.0' })!);
     await expect(seite.locator('#ersetzen-hinweis')).toContainText('settings stay');
@@ -292,6 +304,7 @@ test('Ersetzen: 1.0.0 mit geaenderten Einstellungen, dann 1.1.0 (Hinweis neuer),
     expect((await lies(seite, 'pack')).version).toBe('1.0.0');
     await seite.locator('#annehmen').click();
     await expect(seite.locator('#pack-version')).toHaveText('1.1.0');
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     expect(await ohneMerker()).toEqual(vorher);
     // Die Ablage selbst (nicht nur die Anzeige): Meta aus IndexedDB hat Kennung, Version und die Dateien des NEUEN Packs
@@ -307,6 +320,7 @@ test('Ersetzen: 1.0.0 mit geaenderten Einstellungen, dann 1.1.0 (Hinweis neuer),
     await expect(seite.locator('#annehmen')).toHaveText(KNOPF_ANNEHMEN_AELTER);
     expect((await lies(seite, 'pack')).version).toBe('1.1.0');
     await seite.locator('#abbrechen').click();
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     expect((await lies(seite, 'pack')).version).toBe('1.1.0');
     expect((await leseMetaIdb(seite))?.version).toBe('1.1.0');
@@ -351,6 +365,7 @@ test('Zwei Seiten: ersetzt eine andere Seite das Pack nach der Pruefung, bricht 
     // Jetzt waere 1.1.0 ueber 1.0.0 "neuer", die Seite A hat aber "anderes" gezeigt: der Import darf nicht still durchgehen.
     await a.locator('#annehmen').click();
     await expect(a.locator('#meldung')).toHaveText(TEXT_PACK_GEAENDERT);
+    await reiterFuer(a, '#lizenz-block');
     await expect(a.locator('#lizenz-block')).toBeHidden();
     expect((await lies(a, 'pack')).version).toBe('1.0.0');
     expect(await leseMetaIdb(a)).toEqual({ id: 'dummy', version: '1.0.0', dateienImMeta: DATEIEN });
@@ -375,6 +390,7 @@ test('Ziehen und Ablegen: eine Datei geht den Weg des Dateifelds, zwei Dateien u
     expect(ein.ueberAbgefangen).toBe(true);
     expect(ein.dropAbgefangen).toBe(true);
     expect(ein.hervorgehoben).toBe(true);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     await expect(seite.locator('#ersetzen-hinweis')).toContainText('replaces the old one');
     await expect(seite.locator('#ablage')).not.toHaveClass(/ueber/);
@@ -389,6 +405,7 @@ test('Ziehen und Ablegen: eine Datei geht den Weg des Dateifelds, zwei Dateien u
     ]);
     expect(zwei.dropAbgefangen).toBe(true);
     await expect(seite.locator('#meldung')).toHaveText(TEXT_MEHRERE_DATEIEN);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     expect((await lies(seite, 'pack')).version).toBe('1.0.0');
 
@@ -399,6 +416,7 @@ test('Ziehen und Ablegen: eine Datei geht den Weg des Dateifelds, zwei Dateien u
     await expect(seite.locator('#meldung')).toHaveText(TEXT_KEINE_DATEI);
     await wirf(seite, '#ablage', [], 'ohne-dateien');
     await expect(seite.locator('#meldung')).toHaveText(TEXT_KEINE_DATEI);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
 
     // keine Pack-Datei: normaler Fehlersatz, nichts gespeichert
@@ -415,7 +433,9 @@ test('Ziehen und Ablegen: eine Datei geht den Weg des Dateifelds, zwei Dateien u
     expect(linkDaneben.ueberAbgefangen).toBe(true);
     expect(linkDaneben.effekt).toBe('none');
     await seite.waitForTimeout(300);
-    expect(seite.url()).toBe(url);
+    // (der Reiter Pack and sound hat den Anker #stand in die Adresse gesetzt; die Seite selbst ist dieselbe)
+    expect(seite.url().split('#')[0]).toBe(url);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     console.log('chromium: Ablegen eine Datei angenommen, zwei, keine und fremde Datei abgewiesen, Wurf daneben abgefangen');
   } finally {
@@ -431,6 +451,7 @@ test('Ablegen vor dem Einstieg: derselbe Satz wie beim Dateifeld, nichts wird ge
     expect(antwort.ok).toBe(true);
     await seite.reload();
     await expect(seite.locator('#pack-status')).not.toHaveText('');
+    await reiterFuer(seite, '#pack-sperre');
     await expect(seite.locator('#pack-sperre')).toBeVisible();
     await expect(seite.locator('#datei')).toBeDisabled();
     const vor = await lies(seite, 'pack');
@@ -450,7 +471,9 @@ test('Ablegen vor dem Einstieg: derselbe Satz wie beim Dateifeld, nichts wird ge
     await expect(seite.locator('#meldung')).toHaveText(TEXT_EINSTIEG_ZUERST);
     expect(await seite.evaluate(() => (window as any).__lesen)).toBe(0);
     console.log('chromium: vor dem Einstieg 0 Lesezugriffe auf die abgelegte Datei');
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
+    await reiterFuer(seite, '#fortschritt-zeile');
     await expect(seite.locator('#fortschritt-zeile')).toBeHidden();
     expect(await lies(seite, 'pack')).toEqual(vor);
     await schreibe(seite, { einstieg: alt ?? EINSTIEG_FERTIG });
@@ -473,7 +496,9 @@ test('Entscheidung 88: veraenderte Pack-Datei (Byte im Datenteil) zeigt den Fehl
     await seite.locator('#datei').setInputFiles(pfad.kaputt!);
     await expect(seite.locator('#meldung')).toContainText('Nothing was stored');
     await expect(seite.locator('#meldung')).toHaveClass(/fehler/);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
+    await reiterFuer(seite, '#ersetzen-hinweis');
     await expect(seite.locator('#ersetzen-hinweis')).toBeHidden();
     await seite.locator('#meldung').evaluate((e) => (e.textContent = ''));
     await wirf(seite, '#ablage', [{ name: 'kaputt.miapack', b64: b64('kaputt') }]);
@@ -498,6 +523,7 @@ test('Import-Fehler: Datei nach der Pruefung veraendert, mit vorhandenem Pack: a
     const idbVor = await zaehleIdb(seite);
     const einstVor = await lies(seite, 'einstellungen');
     await seite.locator('#datei').setInputFiles(wechselt);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     await expect(seite.locator('#ersetzen-hinweis')).toContainText('replaces the old one');
     const geaendert = Uint8Array.from(bytes.v110!);
@@ -521,6 +547,7 @@ test('Wurf und Doppelklick waehrend eines laufenden Imports: Satz "busy", Abbrec
   const seite = await oeffne();
   try {
     await seite.locator('#datei').setInputFiles(pfad.v110!);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     // Lesezugriffe des Imports verlangsamen und zaehlen (26 Dateien, je 150 ms)
     await seite.evaluate(() => {
@@ -561,8 +588,10 @@ test('360 px Breite: kein waagrechtes Scrollen mit Hinweis und Lizenz-Ansicht', 
   try {
     await seite.setViewportSize({ width: 360, height: 800 });
     await seite.locator('#datei').setInputFiles(pfad.v100!);
+    await reiterFuer(seite, '#ersetzen-hinweis');
     await expect(seite.locator('#ersetzen-hinweis')).toBeVisible();
     await seite.locator('#lizenz-zeigen').click();
+    await reiterFuer(seite, '#lizenz-ansicht');
     await expect(seite.locator('#lizenz-ansicht')).toBeVisible();
     const m = await seite.evaluate(() => ({ breit: document.documentElement.scrollWidth, innen: document.documentElement.clientWidth }));
     console.log(`chromium: 360 px, scrollWidth ${m.breit}, clientWidth ${m.innen}`);

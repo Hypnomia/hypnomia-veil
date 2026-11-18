@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -77,7 +78,7 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
 const loescheEinstellungen = () => worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
 
 async function importierePack(pfad: string) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -89,14 +90,16 @@ async function importierePack(pfad: string) {
 }
 
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     // Session 11: die Einstellungsseite zeichnet den Pack-Stand erst nach dem Laden (sonst Wettlauf).
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
+      await reiterFuer(s, '#entfernen');
       await expect(s.locator('#entfernen')).toBeHidden({ timeout: 15_000 });
     }
   } finally {
@@ -107,7 +110,7 @@ async function entfernePack() {
 const ausWorker = (n: unknown): Promise<any> => worker.evaluate((m) => (globalThis as any).chrome.runtime.sendMessage(m), n);
 
 async function warteAufErkenner() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect
@@ -227,7 +230,7 @@ test('Aufwaermen: der Erkenner antwortet; ohne Pack liefert packbild nichts', as
 
 test('ohne Pack aendert sich nichts: Vorschaubilder gehen den normalen Weg (frei), die Originale bleiben', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub', 'erwachsen-pornhub.html'));
   await warteAufUrteile(s, [...vorschauIds(6), 'logo', 'avatar']);
   for (const e of await stand(s, vorschauIds(6))) {
@@ -246,7 +249,7 @@ test('Pack importieren', async () => {
 for (const ort of SEITEN) {
   test(`${ort.name}: jedes Vorschaubild wird ersetzt, Logo und Avatar nicht, Hover-Video versteckt, 0 Aufblitzen`, async () => {
     test.setTimeout(60_000);
-    const s = await context.newPage();
+    const s = mitReitern(await context.newPage());
     await s.goto(seite(ort.name, ort.datei));
     const ids = vorschauIds(ort.karten);
     await warteAufTausch(s, ids);
@@ -331,7 +334,7 @@ for (const ort of SEITEN) {
 
 test('dynamisch: Lazy-Load, picture/srcset, Quellwechsel, Inline-Hintergrund, Seitenverhaeltnis, gleiche Quelle ein Abruf', async () => {
   test.setTimeout(90_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('x', 'erwachsen-dynamisch.html'));
   const tausch = ['lazy', 'pimg', 'wechsel', 'hg', 'breit-img'];
   await warteAufTausch(s, tausch);
@@ -423,7 +426,7 @@ test('dynamisch: Lazy-Load, picture/srcset, Quellwechsel, Inline-Hintergrund, Se
 
 test('Pause stellt die Originale sofort zurueck, das Ende der Pause tauscht wieder', async () => {
   test.setTimeout(90_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('x', 'erwachsen-dynamisch.html'));
   const tausch = ['lazy', 'pimg', 'wechsel', 'hg', 'breit-img'];
   await warteAufTausch(s, tausch);
@@ -462,7 +465,7 @@ test('Pause stellt die Originale sofort zurueck, das Ende der Pause tauscht wied
 test('Schalter erwachsen.an aus: kein Tausch, normaler Schleier', async () => {
   test.setTimeout(60_000);
   await setzeEinstellungen({ erwachsen: { an: false, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub', 'erwachsen-pornhub.html'));
   await warteAufUrteile(s, vorschauIds(6));
   for (const e of await stand(s, vorschauIds(6))) {
@@ -475,7 +478,7 @@ test('Schalter erwachsen.an aus: kein Tausch, normaler Schleier', async () => {
 test('eigene Seite des Nutzers (allgemeiner Rueckfall) wird getauscht, andere Hosts nicht', async () => {
   test.setTimeout(60_000);
   await setzeEinstellungen({ erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: ['127.0.0.1'] } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-xvideos.html`);
   await warteAufTausch(s, vorschauIds(6));
   // Das Test-Attribut schreibt der Schleier gebuendelt ueber einen Zeitgeber: darauf warten statt einmal zu lesen (Wackler im Gesamtlauf).
@@ -483,7 +486,7 @@ test('eigene Seite des Nutzers (allgemeiner Rueckfall) wird getauscht, andere Ho
   await s.close();
   // dieselbe Seite ohne die Eintragung: kein Tausch
   await loescheEinstellungen();
-  const t = await context.newPage();
+  const t = mitReitern(await context.newPage());
   await t.goto(`${basis}/erwachsen-xvideos.html`);
   await warteAufUrteile(t, vorschauIds(6));
   for (const e of await stand(t, vorschauIds(6))) expect(e.src, e.id).toMatch(/^\/synthetisch\//);
@@ -512,7 +515,7 @@ test('Pack-Bilder: stabile Wahl je Schluessel, Vorschau als JPEG bis 480 px, Chi
   expect(chibi.name).toContain('jubeln');
   expect(chibi.dataUrl).toMatch(/^data:image\/(webp|png)/);
   expect(Math.max(chibi.breite, chibi.hoehe)).toBeLessThanOrEqual(512);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(optionsUrl());
   const alpha = await s.evaluate(async (url) => {
     const b = new Image();
@@ -535,7 +538,7 @@ test('Pack-Bilder: stabile Wahl je Schluessel, Vorschau als JPEG bis 480 px, Chi
 test('Erkennen am Inhalt: Testbilder aus dem Satz nsfw machen die Seite zur Erwachsenenseite, aber ohne Tausch; Seitenwechsel beginnt neu', async () => {
   test.skip(OHNE_TESTBILDER, 'VEIL_OHNE_TESTBILDER=1');
   test.setTimeout(180_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-inhalt.html?satz=nsfw&n=16`);
   await expect.poll(async () => (await erwachsenStand(s))?.amInhalt, { timeout: 120_000, intervals: [250] }).toBe(true);
   const st = await erwachsenStand(s);
@@ -578,13 +581,13 @@ test('Erkennen am Inhalt: Testbilder aus dem Satz nsfw machen die Seite zur Erwa
 test('Erkennen am Inhalt: Satz sfw bleibt unauffaellig; mit erkennenAmInhalt aus nie erkannt', async () => {
   test.skip(OHNE_TESTBILDER, 'VEIL_OHNE_TESTBILDER=1');
   test.setTimeout(180_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-inhalt.html?satz=sfw&n=16`);
   await expect.poll(async () => ((await erwachsenStand(s))?.zaehlung?.gesamt ?? 0) >= 12, { timeout: 120_000, intervals: [250] }).toBe(true);
   expect((await erwachsenStand(s)).amInhalt).toBe(false);
   await s.close();
   await setzeEinstellungen({ erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: false, eigeneSeiten: [] } });
-  const t = await context.newPage();
+  const t = mitReitern(await context.newPage());
   await t.goto(`${basis}/erwachsen-inhalt.html?satz=nsfw&n=16`);
   await expect.poll(async () => (await t.evaluate(() => document.documentElement.getAttribute('data-bilder-da'))) !== null, { timeout: 20_000 }).toBe(true);
   await abwarten(15_000);
@@ -616,7 +619,7 @@ test('kein Bild lesbar (Pack mit defektem Vorschaubild): normaler Schleier, Urte
   test.setTimeout(90_000);
   await entfernePack();
   await importierePack(await baueKaputtesPack());
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub', 'erwachsen-kaputt.html'));
   await warteAufUrteile(s, ['v1', 'v2'], 40_000);
   for (const e of await stand(s, ['v1', 'v2'])) {
@@ -660,7 +663,7 @@ test('Chibi: ohne Pack kommt das Demo-Chibi aus der Erweiterung (wenn mitgebaut)
   const gruenPfad = path.join(ordner, 'gruen.miapack');
   await writeFile(gruenPfad, await bau.bauePackAusOrdner(quelle));
   await importierePack(gruenPfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub', 'erwachsen-pornhub.html'));
   await warteAufTausch(s, vorschauIds(6));
   const farbe = await s.evaluate(async () => {
@@ -685,7 +688,7 @@ test('Pack ohne Vorschau-Freischaltung (wie vor 0.4.0): kein Tausch, kein Erkenn
   test.setTimeout(90_000);
   await entfernePack();
   await importierePack(altPackPfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub', 'erwachsen-pornhub.html'));
   await warteAufUrteile(s, vorschauIds(6));
   for (const e of await stand(s, vorschauIds(6))) {
@@ -701,7 +704,7 @@ test('Pack ohne Vorschau-Freischaltung (wie vor 0.4.0): kein Tausch, kein Erkenn
 test('Pack entfernt: die Seite geht wieder den normalen Weg', async () => {
   test.setTimeout(90_000);
   await entfernePack();
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub', 'erwachsen-pornhub.html'));
   await warteAufUrteile(s, vorschauIds(6));
   for (const e of await stand(s, vorschauIds(6))) expect(e.src, e.id).toMatch(/^\/synthetisch\//);
@@ -710,7 +713,7 @@ test('Pack entfernt: die Seite geht wieder den normalen Weg', async () => {
 
 test('Pack kommt waehrend die Seite offen ist: die Seite tauscht sofort, Entfernen stellt zurueck', async () => {
   test.setTimeout(120_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('xhamster', 'erwachsen-xhamster.html'));
   await warteAufUrteile(s, vorschauIds(6));
   for (const e of await stand(s, vorschauIds(6))) expect(e.src, e.id).toMatch(/^\/synthetisch\//);

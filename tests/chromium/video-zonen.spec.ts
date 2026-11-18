@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 // Videos bereichsweise zensieren (Bauplan Video-Zonen), Faelle z1 bis z15 und die Presets im Video (Auftrag 4). Die Fixture video-zonen.html nimmt ein 15-s-Video auf
 // (0 bis 2 s neutral, 2 bis 5 s Testbild links und wanderndes Streifenmuster rechts, 5 bis 8 s harter Schnitt, 8 bis 12 s Bild wandert mit 200 Bildpunkten
@@ -105,7 +106,7 @@ const eintraege = (s: Page): Promise<Eintrag[]> => s.evaluate(() => (window as a
 const sichtVerstoesse = (s: Page) => s.evaluate(() => (window as any).__sicht as unknown[]);
 
 async function oeffne(abfrage = '', breite = 800, hoehe = 800): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.setViewportSize({ width: breite, height: hoehe });
   await seite.goto(`${basis}/video-zonen.html?bild=${encodeURIComponent(BILD)}${abfrage ? `&${abfrage}` : ''}`);
   await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 60_000, intervals: [200] }).toBe('1');
@@ -858,7 +859,7 @@ test('R13c Hintergrund-Tab und Rueckkehr: nach der Rueckkehr nie ein scharfes Bi
   const s = await oeffne();
   await neuesVideo(s);
   await warteZonen(s);
-  const s2 = await context.newPage();
+  const s2 = mitReitern(await context.newPage());
   await s2.goto('about:blank');
   await s2.bringToFront();
   await abwarten(2500);
@@ -1009,7 +1010,7 @@ test('R13i object-fit cover in einer 4:3-Box und scaleX(-1): die Boxen decken da
 });
 
 test('R13j Popup: Hinweis "Too slow to follow closely here" nur kurz nach einem Langsam-Rueckfall', async () => {
-  const popup = await context.newPage();
+  const popup = mitReitern(await context.newPage());
   await popup.goto(`chrome-extension://${erweiterungsId}/popup.html`);
   await expect(popup.locator('#video-langsam')).toBeHidden();
   await worker.evaluate(() => (globalThis as any).chrome.storage.local.set({ videoLangsamUm: Date.now() }));
@@ -1227,7 +1228,7 @@ const lies = async (s: Page): Promise<VideoBoxen | null> => {
 };
 
 async function oeffneBild(satz: string, bild: string, abfrage = 'ohne=1&kurz=1', breite = 800, hoehe = 800): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.setViewportSize({ width: breite, height: hoehe });
   await seite.goto(`${basis}/video-zonen.html?satz=${satz}&bild=${encodeURIComponent(bild)}${abfrage ? `&${abfrage}` : ''}`);
   await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 90_000, intervals: [200] }).toBe('1');
@@ -1298,7 +1299,7 @@ async function packMitGesicht(): Promise<void> {
   const { bytes } = await bau.baueDummyPack({ extraPatches: [{ name: 'patch/mit-gesicht.jpg', typ: 'image/jpeg', daten: new Uint8Array(patch) }], woerter: PACK_WOERTER });
   const pfad = path.join(ordner, 'dummy-mit-gesicht.miapack');
   await writeFile(pfad, bytes);
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(`chrome-extension://${erweiterungsId}/options.html`);
   await o.locator('#datei').setInputFiles(pfad);
   await o.locator('#annehmen').click();
@@ -1310,11 +1311,12 @@ async function packMitGesicht(): Promise<void> {
   expect(scan.mit).toBe(1);
 }
 async function entfernePack(): Promise<void> {
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   try {
     await o.goto(`chrome-extension://${erweiterungsId}/options.html`);
     // ohne Pack gibt es nichts zu entfernen (erst abwarten, bis die Seite den Stand zeigt)
     await expect(o.locator('#pack-status')).toContainText(/Pack in place|No pack yet/);
+    await reiter(o, 'Pack and sound');
     if (await o.locator('#entfernen').isVisible()) {
       await o.locator('#entfernen').click();
       await o.locator('#entfernen-ja').click();
@@ -1775,7 +1777,7 @@ test('P8 Mias Gesicht ohne Gesicht im Pack: die Koerper-Behandlung deckt das Ges
   const bau = (await import(BAUMODUL)) as { baueDummyPack(o?: Record<string, unknown>): Promise<{ bytes: Uint8Array }> };
   const pfad = path.join(ordner, 'dummy-ohne-gesicht.miapack');
   await writeFile(pfad, (await bau.baueDummyPack()).bytes);
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(`chrome-extension://${erweiterungsId}/options.html`);
   await o.locator('#datei').setInputFiles(pfad);
   await o.locator('#annehmen').click();
@@ -1992,7 +1994,7 @@ async function importiereDummy(opts: Record<string, unknown>, name: string, erse
   const bau = (await import(BAUMODUL)) as { baueDummyPack(o?: Record<string, unknown>): Promise<{ bytes: Uint8Array }> };
   const pfad = path.join(ordner, name);
   await writeFile(pfad, (await bau.baueDummyPack(opts)).bytes);
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(`chrome-extension://${erweiterungsId}/options.html`);
   await o.locator('#datei').setInputFiles(pfad);
   await o.locator('#annehmen').click();

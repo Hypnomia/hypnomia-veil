@@ -8,6 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -39,7 +40,7 @@ test.beforeAll(async () => {
   });
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   erweiterungsId = new URL(worker.url()).host;
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`chrome-extension://${erweiterungsId}/options.html`);
   await s.locator('#datei').setInputFiles(packPfad);
   await s.locator('#annehmen').click();
@@ -68,7 +69,7 @@ const wecker = (s: Page): Promise<Wecker> =>
 
 // Seite mit Standbild auf dem Hauptvideo, Fehler-Zaehler am Fenster, Wecker eingeschlafen.
 async function seiteMitStandbild(): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   await s.waitForFunction(() => document.documentElement.dataset.filmBereit === '1', null, { timeout: 30_000 });
   await s.evaluate(() => {
@@ -116,7 +117,7 @@ async function messeAenderung(s: Page, art: 'bezug' | 'block'): Promise<{ vorher
 }
 
 test('Belege: ResizeObserver meldet ein im rAF frisch beobachtetes Element im selben Bild (vor dem naechsten rAF)', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   const ergebnis = await s.evaluate(async () => {
     const el = document.getElementById('player')!;

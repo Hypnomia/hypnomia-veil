@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -201,12 +202,15 @@ test.afterAll(async () => {
 });
 
 test('Einstellungsseite: ohne Pack leerer Stand, die Presets mit meinem Gesicht sind gesperrt, Popup zeigt Hinweis und Weg zur Seite', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await expect(seite.locator('#pack-status')).toContainText('No pack yet');
+    await reiterFuer(seite, '#pack-daten');
     await expect(seite.locator('#pack-daten')).toBeHidden();
+    await reiterFuer(seite, '#entfernen');
     await expect(seite.locator('#entfernen')).toBeHidden();
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur', 'mia-sticker', 'sticker']) await expect(seite.locator(`#preset-${id}`)).toBeDisabled();
     await expect(seite.locator('#preset-mosaik')).toBeChecked();
@@ -217,6 +221,7 @@ test('Einstellungsseite: ohne Pack leerer Stand, die Presets mit meinem Gesicht 
       await (globalThis as any).chrome.storage.local.set({ einstellungen: { version: 1, preset: 'mia-wort' } });
     });
     await expect(seite.locator('#pack-hinweis')).toContainText('Mia Pack');
+    await reiterFuer(seite, '#pack-link');
     await expect(seite.locator('#pack-link')).toBeVisible();
     await expect(seite.locator('#preset-name')).toHaveText('Mosaic');
     await seite.evaluate(async () => {
@@ -228,12 +233,13 @@ test('Einstellungsseite: ohne Pack leerer Stand, die Presets mit meinem Gesicht 
 });
 
 test('Einstellungsseite: beschaedigtes Pack wird abgelehnt, nichts wird gespeichert', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#datei').setInputFiles(kaputtPfad);
     await expect(seite.locator('#meldung')).toContainText('Nothing was stored');
     await expect(seite.locator('#meldung')).toHaveClass(/fehler/);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     expect(await speicher(seite, 'pack')).toBeUndefined();
     expect(await zaehleIdb(seite)).toEqual({ dateien: 0, meta: 0 });
@@ -244,11 +250,12 @@ test('Einstellungsseite: beschaedigtes Pack wird abgelehnt, nichts wird gespeich
 });
 
 test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.local und Popup', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#datei').setInputFiles(packPfad);
     // Lizenztext aus dem Pack steht vor dem Import da; Import erst nach dem Annehmen.
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     await expect(seite.locator('#lizenz-text')).toContainText('Mia');
     expect(await speicher(seite, 'pack')).toBeUndefined();
@@ -261,7 +268,9 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
     await expect(seite.locator('#pack-bilder')).toHaveText('6');
     await expect(seite.locator('#pack-version')).toHaveText('0.0.1');
     await expect(seite.locator('#meldung')).toContainText('The pack is in');
+    await reiterFuer(seite, '#entfernen');
     await expect(seite.locator('#entfernen')).toBeVisible();
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
 
     const pack = await speicher(seite, 'pack');
@@ -295,7 +304,7 @@ test('Einstellungsseite: Lizenz zeigen, annehmen, importieren; Status, storage.l
 // ERR_BLOCKED_BY_CLIENT, kein neuer Service Worker). Stattdessen: Browser schliessen und mit demselben Profil neu starten, und zwar
 // mit einer Kopie des Baus, deren Version hochgesetzt ist. Das ist ein Update: gleiche ID (fester key), neue Version, gleiche Daten.
 test('Update der Erweiterung (neue Version, gleiches Profil): Pack, Kurzfassung und Stil sind noch da', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(optionsUrl());
   const vorher = await speicher(seite, 'pack');
   const versionVorher = await seite.evaluate(() => (globalThis as any).chrome.runtime.getManifest().version);
@@ -316,7 +325,7 @@ test('Update der Erweiterung (neue Version, gleiches Profil): Pack, Kurzfassung 
   worker = await neuerWorker();
   expect(new URL(worker.url()).host).toBe(erweiterungsId);
 
-  const nachher = await context.newPage();
+  const nachher = mitReitern(await context.newPage());
   try {
     await nachher.goto(optionsUrl());
     expect(await nachher.evaluate(() => (globalThis as any).chrome.runtime.getManifest().version)).toBe('9.9.9');
@@ -372,10 +381,10 @@ async function bildMitFlaechen(seite: Page): Promise<{ dataUrl: string; name: st
 const groessteBox = (flaechen: { box: number[] }[]): number[] => [...flaechen].sort((a, b) => b.box[2]! * b.box[3]! - a.box[2]! * a.box[3]!)[0]!.box;
 
 test('Erkenner: Preset mit Wort zeichnet Schwarz mit pinkem Wort, Mosaik pinke Randpixel, stabile Auswahl, Blur ohne Rahmen', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(`${basis}/hello.html`);
-    const hilfsSeite = await context.newPage();
+    const hilfsSeite = mitReitern(await context.newPage());
     await hilfsSeite.goto(optionsUrl());
     await warteAufErkenner(hilfsSeite);
     await hilfsSeite.close();
@@ -420,14 +429,17 @@ test('Erkenner: Preset mit Wort zeichnet Schwarz mit pinkem Wort, Mosaik pinke R
 });
 
 test('Entfernen mit Rueckfrage: Pack weg, Preset Mosaik, Erkenner zeichnet ohne Pack Schwarz mit MIA statt Mias Gesicht und Woertern aus dem Pack', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
+    await reiterFuer(seite, '#entfernen');
     await expect(seite.locator('#entfernen')).toBeVisible();
     // Rueckfrage: erst "Keep it" laesst alles stehen.
     await seite.locator('#entfernen').click();
+    await reiterFuer(seite, '#entfernen-frage');
     await expect(seite.locator('#entfernen-frage')).toBeVisible();
     await seite.locator('#entfernen-nein').click();
+    await reiterFuer(seite, '#entfernen-frage');
     await expect(seite.locator('#entfernen-frage')).toBeHidden();
     expect((await speicher(seite, 'pack')).id).toBe('dummy');
 
@@ -442,7 +454,7 @@ test('Entfernen mit Rueckfrage: Pack weg, Preset Mosaik, Erkenner zeichnet ohne 
 
     // Erkenner: ein Mia-Preset ohne Pack (die Seite ersetzt es durch Mosaik, hier die Anfrage von Hand): Koerper schwarz mit dem festen Wort MIA,
     // keine Pack-Farben.
-    const probe = await context.newPage();
+    const probe = mitReitern(await context.newPage());
     try {
       await probe.goto(`${basis}/hello.html`);
       const bild = await bildMitFlaechen(probe);
@@ -517,7 +529,7 @@ test('Pack ersetzen: zweiter Import ersetzt das erste Pack, der Erkenner liest d
   await writeFile(warmPfad, warm.bytes);
   const ziel = await zielMitGesicht();
 
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await warteAufErkenner(seite);
@@ -525,6 +537,7 @@ test('Pack ersetzen: zweiter Import ersetzt das erste Pack, der Erkenner liest d
     const importiere = async (pfad: string, titelTeil: string) => {
       await seite.locator('#datei').setInputFiles(pfad);
       await seite.locator('#annehmen').click();
+      await reiterFuer(seite, '#lizenz-block');
       await expect(seite.locator('#lizenz-block')).toBeHidden();
       await expect(seite.locator('#pack-status')).toContainText('Pack in place');
       await expect(seite.locator('#pack-titel')).toContainText(titelTeil);
@@ -564,7 +577,7 @@ test('packStand: weicht der Stand der Anfrage ab, liest der Erkenner sofort neu 
   test.setTimeout(120_000);
   const patchB = await gesichtsPatch('sfw-004-portraet.jpg');
   const ziel = await zielMitGesicht();
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await warteAufErkenner(seite);
@@ -646,7 +659,7 @@ function leereIdb(seite: Page, mitWaise = false): Promise<void> {
 }
 
 test('Abgleich beim Oeffnen: fehlende Kurzfassung wird nachgeschrieben, verwaiste entfernt, Reste entfernbar', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await expect(seite.locator('#pack-status')).toContainText('Pack in place');
@@ -671,6 +684,7 @@ test('Abgleich beim Oeffnen: fehlende Kurzfassung wird nachgeschrieben, verwaist
     await leereIdb(seite, true);
     await seite.reload();
     await expect(seite.locator('#pack-status')).toContainText('leftover');
+    await reiterFuer(seite, '#entfernen');
     await expect(seite.locator('#entfernen')).toBeVisible();
     await seite.locator('#entfernen').click();
     await seite.locator('#entfernen-ja').click();
@@ -695,11 +709,12 @@ test('Einstellungsseite: Pack mit zu grossem Bild (5000 px) wird abgelehnt, nich
   );
   const pfad = path.join(ordner, 'gross.miapack');
   await writeFile(pfad, bytes);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#datei').setInputFiles(pfad);
     await expect(seite.locator('#meldung')).toContainText('too large (over 4096 pixels');
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeHidden();
     expect(await speicher(seite, 'pack')).toBeUndefined();
     expect(await zaehleIdb(seite)).toEqual({ dateien: 0, meta: 0 });
@@ -713,12 +728,13 @@ test('Import: aendert sich die Datei zwischen Pruefen und Import, wird nichts ge
   const { bytes } = await bau.baueDummyPack();
   const pfad = path.join(ordner, 'wechselt.miapack');
   await writeFile(pfad, bytes);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     // Sicherer Ausgangszustand: kein Pack.
     await expect(seite.locator('#pack-status')).toContainText('No pack yet');
     await seite.locator('#datei').setInputFiles(pfad);
+    await reiterFuer(seite, '#lizenz-block');
     await expect(seite.locator('#lizenz-block')).toBeVisible();
     // Nach der Pruefung wird ein Byte im letzten Bild veraendert (gleiche Groesse).
     const geaendert = Uint8Array.from(bytes);

@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -42,7 +43,7 @@ test.afterAll(async () => {
 
 test('Pack-Chibis: alle Blob-Adressen werden beim Verlassen der Seite widerrufen', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`chrome-extension://${id}/options.html`);
   await s.evaluate((e) => (globalThis as any).chrome.storage.local.set({ einstieg: e }), EINSTIEG_FERTIG);
   await s.reload();
@@ -68,7 +69,7 @@ test('Pack-Chibis: alle Blob-Adressen werden beim Verlassen der Seite widerrufen
   // Vor dem Verlassen ist keine der gezeigten Adressen widerrufen (sonst waere das Bild kaputt).
   expect(await s.evaluate(() => JSON.parse(localStorage.getItem('widerrufen') ?? '[]').length)).toBe(0);
   await s.goto('about:blank');
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(`chrome-extension://${id}/hilfe.html`);
   const widerrufen = await p.evaluate(() => JSON.parse(localStorage.getItem('widerrufen') ?? '[]') as string[]);
   console.log(`blob-freigabe: ${offen.length} Blob-Adressen gezeigt, ${widerrufen.length} beim Verlassen widerrufen`);

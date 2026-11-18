@@ -10,6 +10,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 const ECHT = process.env.VEIL_ECHTES_PACK ? path.resolve(process.env.VEIL_ECHTES_PACK) : undefined;
 if (!ECHT) {
@@ -114,7 +115,11 @@ async function mitOptionen(fn) {
   }
 }
 const text = (css) => driver.findElement(By.css(css)).getText();
-const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+// E4d1: wer Sichtbarkeit pruefen will, oeffnet vorher den Reiter des Elements (wie die Person).
+const sichtbar = async (css) => {
+  await oeffneReiterFuer(driver, css);
+  return driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+};
 const setzeErwachsen = (teil) =>
   mitOptionen(() =>
     imSeitenkontext(
@@ -158,6 +163,7 @@ try {
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
   hauptFenster = (await driver.getAllWindowHandles())[0];
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);

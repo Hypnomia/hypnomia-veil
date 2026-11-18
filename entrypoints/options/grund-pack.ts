@@ -14,7 +14,6 @@ const sperreKnopf = el<HTMLButtonElement>('pack-sperre-knopf');
 const datei = el<HTMLInputElement>('datei');
 const interviewAbschnitt = document.getElementById('abschnitt-interview');
 const interviewKnopf = document.getElementById('interview-neu');
-const interviewChip = document.getElementById('chip-interview');
 
 function zeichne(fertig: boolean): void {
   document.body.dataset.packGesperrt = fertig ? '0' : '1';
@@ -22,9 +21,8 @@ function zeichne(fertig: boolean): void {
   // Waehrend eines laufenden Imports bleibt das Feld ohnehin gesperrt (main.ts); hier nur die Sperre selbst.
   if (!fertig) datei.disabled = true;
   else if (!document.getElementById('annehmen')?.hasAttribute('disabled')) datei.disabled = false;
-  // Fund 17: Abschnitt und Chip "Interview" erst nach dem Einstieg.
+  // Fund 17: der Abschnitt "Interview" erst nach dem Einstieg.
   if (interviewAbschnitt) interviewAbschnitt.hidden = !fertig;
-  if (interviewChip) interviewChip.hidden = !fertig;
 }
 
 function oeffneWillkommen(anker: string): void {

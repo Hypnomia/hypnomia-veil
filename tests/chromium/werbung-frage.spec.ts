@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -41,20 +42,24 @@ test.afterAll(async () => {
 });
 
 test('Werbe-Frage: nur mit freigeschalteter Werbung, Ja und Nein speichern, keine zweite Frage', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await zuruecksetzen(seite);
     await seite.reload();
     // Erst warten, bis die Seite gezeichnet ist und auf Aenderungen hoert (die Seite raeumt beim Laden einen Pack-Eintrag ohne Datenbank weg).
     await expect(seite.locator('#pack-status')).not.toHaveText('');
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeHidden();
     // Pack ohne Werbe-Freischaltung: keine Frage.
     await schreibe(seite, { pack: packMit(['kontrolle:blitz']) });
+    await reiterFuer(seite, '#einrichten');
     await expect(seite.locator('#einrichten')).toBeVisible();
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeHidden();
     // Pack mit Werbung, frische Einstellungen: Frage sichtbar, Werbung aus.
     await schreibe(seite, { pack: packMit(['kontrolle:werbung', 'kontrolle:blitz']) });
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeVisible();
     await expect(seite.locator('#werbung-frage-titel')).toHaveText('Show my ads?');
     await expect(seite.locator('#werbung-frage-ja')).toHaveText('Yes, show them');
@@ -65,22 +70,27 @@ test('Werbe-Frage: nur mit freigeschalteter Werbung, Ja und Nein speichern, kein
     await seite.locator('#werbung-frage-ja').click();
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.kontrolle?.werbung).toBe(true);
     expect((await lies(seite, 'einstellungen'))?.kontrolle?.werbungGefragt).toBe(true);
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeHidden();
     // Der Fokus geht nicht verloren.
     await expect.poll(() => seite.evaluate(() => document.activeElement?.id ?? '')).not.toBe('');
     // Ein neues Pack (Ersetzen) fragt nicht noch einmal.
     await schreibe(seite, { pack: { ...packMit(['kontrolle:werbung']), version: '1.0.1' } });
     await seite.waitForTimeout(400);
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeHidden();
     // "No ads": aus und beantwortet.
     await schreibe(seite, { einstellungen: { version: 1 } });
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeVisible();
     await seite.locator('#werbung-frage-nein').click();
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.kontrolle?.werbungGefragt).toBe(true);
     expect((await lies(seite, 'einstellungen'))?.kontrolle?.werbung).toBe(false);
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeHidden();
     // Ohne Pack gibt es keine Frage und keinen Block.
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove(['pack', 'einstellungen']));
+    await reiterFuer(seite, '#einrichten');
     await expect(seite.locator('#einrichten')).toBeHidden();
     console.log('Werbe-Frage: erscheint nur mit Freischaltung, Ja und Nein gespeichert, keine zweite Frage, Frage in #stand > #einrichten');
   } finally {
@@ -90,7 +100,7 @@ test('Werbe-Frage: nur mit freigeschalteter Werbung, Ja und Nein speichern, kein
 });
 
 test('Set me up: "Later" laesst die Werbe-Frage offen, "Done" schliesst den Rest, Antworten speichern sofort', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await zuruecksetzen(seite);
@@ -100,6 +110,7 @@ test('Set me up: "Later" laesst die Werbe-Frage offen, "Done" schliesst den Rest
       pack: packMit(['kontrolle:werbung', 'kontrolle:blitz', 'kontrolle:leerlauf', 'erwachsen:vorschau']),
     });
     await expect(seite.locator('#einrichten-titel')).toHaveText('Set me up');
+    await reiterFuer(seite, '#einrichten-rest');
     await expect(seite.locator('#einrichten-rest')).toBeVisible();
     // Antworten speichern sofort
     await seite.locator('#einrichten-stufe-zeile label', { hasText: 'Explicit' }).click();
@@ -111,26 +122,35 @@ test('Set me up: "Later" laesst die Werbe-Frage offen, "Done" schliesst den Rest
     await seite.locator('label.schalter:has(#einrichten-erw-an)').click();
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.erwachsen?.an).toBe(false);
     // Anfallswarnung ueber den Blitz-Fragen, "I understand" blendet sie aus
+    await reiterFuer(seite, '#einrichten-warnung');
     await expect(seite.locator('#einrichten-warnung')).toBeVisible();
     await seite.locator('#einrichten-warnung-ok').click();
+    await reiterFuer(seite, '#einrichten-warnung');
     await expect(seite.locator('#einrichten-warnung')).toBeHidden();
     // "Later": Standards bleiben, der Rest schliesst, die Werbe-Frage bleibt bis zur Antwort
     await seite.locator('#einrichten-spaeter').click();
+    await reiterFuer(seite, '#einrichten-rest');
     await expect(seite.locator('#einrichten-rest')).toBeHidden();
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeVisible();
     expect((await lies(seite, 'einstellungen'))?.kontrolle?.werbungGefragt ?? false).toBe(false);
     expect(await lies(seite, 'einrichtenFuer')).toBe('t');
     // ein weiteres Pack-Schreiben (gleiche Kennung) oeffnet den Rest nicht wieder
     await schreibe(seite, { pack: { ...packMit(['kontrolle:werbung', 'kontrolle:blitz']), version: '1.0.1' } });
     await seite.waitForTimeout(400);
+    await reiterFuer(seite, '#werbung-frage');
     await expect(seite.locator('#werbung-frage')).toBeVisible();
+    await reiterFuer(seite, '#einrichten-rest');
     await expect(seite.locator('#einrichten-rest')).toBeHidden();
     await seite.locator('#werbung-frage-nein').click();
+    await reiterFuer(seite, '#einrichten');
     await expect(seite.locator('#einrichten')).toBeHidden();
     // "Done" bei einem anderen Pack
     await schreibe(seite, { pack: { ...packMit(['kontrolle:blitz']), id: 'anders' } });
+    await reiterFuer(seite, '#einrichten-rest');
     await expect(seite.locator('#einrichten-rest')).toBeVisible();
     await seite.locator('#einrichten-fertig').click();
+    await reiterFuer(seite, '#einrichten');
     await expect(seite.locator('#einrichten')).toBeHidden();
     expect(await lies(seite, 'einrichtenFuer')).toBe('anders');
     console.log('Set me up: Antworten speichern sofort, Later laesst die Frage offen, Done schliesst, Zustand bleibt je Pack-Kennung');

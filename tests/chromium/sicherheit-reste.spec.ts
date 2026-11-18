@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -58,7 +59,7 @@ const sende = (n: unknown) => worker.evaluate((m) => (globalThis as any).chrome.
 let absender: Page | null = null;
 async function sendeAnHintergrund(n: unknown): Promise<any> {
   if (!absender) {
-    absender = await context.newPage();
+    absender = mitReitern(await context.newPage());
     await absender.goto(`chrome-extension://${id}/hilfe.html`);
   }
   return absender.evaluate((m) => (globalThis as any).chrome.runtime.sendMessage(m), n);
@@ -110,7 +111,7 @@ test('A4: Referer-Regel faellt nach der Haltezeit weg', async () => {
 });
 
 test('A3: Wurzel-Haken ohne Symbol.for-Kennzeichen, zweites Einspritzen richtet nichts doppelt ein', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(`http://127.0.0.1:${port}/seite-haken`);
   // Der Haken laeuft (Lebenszeichen: attachShadow ist umgehaengt).
   await expect.poll(() => seite.evaluate(() => !/\[native code\]/.test(Function.prototype.toString.call(Element.prototype.attachShadow)))).toBe(true);
@@ -163,7 +164,7 @@ test('N1: CSP der Erweiterungsseiten mit default-src, Seiten und Erkenner ohne V
     p.on('pageerror', (e) => verletzungen.push(`${name}: Fehler ${e.message}`));
   };
   for (const name of ['popup.html', 'options.html', 'willkommen.html', 'hilfe.html']) {
-    const p = await context.newPage();
+    const p = mitReitern(await context.newPage());
     beobachte(p, name);
     await p.goto(`chrome-extension://${id}/${name}`);
     await p.waitForLoadState('load');
@@ -183,7 +184,7 @@ test('N1: CSP der Erweiterungsseiten mit default-src, Seiten und Erkenner ohne V
   }
 
   // Gegenprobe des Detektors: ein fremdes Bild in einer Erweiterungsseite wird von der CSP blockiert und als Verletzung gemeldet.
-  const probe = await context.newPage();
+  const probe = mitReitern(await context.newPage());
   const probeMeldungen: string[] = [];
   probe.on('console', (m) => {
     if (/Content Security Policy|Refused to/i.test(m.text())) probeMeldungen.push(m.text());

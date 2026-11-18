@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -61,7 +62,7 @@ test.beforeAll(async () => {
   });
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   erweiterungsId = new URL(worker.url()).host;
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect
@@ -97,7 +98,7 @@ const setzeEinstellungen = (neu: Record<string, unknown>) =>
 const loescheEinstellungen = () => worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
 
 async function importierePack(): Promise<void> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(path.join(ordner, 'dummy.miapack'));
@@ -365,7 +366,7 @@ async function warteAufTausch(s: Page, liste: string[]): Promise<Kachel[]> {
 }
 
 async function oeffneKacheln(variante: 'a' | 'b' | 'c' | 'd' | 'e' | 'formen'): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('xvideos', `optik-kacheln.html?v=${variante}`));
   return s;
 }

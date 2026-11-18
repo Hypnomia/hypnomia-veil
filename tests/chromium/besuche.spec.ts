@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -84,7 +85,7 @@ const loescheSpeicher = (...schluessel: string[]) => worker.evaluate((s) => (glo
 const liesSpeicher = <T = any>(schluessel: string) => worker.evaluate(async (s) => (await (globalThis as any).chrome.storage.local.get(s))[s] as T, schluessel);
 
 async function importierePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -95,11 +96,12 @@ async function importierePack() {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     await abwarten(300);
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
@@ -133,7 +135,7 @@ async function erwarteAbgelehnt(s: Page, grund: string, besuch: Record<string, u
   expect(a.phase).toBe('abgelehnt');
 }
 async function neueSeite(): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   await s.bringToFront();
   // Das Content-Script braucht einen Augenblick fuer Pack und Einstellungen.
@@ -159,7 +161,7 @@ test('ohne Pack zeigt sich nichts, auch nicht per Testereignis; der Hintergrund 
   await setzeKontrolle();
   const s = await neueSeite();
   await erwarteAbgelehnt(s, 'kein-pack');
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(optionsUrl());
   const antwort = await o.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'besuch' }));
   console.log(`Hintergrund ohne Pack: ${JSON.stringify(antwort)}`);
@@ -181,7 +183,7 @@ test('Schalter ab Werk aus: nichts, auch nicht per Testereignis; der Hintergrund
   await setzeKontrolle({ besuche: false });
   await abwarten(300);
   await erwarteAbgelehnt(s, 'aus');
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(optionsUrl());
   const antwort = await o.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'besuch' }));
   expect(antwort).toEqual({ ok: false, grund: 'aus' });
@@ -264,7 +266,7 @@ test('zweiter Versuch innerhalb von 2 Stunden: der Hintergrund lehnt ab, kein zw
   expect(ok.ergebnis, JSON.stringify(ok)).toBe('ok');
   await schliesseBesuche(s);
   // Der Testhaken im Hintergrund vergisst den letzten Besuch
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(optionsUrl());
   const antwort = await o.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'besuch-test', vergiss: true }));
   expect(antwort.ok).toBe(true);
@@ -406,9 +408,9 @@ test('der Hintergrund lehnt ab, wenn der Absender-Tab nicht der aktive seines Fe
   // Headless Chromium meldet jeden Tab als sichtbar und fokussiert (document.visibilityState, hasFocus); die Sichtbarkeit der Seite prueft der
   // Firefox-Test mit echtem Tabwechsel. Der Hintergrund fragt den Browser selbst (tabs.get, active) und kennt den Unterschied.
   const s = await neueSeite();
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(optionsUrl());
-  const v = await context.newPage();
+  const v = mitReitern(await context.newPage());
   await v.goto(SEITE);
   await v.bringToFront();
   await abwarten(800);
@@ -425,7 +427,7 @@ test('Hintergrund: Fenster im Vollbild lehnt ab, Fokus, zwei gleichzeitige Anfra
   test.setTimeout(120_000);
   await setzeKontrolle();
   const s = await neueSeite();
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(optionsUrl());
   await o.bringToFront();
   const frage = () => o.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'besuch' }));
@@ -623,7 +625,7 @@ test('Ablehnung des Hintergrunds (Tab inzwischen nicht aktiv): keine Wiederholun
   });
   await setzeSpeicher({ besuchZeitplan: { zuletzt: Date.now() - 5 * H, abstandMs: 2 * H } });
   await loeseAus(s, { faellig: true, hinweisMs: 2500 });
-  const v = await context.newPage();
+  const v = mitReitern(await context.newPage());
   await v.goto(SEITE);
   await v.bringToFront(); // der Hintergrund sieht: der Absender-Tab ist nicht mehr aktiv; die Seite merkt es in Headless-Chromium nicht
   const ende = await warteEnde(s, 8000);

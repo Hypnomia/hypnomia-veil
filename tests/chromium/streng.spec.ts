@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { textAusMinuten } from '../../src/kontrolle/streng';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -78,7 +79,7 @@ async function setzeZeiten(zeiten: unknown[]) {
   }, zeiten);
 }
 async function importierePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -92,7 +93,7 @@ async function importierePack() {
 
 // ---------- Popup ----------
 async function popupText(mitStufe = true): Promise<{ stufe: string; streng: string; strengSichtbar: boolean; zeit: string; kommentar: string }> {
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   try {
     await p.goto(`chrome-extension://${erweiterungsId}/popup.html`);
     if (mitStufe) await expect(p.locator('#stufe-zeile')).toContainText('Level', { timeout: 15_000 });
@@ -167,7 +168,7 @@ test('Steigerung: eine Stufe hoeher im Fenster (Stufe 1 wird 2, YuNet laeuft), n
   await schreibe({ pack: kurz(['zensur:steigerung', 'kontrolle:zeitplan']), steigerung: stufe1 });
   await setzeEinstellungen({ ...EINST, pause: false });
   await setzeZeiten(NUR_MORGEN);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(STEIGERUNG_SEITE);
     await expect(seite.locator('#bild')).toHaveAttribute('data-veil', /frei|zensiert|verdeckt/, { timeout: 30_000 });
@@ -234,7 +235,7 @@ const video = (s: Page, id: string) =>
     return { paused: v.paused, t: v.currentTime, muted: v.muted };
   }, id);
 async function oeffneSeite(): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(NEUTRAL);
   await s.waitForFunction(() => document.documentElement.dataset.filmBereit === '1', null, { timeout: 40_000 });
   return s;

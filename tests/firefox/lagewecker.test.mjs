@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox lagewecker: Zeitlimit von 240 s ueberschritten');
@@ -165,6 +166,7 @@ try {
   optionen.setPreference('media.autoplay.blocking_policy', 0);
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
   await driver.execute(new Command('install addon').setParameter('path', paket).setParameter('temporary', true));
   inhaltFenster = (await driver.getAllWindowHandles())[0];

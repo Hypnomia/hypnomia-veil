@@ -8,6 +8,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern, reiter } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -34,14 +35,14 @@ const EINSTIEG = (o: Record<string, unknown>) => ({ version: 1, warnung: true, a
 
 async function seiten(extern: { context: BrowserContext; id: string }, erwarteBilder: boolean, kernDa: boolean) {
   const { context, id } = extern;
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   const anfragen: string[] = [];
   s.on('request', (r) => anfragen.push(r.url()));
   await s.goto(`chrome-extension://${id}/options.html`);
   const setze = (o: Record<string, unknown>) => s.evaluate((o) => (globalThis as any).chrome.storage.local.set(o), o);
   await setze({ einstieg: EINSTIEG({}) });
   // ---- Willkommensseite ----
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.setViewportSize({ width: 360, height: 640 });
   await w.goto(`chrome-extension://${id}/willkommen.html`);
   await expect(w.locator('#schritt-titel')).toBeVisible();
@@ -83,11 +84,12 @@ async function seiten(extern: { context: BrowserContext; id: string }, erwarteBi
   await w.close();
   // ---- Einstellungsseite ----
   await setze({ einstieg: EINSTIEG({ einwilligung: true }) });
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.setViewportSize({ width: 360, height: 800 });
   await o.goto(`chrome-extension://${id}/options.html`);
   await expect(o.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
   if (erwarteBilder) {
+    await reiter(o, 'Pack and sound');
     await expect(o.locator('#kern-streifen')).toBeVisible({ timeout: 10_000 });
     await expect.poll(() => o.locator('#kern-bilder img').count()).toBe(3);
     await expect(o.locator('#kern-text')).toHaveText('This is me dressed for the office. The Mia Pack is me off duty.');
@@ -117,6 +119,7 @@ async function seiten(extern: { context: BrowserContext; id: string }, erwarteBi
     await rm(ordner, { recursive: true, force: true });
   } else {
     await o.waitForTimeout(800);
+    await reiter(o, 'Pack and sound');
     expect(await o.locator('#kern-streifen').isVisible()).toBe(false);
     expect(await o.locator('#kern-bilder img').count()).toBe(0);
     expect(await o.locator('#kern-text').isVisible()).toBe(false);

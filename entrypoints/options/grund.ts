@@ -17,6 +17,7 @@ import {
 import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_WORT_OHNE_PACK, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
+import { zeigeVorschau } from './vorschau-platz';
 import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
 import { presetDef } from '../../src/preset-def';
 import type { PresetDef } from '../../src/presets';
@@ -120,6 +121,8 @@ function zeichnePreset(e: Einstellungen): void {
   const def = presetDef(e, pack).gilt;
   const gilt = def.id;
   karten.aktualisiere(e.preset, frei, mitSticker);
+  // Platz der festen Vorschau (E4d1): derselbe Stil, der wirklich gilt, nur gelesen.
+  zeigeVorschau(gilt, def.name);
   stilHinweis.textContent = presetSatz(gilt, frei, gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset: gerade eingeschaltet (kurz), oder Face steht aus (bewusst oder Altbestand): sagen, was dann gilt
   const mia = def.gesicht === 'mia-gesicht';
@@ -311,15 +314,23 @@ zonenListe.addEventListener('change', (ereignis) => {
 // Fund 4 und 6: die klebende Leiste (auch mit Fehlersatz oder auf zwei Zeilen) verdeckt nichts, was angesprungen oder fokussiert wird.
 const leiste = document.getElementById('leiste');
 if (leiste && typeof ResizeObserver !== 'undefined') {
+  // E4d1: schmal klebt die Reiterzeile unter der Leiste; beide zusammen verdecken nichts, was angesprungen oder fokussiert wird.
+  const reiterLeiste = document.getElementById('sprung');
   const setzePolster = (): void => {
-    document.documentElement.style.scrollPaddingTop = `${Math.ceil(leiste.getBoundingClientRect().height) + 8}px`;
+    const hoehe = Math.ceil(leiste.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--leiste-hoehe', `${hoehe}px`);
+    const reiterKlebt = !!reiterLeiste && getComputedStyle(reiterLeiste).position === 'sticky' && matchMedia('(max-width: 600px)').matches;
+    const reiterHoehe = reiterKlebt ? Math.ceil(reiterLeiste.getBoundingClientRect().height) : 0;
+    document.documentElement.style.scrollPaddingTop = `${hoehe + reiterHoehe + 8}px`;
   };
-  new ResizeObserver(setzePolster).observe(leiste);
+  const polsterBeobachter = new ResizeObserver(setzePolster);
+  polsterBeobachter.observe(leiste);
+  if (reiterLeiste) polsterBeobachter.observe(reiterLeiste);
   setzePolster();
 }
 
 // Runde 3, N6: der Pause-Knopf der Leiste nur, wenn der grosse Knopf oben nicht im Bild ist (zwei gleiche Knoepfe auf einmal verwirren).
-// N5: der Chip des Abschnitts, der gerade oben unter der Leiste steht, traegt aria-current="true".
+// (E4d1: die Markierung des Chips unter der Leiste entfaellt, der gewaehlte Reiter traegt aria-selected, reiter.ts.)
 if (typeof IntersectionObserver !== "undefined") {
   // Lesung Runde 3, Nr. 2 und 6: verborgen nur, solange der grosse Knopf GANZ im Bild ist (sonst waere Pause in einem schmalen
   // Scrollbereich kaum erreichbar); hat der kleine Knopf den Fokus, wandert er auf den grossen.
@@ -331,43 +342,6 @@ if (typeof IntersectionObserver !== "undefined") {
     },
     { threshold: [0, 0.5, 0.99, 1] },
   ).observe(pauseKnopf);
-  const chips = [...document.querySelectorAll<HTMLAnchorElement>("#sprung a[href^=\"#\"]")];
-  let gewaehlterChip: HTMLAnchorElement | null = null;
-  for (const a of chips) a.addEventListener('click', () => { gewaehlterChip = a; });
-  const markiere = (): void => {
-    const oben = (leiste?.getBoundingClientRect().bottom ?? 0) + 12;
-    let aktuellerChip: HTMLAnchorElement | null = null;
-    for (const a of chips) {
-      const ziel = document.getElementById(a.getAttribute("href")!.slice(1));
-      // Lesung Runde 3, Nr. 3: leere oder verborgene Abschnitte (noch nicht gefuellt, vor dem Einstieg) zaehlen nicht.
-      if (!ziel || ziel.hidden || ziel.getClientRects().length === 0) continue;
-      if (ziel.getBoundingClientRect().top <= oben) aktuellerChip = a;
-    }
-    // Phase 9: ganz unten kann der angeklickte Abschnitt nicht mehr bis unter die Leiste steigen (letzte Karten sind kurz); dann gilt er trotzdem.
-    const amEnde = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
-    if (gewaehlterChip && amEnde) {
-      const z = document.getElementById(gewaehlterChip.getAttribute("href")!.slice(1));
-      if (z && z.getBoundingClientRect().top < window.innerHeight - 40) aktuellerChip = gewaehlterChip;
-    } else if (!amEnde) gewaehlterChip = null;
-    // Ganz oben steht noch kein Abschnitt unter der Leiste: dann gilt der erste sichtbare Chip (genau einer ist immer markiert).
-    aktuellerChip ??= chips.find((a) => !a.hidden && a.getClientRects().length > 0) ?? null;
-    for (const a of chips) {
-      if (a === aktuellerChip) a.setAttribute("aria-current", "true");
-      else a.removeAttribute("aria-current");
-    }
-  };
-  let geplant = false;
-  window.addEventListener("scroll", () => {
-    if (geplant) return;
-    geplant = true;
-    requestAnimationFrame(() => {
-      geplant = false;
-      markiere();
-    });
-  }, { passive: true });
-  markiere();
-  // Die Abschnitte Ton, Ledger und About fuellen ihre Module erst nach diesem; jede Groessenaenderung der Seite markiert neu.
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => markiere()).observe(document.body);
 }
 
 const abmelden = beiEinstellungsAenderung(zeichne);

@@ -12,6 +12,7 @@ import { PRESETS, PRESET_IDS } from '../../src/presets';
 import { PERSON_GRENZE } from '../../src/presets';
 import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, EYE_BAR_TEXT, EYE_BAR_TITEL, HINWEIS_MIA_PACK_FEHLT, HINWEIS_PACK_OHNE_STICKER, HINWEIS_WORT_OHNE_PACK, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam';
 import { PACK_HINWEIS_BIS_DAHIN } from '../../entrypoints/popup/texte';
+import { mitReitern, reiter } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -151,7 +152,7 @@ function aussen(orig: Pixel, aus: Pixel, boxen: Box[]) {
 }
 
 async function warteAufErkenner(): Promise<void> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(optionsUrl());
   await expect
     .poll(
@@ -172,7 +173,7 @@ async function warteAufErkenner(): Promise<void> {
 async function importiere(bytes: Uint8Array, name: string): Promise<string> {
   const pfad = path.join(ordner, name);
   await writeFile(pfad, bytes);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#datei').setInputFiles(pfad);
@@ -184,7 +185,7 @@ async function importiere(bytes: Uint8Array, name: string): Promise<string> {
   }
 }
 async function entfernePack(): Promise<void> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#entfernen').click();
@@ -225,7 +226,7 @@ test.afterAll(async () => {
 // ---------- Oberflaeche ohne Pack ----------
 
 test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, sondern ein Schalter darunter) in vier Gruppen, Mia- und Sticker-Presets gesperrt, Wahl gespeichert, Hinweise je Preset', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     const karten = seite.locator('#preset-karten input[name="preset"]');
@@ -244,7 +245,10 @@ test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, 
     await expect(seite.locator('#augenbalken-zeile')).toHaveClass('schalter');
     await expect(seite.locator('label.schalter:has(#strict)')).toHaveClass('schalter');
     const hDesktop = (await seite.locator('#augenbalken-zeile').boundingBox())!.height;
+    // E4d1: Strict steht im Reiter What I cover, Eye bar im Reiter Style: je Reiter messen.
+    await reiter(seite, 'What I cover');
     const hStrict = (await seite.locator('label.schalter:has(#strict)').boundingBox())!.height;
+    await reiter(seite, 'Style');
     console.log(`chromium: Hoehe Schalter Eye bar im Desktop-Fenster ${hDesktop.toFixed(1)} px, Strict ${hStrict.toFixed(1)} px`);
     expect(await seite.locator('#augenbalken-zeile').evaluate((e) => getComputedStyle(e).minHeight)).toBe(await seite.locator('label.schalter:has(#strict)').evaluate((e) => getComputedStyle(e).minHeight));
     await seite.setViewportSize({ width: 360, height: 800 });
@@ -294,7 +298,7 @@ test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, 
 });
 
 test('Migration: ein gespeicherter alter `stil` zeigt das richtige Preset, mia-patch ohne Pack wird Mosaik angezeigt, das Speichern raeumt `stil` auf', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     // `augenbalken` ist seit E4c kein Stil mehr: der alte Stand zeigt Mosaik und den Schalter an (Soll geaendert)
@@ -328,7 +332,7 @@ test('Migration: ein gespeicherter alter `stil` zeigt das richtige Preset, mia-p
 });
 
 test('Popup ohne Pack: Zeile mit Vorschau, Name und Change style (zur Einstellungsseite, Cover style), unter 600 px Hoehe, 360 px ohne Seitwaertsscrollen', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.setViewportSize({ width: 360, height: 800 });
     await seite.goto(popupUrl());
@@ -363,7 +367,7 @@ test('Popup ohne Pack: Zeile mit Vorschau, Name und Change style (zur Einstellun
 });
 
 test('Einstieg: Seite Stil zeigt dieselben Karten kompakt, Mia-Presets gesperrt mit Hinweis, Wahl gespeichert', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     // Einstieg abschliessen laeuft ueber den Hintergrund; hier genuegt die Seite (die Karten stehen auf Seite 3 des Interviews)
     await seite.goto(willkommenUrl());
@@ -381,7 +385,7 @@ test('Altbestand: ein gespeichertes Mia-Preset (alter stil mia-patch) mit Face a
   const { bytes } = await baueDummy();
   const pfad = path.join(ordner, 'dummy-altbestand.miapack');
   await writeFile(pfad, bytes);
-  const imp = await context.newPage();
+  const imp = mitReitern(await context.newPage());
   let meldung = '';
   try {
     await imp.goto(optionsUrl());
@@ -399,7 +403,7 @@ test('Altbestand: ein gespeichertes Mia-Preset (alter stil mia-patch) mit Face a
   }
   expect(meldung).toContain('Face is off under What I cover');
   expect(meldung).not.toContain('Face is on under What I cover');
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     const e = await speicher(seite, 'einstellungen');
@@ -422,7 +426,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
   // Der Import sagt, dass Face an ist (Teil A) und dass man es abschalten kann
   expect(meldung).toContain('Your cover style is now “My face, black, words”');
   expect(meldung).toContain('Face is on under What I cover');
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     // erster Import mit Freischaltung: das Preset steht auf mia-wort (Standard mit Pack)
@@ -461,7 +465,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
     await seite.close();
   }
   // Teil A: das erste Pack hat Face eingeschaltet (mia-wort ist Standard mit Pack); Abschalten wird respektiert
-  const seiteA = await context.newPage();
+  const seiteA = mitReitern(await context.newPage());
   try {
     await seiteA.goto(optionsUrl());
     expect((await speicher(seiteA, 'einstellungen')).zonen.face.an).toBe(true);
@@ -473,7 +477,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
     // Mia-Preset mit Face aus: Hinweis, was dann gilt (Einstellungsseite und Popup), Kartensatz bleibt zustandsneutral
     await expect(seiteA.locator('#preset-face-hinweis')).toHaveText(HINWEIS_FACE_AUS);
     await expect(seiteA.locator('#stil-hinweis')).toContainText('With Face on, every face becomes mine.');
-    const popupA = await context.newPage();
+    const popupA = mitReitern(await context.newPage());
     await popupA.goto(popupUrl());
     await expect(popupA.locator('#pack-hinweis')).toContainText(HINWEIS_FACE_AUS);
     await popupA.close();
@@ -502,7 +506,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
     await seiteA.close();
   }
   // Radiogruppe: eine Gruppe fuer alle Karten, die vier Gruppen darin sind benannte Gruppen (Barrierefreiheit)
-  const seiteB = await context.newPage();
+  const seiteB = mitReitern(await context.newPage());
   try {
     await seiteB.goto(optionsUrl());
     await expect(seiteB.locator('#preset-karten')).toHaveAttribute('role', 'radiogroup');
@@ -561,7 +565,7 @@ test('Mias Gesicht: das Gesicht wird mit einem Patch-Gesicht mit pinkem Rahmen g
   expect(scan.mit).toBe(1);
   expect(scan.fertig).toBe(true);
   // Das Ergebnis liegt je Stand des Packs in einer eigenen Ablage (nicht in der Pack-Datenbank, deren Zaehler gleich bleiben)
-  const ablage = await context.newPage();
+  const ablage = mitReitern(await context.newPage());
   try {
     await ablage.goto(optionsUrl());
     const stand = (await speicher(ablage, 'pack')).importiert as number;
@@ -811,13 +815,13 @@ test('Echtes Pack: wie viele Patch-Bilder liefern ein Gesicht (YuNet), Mias Gesi
   test.setTimeout(240_000);
   const original = await brauchtBild('sfw', BILD_GESICHT);
   // Das Dummy-Pack der vorigen Tests liegt noch da: entfernen (nur wenn es da ist)
-  const vorhanden = await context.newPage();
+  const vorhanden = mitReitern(await context.newPage());
   await vorhanden.goto(optionsUrl());
   const hatPack = (await speicher(vorhanden, 'pack')) !== undefined;
   await vorhanden.close();
   if (hatPack) await entfernePack();
   console.log('chromium echt: bereit zum Import');
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await seite.locator('#datei').setInputFiles(path.resolve(process.env.VEIL_ECHTES_PACK!));
@@ -883,7 +887,7 @@ test('Stufe 4 (ganz verdecken) mit einem Mia-Preset: das ganze Bild schwarz mit 
 test('Ohne Pack: Wort-Presets sagen, dass ihr Wort MIA ist (statt der Chips)', async () => {
   test.setTimeout(90_000);
   await entfernePack();
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     // Entfernen raeumt auch die Ablage der Gesichtssuche (eigene Datenbank) leer
@@ -931,8 +935,8 @@ test('Gesichtssuche fertig: offene Seiten mit einem Mia-Preset bewerten neu (Sta
   const { bytes } = await baueDummy({ extraPatches: [{ name: 'patch/mit-gesicht.jpg', typ: 'image/jpeg', daten: new Uint8Array(patch) }] });
   await importiere(bytes, 'dummy-neubewertung.miapack');
   await ausWorker({ ziel: 'erkenner', typ: 'gesichtsscan' });
-  const seite = await context.newPage();
-  const hilf = await context.newPage();
+  const seite = mitReitern(await context.newPage());
+  const hilf = mitReitern(await context.newPage());
   try {
     await hilf.goto(optionsUrl());
     await setzeEinst(hilf, { preset: 'mia-mosaik', pause: false, zonen: zonenNur(['face']) });
@@ -964,10 +968,11 @@ test('Gesichtssuche fertig: offene Seiten mit einem Mia-Preset bewerten neu (Sta
 
 // Entfernt ein vorhandenes Pack, tut nichts ohne Pack (entfernePack wartet sonst auf einen versteckten Knopf).
 async function raeumePack(): Promise<void> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await expect(seite.locator('#pack-status')).not.toBeEmpty();
+    await reiter(seite, 'Pack and sound');
     if (await seite.locator('#entfernen').isVisible()) {
       await seite.locator('#entfernen').click();
       await seite.locator('#entfernen-ja').click();
@@ -1168,7 +1173,7 @@ test('Sticker kaputt (nicht dekodierbar): die Flaeche deckt trotzdem, ohne Stick
   await raeumePack();
   const { bytes } = await baueDummy({ stickerKaputt: true });
   await importiere(bytes, 'dummy-sticker-kaputt.miapack');
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     expect((await speicher(seite, 'pack')).freischaltungen).toContain('zensur:sticker');
@@ -1193,7 +1198,7 @@ test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup
   await raeumePack();
   const { bytes } = await baueDummy({ ohneSticker: true });
   await importiere(bytes, 'dummy-ohne-sticker.miapack');
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     for (const id of PRESET_IDS) {
@@ -1208,7 +1213,7 @@ test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup
     await seite.reload();
     await expect(seite.locator('#preset-mosaik')).toBeChecked();
     await expect(seite.locator('#preset-sticker')).not.toBeChecked();
-    const popup = await context.newPage();
+    const popup = mitReitern(await context.newPage());
     try {
       await popup.goto(popupUrl());
       await expect(popup.locator('#preset-name')).toHaveText(PRESETS.mosaik.name);
@@ -1219,7 +1224,7 @@ test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup
     // Seite: das Bild wird Mosaik (pinker Rahmen, kein Pastell, kein Sticker)
     const gesicht = await ausWorker(nachricht(urlQuelle('sfw', BILD_GESICHT), ['face'], 'mosaik'));
     const box = (gesicht.flaechen as Flaeche[]).find((x) => x.zone === 'face')!.box;
-    const bild = await context.newPage();
+    const bild = mitReitern(await context.newPage());
     try {
       await bild.goto(`${basis}/augenbalken.html`);
       await expect.poll(() => bild.evaluate(() => document.getElementById('bild')!.dataset.veil ?? ''), { timeout: 40_000 }).toBe('zensiert');
@@ -1239,7 +1244,7 @@ test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup
   await raeumePack();
   const { bytes: mit } = await baueDummy();
   await importiere(mit, 'dummy-mit-sticker-entfernen.miapack');
-  const s2 = await context.newPage();
+  const s2 = mitReitern(await context.newPage());
   try {
     await s2.goto(optionsUrl());
     await expect(s2.locator('#preset-sticker')).toBeEnabled();
@@ -1254,7 +1259,7 @@ test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup
     await s2.locator('label:has(#preset-sticker)').click();
     await expect.poll(async () => (await speicher(s2, 'einstellungen')).preset).toBe('sticker');
     // Popup mit Sticker-Preset: Name, Satz, Vorschau
-    const popup = await context.newPage();
+    const popup = mitReitern(await context.newPage());
     try {
       await popup.goto(popupUrl());
       await expect(popup.locator('#preset-name')).toHaveText(PRESETS.sticker.name);
@@ -1267,7 +1272,7 @@ test('Pack ohne Sticker: die Sticker-Karten sind gesperrt mit Hinweis, das Popup
     await s2.close();
   }
   await raeumePack();
-  const s3 = await context.newPage();
+  const s3 = mitReitern(await context.newPage());
   try {
     await s3.goto(optionsUrl());
     await expect.poll(async () => (await speicher(s3, 'einstellungen')).preset).toBe('mosaik');
@@ -1315,8 +1320,8 @@ test('Sticker auf einer Seite: das Bild wird mit Pastell und Sticker gedeckt; de
   await raeumePack();
   const { bytes } = await baueDummy();
   await importiere(bytes, 'dummy-seite-sticker.miapack');
-  const hilf = await context.newPage();
-  const bild = await context.newPage();
+  const hilf = mitReitern(await context.newPage());
+  const bild = mitReitern(await context.newPage());
   try {
     await hilf.goto(optionsUrl());
     await setzeEinst(hilf, { preset: 'sticker', pause: false, zonen: zonenNur(['face']) });

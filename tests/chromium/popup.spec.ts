@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as T from '../../entrypoints/popup/texte';
 import { FEHLER_SPEICHERN, HINWEIS_PACK_OHNE_STICKER, STIMMUNG_WOERTER, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -67,7 +68,7 @@ const KONTRAST = `(a, b) => {
 test('Fund 7: die Pack-Knoepfe oeffnen die Einstellungsseite gleich beim Pack-Abschnitt (#neu ohne Pack, #stand mit Pack)', async () => {
   // Das Popup schliesst sich nach dem Klick selbst, darum je Klick ein frisches Popup.
   const frisch = async () => {
-    const p = await context.newPage();
+    const p = mitReitern(await context.newPage());
     await p.goto(popupUrl());
     await expect(p.locator('#status')).not.toBeEmpty();
     return p;
@@ -85,7 +86,7 @@ test('Fund 7: die Pack-Knoepfe oeffnen die Einstellungsseite gleich beim Pack-Ab
     await expect.poll(() => p.isClosed()).toBe(true);
     return optionen;
   };
-  const hilfe = await context.newPage();
+  const hilfe = mitReitern(await context.newPage());
   try {
     await hilfe.goto(popupUrl());
     await zuruecksetzen(hilfe);
@@ -102,7 +103,7 @@ test('Fund 7: die Pack-Knoepfe oeffnen die Einstellungsseite gleich beim Pack-Ab
 });
 
 test('Fund 8, 27 und 9: "All settings" steht oben ohne Scrollen, Breite 100 % bis 360 px, Schrift mindestens 12,5 px, Knopftext mit Kontrast', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.setViewportSize({ width: 360, height: 640 });
     await seite.goto(popupUrl());
@@ -147,7 +148,7 @@ test('Fund 8, 27 und 9: "All settings" steht oben ohne Scrollen, Breite 100 % bi
 });
 
 test('Fund 10: Schalterbahn (aus) und Feldrand haben mindestens 3:1 gegen den weissen Grund', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await expect(seite.locator('#status')).not.toBeEmpty();
@@ -171,7 +172,7 @@ test('Fund 10: Schalterbahn (aus) und Feldrand haben mindestens 3:1 gegen den we
 });
 
 test('Fund 12: die sechs "even when clothed"-Kaestchen tragen den Zonennamen', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await expect(seite.locator('#status')).not.toBeEmpty();
@@ -198,9 +199,9 @@ test('Fund 12: die sechs "even when clothed"-Kaestchen tragen den Zonennamen', a
 });
 
 test('Fund 13: vor dem Klick sagt der Satz, was passiert; danach, dass es gilt und wie man es zuruecknimmt', async () => {
-  const web = await context.newPage();
+  const web = mitReitern(await context.newPage());
   await web.goto(SEITE);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -230,7 +231,7 @@ test('Fund 13: vor dem Klick sagt der Satz, was passiert; danach, dass es gilt u
 });
 
 test('Fund 6: "Mia’s mood" zeigt ein Wort statt der Zahl, Regler mit aria-valuetext', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -267,7 +268,7 @@ test('Fund 6: "Mia’s mood" zeigt ein Wort statt der Zahl, Regler mit aria-valu
 });
 
 test('Fund 26: scheitert das Speichern, kommt der Fehlersatz und der Schalter springt auf den gespeicherten Stand zurueck', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -307,7 +308,7 @@ test('Fund 26: scheitert das Speichern, kommt der Fehlersatz und der Schalter sp
 });
 
 test('Schnelle Folgeklicks: zwei Schalter und eine Zone ohne Warten, danach alle drei im Speicher', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -352,7 +353,7 @@ test('Schnelle Folgeklicks: zwei Schalter und eine Zone ohne Warten, danach alle
 });
 
 test('Nr 7 und 9: Pack ohne Mia patch heisst "Mia Pack settings", Reglerenden stimmen mit den Stimmungswoertern', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -385,9 +386,9 @@ test('Nr 7 und 9: Pack ohne Mia patch heisst "Mia Pack settings", Reglerenden st
 });
 
 test('Nr 8: ist die Einstellungsseite schon offen, holt der Klick sie nach vorn (kein zweiter Tab) und setzt den Anker', async () => {
-  const optionen = await context.newPage();
+  const optionen = mitReitern(await context.newPage());
   await optionen.goto(`chrome-extension://${id}/options.html`);
-  const popup = await context.newPage();
+  const popup = mitReitern(await context.newPage());
   try {
     await popup.goto(popupUrl());
     await expect(popup.locator('#status')).not.toBeEmpty();
@@ -397,7 +398,7 @@ test('Nr 8: ist die Einstellungsseite schon offen, holt der Klick sie nach vorn 
     const optionsTabs = context.pages().filter((p) => p.url().split('#')[0] === `chrome-extension://${id}/options.html`);
     expect(optionsTabs.length).toBe(1);
     expect(context.pages().length).toBe(vorher - 1);
-    const popup2 = await context.newPage();
+    const popup2 = mitReitern(await context.newPage());
     await popup2.goto(popupUrl());
     await popup2.locator('#pack-link').click();
     await expect.poll(() => optionen.url()).toBe(`chrome-extension://${id}/options.html#neu`);
@@ -408,9 +409,9 @@ test('Nr 8: ist die Einstellungsseite schon offen, holt der Klick sie nach vorn 
 });
 
 test('Nr 2, 3 und 4: Pause und Ausnahme nach dem Klick festgehalten, Fehlersatz bleibt, Anzeige springt nicht zurueck', async () => {
-  const web = await context.newPage();
+  const web = mitReitern(await context.newPage());
   await web.goto(SEITE);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -459,7 +460,7 @@ test('Nr 2, 3 und 4: Pause und Ausnahme nach dem Klick festgehalten, Fehlersatz 
 });
 
 test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px auf Touch, gesperrtes "even when clothed" blass', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.setViewportSize({ width: 360, height: 640 });
     await seite.goto(popupUrl());
@@ -520,9 +521,9 @@ test('N1, N2 und N8 (zweite UX-Lesung): Fehlersatz klebt oben, Fingerziele 44 px
 const hoehe = (seite: Page) => seite.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height));
 // Das Popup als Seite mit einer Webseite im Vordergrund (dann ist sie der aktive Tab und "This site" hat einen Namen).
 const popupMitWeb = async (): Promise<{ web: Page; seite: Page }> => {
-  const web = await context.newPage();
+  const web = mitReitern(await context.newPage());
   await web.goto(SEITE);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(popupUrl());
   await zuruecksetzen(seite);
   await seite.evaluate(() => localStorage.removeItem('veil-popup-aendern'));
@@ -591,7 +592,7 @@ test('Fund 2: Reihenfolge, "This site" mit Name direkt unter der Pause, Zonen hi
 });
 
 test('Fund 2: ohne Zugriff steht "I can’t reach this page." statt eines gesperrten Knopfs, auf der Standardliste der Hinweis', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl()); // der aktive Tab ist die Erweiterungsseite selbst: kein Zugriff
     await zuruecksetzen(seite);
@@ -607,7 +608,7 @@ test('Fund 2: ohne Zugriff steht "I can’t reach this page." statt eines gesper
 });
 
 test('Fund 1 (Popup): ohne Pack heissen beide Knoepfe "Get the Mia Pack", mit Pack "Mia Pack settings" im Fuss', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -624,7 +625,7 @@ test('Fund 1 (Popup): ohne Pack heissen beide Knoepfe "Get the Mia Pack", mit Pa
 });
 
 test('Fund 10 (Popup): "How hot do I get?" als Dreier-Wahl oben in Adult sites, "My grip" mit "?" zur Hilfe und einem Satz', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -665,7 +666,7 @@ test('Fund 10 (Popup): "How hot do I get?" als Dreier-Wahl oben in Adult sites, 
 });
 
 test('Fund 12 (Popup): Werbe-Frage als Karte unter der Pause, nur mit Freischaltung und unbeantwortet, Ja und Nein speichern beide Felder', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -717,7 +718,7 @@ test('Fund 12 (Popup): Werbe-Frage als Karte unter der Pause, nur mit Freischalt
 });
 
 test('Fund 15, 16 und 17: Kuerzel unter der Pause, Fuss-Links auf feste Anker, Pausenzeile und blassere Karten', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await zuruecksetzen(seite);
@@ -769,7 +770,7 @@ test('Fund 15, 16 und 17: Kuerzel unter der Pause, Fuss-Links auf feste Anker, P
 });
 
 test('Fund 27: der Update-Hinweis hat den Link "What’s new" auf den Hilfe-Anker updates', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.addInitScript(() => {
       const c = (globalThis as any).chrome;

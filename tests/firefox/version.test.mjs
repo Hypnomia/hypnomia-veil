@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { starteVersionServer } from '../version-server.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 150 s ueberschritten');
@@ -103,7 +104,11 @@ const eigenschaft = (css, name) => driver.executeScript(`return document.querySe
 // Leer, solange die Seite noch laedt (Element fehlt): sonst wackelt das Warten auf das Popup (Firefox 128, Session 11).
 const text = async (css) => (await driver.executeScript(`const e = document.querySelector(arguments[0]); return e ? e.textContent.trim() : ''`, css)) ?? '';
 
-const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+// E4d1: wer Sichtbarkeit pruefen will, oeffnet vorher den Reiter des Elements (wie die Person).
+const sichtbar = async (css) => {
+  await oeffneReiterFuer(driver, css);
+  return driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+};
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
   driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));`, css, String(wert));
@@ -122,6 +127,7 @@ try {
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 30_000 });
   const version = (await driver.getCapabilities()).get('browserVersion');
   await installiere(driver, paket);

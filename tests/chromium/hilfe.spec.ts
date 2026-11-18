@@ -7,6 +7,7 @@ import { readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -36,7 +37,7 @@ test.afterAll(async () => {
 });
 
 test('Hilfe-Seite: Themen, Adressen, Suche, Links', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(`chrome-extension://${id}/hilfe.html`);
     await expect(seite.locator('#themen-liste a')).toHaveCount(anzahlDocs);
@@ -108,7 +109,7 @@ test('Hilfe-Seite: Themen, Adressen, Suche, Links', async () => {
 });
 
 test('Wege zur Hilfe: Popup, Einstellungen, Willkommensseite', async () => {
-  const popup = await context.newPage();
+  const popup = mitReitern(await context.newPage());
   try {
     await popup.goto(`chrome-extension://${id}/popup.html`);
     const neu = context.waitForEvent('page');
@@ -118,13 +119,13 @@ test('Wege zur Hilfe: Popup, Einstellungen, Willkommensseite', async () => {
     await expect(hilfe.locator('#themen-liste a')).toHaveCount(anzahlDocs);
     await hilfe.close();
 
-    const optionen = await context.newPage();
+    const optionen = mitReitern(await context.newPage());
     await optionen.goto(`chrome-extension://${id}/options.html`);
     await expect(optionen.locator('#hilfe-link')).toHaveAttribute('href', 'hilfe.html');
     await expect(optionen.locator('#hilfe-link')).toHaveAttribute('target', '_blank');
     await optionen.close();
     // Zurueck zu den Einstellungen von der Hilfe aus (kein offener Einstellungs-Tab, sonst holt Chrome nur den alten nach vorn)
-    const hilfe2 = await context.newPage();
+    const hilfe2 = mitReitern(await context.newPage());
     await hilfe2.goto(`chrome-extension://${id}/hilfe.html`);
     const einst = context.waitForEvent('page');
     await hilfe2.locator('#zu-einstellungen').click();

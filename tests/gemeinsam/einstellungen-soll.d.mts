@@ -1,0 +1,10 @@
+export const HEAD_STATISCH: string[];
+export const ERZEUGT: string[];
+export const SOLL_IDS: string[];
+export const SOLL_OHNE_ID: string[];
+export const BEHAELTER: string[];
+export const PRESET_IDS_SOLL: string[];
+export const ZONEN_SOLL: string[];
+export const BEDECKT_SOLL: string[];
+export const SAMMLE_SKRIPT: string;
+export function vergleicheBedienelemente(ist: unknown): string[];

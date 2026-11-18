@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEDGER_TITEL, LOESCHEN_FERTIG, LOESCHEN_FRAGE, ZAEHLER_NAMEN, popupZeile, stufeWert } from '../../src/ledger/texte';
+import { mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -51,7 +52,7 @@ const setzeEinstellungen = (n: Record<string, unknown>) =>
 
 // Nachricht von einer Erweiterungsseite (Einstellungsseite) an den Hintergrund.
 async function vonOptionen<T>(nachricht: object): Promise<T> {
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   try {
     await p.goto(`chrome-extension://${id}/options.html`);
     return await p.evaluate((n) => (globalThis as any).chrome.runtime.sendMessage(n), nachricht);
@@ -63,7 +64,7 @@ const loesche = () => vonOptionen<{ ok: boolean }>({ ziel: 'hintergrund', typ: '
 const minute = (erwachsen: boolean) => vonOptionen<unknown>({ ziel: 'hintergrund', typ: 'steigerung-minute', erwachsen, zensiert: 0 });
 
 async function oeffne(mitBild = false): Promise<Page> {
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(mitBild ? seite : `${seite}?ohne`);
   await p.waitForFunction(() => document.documentElement.hasAttribute('data-veil-ledger'));
   return p;
@@ -254,7 +255,7 @@ test('Neustart des Service Workers zwischen zwei Meldungen: trotzdem nur 1 Minut
     await schreibe('ledgerMinute', -1);
     const m0 = Math.floor(Date.now() / 60_000);
     await minute(true);
-    const seite = await context.newPage();
+    const seite = mitReitern(await context.newPage());
     const cdp = await context.newCDPSession(seite);
     await cdp.send('ServiceWorker.enable');
     await cdp.send('ServiceWorker.stopAllWorkers');
@@ -272,7 +273,7 @@ test('Neustart des Service Workers zwischen zwei Meldungen: trotzdem nur 1 Minut
 
 test('Popup: eine Zeile mit den heute zugedeckten Bildern, auch bei 0', async () => {
   await loesche();
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(`chrome-extension://${id}/popup.html`);
   await expect(p.locator('#ledger-kurz')).toHaveText(popupZeile(0));
   const l = await ledger();
@@ -286,7 +287,7 @@ test('Einstellungsseite: Zahlen, Mias Saetze, Loeschen mit Rueckfrage', async ()
   await loesche();
   const l = await ledger();
   await schreibe('ledger', { ...l, hoechsteStufe: 2, heute: { ...l.heute, zensiert: 12 }, gesamt: { ...l.gesamt, zensiert: 340, besuche: 3 } });
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(`chrome-extension://${id}/options.html`);
   await expect(p.locator('#ledger-titel')).toHaveText(LEDGER_TITEL);
   await expect(p.locator('#ledger')).toHaveAttribute('aria-labelledby', 'ledger-titel');
@@ -301,11 +302,14 @@ test('Einstellungsseite: Zahlen, Mias Saetze, Loeschen mit Rueckfrage', async ()
   await schreibe('ledger', { ...(await ledger()), gesamt: { ...(await ledger()).gesamt, zensiert: 341 } });
   await expect(p.locator('#ledger-gesamt-zensiert')).toHaveText('341');
   // Rueckfrage: Nein behaelt, Ja loescht
+  await reiterFuer(p, '#ledger-frage');
   await expect(p.locator('#ledger-frage')).toBeHidden();
   await p.locator('#ledger-loeschen').click();
+  await reiterFuer(p, '#ledger-frage');
   await expect(p.locator('#ledger-frage')).toBeVisible();
   await expect(p.locator('#ledger-frage-text')).toHaveText(LOESCHEN_FRAGE);
   await p.locator('#ledger-nein').click();
+  await reiterFuer(p, '#ledger-frage');
   await expect(p.locator('#ledger-frage')).toBeHidden();
   expect((await ledger()).gesamt.zensiert).toBe(341);
   const vorher = Date.now();

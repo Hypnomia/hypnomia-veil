@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stimmungsWort } from '../../src/oberflaeche/gemeinsam';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -64,7 +64,7 @@ test.afterAll(async () => {
 });
 
 async function frischeSeite(): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(optionsUrl());
   await zuruecksetzen(seite);
   await seite.reload();
@@ -79,19 +79,19 @@ test('Aufbau: Titel, Status, Sprungleiste und alle Abschnitte in der Reihenfolge
     await expect(seite.locator('#status')).toContainText('On watch');
     await expect(seite.locator('#pause')).toHaveText('Pause Mia');
     // Reihenfolge der Abschnitte (Auftrag S Punkt 1) und die leeren Plaetze der anderen Bauer.
+    // E4d1 (D1, D2): die Abschnitte stehen in sieben Reitern (Panels); Reihenfolge der Abschnitte ueber alle Panels.
     const reihenfolge = await seite.evaluate(() =>
-      [...document.querySelectorAll('main > section, main > .gruppe')].map((s) => s.id),
+      [...document.querySelectorAll('main [role=tabpanel] > section, main [role=tabpanel] > .gruppe')].map((s) => s.id),
     );
-    // Phase 9 (Fund 4): sechs Gruppen; "Covering" fasst vier Karten (Strict im Abschnitt "What I cover", Fund 16 aus Session 12). Ohne Pack steht die
-    // Pack-Karte gleich nach Covering, Calm mode wohnt in Mia’s control, das Interview in About and help.
-    const soll = ['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber'];
+    // Phase 9 (Fund 4): Calm mode wohnt in Mia’s extras, das Interview in About. Ohne Pack steht die Pack-Karte im Reiter Pack and sound vor Sound.
+    const soll = ['abschnitt-stil', 'covering', 'erwachsen', 'kontrolle', 'stand', 'ton', 'ledger', 'ueber'];
     expect(reihenfolge).toEqual(soll);
-    expect(await seite.evaluate(() => [...document.querySelectorAll('#covering > section')].map((s) => s.id))).toEqual(['abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-stil', 'abschnitt-ausnahmen']);
-    // Jeder Link der Sprungleiste zeigt auf einen vorhandenen Abschnitt.
-    const links = await seite.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('#sprung a[href^="#"]:not([hidden])')].map((a) => ({ ziel: a.getAttribute('href')!.slice(1), da: !!document.getElementById(a.getAttribute('href')!.slice(1)) && document.getElementById(a.getAttribute('href')!.slice(1))!.getClientRects().length > 0 })));
-    expect(links.length).toBe(7);
-    // Ziel vorhanden UND sichtbar (ein Abschnitt, den sein Modul nicht fuellt, waere ein toter Link).
-    expect(links.filter((l) => !l.da).map((l) => l.ziel)).toEqual([]);
+    // Der Stil wohnt im eigenen Reiter Style (D2): "What I cover" fasst Stimmung, Zonen mit Strict und Ausnahmen.
+    expect(await seite.evaluate(() => [...document.querySelectorAll('#covering > section')].map((s) => s.id))).toEqual(['abschnitt-stimmung', 'abschnitt-zonen', 'abschnitt-ausnahmen']);
+    // Jeder Reiter steuert ein vorhandenes Panel (statt der alten sieben Chips der Sprungleiste).
+    const reiter = await seite.evaluate(() => [...document.querySelectorAll<HTMLElement>('#sprung [role=tab]')].map((t) => ({ name: t.textContent, da: !!document.getElementById(t.getAttribute('aria-controls')!) })));
+    expect(reiter.map((r) => r.name)).toEqual(REITER_NAMEN);
+    expect(reiter.filter((r) => !r.da).map((r) => r.name)).toEqual([]);
     // Bestehende Abschnitte behalten ihre ids.
     for (const sel of ['#kon-titel', '#erw-titel', '#seite-feld', '#verweigern', '#freilegen', '#ruhig', '#datei', '#pack-status']) await expect(seite.locator(sel)).toHaveCount(1);
     // Alle Zonen aufgebaut (10), sechs davon mit "even when clothed".
@@ -173,6 +173,7 @@ test('Pause, Stimmung, Zonen, bedeckt, Stil und Strict: jeder Klick landet im Sp
 test('Ausnahmen: hinzufuegen (Adresse bereinigt), doppelt, ungueltig, Standardliste, entfernen', async () => {
   const seite = await frischeSeite();
   try {
+    await reiter(seite, 'What I cover');
     await expect(seite.locator('#ausnahmen-standard')).toContainText(String(standardHosts));
     await expect(seite.locator('#status-ausnahmen')).toContainText('single site alone');
     await expect(seite.locator('#ausnahmen-liste .leer')).toBeVisible();
@@ -225,7 +226,7 @@ test('Ausnahmen: hinzufuegen (Adresse bereinigt), doppelt, ungueltig, Standardli
 
 test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', async () => {
   const seite = await frischeSeite();
-  const popup = await context.newPage();
+  const popup = mitReitern(await context.newPage());
   try {
     await popup.goto(popupUrl());
     await expect(popup.locator('#pause')).toHaveText('Pause Mia');
@@ -271,9 +272,10 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
 
 test('Adult sites: drei Schalter auch ohne Pack, Full replacement nur mit Adult-site mode, Popup zeigt denselben Stand', async () => {
   const seite = await frischeSeite();
-  const popup = await context.newPage();
+  const popup = mitReitern(await context.newPage());
   try {
     const sw = (feld: string) => seite.locator(`label.schalter:has(#${feld})`);
+    await reiter(seite, 'Adult sites');
     // Ohne Pack: alle drei sichtbar, Hinweis "ready", Standardwerte an, aus, an
     await expect(seite.locator('#erw-pack-hinweis')).toContainText('they’ll be ready');
     for (const f of ['erw-an', 'erw-ersatz', 'erw-inhalt']) await expect(sw(f)).toBeVisible();
@@ -336,6 +338,7 @@ test('Pack-Sperre vor dem Einstieg: Dateiwurf wird abgewiesen (nichts gespeicher
     const antwort = await seite.evaluate(() => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'einstieg-test', zuruecksetzen: true }));
     expect(antwort.ok).toBe(true);
     await seite.reload();
+    await reiter(seite, 'Pack and sound');
     await expect(seite.locator('#datei')).toBeDisabled();
     await expect(seite.locator('#datei')).toHaveAttribute('aria-describedby', /pack-sperre-text/);
     await expect(seite.locator('#pack-sperre')).toBeVisible();
@@ -367,6 +370,7 @@ test('Pack-Sperre vor dem Einstieg: Dateiwurf wird abgewiesen (nichts gespeicher
     await schreibe(seite, { einstieg: EINSTIEG_FERTIG });
     await expect(seite.locator('#datei')).toBeEnabled();
     await expect(seite.locator('#pack-sperre')).toBeHidden();
+    await reiter(seite, 'About');
     await expect(seite.locator('#abschnitt-interview')).toBeVisible();
     // Runde 3, N12: das Wiederholen laeuft im selben Tab (kein neuer Tab), danach zurueck zur Einstellungsseite.
     const tabs = context.pages().length;

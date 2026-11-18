@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -46,7 +47,7 @@ test.beforeAll(async () => {
   });
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   erweiterungsId = new URL(worker.url()).host;
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect
@@ -82,7 +83,7 @@ const setzeEinstellungen = (neu: Record<string, unknown>) =>
 const loescheEinstellungen = () => worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
 
 async function importierePack(): Promise<void> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(path.join(ordner, 'dummy.miapack'));
@@ -120,7 +121,7 @@ test('Voraussetzung: Pack importiert, Erwachsenenmodus an, Stufe Hot', async () 
 
 test('lange Liste mit 120 Kacheln: alle getauscht, im sichtbaren Bereich nie dasselbe Bild zweimal, jede Kachel behaelt ihr Bild', async () => {
   test.setTimeout(240_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.setViewportSize({ width: POOL <= 30 ? 800 : 1280, height: 720 }); // 18 bis 30 Kacheln im Ausschnitt
   const t0 = Date.now();
   await s.goto(seite('xvideos', 'optik-lang.html'));
@@ -185,7 +186,7 @@ test('lange Liste mit 120 Kacheln: alle getauscht, im sichtbaren Bereich nie das
 test('Pool groesser als die Kachelzahl: alle Kacheln zeigen verschiedene Bilder (60 Kacheln)', async () => {
   test.skip(poolGroesse < 60, 'Pool kleiner als 60');
   test.setTimeout(120_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('xvideos', 'optik-lang.html?n=60'));
   const l = ids.slice(0, 60);
   const lies = () => s.evaluate((x) => x.map((id) => (document.getElementById(id) as HTMLImageElement).getAttribute('src') ?? ''), l);
@@ -199,7 +200,7 @@ test('Pool groesser als die Kachelzahl: alle Kacheln zeigen verschiedene Bilder 
 for (const n of [120, 1000]) {
   test(`Messung N4: ${n} Kacheln, Dauer der Blickfeld-Messung und Zeit bis alle getauscht`, async () => {
     test.setTimeout(240_000);
-    const s = await context.newPage();
+    const s = mitReitern(await context.newPage());
     await s.setViewportSize({ width: 1280, height: 720 });
     const t0 = Date.now();
     await s.goto(seite('xvideos', `optik-lang.html?n=${n}`));

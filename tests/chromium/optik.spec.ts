@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, REITER_NAMEN } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -54,7 +54,7 @@ async function miss(s: Page): Promise<{ sw: number; iw: number; grob: boolean; z
       return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
     };
     // Bedienelemente: Knoepfe, Links mit Knopf-Rolle oder in Leisten, Schalter- und Wahl-Zeilen, Auswahlfelder, Textfelder, Regler.
-    const ziele = [...document.querySelectorAll('button, a.knopf, #sprung a, label.schalter, .wahl span:not(.text), .wahl label, select, input[type=text], input[type=range], label.auch')]
+    const ziele = [...document.querySelectorAll('button, a.knopf, #sprung [role=tab], label.schalter, .wahl span:not(.text), .wahl label, select, input[type=text], input[type=range], label.auch')]
       .filter(sichtbar)
       .filter((e) => !(e instanceof HTMLButtonElement && e.disabled));
     const zuKlein = ziele
@@ -81,7 +81,7 @@ function pruefe(name: string, m: Awaited<ReturnType<typeof miss>>, ziele = true)
 }
 
 test('Popup bei 360 px: kein waagrechtes Scrollen, Pause sichtbar, Schrift geladen', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url('popup.html'));
   await s.evaluate((o) => (globalThis as any).chrome.storage.local.set(o), FERTIG);
   await s.reload();
@@ -94,9 +94,9 @@ test('Popup bei 360 px: kein waagrechtes Scrollen, Pause sichtbar, Schrift gelad
 
 // Phase 9, Paket A (Fund 2): ohne Aufklappen hoechstens 600 px hoch (Chrome schneidet das Popup dort ab), aufgeklappt kein waagrechtes Scrollen.
 test('Popup bei 360 px mit einer Webseite: ohne Aufklappen hoechstens 600 px, aufgeklappt ohne waagrechtes Scrollen', async () => {
-  const web = await context.newPage();
+  const web = mitReitern(await context.newPage());
   await web.goto(`http://localhost:${process.env.VEIL_FIXTURE_PORT ?? 47173}/hello.html`);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.setViewportSize({ width: 360, height: 1400 });
   await s.goto(url('popup.html'));
   await s.evaluate((o) => (globalThis as any).chrome.storage.local.set(o), FERTIG);
@@ -117,7 +117,7 @@ test('Popup bei 360 px mit einer Webseite: ohne Aufklappen hoechstens 600 px, au
 });
 
 test('Einstellungsseite bei 360 px: oben und ganz unten, Ziele 44 px', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url('options.html'));
   await expect(s.locator('#pause')).toBeVisible();
   await s.waitForTimeout(600);
@@ -130,32 +130,47 @@ test('Einstellungsseite bei 360 px: oben und ganz unten, Ziele 44 px', async () 
   await oeffneZugeklapptes(s);
   await s.evaluate(() => window.scrollTo(0, 0));
   await s.waitForTimeout(300);
-  pruefe('einstellungen aufgeklappt', await miss(s));
-  await s.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  await s.waitForTimeout(300);
-  pruefe('einstellungen aufgeklappt unten', await miss(s));
+  // E4d1: sichtbar ist nur ein Reiter; jeder der sieben Reiter wird oben und unten gemessen (mit einem Klick auf den Reiter).
+  for (const name of REITER_NAMEN) {
+    await reiter(s, name);
+    await s.evaluate(() => window.scrollTo(0, 0));
+    await s.waitForTimeout(200);
+    pruefe(`einstellungen aufgeklappt, Reiter ${name}`, await miss(s));
+    await s.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await s.waitForTimeout(200);
+    pruefe(`einstellungen aufgeklappt unten, Reiter ${name}`, await miss(s));
+  }
   await s.close();
 });
 
 // Nacht N2: Hoehe der Einstellungsseite ohne Pack bei 360 x 780 (mit der Pack-Karte und ihren Kern-Bildern). Das Messziel "hoechstens 3
 // Bildschirme" gilt bei 1280 (einstellungen-ordnung.spec.ts); hier steht die Zahl im Log und eine Grenze gegen Rueckschritte.
 test('Einstellungsseite ohne Pack bei 360 px: Hoehe in Bildschirmen', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url('options.html'));
   await s.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
   await s.reload();
   await s.waitForFunction(() => document.body.getAttribute('data-veil-ordnung') === 'bereit');
+  await reiter(s, 'Pack and sound');
   await expect(s.locator('#kern-streifen'), 'Kern-Bilder im Testbau noetig (../02 Assets Mia/kern)').toBeVisible({ timeout: 5000 });
   await s.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('#kern-bilder img')].every((i) => i.complete && i.naturalWidth > 0));
-  const hoehe = await s.evaluate(() => document.documentElement.scrollHeight);
+  // E4d1: sichtbar ist nur ein Reiter, die Seitenhoehe ist die des gewaehlten Reiters. Die Grenze bleibt unveraendert und gilt fuer jeden der
+  // sieben Reiter (der hoechste zaehlt), gemessen mit einem Klick auf jeden Reiter.
+  const jeReiter: Record<string, number> = {};
+  for (const name of REITER_NAMEN) {
+    await reiter(s, name);
+    jeReiter[name] = await s.evaluate(() => document.documentElement.scrollHeight);
+  }
+  const hoehe = Math.max(...Object.values(jeReiter));
+  await reiter(s, 'Pack and sound');
   const stand = await s.evaluate(() => Math.ceil(document.getElementById('stand')!.getBoundingClientRect().height));
-  console.log(`optik einstellungen 360: ohne Pack ${hoehe} px = ${(hoehe / 780).toFixed(2)} Bildschirme zu 780 px, davon Pack-Karte ${stand} px`);
+  console.log(`optik einstellungen 360: ohne Pack hoechster Reiter ${hoehe} px = ${(hoehe / 780).toFixed(2)} Bildschirme zu 780 px, davon Pack-Karte ${stand} px, je Reiter ${JSON.stringify(jeReiter)}`);
   expect(hoehe / 780, 'Einstellungsseite ohne Pack bei 360 px').toBeLessThanOrEqual(GRENZE_360);
   await s.close();
 });
 
 test('Willkommensseite bei 360 px: Interview-Seiten (ohne Pack drei), Abschluss mit Checkliste, Ziele 44 px', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url('willkommen.html#interview'));
   await expect(s.locator('#schritt-titel')).toBeVisible();
   let i = 1;

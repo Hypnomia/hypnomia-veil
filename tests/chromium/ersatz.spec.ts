@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -78,7 +79,7 @@ async function warteOhneGalerie(p: Page): Promise<void> {
 const waechter = (p: Page) => p.evaluate(() => (window as any).__e as { proben: number; sichtbarMitAttr: number; hgFalsch: number; ohneAttr: number; wechsel: [string, number][]; ersteProbeMitAttr: boolean | null });
 
 async function oeffne(adresse: string): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(adresse, { waitUntil: 'domcontentloaded' });
   return seite;
 }
@@ -100,7 +101,7 @@ test.beforeAll(async () => {
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   erweiterungsId = new URL(worker.url()).host;
-  ext = await context.newPage();
+  ext = mitReitern(await context.newPage());
   await ext.goto(`chrome-extension://${erweiterungsId}/options.html`);
 });
 
@@ -241,7 +242,7 @@ const tabIdVon = (adresse: string): Promise<number> =>
 // Gegenprobe zum Test davor (dort 0 Versuche, weil schon der Beobachter sperrt).
 test('zweite Sperre: auch wenn der Beobachter eigene Wurzeln betritt, prueft der Schleier Mias Galerie-Bilder nie', async () => {
   await setze({ pause: false }); // der Test davor endet mit Pause aus der Galerie
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(`${LISTE}?veil-eigene-offen=1`, { waitUntil: 'domcontentloaded' });
   try {
     // Ohne die erste Sperre legt der Beobachter seine Versteck-Regel auch in die Galerie-Wurzel (Breiten bleiben 0): nur auf die Galerie selbst

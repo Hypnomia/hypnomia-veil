@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -93,7 +94,7 @@ const setzeWarnung = (gesehen: boolean) =>
 const lies = <T>(schluessel: string) => worker.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as any)[k] as T, schluessel);
 
 async function importierePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -104,11 +105,12 @@ async function importierePack() {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     await abwarten(300);
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
@@ -156,7 +158,7 @@ const pfad = (p: Page) => p.evaluate(() => location.pathname);
 
 // Seite mit Mausposition ausserhalb der Mitte, bereit fuer idle.
 async function oeffne(query = ''): Promise<Page> {
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(seite(query));
   await p.bringToFront();
   await p.mouse.move(150, 130);

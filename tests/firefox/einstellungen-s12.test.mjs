@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { FEHLER_SPEICHERN, datumLang, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 import { LEDGER_MEHR, LEDGER_MEHR_NEUER, stufeWert } from '../../src/ledger/texte.ts';
 import { TON_TEXTE } from '../../src/ton/texte.ts';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 200 s ueberschritten');
@@ -116,9 +117,13 @@ const oeffneZu = async () => {
     if (Date.now() > frist) throw new Error('Ordnung der Einstellungsseite nicht bereit');
     await new Promise((r) => setTimeout(r, 100));
   }
-  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+  await driver.executeScript(`for (const t of document.querySelectorAll('[role=tab]')) { t.click(); for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } } document.querySelector('[role=tab]').click(); window.scrollTo(0, 0);`);
 };
-const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+// E4d1: wer Sichtbarkeit pruefen will, oeffnet vorher den Reiter des Elements (wie die Person).
+const sichtbar = async (css) => {
+  await oeffneReiterFuer(driver, css);
+  return driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+};
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
   driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));`, css, String(wert));
@@ -219,6 +224,7 @@ try {
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 30_000 });
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);
   await installiere(driver, paket);
@@ -226,8 +232,10 @@ try {
   await frisch({ einstieg: EINSTIEG_FERTIG });
 
   // ---- Fund 5 und 29: klebende Leiste, Pause darin ----
+  // E4d1: sichtbar ist nur ein Reiter (What I cover ist der hoechste ohne Pack, gemessen: Fensterhoehe 683 px, Seite 1027 px, Scrollweg 344 px, Schwelle 300 px); gescrollt wird, bis der grosse Pause-Knopf aus dem Bild ist.
+  await oeffneReiter(driver, 'What I cover');
   await driver.executeScript(`window.scrollTo(0, document.documentElement.scrollHeight)`);
-  await bis('gescrollt', async () => (await driver.executeScript(`return window.scrollY`)) > 1000);
+  await bis('gescrollt', async () => (await driver.executeScript(`return window.scrollY`)) > 300);
   const lage = await driver.executeScript(`const r = document.getElementById('leiste').getBoundingClientRect(); return { oben: r.top, hoehe: r.height, scroll: window.scrollY };`);
   console.log(`firefox: Leiste nach Scroll ${Math.round(lage.scroll)} px: oben ${lage.oben}, Hoehe ${Math.round(lage.hoehe)}`);
   pruefe(Math.abs(lage.oben) <= 1, 'Fund 5: Leiste klebt oben nach dem Scrollen');
@@ -244,9 +252,9 @@ try {
   await bis('pause aus', async () => (await einst()).pause === false);
 
   // ---- Fund 3 und 5: am Desktop keine Chips ausserhalb der Leiste ----
-  const dk = await driver.executeScript(`const n = document.getElementById('sprung'); const l = n.getBoundingClientRect(); return { sw: n.scrollWidth, cw: n.clientWidth, aus: [...n.querySelectorAll('a')].filter((a) => a.getClientRects().length && a.getBoundingClientRect().right > l.right + 1).length };`);
+  const dk = await driver.executeScript(`const n = document.getElementById('sprung'); const l = n.getBoundingClientRect(); return { sw: n.scrollWidth, cw: n.clientWidth, aus: [...n.querySelectorAll('[role=tab]')].filter((a) => a.getClientRects().length && a.getBoundingClientRect().right > l.right + 1).length };`);
   console.log(`firefox: Desktop Sprungleiste scrollWidth ${dk.sw}, clientWidth ${dk.cw}, Chips ausserhalb ${dk.aus}`);
-  pruefe(dk.aus === 0 && dk.sw <= dk.cw, 'Fund 3: am Desktop umbrechen die Chips, keine liegt ausserhalb');
+  pruefe(dk.aus === 0 && dk.sw <= dk.cw, 'Fund 3: am Desktop liegt kein Reiter ausserhalb der Reiterleiste');
 
   // ---- Fund 6: Stimmungswort ----
   const woerter = [];
@@ -276,7 +284,10 @@ try {
   console.log(`firefox: Kontraste Knopftext ${k.knopf.toFixed(2)}, Bahn aus ${k.bahn.toFixed(2)}, Textfeldrand ${k.feld.toFixed(2)}, Auswahlrand ${k.auswahl.toFixed(2)}`);
   const k2 = await driver.executeScript(`${kontrast}
     const bg = getComputedStyle(document.body).backgroundColor;
-    const knoepfe = [...document.querySelectorAll('button.klein')].filter((e) => e.getClientRects().length > 0);
+    // E4d1: sichtbar ist nur ein Reiter, darum je Reiter sammeln (Klick auf den Reiter).
+    const knoepfe = [];
+    for (const t of document.querySelectorAll('[role=tab]')) { t.click(); knoepfe.push(...[...document.querySelectorAll('button.klein')].filter((e) => e.getClientRects().length > 0)); }
+    document.querySelector('[role=tab]').click();
     return { n: knoepfe.length, min: Math.min(...knoepfe.map((e) => kr(getComputedStyle(e).color, getComputedStyle(e).backgroundColor))), bahn: kr(getComputedStyle(document.querySelector('#strict + .regler')).backgroundColor, bg), feld: kr(getComputedStyle(document.getElementById('ausnahme-feld')).borderTopColor, bg) };`);
   console.log(`firefox: ${k2.n} sichtbare button.klein, kleinster Textkontrast ${k2.min.toFixed(2)}, Bahn gegen Seitengrund ${k2.bahn.toFixed(2)}, Feldrand gegen Seitengrund ${k2.feld.toFixed(2)}`);
   pruefe(k2.n > 2 && k2.min >= 4.5 && k2.bahn >= 3 && k2.feld >= 3, 'Fund 9 und 10: alle button.klein 4,5:1, Bahn und Feldrand auch gegen den Seitengrund 3:1');
@@ -287,7 +298,7 @@ try {
   const g = await driver.executeScript(`const a = getComputedStyle(document.getElementById('erw-titel')); const b = getComputedStyle(document.querySelector('#erwachsen h3')); return { h2: parseFloat(a.fontSize), h3: parseFloat(b.fontSize), farbe: a.color === getComputedStyle(document.body).color, gross: a.textTransform };`);
   console.log(`firefox: h2 ${g.h2} px, h3 ${g.h3} px`);
   pruefe(g.h2 > g.h3 && g.h2 >= 17 && g.farbe && g.gross === 'none', 'Fund 15: h2 groesser als h3, Textfarbe, keine Grossbuchstaben');
-  pruefe((await driver.executeScript(`return document.getElementById('abschnitt-strict') === null && !!document.querySelector('#abschnitt-zonen #strict') && ![...document.querySelectorAll('#sprung a')].some((a) => a.textContent === 'Strict')`)), 'Fund 16: Strict im Abschnitt "What I cover", kein eigener Abschnitt und Chip');
+  pruefe((await driver.executeScript(`return document.getElementById('abschnitt-strict') === null && !!document.querySelector('#abschnitt-zonen #strict') && ![...document.querySelectorAll('#sprung [role=tab]')].some((a) => a.textContent === 'Strict')`)), 'Fund 16: Strict im Abschnitt "What I cover", kein eigener Abschnitt und Chip');
   await strictKlick();
   await bis('strict an', async () => (await einst()).strict === true);
   await strictKlick();
@@ -301,11 +312,12 @@ try {
   // ---- Fund 14: Woerter ----
   await setze({ ledger: ledgerStand({ hoechsteStufe: 3 }) });
   await bis('Stufe', async () => (await text('#ledger-stufe')) === stufeWert(3));
-  const sicht = (await driver.executeScript(`return document.body.innerText`)).toLowerCase();
+  // E4d1: sichtbar ist nur ein Reiter; der sichtbare Text ist der aller sieben Reiter, je Reiter mit einem Klick geoeffnet.
+  const sicht = (await driver.executeScript(`let t = ''; for (const r of document.querySelectorAll('[role=tab]')) { r.click(); t += '\\n' + document.body.innerText; } document.querySelector('[role=tab]').click(); return t;`)).toLowerCase();
   const h2 = await driver.executeScript(`return [...document.querySelectorAll('h2')].map((e) => e.textContent)`);
-  const chips = await driver.executeScript(`return [...document.querySelectorAll('#sprung a:not([hidden])')].map((e) => e.textContent)`);
+  const chips = await driver.executeScript(`return [...document.querySelectorAll('#sprung [role=tab]')].map((e) => e.textContent)`);
   pruefe(!/\bskip/.test(sicht) && !/\bexception/.test(sicht) && !sicht.includes('your pack') && !sicht.includes('add a pack'), 'Fund 14: kein "skip", "exception", "your pack", "add a pack" im sichtbaren Text');
-  pruefe(h2.includes('Sites I leave alone') && h2.includes('Mia Pack') && chips.includes('Mia Pack') && chips.includes('Covering') && chips.includes('About and help') && !chips.includes('Pack') && !chips.includes('Left alone'), 'Fund 14: Ueberschriften und Chips nach dem Woerterbuch');
+  pruefe(h2.includes('Sites I leave alone') && h2.includes('Mia Pack') && chips.includes('Pack and sound') && chips.includes('What I cover') && chips.includes('About') && !chips.includes('Pack') && !chips.includes('Left alone'), 'Fund 14: Ueberschriften und Reiter nach dem Woerterbuch');
   pruefe(stufeWert(3) === 'Level 3 of 4', 'Fund 14: Stufe "Level 3 of 4"');
 
   // ---- Fund 28: Datum ----
@@ -390,18 +402,26 @@ try {
     einstellungen: { ...(await einst()), ausnahmen: ['kurz.de'], erwachsen: { ...((await einst()).erwachsen ?? {}), eigeneSeiten: ['adult.example'] } },
   });
   const m = await imRahmen(`
+    // E4d1: sichtbar ist nur ein Reiter; die Mindesthoehe gilt fuer alles Sichtbare in jedem Reiter (Klick auf jeden Reiter).
     d.querySelectorAll('.zu-knopf').forEach((k) => k.click());
     d.getElementById('kon-zeit-neu').click();
     setTimeout(() => {
-      const h = (sel) => { const l = [...d.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0); return { n: l.length, min: Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) }; };
-      const nav = d.getElementById('sprung');
+      const hoehen = {};
+      const h = (sel) => { const l = [...d.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0); return { n: l.length, min: l.length ? Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) : 9999 }; };
+      let breite = 0;
+      for (const t of d.querySelectorAll('[role=tab]')) {
+        t.click();
+        breite = Math.max(breite, d.documentElement.scrollWidth);
+        const je = { chips: h('#sprung [role=tab]'), ausnahme: h('#ausnahmen-liste button'), seiten: h('#seiten-liste button'), zeit: h('#kon-zeiten .zeit-weg'), bedeckt: h('.auch'), tage: h('.zeit-tage label'), schalter: h('label.schalter'), knoepfe: h('button.klein') };
+        for (const [k, v] of Object.entries(je)) { const alt = hoehen[k] || { n: 0, min: 9999 }; hoehen[k] = { n: alt.n + v.n, min: Math.min(alt.min, v.min) }; }
+      }
+      const nav = d.getElementById('reiter-liste');
       fertig({
-        breite: d.documentElement.scrollWidth, fenster: d.documentElement.clientWidth, navScroll: nav.scrollWidth, navBreit: nav.clientWidth, leiste: Math.round(d.getElementById('leiste').getBoundingClientRect().height),
-        hoehen: { chips: h('#sprung a'), ausnahme: h('#ausnahmen-liste button'), seiten: h('#seiten-liste button'), zeit: h('#kon-zeiten .zeit-weg'), bedeckt: h('.auch'), tage: h('.zeit-tage label'), schalter: h('label.schalter'), knoepfe: h('button.klein') },
+        breite, fenster: d.documentElement.clientWidth, navScroll: nav.scrollWidth, navBreit: nav.clientWidth, leiste: Math.round(d.getElementById('leiste').getBoundingClientRect().height), hoehen,
       });
     }, 400);`);
   console.log(`firefox: 360 px Seite ${m.breite}/${m.fenster}, Sprungleiste ${m.navScroll}/${m.navBreit}, Leiste ${m.leiste} px, Hoehen ${JSON.stringify(m.hoehen)}`);
-  pruefe(m.breite <= m.fenster && m.navScroll > m.navBreit && m.leiste < 90, 'Fund 5: bei 360 px Sprungleiste waagrecht scrollbar, Seite ohne Ueberlauf');
+  pruefe(m.breite <= m.fenster && m.navScroll > m.navBreit && m.leiste < 90, 'Fund 5: bei 360 px Reiterleiste waagrecht scrollbar, Seite ohne Ueberlauf');
   pruefe(Object.values(m.hoehen).every((v) => v.n > 0 && v.min >= 44), 'Fund 11: alle Fingerziele bei 360 px mindestens 44 px hoch');
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

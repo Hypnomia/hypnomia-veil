@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -74,7 +75,7 @@ const tasten = (seite: Page) =>
     return { f: t.f, m: t.m, leer: t.leer };
   });
 const extSeite = async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`chrome-extension://${erweiterungsId}/options.html`);
   return s;
 };
@@ -172,7 +173,7 @@ test.afterAll(async () => {
 });
 
 async function frischeSeite(url = SEITE): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url);
   // Das Content-Script haengt den Testhaken beim Start ein; kurz warten, bis die Seite reagiert.
   await expect.poll(() => s.evaluate(() => document.documentElement.hasAttribute('data-veil-status')), { timeout: 10_000 }).toBe(true);
@@ -680,7 +681,7 @@ test('Ruhig-Modus und reduzierte Bewegung: Spirale langsamer bzw. steht; nie ueb
       await c.storage.local.set({ einstellungen: { ...alt, ruhig: false } });
     });
 
-    const m = await context.newPage();
+    const m = mitReitern(await context.newPage());
     await m.emulateMedia({ reducedMotion: 'reduce' });
     await m.goto(SEITE);
     await expect.poll(() => m.evaluate(() => document.documentElement.hasAttribute('data-veil-status')), { timeout: 10_000 }).toBe(true);

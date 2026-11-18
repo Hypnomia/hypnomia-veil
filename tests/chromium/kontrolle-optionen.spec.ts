@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -42,19 +42,24 @@ test.afterAll(async () => {
 });
 
 test('Mia’s control: Standardwerte, Schalter, Auswahl und Minuten wirken auf storage.local', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await zuruecksetzen(seite);
     await seite.reload();
     await expect(seite.locator('#kon-titel')).toHaveText('Mia’s control');
     // Phase 9 (Fund 4): ohne Pack ist die Karte zugeklappt, nur Calm mode bleibt offen; "Set them now" klappt sie auf.
+    await reiterFuer(seite, '#ruhig');
     await expect(seite.locator('#ruhig')).toBeVisible();
+    await reiterFuer(seite, '#kon-werbung');
     await expect(seite.locator('#kon-werbung')).toBeHidden();
+    await reiterFuer(seite, '#kontrolle-zu-satz');
     await expect(seite.locator('#kontrolle-zu-satz')).toBeVisible();
     await expect(seite.locator('#kontrolle-zu-knopf')).toHaveAttribute('aria-expanded', 'false');
     await oeffneZugeklapptes(seite);
+    await reiterFuer(seite, '#kontrolle-zu-knopf');
     await expect(seite.locator('#kontrolle-zu-knopf')).toBeHidden();
+    await reiterFuer(seite, '#kon-werbung');
     await expect(seite.locator('#kon-werbung')).toBeVisible();
     await expect(seite.locator('#kon-pack-hinweis')).toContainText('Mia Pack');
     // Seit 0.9.0 ab Werk aus (Entscheidung 179, Opt-in); die Frage selbst steht in der Pack-Karte (Paket C).
@@ -94,6 +99,7 @@ test('Mia’s control: Standardwerte, Schalter, Auswahl und Minuten wirken auf s
     // Spirale aus: Minuten-Zeile verschwindet.
     await seite.locator('#kon-leerlauf-zeile').click();
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.kontrolle?.leerlauf).toBe(false);
+    await reiterFuer(seite, '#kon-minuten-zeile');
     await expect(seite.locator('#kon-minuten-zeile')).toBeHidden();
     // Andere Felder bleiben unberuehrt.
     const e = await lies(seite, 'einstellungen');
@@ -107,12 +113,13 @@ test('Mia’s control: Standardwerte, Schalter, Auswahl und Minuten wirken auf s
 });
 
 test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await zuruecksetzen(seite);
     await seite.reload();
     await oeffneZugeklapptes(seite);
+    await reiterFuer(seite, '#kon-warnung');
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await expect(seite.locator('#kon-warnung-text')).toContainText('photosensitive epilepsy');
     // Pack von vor 0.5.0 (ohne kontrolle:*): Hinweis auf einen neueren Import.
@@ -121,6 +128,7 @@ test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async ()
     await schreibe(seite, { pack: packMit(['kontrolle:blitz']) });
     await expect(seite.locator('#kon-pack-hinweis')).toContainText('Pause Mia');
     await seite.locator('#kon-warnung-ok').click();
+    await reiterFuer(seite, '#kon-warnung');
     await expect(seite.locator('#kon-warnung')).toBeHidden();
     expect(await lies(seite, 'spiraleWarnungGesehen')).toBe(true);
 
@@ -128,8 +136,10 @@ test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async ()
     await zuruecksetzen(seite);
     await seite.reload();
     await oeffneZugeklapptes(seite);
+    await reiterFuer(seite, '#kon-warnung');
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await schreibe(seite, { quizWarnungGesehen: true });
+    await reiterFuer(seite, '#kon-warnung');
     await expect(seite.locator('#kon-warnung')).toBeHidden();
     console.log('Mia’s control: Warnung 2 von 2 Wegen bestaetigt');
   } finally {
@@ -139,7 +149,7 @@ test('Mia’s control: Hinweis mit Pack, Warnung bis zur Bestaetigung', async ()
 });
 
 test('Mia’s control Session 10: Tab-Titel, Zeiger, Meldungen, Besuche, strenge Zeiten', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   const kontrolle = async () => (await lies(seite, 'einstellungen'))?.kontrolle;
   try {
     await seite.goto(optionsUrl());
@@ -183,9 +193,11 @@ test('Mia’s control Session 10: Tab-Titel, Zeiger, Meldungen, Besuche, strenge
     await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(2);
     await seite.locator('#kon-zeit-neu').click();
     await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(3);
+    await reiterFuer(seite, '#kon-zeit-neu');
     await expect(seite.locator('#kon-zeit-neu')).toBeHidden();
     await seite.locator('#kon-zeiten .zeit-zeile').first().locator('.zeit-weg').click();
     await expect.poll(async () => (await kontrolle())?.zeiten?.length).toBe(2);
+    await reiterFuer(seite, '#kon-zeit-neu');
     await expect(seite.locator('#kon-zeit-neu')).toBeVisible();
     // Die geaenderte Zeile war die erste: weg; die beiden neuen bleiben.
     expect((await kontrolle())?.zeiten?.every((z: { von: number }) => z.von === 1260)).toBe(true);

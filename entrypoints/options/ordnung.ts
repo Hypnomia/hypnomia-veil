@@ -80,19 +80,19 @@ for (const { id, behalten } of ZU) {
 
 // ---------- Reihenfolge (Fund 4) ----------
 
-// Ohne Pack steht die Pack-Karte gleich nach "Covering" (der wichtigste naechste Schritt), mit Pack nach "Sound". Die Chips folgen.
+// Im Reiter "Pack and sound" steht die Pack-Karte ohne Pack vor "Sound" (der wichtigste naechste Schritt), mit Pack nach "Sound".
 function ordne(): boolean {
   const stand = document.getElementById('stand');
-  const chip = document.querySelector<HTMLAnchorElement>('#sprung a[href="#stand"]');
-  const nach = mitPack ? document.getElementById('ton') : document.getElementById('covering');
-  const chipNach = document.querySelector<HTMLAnchorElement>(mitPack ? '#sprung a[href="#ton"]' : '#sprung a[href="#covering"]');
+  const ton = document.getElementById('ton');
   // Nacht N5 (Wackler pack.test "Fokus liegt bei der Frage", Beleg: Mitschnitt unter Last): Ein Knoten, der im Baum verschoben wird, wird
   // entfernt und neu eingesetzt, und der Fokus in ihm fiele auf body. Kam das Pack-Ereignis erst nach dem Fokus auf die Frage "Show my ads?"
   // (Pack-Import, spaetes storage-Ereignis), ging der Fokus verloren. Darum den Fokus nach dem Verschieben zurueckgeben.
   const aktiv = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const bewegt = [stand, chip].some((k) => !!k && !!aktiv && k.contains(aktiv));
-  if (stand && nach && stand.previousElementSibling !== nach) nach.after(stand);
-  if (chip && chipNach && chip.previousElementSibling !== chipNach) chipNach.after(chip);
+  const bewegt = !!stand && !!aktiv && stand.contains(aktiv);
+  if (stand && ton) {
+    if (mitPack && stand.previousElementSibling !== ton) ton.after(stand);
+    else if (!mitPack && stand.nextElementSibling !== ton) ton.before(stand);
+  }
   if (bewegt && aktiv && aktiv.isConnected && document.activeElement !== aktiv) {
     aktiv.focus({ preventScroll: true });
     let ziel: HTMLElement = aktiv;

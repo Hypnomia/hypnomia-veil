@@ -1,0 +1,176 @@
+/* Einstellungsseite, Reiter und Platz der Vorschau (Phase 11 E4d1). Nur Tokens aus tokens.css. Breit: Reiter links als Spalte, Inhalt in der Mitte,
+   Vorschau rechts. Mittel: Reiter links, Vorschau als Streifen ueber dem Inhalt. Schmal: Reiter als eine waagrecht schiebbare Zeile unter der
+   Leiste, darunter der Streifen und der Inhalt; die Seite selbst scrollt nie waagrecht. Jeder Reiter ist mindestens 44 px hoch. */
+
+:root {
+  --leiste-hoehe: 56px;
+}
+
+/* Kopf und Leiste bleiben so schmal wie bisher lesbar. */
+.reiter-raster {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 240px;
+  grid-template-areas: 'nav mitte vorschau';
+  gap: var(--v-a-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.reiter-nav {
+  grid-area: nav;
+  position: sticky;
+  top: calc(var(--leiste-hoehe) + var(--v-a-3));
+  min-width: 0;
+  padding: var(--v-a-2);
+  background: var(--v-glas);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+}
+
+.reiter-mitte {
+  grid-area: mitte;
+  min-width: 0;
+}
+
+.vorschau-spalte {
+  grid-area: vorschau;
+  position: sticky;
+  top: calc(var(--leiste-hoehe) + var(--v-a-3));
+  min-width: 0;
+  padding: var(--v-a-3);
+  background: var(--v-glas);
+  border: 1px solid var(--v-glas-kante);
+  border-radius: var(--v-r-l);
+  box-shadow: var(--v-schatten);
+}
+
+.vorschau-kopf {
+  margin: 0 0 var(--v-a-2);
+  font: 800 12px/1.2 var(--v-schrift-text);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--v-rosa-700);
+}
+
+#reiter-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-a-1);
+}
+
+.reiter-tab {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--v-fingerziel);
+  padding: 0 var(--v-a-4);
+  border: 0;
+  border-radius: var(--v-r-m);
+  background: transparent;
+  color: var(--v-text);
+  font: 800 15px/1.2 var(--v-schrift-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.reiter-tab:hover {
+  background: var(--v-rosa-100);
+}
+
+.reiter-tab[aria-selected='true'] {
+  background: var(--v-rosa-100);
+  color: var(--v-rosa-800);
+  box-shadow: inset 0 0 0 1.5px var(--v-rosa-200);
+}
+
+.reiter-tab:focus-visible {
+  outline: 3px solid var(--v-lav-500);
+  outline-offset: 2px;
+}
+
+.reiter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-a-3);
+  min-width: 0;
+}
+
+.reiter-panel[hidden] {
+  display: none;
+}
+
+/* Mittlere Breite: Vorschau als Streifen ueber dem Inhalt, Reiter bleiben links. */
+@media (max-width: 1000px) {
+  .reiter-raster {
+    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-areas:
+      'nav vorschau'
+      'nav mitte';
+  }
+  .vorschau-spalte {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: var(--v-a-3);
+  }
+  .vorschau-spalte .vorschau-kopf {
+    margin: 0;
+  }
+  .vorschau-spalte .v-vorschau-platz {
+    width: 84px;
+    flex: none;
+  }
+}
+
+/* Schmal: eine Spalte, Reiter als schiebbare Zeile (klebt unter der Leiste), danach der Streifen. */
+@media (max-width: 600px) {
+  .reiter-raster {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--v-a-3);
+  }
+  .reiter-nav {
+    order: 1;
+    width: 100%;
+    max-width: 100%;
+    position: sticky;
+    top: var(--leiste-hoehe);
+    z-index: 5;
+    padding: var(--v-a-2);
+    border-radius: var(--v-r-m);
+  }
+  #reiter-liste {
+    min-width: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 3px;
+  }
+  /* Der Verlauf am rechten Rand zeigt nur, solange dort noch Reiter ausserhalb liegen (reiter.ts setzt data-weiter); am Ende ist der letzte Reiter voll lesbar. */
+  #reiter-liste[data-weiter='1'] {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  }
+  .reiter-tab {
+    flex: none;
+    width: auto;
+    padding: 0 var(--v-a-4);
+    border: 1.5px solid var(--v-rosa-200);
+    border-radius: var(--v-r-voll);
+    background: var(--v-weiss);
+    white-space: nowrap;
+  }
+  .reiter-tab[aria-selected='true'] {
+    background: var(--v-verlauf-akzent);
+    border-color: transparent;
+    color: var(--v-weiss);
+  }
+  .vorschau-spalte {
+    order: 2;
+  }
+  .reiter-mitte {
+    order: 3;
+  }
+}

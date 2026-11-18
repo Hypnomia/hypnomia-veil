@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
+import { oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 200 s ueberschritten');
@@ -115,7 +116,11 @@ const imRahmen = (driver, skript) =>
      f.onload = () => setTimeout(() => { const d = f.contentDocument; ${skript} }, 1500);
      document.body.append(f);`,
   );
-const sichtbar = (driver, css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+// E4d1: wer Sichtbarkeit pruefen will, oeffnet vorher den Reiter des Elements (wie die Person).
+const sichtbar = async (driver, css) => {
+  await oeffneReiterFuer(driver, css);
+  return driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+};
 
 async function pruefeBau(name, paketPfad, erwarteBilder) {
   await mitTreiber(paketPfad, async ({ driver, oeffne, setze, haupt }) => {
@@ -157,6 +162,7 @@ async function pruefeBau(name, paketPfad, erwarteBilder) {
     await oeffne('options.html');
     await setze({ einstieg: EINSTIEG({ einwilligung: true }) });
     await driver.navigate().refresh();
+    await oeffneReiter(driver, 'Pack and sound');
     await bis('Optionen', async () => (await driver.findElement(By.css('#pack-status')).getText()).length > 0);
     if (erwarteBilder) {
       await bis('Streifen sichtbar', () => sichtbar(driver, '#kern-streifen'), 15_000);

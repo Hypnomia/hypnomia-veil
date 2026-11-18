@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 900 s ueberschritten');
@@ -204,6 +205,7 @@ try {
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 20_000, script: 60_000 });
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);
   await driver.execute(new Command('install addon').setParameter('path', paket).setParameter('temporary', true));

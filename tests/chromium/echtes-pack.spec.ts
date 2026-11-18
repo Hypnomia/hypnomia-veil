@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -41,7 +42,7 @@ test.afterAll(async () => {
 
 test('echtes Pack: Import, Freischaltungen, Dateien', async () => {
   test.setTimeout(120_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(optionsUrl());
   const t0 = Date.now();
   await s.locator('#datei').setInputFiles(ECHT);

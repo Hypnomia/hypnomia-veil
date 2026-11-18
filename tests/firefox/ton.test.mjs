@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { TON_TEXTE } from '../../src/ton/texte.ts';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 420 s ueberschritten');
@@ -226,6 +227,7 @@ try {
   optionen.setPreference('media.autoplay.blocking_policy', 0);
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
   hauptFenster = (await driver.getAllWindowHandles())[0];
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);
@@ -252,7 +254,7 @@ try {
     try {
       // Phase 9 (Paket B): ohne Pack ist Sound zugeklappt; wie die Person mit "Set them now" aufklappen.
       await bis('Ordnung bereit', () => driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`), 15_000);
-      await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+      await driver.executeScript(`for (const t of document.querySelectorAll('[role=tab]')) { t.click(); for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } } document.querySelector('[role=tab]').click(); window.scrollTo(0, 0);`);
       await bis('Abschnitt da', () => sichtbar('#ton-titel'));
       pruefe((await driver.findElement(By.css('#ton-titel')).getAttribute('textContent')) === TON_TEXTE.titel, 'Ueberschrift');
       pruefe((await driver.findElement(By.css('#ton')).getAttribute('aria-labelledby')) === 'ton-titel', 'aria-labelledby ton-titel');

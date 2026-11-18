@@ -17,52 +17,25 @@
         <button id="pause" class="gross" type="button"></button>
       </header>
 
-      <!-- Session 12, Auftrag O (UX-Funde 5, 11, 26, 29): die Leiste klebt oben. Sprungleiste (bei 480 px waagrecht scrollbar), kleiner
-           Pause-Knopf (derselbe Weg wie #pause) und die Statuszeile fuer Speicherfehler (grund-speichern.ts). -->
+      <!-- Session 12, Auftrag O (UX-Funde 5, 11, 26, 29): die Leiste klebt oben. Phase 11 E4d1: sie traegt nur noch den Weg zur Hilfe, den kleinen
+           Pause-Knopf (derselbe Weg wie #pause) und die Statuszeile fuer Speicherfehler (grund-speichern.ts). Die Sprungleiste ist jetzt die Reiterleiste. -->
       <div id="leiste">
         <div class="leiste-zeile">
-          <nav id="sprung" aria-label="Jump to a section">
-            <a href="#covering">Covering</a>
-            <a href="#stand">Mia Pack</a>
-            <a href="#erwachsen">Adult sites</a>
-            <a href="#kontrolle">Mia’s control</a>
-            <a href="#ton">Sound</a>
-            <a href="#ledger">Ledger</a>
-            <a href="#ueber">About and help</a>
-            <!-- Phase 9 (Fund 22): das Interview wohnt jetzt in "About and help"; der alte Chip bleibt nur als verborgener Anker, weil grund-pack.ts ihn sucht. -->
-            <a id="chip-interview" href="#abschnitt-interview" hidden>Interview</a>
-            <!-- Phase 9 (Fund 14): "Help" in der Leiste statt des Untertitel-Links, oeffnet die Hilfe-Seite in neuem Tab. -->
-            <a id="hilfe-link" class="hilfe-link" href="hilfe.html" target="_blank" rel="noopener">Help</a>
-          </nav>
+          <!-- Phase 9 (Fund 14): "Help" in der Leiste statt des Untertitel-Links, oeffnet die Hilfe-Seite in neuem Tab. -->
+          <a id="hilfe-link" class="hilfe-link" href="hilfe.html" target="_blank" rel="noopener">Help</a>
           <button id="pause-leiste" class="klein ruhig" type="button"></button>
         </div>
         <p id="speicher-meldung" class="fehler" role="alert" hidden></p>
       </div>
 
-      <div id="covering" class="gruppe" role="group" aria-label="Covering">
+      <!-- Phase 11 E4d1 (Entscheidungen 245 und 279): sieben Reiter, ein Platz fuer die feste Vorschau. Reiter und Platz baut reiter.ts und
+           vorschau-platz.ts; alle Abschnitte stehen beim Laden vollstaendig im Dokument, nicht gewaehlte Reiter sind nur mit hidden ausgeblendet. -->
+      <div class="reiter-raster">
+        <nav id="sprung" class="reiter-nav" aria-label="Settings sections"></nav>
+        <aside id="vorschau-spalte" class="vorschau-spalte"></aside>
+        <div class="reiter-mitte">
 
-      <section aria-labelledby="stimmung-titel" id="abschnitt-stimmung">
-        <div class="regel">
-          <h2 id="stimmung-titel">Mia’s mood</h2>
-          <output id="stimmung-wert" for="stimmung"></output>
-        </div>
-        <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
-        <div class="enden"><span>Very suspicious</span><span>Relaxed</span></div>
-        <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
-      </section>
-
-      <section aria-labelledby="zonen-titel" id="abschnitt-zonen">
-        <h2 id="zonen-titel">What I cover</h2>
-        <ul id="zonen" class="zonen" aria-describedby="zonen-hinweis"></ul>
-        <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
-        <p id="zonen-hinweis" class="hinweis" hidden></p>
-        <label class="schalter">
-          <input id="strict" type="checkbox" role="switch" />
-          <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Strict</strong><small>hide each page until I’ve checked it (a little slower)</small></span>
-        </label>
-      </section>
-
+      <div id="panel-stil" class="reiter-panel" role="tabpanel" data-reiter="stil" aria-labelledby="reiter-stil" hidden>
       <section aria-labelledby="stil-titel" id="abschnitt-stil">
         <h2 id="stil-titel">Cover style</h2>
         <div id="preset-karten"></div>
@@ -88,6 +61,32 @@
           <span class="text"><strong>Only the naughty bits in videos</strong><small>On: I watch along and cover only what you shouldn’t see, in your cover style (a little more battery). Off: the whole video.</small></span>
         </label>
       </section>
+      </div>
+
+      <div id="panel-zonen" class="reiter-panel" role="tabpanel" data-reiter="zonen" aria-labelledby="reiter-zonen" hidden>
+      <div id="covering" class="gruppe" role="group" aria-label="Covering">
+
+      <section aria-labelledby="stimmung-titel" id="abschnitt-stimmung">
+        <div class="regel">
+          <h2 id="stimmung-titel">Mia’s mood</h2>
+          <output id="stimmung-wert" for="stimmung"></output>
+        </div>
+        <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
+        <div class="enden"><span>Very suspicious</span><span>Relaxed</span></div>
+        <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
+      </section>
+
+      <section aria-labelledby="zonen-titel" id="abschnitt-zonen">
+        <h2 id="zonen-titel">What I cover</h2>
+        <ul id="zonen" class="zonen" aria-describedby="zonen-hinweis"></ul>
+        <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+        <p id="zonen-hinweis" class="hinweis" hidden></p>
+        <label class="schalter">
+          <input id="strict" type="checkbox" role="switch" />
+          <span class="regler" aria-hidden="true"></span>
+          <span class="text"><strong>Strict</strong><small>hide each page until I’ve checked it (a little slower)</small></span>
+        </label>
+      </section>
 
       <section aria-labelledby="ausnahmen-titel" id="abschnitt-ausnahmen">
         <h2 id="ausnahmen-titel">Sites I leave alone</h2>
@@ -100,11 +99,9 @@
         <ul id="ausnahmen-liste" class="liste"></ul>
       </section>
       </div>
+      </div>
 
-      <!-- Phase 9 (Vertrag mit Paket C): die Pack-Karte baut pack-karte.ts (Paket C) in diesen leeren Abschnitt. Ohne Pack steht er nach "Covering",
-           mit Pack nach "Sound" (main.ts ordnet um). -->
-      <section aria-labelledby="stand-titel" id="stand"></section>
-
+      <div id="panel-erwachsen" class="reiter-panel" role="tabpanel" data-reiter="erwachsen" aria-labelledby="reiter-erwachsen" hidden>
       <section aria-labelledby="erw-titel" id="erwachsen">
         <h2 id="erw-titel">Adult sites</h2>
         <p id="erw-pack-hinweis" class="hinweis"></p>
@@ -160,6 +157,9 @@
         <input id="freilegen" type="range" min="3" max="30" step="1" />
       </section>
 
+      </div>
+
+      <div id="panel-extras" class="reiter-panel" role="tabpanel" data-reiter="extras" aria-labelledby="reiter-extras" hidden>
       <!-- Phase 5 (Session 9): Kontrolle. Texte nach Texter und Gegenleser (TEXTE-PHASE-5-SESSION-9.md). -->
       <section aria-labelledby="kon-titel" id="kontrolle">
         <h2 id="kon-titel">Mia’s control</h2>
@@ -239,11 +239,22 @@
           <button id="kon-warnung-ok" class="klein" type="button">I understand</button>
         </div>
       </section>
+      </div>
 
+      <div id="panel-pack" class="reiter-panel" role="tabpanel" data-reiter="pack" aria-labelledby="reiter-pack" hidden>
+      <!-- Phase 9 (Vertrag mit Paket C): die Pack-Karte baut pack-karte.ts (Paket C) in diesen leeren Abschnitt. Ohne Pack steht er vor "Sound",
+           mit Pack nach "Sound" (ordnung.ts ordnet um). -->
+      <section aria-labelledby="stand-titel" id="stand"></section>
       <!-- Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): Ton (Auftrag T), Mia’s Ledger (Auftrag L), Ueber/Version (Auftrag V).
            Jeder Abschnitt wird von seinem Modul gefuellt (ton.ts, ledger.ts, ueber.ts); Auftrag S ordnet die Abschnitte, behaelt aber die ids. -->
       <section id="ton" aria-labelledby="ton-titel"></section>
+      </div>
+
+      <div id="panel-ledger" class="reiter-panel" role="tabpanel" data-reiter="ledger" aria-labelledby="reiter-ledger" hidden>
       <section id="ledger" aria-labelledby="ledger-titel"></section>
+      </div>
+
+      <div id="panel-ueber" class="reiter-panel" role="tabpanel" data-reiter="ueber" aria-labelledby="reiter-ueber" hidden>
       <!-- Phase 9 (Fund 22): ueber.ts setzt Version, Links und Hilfe davor; das Interview (selten gebraucht) steht ganz unten in "About and help". -->
       <section id="ueber" aria-labelledby="ueber-titel">
         <div id="abschnitt-interview" class="ue-interview" hidden>
@@ -251,6 +262,10 @@
           <button id="interview-neu" class="klein" type="button">Run the interview again</button>
         </div>
       </section>
+      </div>
+
+        </div>
+      </div>
 
       <footer>
         <span>Pausing and uninstalling are always allowed.</span>

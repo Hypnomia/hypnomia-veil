@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // @ts-expect-error reines JS-Modul
 import { starteVersionServer } from '../version-server.mjs';
+import { mitReitern, reiter } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -56,21 +57,21 @@ test.afterAll(async () => {
 });
 
 test('Neuere Version (9.9.9): Hinweis im Popup, Anleitung in vier Schritten, ein Abruf, kein Cookie', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, '9.9.9.json');
     // Ein Cookie fuer den Mini-Server liegt bereit; der Abruf darf es nicht mitschicken (credentials: 'omit').
     await context.addCookies([{ name: 'veil_test', value: '1', url: 'http://127.0.0.1:47487/' }]);
     // Gegenprobe: eine normale Seite mit credentials 'include' schickt es sehr wohl (sonst misst der Test nichts).
-    const fremd = await context.newPage();
+    const fremd = mitReitern(await context.newPage());
     await fremd.goto(`http://127.0.0.1:${process.env.VEIL_FIXTURE_PORT ?? 47173}/hello.html`);
     await fremd.evaluate((u) => fetch(u, { credentials: 'include', mode: 'no-cors' }).then(() => 0), server.adresse('0.7.0.json'));
     expect(String(server.kopfzeilen.at(-1).cookie)).toContain('veil_test=1');
     await fremd.close();
     server.kopfzeilen.length = 0;
     // Popup oeffnen: Hinweis erscheint.
-    const popup = await context.newPage();
+    const popup = mitReitern(await context.newPage());
     await popup.goto(popupUrl());
     await expect(popup.locator('#version-hinweis')).toBeVisible();
     await expect(popup.locator('#version-satz')).toContainText('9.9.9');
@@ -109,7 +110,7 @@ test('Neuere Version (9.9.9): Hinweis im Popup, Anleitung in vier Schritten, ein
 });
 
 test('Zweite Pruefung innerhalb von 24 Stunden ruft nicht ab, "erzwingen" und "Check now" rufen ab', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, '9.9.9.json');
@@ -152,11 +153,11 @@ test('Zweite Pruefung innerhalb von 24 Stunden ruft nicht ab, "erzwingen" und "C
 });
 
 test('Gleiche Version (0.7.0): kein Hinweis im Popup, Einstellungsseite sagt newest, Baudatum steht da', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, '0.7.0.json');
-    const popup = await context.newPage();
+    const popup = mitReitern(await context.newPage());
     await popup.goto(popupUrl());
     await expect.poll(() => server.zaehler['/v/0.7.0.json']).toBe(1);
     await popup.waitForTimeout(400);
@@ -178,12 +179,12 @@ test('Gleiche Version (0.7.0): kein Hinweis im Popup, Einstellungsseite sagt new
 });
 
 test('Fehler (404, kaputtes JSON, falsche Form, zu gross, Umleitung): Satz "Couldn’t check just now", kein Hinweis im Popup, alter Stand bleibt', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     for (const name of ['404.json', 'kaputt.json', 'falsch.json', 'gross.json', 'umleiten.json']) {
       await vorbereiten(seite, name);
-      const popup = await context.newPage();
+      const popup = mitReitern(await context.newPage());
       await popup.goto(popupUrl());
       await expect.poll(() => server.zaehler[`/v/${name}`]).toBe(1);
       await popup.waitForTimeout(300);
@@ -215,7 +216,7 @@ test('Fehler (404, kaputtes JSON, falsche Form, zu gross, Umleitung): Satz "Coul
 });
 
 test('Testbau ohne Adresse: kein Netz; Links, Pause-Satz und Texte stehen auf der Seite', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, null);
@@ -233,13 +234,14 @@ test('Testbau ohne Adresse: kein Netz; Links, Pause-Satz und Texte stehen auf de
       ['Patreon', links.patreon],
       ['SubscribeStar', links.subscribestar],
     ]);
+    await reiter(seite, 'About');
     await expect(seite.locator('#ue-netz')).toBeVisible();
     await expect(seite.locator('#ue-pause')).toContainText('Pausing');
     expect(await seite.locator('#ue-links a').evaluateAll((as) => as.every((x) => x.getAttribute('rel')?.includes('noopener') && x.getAttribute('target') === '_blank'))).toBe(true);
     // Abschnitt hat die vom Vertrag verlangte Ueberschrift und ist benannt.
     expect(await seite.locator('#ueber').getAttribute('aria-labelledby')).toBe('ueber-titel');
     // Das Popup bleibt ohne Adresse leer.
-    const popup = await context.newPage();
+    const popup = mitReitern(await context.newPage());
     await popup.goto(popupUrl());
     await popup.waitForTimeout(400);
     await expect(popup.locator('#version-hinweis')).toBeHidden();
@@ -252,7 +254,7 @@ test('Testbau ohne Adresse: kein Netz; Links, Pause-Satz und Texte stehen auf de
 });
 
 test('Vorabversion (9.9.9-beta) wird nie als Update gemeldet', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, 'vorab.json');
@@ -265,7 +267,7 @@ test('Vorabversion (9.9.9-beta) wird nie als Update gemeldet', async () => {
 });
 
 test('Popup: gespeicherter Stand sofort, langsamer Abruf verschiebt den Pause-Knopf nicht, Hinweis steht unter dem Knopf', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, 'langsam.json');
@@ -273,7 +275,7 @@ test('Popup: gespeicherter Stand sofort, langsamer Abruf verschiebt den Pause-Kn
     await seite.evaluate(async () => {
       await (globalThis as any).chrome.storage.local.set({ versionPruefung: { geprueft: Date.now() - 25 * 3600 * 1000, neueste: '9.9.9', fehler: false } });
     });
-    const popup = await context.newPage();
+    const popup = mitReitern(await context.newPage());
     await popup.goto(popupUrl());
     const t0 = Date.now();
     await expect(popup.locator('#version-hinweis')).toBeVisible({ timeout: 2000 });
@@ -295,8 +297,8 @@ test('Popup: gespeicherter Stand sofort, langsamer Abruf verschiebt den Pause-Kn
 });
 
 test('Content-Script darf nicht erzwingen und nicht pruefen: Zaehler bleibt, nur der gespeicherte Stand kommt zurueck', async () => {
-  const seite = await context.newPage();
-  const fremd = await context.newPage();
+  const seite = mitReitern(await context.newPage());
+  const fremd = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, '9.9.9.json');
@@ -334,7 +336,7 @@ test('Content-Script darf nicht erzwingen und nicht pruefen: Zaehler bleibt, nur
 });
 
 test('"Check now" waehrend eines nicht faelligen Laufs ruft trotzdem ab', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
     await vorbereiten(seite, '9.9.9.json');

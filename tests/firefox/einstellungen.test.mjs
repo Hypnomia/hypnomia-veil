@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 150 s ueberschritten');
@@ -113,9 +114,13 @@ const oeffneZu = async () => {
     if (Date.now() > frist) throw new Error('Ordnung der Einstellungsseite nicht bereit');
     await new Promise((r) => setTimeout(r, 100));
   }
-  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+  await driver.executeScript(`for (const t of document.querySelectorAll('[role=tab]')) { t.click(); for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } } document.querySelector('[role=tab]').click(); window.scrollTo(0, 0);`);
 };
-const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+// E4d1: wer Sichtbarkeit pruefen will, oeffnet vorher den Reiter des Elements (wie die Person).
+const sichtbar = async (css) => {
+  await oeffneReiterFuer(driver, css);
+  return driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+};
 const klick = (css) => driver.executeScript(`document.querySelector(arguments[0]).click()`, css);
 const setzeRange = (css, wert) =>
   driver.executeScript(`const e = document.querySelector(arguments[0]); e.value = arguments[1]; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));`, css, String(wert));
@@ -176,6 +181,7 @@ try {
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 30_000 });
   const version = (await driver.getCapabilities()).get('browserVersion');
   await installiere(driver, paket);
@@ -191,12 +197,13 @@ try {
   pruefe((await driver.getTitle()) === 'HYPNOMIA VEIL: Settings', 'Seitentitel "HYPNOMIA VEIL: Settings"');
   pruefe((await text('#status')).includes('On watch'), 'Status: On watch');
   pruefe((await text('#pause')) === 'Pause Mia', 'Pause-Knopf: Pause Mia');
-  const reihenfolge = await driver.executeScript(`return [...document.querySelectorAll('main > section, main > .gruppe')].map((s) => s.id)`);
-  // Phase 9 (Fund 4): sechs Gruppen, ohne Pack steht die Pack-Karte nach "Covering".
-  const soll = ['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber'];
+  // E4d1 (D1, D2): die Abschnitte stehen in sieben Reitern (Panels); Reihenfolge der Abschnitte ueber alle Panels.
+  const reihenfolge = await driver.executeScript(`return [...document.querySelectorAll('main [role=tabpanel] > section, main [role=tabpanel] > .gruppe')].map((s) => s.id)`);
+  // Phase 9 (Fund 4): ohne Pack steht die Pack-Karte im Reiter Pack and sound vor Sound; der Stil wohnt im eigenen Reiter Style.
+  const soll = ['abschnitt-stil', 'covering', 'erwachsen', 'kontrolle', 'stand', 'ton', 'ledger', 'ueber'];
   pruefe(JSON.stringify(reihenfolge) === JSON.stringify(soll), `Abschnitte in der Reihenfolge des Auftrags (${reihenfolge.length})`);
-  const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung a[href^="#"]:not([hidden])')].every((a) => !!document.getElementById(a.getAttribute('href').slice(1))) ? document.querySelectorAll('#sprung a[href^="#"]:not([hidden])').length : -1`);
-  pruefe(links === 7, `Sprungleiste: ${links} Links, alle mit Ziel`);
+  const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung [role=tab]')].every((t) => !!document.getElementById(t.getAttribute('aria-controls'))) ? document.querySelectorAll('#sprung [role=tab]').length : -1`);
+  pruefe(links === 7, `Reiterleiste: ${links} Reiter, alle mit Panel`);
   pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-zone]').length`)) === 10, '10 Zonen aufgebaut');
   pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-bedeckt]').length`)) === 6, '6 "even when clothed"');
 

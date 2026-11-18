@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -113,11 +113,11 @@ for (const breite of [1280, 360]) {
   test(`Auswahlfelder: Willkommen (Interview Seite 5), Einstellungen (Mia's control) und Pack "Set me up" gleich gestaltet bei ${breite} px`, async () => {
     const hoehe = breite === 360 ? 780 : 800;
     test.setTimeout(150_000);
-    const v = await context.newPage();
+    const v = mitReitern(await context.newPage());
     try {
       // 1. Willkommen, Interview Seite 5 (Pack im Speicher: fuenf Seiten). Der Speicher wird von der Willkommensseite selbst geschrieben,
       // die Einstellungsseite wuerde einen Pack-Eintrag ohne Datenbank sofort wegraeumen.
-      const w = await context.newPage();
+      const w = mitReitern(await context.newPage());
       await w.setViewportSize({ width: breite, height: hoehe });
       await w.goto(url('willkommen.html'));
       await schreibe(w, { einstieg: FERTIG, pack: PACK_KURZ });
@@ -136,17 +136,19 @@ for (const breite of [1280, 360]) {
       await entferne(w, ['pack']);
       await w.close();
       // 2. Einstellungen, Mia's control
-      const o = await context.newPage();
+      const o = mitReitern(await context.newPage());
       await o.setViewportSize({ width: breite, height: hoehe });
       await o.goto(url('options.html'));
       await expect(o.locator('#pack-status')).not.toHaveText('');
       await oeffneZugeklapptes(o);
+      await reiter(o, 'Mia’s extras');
       await expect(o.locator('#kon-blitz')).toBeVisible();
       const einstellungen = await messeAuswahl(o);
       pruefeGleich(einstellungen, breite, ['kon-blitz', 'kon-cursor']);
       expect(await fokusRahmen(o, '#kon-blitz')).toMatch(/solid 3px/);
       // 3. Pack "Set me up" (Pack mit Blitz-Freischaltung)
       await schreibe(o, { pack: { ...PACK_KURZ, freischaltungen: ['kontrolle:blitz'] } });
+      await reiter(o, 'Pack and sound');
       await expect(o.locator('#einrichten-blitz')).toBeVisible();
       const pack = (await messeAuswahl(o)).find((m) => m.kennung === 'einrichten-blitz');
       expect(pack, 'Auswahlfeld im Pack-Block gefunden').toBeTruthy();

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -71,7 +72,7 @@ const loescheSpeicher = (...schluessel: string[]) => worker.evaluate((s) => (glo
 const liesSpeicher = (schluessel: string) => worker.evaluate(async (s) => (await (globalThis as any).chrome.storage.local.get(s))[s], schluessel);
 
 async function importierePack(pfad: string) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -82,11 +83,12 @@ async function importierePack(pfad: string) {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     // Session 11: die Einstellungsseite zeichnet den Pack-Stand erst nach dem Laden (sonst Wettlauf).
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
@@ -122,7 +124,7 @@ async function erwarteAbgelehnt(s: Page, grund: string, blitz: Record<string, un
   expect(a.woerter).toEqual([]);
 }
 async function neueSeite(abfrage = ''): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE + abfrage);
   await s.bringToFront();
   // Das Content-Script braucht einen Augenblick fuer Pack und Einstellungen; ein erster Aufruf wird sonst abgelehnt.

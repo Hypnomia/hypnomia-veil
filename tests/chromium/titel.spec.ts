@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -77,7 +78,7 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
 const loescheEinstellungen = () => worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
 
 async function importierePack(pfad: string) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -89,11 +90,12 @@ async function importierePack(pfad: string) {
 }
 
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     // Session 11: die Einstellungsseite zeichnet den Pack-Stand erst nach dem Laden (sonst Wettlauf).
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
@@ -127,7 +129,7 @@ test.beforeEach(async () => {
 test('ohne Pack aendert sich nichts: Karten, Seitentitel und Tab-Titel bleiben', async () => {
   test.setTimeout(60_000);
   await entfernePack();
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await abwarten(1500);
   for (const [id, t] of Object.entries(ORIGINALE)) expect(await textVon(s, id), id).toBe(t);
@@ -143,7 +145,7 @@ test('Pack importieren', async () => {
 
 test('Pornhub: Kartentitel, Seitentitel, Tab-Titel und Link-Titel werden Mias Kommentar, Symbol bleibt', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   expect(await textVon(s, 't2')).toBe('Test title: Original card two');
@@ -171,7 +173,7 @@ test('Pornhub: Kartentitel, Seitentitel, Tab-Titel und Link-Titel werden Mias Ko
 
 test('XVideos: h2.page-title und Kartentitel in thumb-under werden ersetzt', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('xvideos'));
   await expect.poll(() => textVon(s, 'seitentitel-xv'), { timeout: 20_000, intervals: [100] }).toBe('Test title: Original xvideos page title');
   expect(await textVon(s, 't5')).toBe('Test title: Original xvideos card');
@@ -182,7 +184,7 @@ test('XVideos: h2.page-title und Kartentitel in thumb-under werden ersetzt', asy
 
 test('lange Titel werden auf etwa 60 Zeichen gekuerzt', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   const t = await textVon(s, 't3');
@@ -196,7 +198,7 @@ test('lange Titel werden auf etwa 60 Zeichen gekuerzt', async () => {
 
 test('kein innerHTML: Titel mit <b> und <img> bleibt Text', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   expect(await textVon(s, 't4')).toBe('Test title: <b>bold</b> <img src=x onerror=window.__xss=1> title');
@@ -207,7 +209,7 @@ test('kein innerHTML: Titel mit <b> und <img> bleibt Text', async () => {
 
 test('Pause stellt Originale sofort zurueck, Ende der Pause ersetzt wieder', async () => {
   test.setTimeout(90_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   await expect.poll(() => tabTitel(s), { timeout: 10_000 }).toBe('Test title: Original tab title');
@@ -230,7 +232,7 @@ test('Pause stellt Originale sofort zurueck, Ende der Pause ersetzt wieder', asy
 
 test('die Seite schreibt Titel neu: Karte, Tab-Titel, neue Karten und Seitenwechsel werden wieder ersetzt', async () => {
   test.setTimeout(90_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   await s.evaluate(() => (window as any).schreibeKarteNeu('t2', 'Fresh card text'));
@@ -272,7 +274,7 @@ test('die Seite schreibt Titel neu: Karte, Tab-Titel, neue Karten und Seitenwech
 
 test('die Seite kuerzt unseren Text selbst und schreibt ihn zurueck: nicht doppelt umhuellt, Pause stellt das Original her', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   await expect.poll(() => textVon(s, 't2'), { timeout: 10_000, intervals: [50] }).toBe('Test title: Original card two');
@@ -289,7 +291,7 @@ test('die Seite kuerzt unseren Text selbst und schreibt ihn zurueck: nicht doppe
 test('Adresswechsel ohne Neuladen: Ausnahme mit Pfad greift beim Hin- und Herwechseln', async () => {
   test.setTimeout(90_000);
   await setzeEinstellungen({ ausnahmen: ['pornhub.veil-erwachsen.test/gesperrt'] });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   await s.evaluate(() => (window as any).geheZu('/gesperrt/seite'));
@@ -308,7 +310,7 @@ test('Adresswechsel ohne Neuladen: Ausnahme mit Pfad greift beim Hin- und Herwec
 
 test('eigene Seite des Nutzers gilt wie die Liste; Eintrag entfernt stellt das Original zurueck', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-titel.html`);
   await abwarten(1500);
   expect(await tabTitel(s)).toBe('Original tab title');
@@ -322,7 +324,7 @@ test('eigene Seite des Nutzers gilt wie die Liste; Eintrag entfernt stellt das O
 test('nur am Inhalt erkannte Seite (liste null, amInhalt true): keine Aenderung', async () => {
   test.skip(OHNE_TESTBILDER, 'VEIL_OHNE_TESTBILDER=1');
   test.setTimeout(180_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-inhalt.html?satz=nsfw&n=16`);
   const vorher = await tabTitel(s);
   await expect
@@ -335,7 +337,7 @@ test('nur am Inhalt erkannte Seite (liste null, amInhalt true): keine Aenderung'
 
 test('Seite nicht auf der Liste: keine Aenderung', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-titel.html`);
   await abwarten(2000);
   expect(await textVon(s, 't1')).toBe('Original card one');
@@ -346,7 +348,7 @@ test('Seite nicht auf der Liste: keine Aenderung', async () => {
 test('Pornoseiten-Modus aus oder eigene Ausnahme: keine Aenderung', async () => {
   test.setTimeout(60_000);
   await setzeEinstellungen({ erwachsen: { an: false, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: [] } });
-  let s = await context.newPage();
+  let s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await abwarten(2000);
   expect(await textVon(s, 't1')).toBe('Original card one');
@@ -365,7 +367,7 @@ test('Seite ohne eigene Titel-Selektoren (allgemein): nur der Tab-Titel wird ers
   test.setTimeout(60_000);
   // Im Testbau gilt jede andere Subdomain als `allgemein` (Seite auf der Liste ohne Titel-Selektoren). Die Karten bleiben,
   // der Tab-Titel (nicht an Selektoren gebunden) wird ersetzt.
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('irgendeine'));
   await expect.poll(() => tabTitel(s), { timeout: 20_000, intervals: [100] }).toBe('Test title: Original tab title');
   expect(await textVon(s, 't1')).toBe('Original card one');
@@ -376,7 +378,7 @@ test('stabile Satzwahl: gleicher Titel, gleicher Satz, auch nach Neuaufbau und N
   test.setTimeout(90_000);
   await entfernePack();
   await importierePack(mehrPackPfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await expect.poll(() => textVon(s, 't1'), { timeout: 20_000, intervals: [100] }).toMatch(/^(Alpha|Beta|Gamma) Original card one$/);
   await expect.poll(() => attrVon(s, 't9', 'title'), { timeout: 10_000, intervals: [100] }).toMatch(/^(Alpha|Beta|Gamma) /);
@@ -405,7 +407,7 @@ test('Pack ohne Freischaltung erwachsen:titel: keine Aenderung', async () => {
   test.setTimeout(90_000);
   await entfernePack();
   await importierePack(altPackPfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await abwarten(2000);
   expect(await textVon(s, 't1')).toBe('Original card one');
@@ -417,7 +419,7 @@ test('Pack entfernt auf offener Seite: Originale kommen zurueck', async () => {
   test.setTimeout(90_000);
   await entfernePack();
   await importierePack(packPfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   await entfernePack();
@@ -447,7 +449,7 @@ const lieseFrames = (s: Page) => s.evaluate(() => (window as any).__fr as { fram
 test('Titel ohne Aufblitzen: mit Pack 0 gezeichnete Frames mit Originaltitel, danach ersetzt', async () => {
   test.setTimeout(90_000);
   await importierePack(packPfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.addInitScript(SONDE_FRAMES);
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
@@ -464,7 +466,7 @@ test('Titel ohne Aufblitzen: mit Pack 0 gezeichnete Frames mit Originaltitel, da
 test('Titel ohne Aufblitzen: ohne Pack bleiben die Titel nach kurzer Zeit sichtbar', async () => {
   test.setTimeout(90_000);
   await entfernePack();
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.addInitScript(SONDE_FRAMES);
   await s.goto(seite('pornhub'));
   await expect.poll(async () => (await lieseFrames(s)).frei, { timeout: 5000, intervals: [50] }).not.toBeNull();
@@ -479,7 +481,7 @@ test('Titel ohne Aufblitzen: ohne Pack bleiben die Titel nach kurzer Zeit sichtb
 
 test('Titel, die spaeter eingefuegt werden (Endlos-Scrollen): 0 Frames im Original, danach ersetzt', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub'));
   await warteBisErsetzt(s);
   await s.evaluate(async () => {
@@ -512,7 +514,7 @@ test('Titel, die spaeter eingefuegt werden (Endlos-Scrollen): 0 Frames im Origin
 test('Seite kopiert die Blattliste und setzt sie spaeter neu: ohne Pack bleibt der Titel sichtbar', async () => {
   test.setTimeout(90_000);
   await entfernePack();
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(seite('pornhub') + '?kopie=1');
   await expect.poll(() => s.evaluate(() => (window as any).__kopie.gesetzt), { timeout: 8000, intervals: [100] }).toBe(true);
   await abwarten(300);
@@ -533,7 +535,7 @@ test('Pack ohne Titel-Saetze: das Original ist sofort wieder da (nicht erst nach
   const pfad = path.join(ordner, 'ohne-titel.miapack');
   await writeFile(pfad, (await bau.baueDummyPack({ texte: ohneTitel, id: 'ohne-titel' })).bytes);
   await importierePack(pfad);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.addInitScript(SONDE_FRAMES);
   await s.goto(seite('pornhub'));
   await expect.poll(async () => (await lieseFrames(s)).frei, { timeout: 5000, intervals: [50] }).not.toBeNull();
@@ -548,7 +550,7 @@ test('Pack ohne Titel-Saetze: das Original ist sofort wieder da (nicht erst nach
 test('lokale Pause im Riegel (Hintergrund stumm): der Tab-Titel ist sofort im Original', async () => {
   test.setTimeout(90_000);
   await setzeEinstellungen({ erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: ['127.0.0.1'] } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${basis}/erwachsen-titel.html`);
   await expect.poll(() => tabTitel(s), { timeout: 15_000, intervals: [50] }).toBe('Test title: Original tab title');
   // Der Riegel-Testhaken laeuft nur auf 127.0.0.1 (Seite `allgemein`, ohne Titel-Selektoren): hier zaehlt der Tab-Titel. Die Karten stellt

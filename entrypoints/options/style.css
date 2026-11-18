@@ -476,31 +476,6 @@ header .gross {
   font-weight: 600;
 }
 
-#sprung {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-wrap: wrap;
-  /* Platz fuer den Fokusrahmen der Chips (outline 3 px plus Abstand). */
-  padding: 5px 4px;
-  gap: 6px 8px;
-}
-
-#sprung a {
-  padding: 4px 10px;
-  border: 1px solid var(--linie);
-  border-radius: 999px;
-  background: var(--karte);
-  color: var(--akzent-text);
-  font-size: 13px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-#sprung a:hover {
-  background: var(--akzent-hell);
-}
-
 /* Sprungziele und fokussierte Elemente rutschen nicht unter die klebende Leiste; grund.ts setzt scroll-padding-top aus der echten Hoehe. */
 html {
   scroll-padding-top: 80px;
@@ -620,17 +595,7 @@ section:empty {
     margin: 0 -12px;
     padding: 6px 12px;
   }
-  #sprung {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    /* Verlauf am rechten Rand: es gibt noch mehr Chips. Session 16 (UX 8b Nr. 17): 56 px breit, damit auch dann ein Chip sichtbar
-       ausblendet, wenn eine Chip-Kante genau am Rand liegt (bei 28 px fiel der Verlauf in Chromium 360 px in die Luecke). */
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
-    mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
-  }
   /* Fund 11: Finger-Ziele mindestens 44 px hoch. */
-  #sprung a,
   button.klein,
   button.gross,
   .liste button,
@@ -679,23 +644,7 @@ section:empty {
 }
 
 /* ---------- Runde 3 nach der zweiten UX-Lesung (Orchestrator) ---------- */
-/* N5: ueber 480 px kleinere Chips, damit die klebende Leiste niedrig bleibt; der aktuelle Abschnitt ist markiert (grund.ts, aria-current). */
-/* Lesung Runde 3, Nr. 5: nur mit Maus; Tablets mit Touch behalten die grossen Chips. Abweichung von der Festlegung N5: die Leiste
-   bricht weiter um (eine Zeile mit verstecktem Rest hatte die erste Lesung bemaengelt), die Chips sind nur kleiner. */
-@media (min-width: 481px) and (pointer: fine) {
-  #sprung {
-    gap: 4px;
-  }
-  #sprung a {
-    padding: 2px 7px;
-    font-size: 12px;
-  }
-}
-#sprung a[aria-current="true"] {
-  background: var(--akzent-hell);
-  border-color: var(--akzent);
-  font-weight: 650;
-}
+/* E4d1: die Chips der Sprungleiste sind die Reiter (reiter.css), ihre alten Regeln sind entfernt. */
 /* N6: der Pause-Knopf der Leiste erscheint erst, wenn der grosse Knopf oben aus dem Bild ist (grund.ts setzt hidden). */
 /* N7: der Ablage-Satz steht nur mit feinem Zeiger und Hover, also mit Maus. Firefox Android meldet `pointer: fine`, aber `hover: none`. */
 @media not ((pointer: fine) and (hover: hover)) {
@@ -1008,24 +957,6 @@ input:focus-visible {
   }
 }
 
-#sprung a {
-  border: 1px solid var(--v-rosa-200);
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--v-rosa-800);
-  font-weight: 700;
-}
-
-#sprung a:hover {
-  background: var(--v-weiss);
-}
-
-#sprung a[aria-current='true'] {
-  border-color: transparent;
-  background: var(--v-verlauf-akzent);
-  color: var(--v-weiss);
-  font-weight: 800;
-}
-
 /* Schalter: Bahn aus hell mit sichtbarem Rand (3:1), an im Akzent-Verlauf */
 .regler {
   width: 46px;
@@ -1195,9 +1126,6 @@ input[type='checkbox'] {
 }
 
 /* Nr. 5 (Runde 3): der Fokusrahmen der Chips passt in das Polster der Leiste (5 px). */
-#sprung a:focus-visible {
-  outline-offset: 2px;
-}
 
 /* UX-Pruefung 8b Nr. 7: loeschende Knoepfe (Pack entfernen, Ledger leeren) heben sich ab; die Rueckfrage bleibt wie bisher. */
 #entfernen,
@@ -1223,15 +1151,6 @@ input[type='checkbox'] {
   flex-direction: column;
   gap: 18px;
   min-width: 0;
-}
-
-/* Der alte Chip "Interview" bleibt nur als verborgener Anker im DOM (grund-pack.ts sucht ihn); das Interview wohnt in "About and help". */
-#chip-interview {
-  display: none !important;
-}
-
-#sprung .hilfe-link {
-  margin-left: 0;
 }
 
 /* "How hot do I get?" ist die erste Bedienung in Adult sites und so gross wie die anderen Bedienungen (Fund 10). */
@@ -1390,4 +1309,23 @@ h2 {
     margin-top: 6px;
     padding: 0 26px 0 14px;
   }
+}
+
+/* ========== Phase 11 E4d1: Reiter und Platz der Vorschau ========== */
+/* Breite fuer Reiter, Inhalt und Vorschau; die Regeln der Reiter selbst stehen in reiter.css. */
+main {
+  max-width: 1200px;
+}
+
+/* Die Leiste traegt nur noch Hilfe-Weg und kleine Pause: Hilfe links, Pause rechts. */
+.leiste-zeile {
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+#leiste .hilfe-link {
+  margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }

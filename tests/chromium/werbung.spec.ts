@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -112,7 +113,7 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
 const loescheEinstellungen = () => worker.evaluate(() => (globalThis as any).chrome.storage.local.remove('einstellungen'));
 
 async function importierePack(pfad: string) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -123,13 +124,15 @@ async function importierePack(pfad: string) {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#entfernen').waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
+      await reiterFuer(s, '#entfernen');
       await expect(s.locator('#entfernen')).toBeHidden({ timeout: 15_000 });
     }
   } finally {
@@ -216,7 +219,7 @@ let layoutOhne: Awaited<ReturnType<typeof layoutVon>>;
 
 test('ohne Pack aendert sich nichts: Originale sichtbar, Anzeige laeuft, kein Tausch', async () => {
   await loescheEinstellungen();
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await abwarten(3500); // die spaete Werbung erscheint nach 2 s
   expect(await standVon(s)).toBeNull();
@@ -233,7 +236,7 @@ test('mit Pack: Werbeflaechen getauscht, gekennzeichnet, normale Bilder bleiben,
   console.log('werbung: Pack importiert');
   // Seit 0.9.0 ist die Werbung ab Werk aus (Opt-in): die Tests schalten sie ein.
   await setzeEinstellungen({ kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.addInitScript(() => {
     (window as any).__spaetSicht = null;
     new MutationObserver(() => {
@@ -295,7 +298,7 @@ test('mit Pack: Werbeflaechen getauscht, gekennzeichnet, normale Bilder bleiben,
 });
 
 test('Medien: Anzeige im Werbe-Rahmen und Video in der Flaeche angehalten und stumm', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await abwarten(1200);
@@ -318,7 +321,7 @@ test('Medien: Anzeige im Werbe-Rahmen und Video in der Flaeche angehalten und st
 });
 
 test('Medien in einem Rahmen ohne eigene Adresse innerhalb der Flaeche werden angehalten; ein Werbe-Host als oberste Seite bleibt unberuehrt', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await abwarten(1200);
@@ -330,7 +333,7 @@ test('Medien in einem Rahmen ohne eigene Adresse innerhalb der Flaeche werden an
   expect(leer).toEqual({ pausiert: true, stumm: true });
   await s.close();
   // Wer einen Werbe-Host direkt besucht, bekommt nichts angehalten
-  const o = await context.newPage();
+  const o = mitReitern(await context.newPage());
   await o.goto(`http://ad.veil-werbung.test:${portFremd}/werbung-rahmen.html`);
   await abwarten(2500);
   expect(await o.evaluate(() => (document.getElementById('v') as HTMLVideoElement).paused)).toBe(false);
@@ -338,7 +341,7 @@ test('Medien in einem Rahmen ohne eigene Adresse innerhalb der Flaeche werden an
 });
 
 test('Klick oeffnet genau einen Link aus links.json in neuem Tab, Bild rotiert je Seitenaufruf', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   const hosts = new Set<string>();
   const mitschnitt = (r: { url(): string }) => {
     try {
@@ -384,7 +387,7 @@ test('Klick oeffnet genau einen Link aus links.json in neuem Tab, Bild rotiert j
   // Rotation: neuer Seitenaufruf, neues Bild (zwei Bilder fuer 300x250, 12 Aufrufe)
   const namen = new Set<string>();
   for (let i = 0; i < 12; i++) {
-    const p = await context.newPage();
+    const p = mitReitern(await context.newPage());
     await p.goto(nachrichten);
     await warteAuf(p, ['a-sponsored']);
     namen.add((await standVon(p))!.flaechen.find((x) => x.id === 'a-sponsored')!.bildName);
@@ -401,7 +404,7 @@ test('Plattform-Werbung: Logo, Knopftext und Link passen zusammen; Etikett sicht
   const plattformen = new Set<string>();
   const ids = ['f-728', 'f-468', 'f-320', 'f-970', 'f-300', 'f-336', 'f-160', 'f-300h'];
   for (let durchlauf = 0; durchlauf < 6; durchlauf++) {
-    const s = await context.newPage();
+    const s = mitReitern(await context.newPage());
     await s.setViewportSize({ width: durchlauf === 5 ? 360 : 1280, height: 900 });
     await s.goto(formateSeite);
     await warteAuf(s, ids);
@@ -468,7 +471,7 @@ test('Plattform-Werbung: Logo, Knopftext und Link passen zusammen; Etikett sicht
 
 test('Knopf vergroessert sich beim Hover, aber nicht im Ruhig-Modus und nicht bei prefers-reduced-motion', async () => {
   await setzeEinstellungen({ ausnahmen: [], pause: false, ruhig: false, kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.setViewportSize({ width: 1280, height: 900 });
   await s.goto(formateSeite);
   await warteAuf(s, ['f-300']);
@@ -501,7 +504,7 @@ test('Knopf vergroessert sich beim Hover, aber nicht im Ruhig-Modus und nicht be
 });
 
 test('Scrollen, Groessenwechsel und Transformation: hoechstens 2 px Versatz', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   const vorher = (await standVon(s))!.flaechen.find((x) => x.id === 'a-sponsored')!;
@@ -544,7 +547,7 @@ test('Scrollen, Groessenwechsel und Transformation: hoechstens 2 px Versatz', as
 });
 
 test('Pause (auch im Rahmen), Schalter aus und eigene Ausnahme geben die Originale sofort zurueck; danach wieder getauscht', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await expect.poll(async () => (await flaechenIds(innenRahmen(s))).length, { timeout: 15_000 }).toBe(1);
@@ -566,7 +569,7 @@ test('Pause (auch im Rahmen), Schalter aus und eigene Ausnahme geben die Origina
 });
 
 test('Erwachsenenseite: nur nach Groesse getauscht, Videolinks, Videos und Vorschau-Tausch bleiben', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(erwachsenSeite);
   await warteAuf(s, ['e-flaeche', 'e-kopf']);
   const ids = await flaechenIds(s);
@@ -578,7 +581,7 @@ test('Erwachsenenseite: nur nach Groesse getauscht, Videolinks, Videos und Vorsc
   expect(await rotAnteilMitte(s, 'e-flaeche')).toBeGreaterThan(0.1);
   await s.close();
   // dieselbe Seite auf einem normalen Host: ohne zweites Merkmal nichts
-  const n = await context.newPage();
+  const n = mitReitern(await context.newPage());
   await n.goto(`http://127.0.0.1:${port}/werbung-erwachsen.html`);
   await abwarten(2500);
   expect(await flaechenIds(n)).toEqual([]);
@@ -587,7 +590,7 @@ test('Erwachsenenseite: nur nach Groesse getauscht, Videolinks, Videos und Vorsc
 
 test('eigene Ausnahme des Tabs gilt auch in fremden Rahmen: Werbe-Rahmen laeuft weiter, nichts wird getauscht', async () => {
   await setzeEinstellungen({ ausnahmen: ['127.0.0.1'], pause: false, kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await abwarten(4000);
   expect(await standVon(s)).toBeNull();
@@ -610,7 +613,7 @@ test('eigene Ausnahme des Tabs gilt auch in fremden Rahmen: Werbe-Rahmen laeuft 
 test('lokale Pause im Riegel (Hintergrund stumm) gibt sofort frei; Medien bleiben angehalten; gleiche Flaeche, gleiches Bild nach der Pause', async () => {
   test.setTimeout(90_000);
   await setzeEinstellungen({ ausnahmen: [], pause: false, kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`${nachrichten}&retry=0`);
   await warteAuf(s, ERWARTET);
   const vorher = (await standVon(s))!.flaechen.find((x) => x.id === 'a-sponsored')!;
@@ -640,7 +643,7 @@ test('lokale Pause im Riegel (Hintergrund stumm) gibt sofort frei; Medien bleibe
   expect(medien, 'Medien bleiben nach der Pause angehalten (Rahmen startet nichts von selbst)').toBe(true);
   await s.close();
   // gleiche Flaeche, gleiches Bild nach Pause und Neustart im selben Seitenaufruf
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(nachrichten);
   await warteAuf(p, ERWARTET);
   const a0 = (await standVon(p))!.flaechen.find((x) => x.id === 'a-sponsored')!;
@@ -658,13 +661,13 @@ test('Lage: Karussell beschneidet, Kopfleiste und Dialog liegen darueber, Ausble
   test.setTimeout(120_000);
   // Vergleichswert ohne Tausch (Schalter aus)
   await setzeEinstellungen({ kontrolle: { ...KONTROLLE, werbung: false }, pause: false, ausnahmen: [] });
-  const ohne = await context.newPage();
+  const ohne = mitReitern(await context.newPage());
   await ohne.goto(lageSeite);
   await abwarten(2500);
   const ohneMass = await ohne.evaluate(() => ({ b: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight }));
   await ohne.close();
   await setzeEinstellungen({ kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(lageSeite);
   await warteAuf(s, ['a-kar', 'a-wichtig', 'a-aus', 'a-wachs', 'a-fest', 'sh-ins', 'a-link', 'a-skal']); // sh-ins steht in einem offenen Shadow Root
   // Ein Kind mit fester Groesse wuchs ohne Attributaenderung am Behaelter hinein (ResizeObserver)
@@ -758,7 +761,7 @@ test('Lage: Karussell beschneidet, Kopfleiste und Dialog liegen darueber, Ausble
 
 test('K3: Mias Werbung liegt nie ueber fremden Dialogen (body fest, Huelle, modales dialog), Skin und Rollsperre stoeren nicht', async () => {
   test.setTimeout(150_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.setViewportSize({ width: 1280, height: 720 });
   await s.goto(`http://127.0.0.1:${port}/werbung-dialog.html`);
   const ALLE = ['a-oben', 'a-neben', 'a-eigen'];
@@ -850,7 +853,7 @@ test('K3: Mias Werbung liegt nie ueber fremden Dialogen (body fest, Huelle, moda
 });
 
 test('Klicks und Ereignisse auf Mias Flaeche erreichen die Seite nicht (fruehe Zaehler der Seite am Fenster)', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(lageSeite);
   await warteAuf(s, ['a-wichtig']);
   await s.evaluate(() => document.getElementById('a-wichtig')!.scrollIntoView({ block: 'center' }));
@@ -878,7 +881,7 @@ test('Klicks und Ereignisse auf Mias Flaeche erreichen die Seite nicht (fruehe Z
 });
 
 test('Flaeche in einem Link der Seite: Klick auf die Kennzeichnung, Mittelklick und Kontextmenue loesen den Seitenlink nicht aus; Ziehen, Wischen und Rad gehen durch', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   const anfragen: string[] = [];
   context.on('request', (r) => anfragen.push(r.url()));
   await s.goto(lageSeite);
@@ -932,7 +935,7 @@ test('Flaeche in einem Link der Seite: Klick auf die Kennzeichnung, Mittelklick 
 });
 
 test('Erwachsenenseite: spaeter eintreffendes Video oder Vorschau-Zustand nimmt die Flaeche zurueck', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(erwachsenSeite);
   await warteAuf(s, ['e-flaeche']);
   await s.evaluate(() => (window as any).fuegeVideoEin());
@@ -978,7 +981,7 @@ async function klickPunkt(s: Page, aktion: string) {
 
 test('Etikett ist ein Knopf (mindestens 24 x 24), Klick oeffnet das Menue mit drei Punkten; Escape schliesst; Klick daneben schliesst; die Seite merkt nichts', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await s.evaluate(() => {
@@ -1020,7 +1023,7 @@ test('Etikett ist ein Knopf (mindestens 24 x 24), Klick oeffnet das Menue mit dr
 
 test('Menue: "Turn my ads off" schreibt kontrolle.werbung false und gibt die Originale sofort zurueck', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungGefragt: false } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await klickEtikett(s, 'a-rahmen');
@@ -1035,7 +1038,7 @@ test('Menue: "Turn my ads off" schreibt kontrolle.werbung false und gibt die Ori
 
 test('Menue: "Hide my ads on this site" setzt den Host auf werbungAus; die Seite bleibt danach (auch nach Neuladen) ohne Werbung, andere Einstellungen bleiben', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await klickEtikett(s, 'a-ins');
@@ -1049,7 +1052,7 @@ test('Menue: "Hide my ads on this site" setzt den Host auf werbungAus; die Seite
   await abwarten(2500);
   expect(await flaechenIds(s), 'nach dem Neuladen keine Werbung').toEqual([]);
   // Eine andere Seite (anderer Host) zeigt weiter Werbung
-  const t = await context.newPage();
+  const t = mitReitern(await context.newPage());
   await t.goto(`http://localhost:${port}/werbung-nachrichten.html?fremd=${portFremd}`);
   await warteAuf(t, ERWARTET);
   await t.close();
@@ -1062,7 +1065,7 @@ test('Menue: "Hide my ads on this site" setzt den Host auf werbungAus; die Seite
 test('Menue in einem eingebetteten Rahmen: "Hide my ads on this site" speichert die Seite des Tabs, nicht den Host des Rahmens', async () => {
   // Beide Listen leer: die Tab-Adresse ist im Rahmen nicht von vornherein bekannt (Fund 4).
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungAus: [] } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   const rahmen = s.frames().find((f) => f.url().startsWith(`http://localhost:${portFremd}/`));
@@ -1090,7 +1093,7 @@ test('Menue im Rahmen waehrend einer laufenden Tab-Abfrage: "Hide my ads on this
   // Eine eigene Ausnahme (fremder Host) laesst den Rahmen schon beim Laden nach dem Tab fragen.
   await setzeEinstellungen({ pause: false, ausnahmen: ['beispiel.invalid'], kontrolle: { ...KONTROLLE, werbungAus: [] } });
   await worker.evaluate(() => (globalThis as any).chrome.storage.local.set({ testTabVerzoegerung: 9000 }));
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     // Die erste Abfrage des Rahmens startet erst nach dem Laden: ihre Antwort kommt fruehestens 9 s nach tLaden (Pruefung Runde 4 zu N5).
     const tLaden = Date.now();
@@ -1131,7 +1134,7 @@ test('Menue im Rahmen waehrend einer laufenden Tab-Abfrage: "Hide my ads on this
 // Seite schon (das Menue steht fest und wuerde sonst neben der Flaeche haengen).
 test('Menue: Rollen einer fremden inneren Leiste laesst es offen, Rollen der Seite schliesst es', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(nachrichten);
     await warteAuf(s, ERWARTET);
@@ -1158,7 +1161,7 @@ test('Menue: Rollen einer fremden inneren Leiste laesst es offen, Rollen der Sei
 
 test('Menue: "Pause Mia" pausiert alles; auf einer Flaeche unter 80 px gibt es nur "Turn my ads off"', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: KONTROLLE });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   const klein = await klickEtikett(s, 'a-anzeige');
@@ -1215,7 +1218,7 @@ async function tabBis(s: Page, id: string): Promise<number> {
 
 test('Tastatur: Etikett per Tab erreichbar, Enter und Leertaste oeffnen, Pfeile nur ueber sichtbare Punkte, Escape gibt den Fokus zurueck, Enter auf einem Punkt loest aus', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungGefragt: false } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(nachrichten);
     await warteAuf(s, ERWARTET);
@@ -1317,7 +1320,7 @@ async function tabBisLink(s: Page): Promise<number> {
 
 test('Tastatur: Enter auf Mias Werbelink oeffnet den Marken-Link wie ein Mausklick, die Seite darunter sieht nichts', async () => {
   await setzeEinstellungen({ pause: false, ausnahmen: [], kontrolle: { ...KONTROLLE, werbungGefragt: true } });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   const anfragen: string[] = [];
   context.on('request', (r) => anfragen.push(r.url()));
   try {
@@ -1384,7 +1387,7 @@ test('Tastatur: Enter auf Mias Werbelink oeffnet den Marken-Link wie ein Mauskli
 });
 
 test('ohne Pack nach dem Entfernen: nichts mehr getauscht', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(nachrichten);
   await warteAuf(s, ERWARTET);
   await entfernePack();

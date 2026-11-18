@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -74,7 +75,7 @@ const liesSitzung = <T>(schluessel: string) => worker.evaluate(async (k) => ((aw
 const lies = <T>(schluessel: string) => worker.evaluate(async (k) => ((await (globalThis as any).chrome.storage.local.get(k)) as any)[k] as T, schluessel);
 
 async function importierePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -85,14 +86,16 @@ async function importierePack() {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     await abwarten(300);
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
+      await reiterFuer(s, '#entfernen');
       await expect(s.locator('#entfernen')).toBeHidden({ timeout: 15_000 });
     }
   } finally {
@@ -134,7 +137,7 @@ const hostAnzahl = (p: Page) => p.evaluate(() => document.querySelectorAll('[dat
 const zaehler = (p: Page): Promise<any> => p.evaluate(() => (window as any).zaehler);
 const capture = (p: Page): Promise<any> => p.evaluate(() => (window as any).zaehlerCapture);
 async function oeffne(query = ''): Promise<Page> {
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(seite(query));
   await p.bringToFront();
   await p.mouse.move(150, 130);
@@ -532,7 +535,7 @@ test('Begruessung auf Erwachsenenseiten: einmal je Host in 30 Minuten (Merker ni
   await schreibe('grussMerker', { 'alt.example': Date.now() });
   try {
     // Fund 10: ein Seitenskript, das den alten Schluessel im sessionStorage vorab setzt, unterdrueckt die Begruessung nicht
-    const vorab = await context.newPage();
+    const vorab = mitReitern(await context.newPage());
     await vorab.addInitScript(() => sessionStorage.setItem('veil-gruss:127.0.0.1', '1'));
     await vorab.goto(seite('?veil-gruss'));
     await vorab.bringToFront();

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ABBAU_MS, wirksameStufe, vervollstaendigeStand } from '../../src/steigerung';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -42,7 +43,7 @@ test.beforeAll(async () => {
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   id = new URL(worker.url()).host;
-  ext = await context.newPage();
+  ext = mitReitern(await context.newPage());
   await ext.goto(`chrome-extension://${id}/options.html`);
 });
 
@@ -99,7 +100,7 @@ test('d) die Seite meldet ihre Minute, eine hoehere Stufe schaltet Gesichtszonen
   const stand0 = { version: 1, stufe: 0, minutenSeitAnstieg: 0, naechsterAnstiegNach: 15, abbauAb: 0, letzteMinute: -1, pauseSeit: null };
   await schreibe({ pack: pack(['zensur:steigerung']), steigerung: stand0 });
   await aendereEinstellungen({ pause: false, erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: ['127.0.0.1'] } });
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(`http://127.0.0.1:${port}/steigerung.html?veil-steigerung-takt=400`);
     // Meldung der Seite: 127.0.0.1 steht bei den eigenen Seiten, die Minute zaehlt.

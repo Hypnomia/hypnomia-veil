@@ -7,6 +7,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -41,7 +42,7 @@ const riegel = (s: Page) =>
     return a ? JSON.parse(a) : null;
   });
 const extSeite = async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`chrome-extension://${erweiterungsId}/options.html`);
   return s;
 };
@@ -63,7 +64,7 @@ async function aendereEinstellungen(teil: Record<string, any>): Promise<void> {
 const klickeMitte = async (s: Page, r: { x: number; y: number; w: number; h: number }) => s.mouse.click(r.x + r.w / 2, r.y + r.h / 2);
 
 async function frischeSeite(url = SEITE): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url);
   await expect.poll(() => s.evaluate(() => document.documentElement.hasAttribute('data-veil-status')), { timeout: 10_000 }).toBe(true);
   // Verdeckt-Fall schnell erreichen (zweiter Versuch nach einem Fehler)

@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -77,7 +77,7 @@ const lies = (schluessel: string): Promise<any> => worker.evaluate(async (k) => 
 const ausWorker = (n: unknown): Promise<any> => worker.evaluate((m) => (globalThis as any).chrome.runtime.sendMessage(m), n);
 
 async function warteAufErkenner() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect
@@ -144,13 +144,15 @@ const ergaenze = (s: Page, id: string, b: number, h: number, n: number, key?: st
 
 test('ohne Pack: der Regler ist gesperrt, ein Satz steht da, die Knoepfe sind nicht zu sehen', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(optionsUrl());
   await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
   // Ohne Pack steht Adult sites zugeklappt ("Set them now"): erst aufklappen, wie die Person.
   await oeffneZugeklapptes(s);
+  await reiterFuer(s, '#stufe-gesperrt');
   await expect(s.locator('#stufe-gesperrt')).toBeVisible();
   await expect(s.locator('#stufe-gesperrt')).toContainText('Mia Pack');
+  await reiterFuer(s, '#stufe-wahl');
   await expect(s.locator('#stufe-wahl')).toBeHidden();
   expect(await s.locator('input[name="stufe"]').evaluateAll((l) => l.every((i) => (i as HTMLInputElement).disabled))).toBe(true);
   // Ein gespeicherter Wert aendert sich ohne Pack nicht ueber die Oberflaeche
@@ -160,7 +162,7 @@ test('ohne Pack: der Regler ist gesperrt, ein Satz steht da, die Knoepfe sind ni
 
 test('Pack mit Stufen importieren', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -174,10 +176,12 @@ test('Pack mit Stufen importieren', async () => {
 
 test('mit Pack: Regler sichtbar, Standard Hot, Wahl speichert, Zeile in Mias Stimme, Fingerziele 44 px bei 360 px', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.setViewportSize({ width: 360, height: 800 });
   await s.goto(optionsUrl());
+  await reiterFuer(s, '#stufe-wahl');
   await expect(s.locator('#stufe-wahl')).toBeVisible();
+  await reiterFuer(s, '#stufe-gesperrt');
   await expect(s.locator('#stufe-gesperrt')).toBeHidden();
   await expect(s.getByRole('radiogroup', { name: 'How hot do I get?' }).first()).toBeVisible(); // zweiter Regler steht in "Set me up"
   await expect(s.locator('input[name="stufe"][value="hot"]')).toBeChecked();
@@ -252,7 +256,7 @@ test('Erkenner: Wahl nach Stufe und Verhaeltnis (Nachricht packbild)', async () 
 test('Kacheln: Wahl nach Format, Stufenwechsel wirkt beim naechsten Bild ohne Neuladen, auch fuer dieselbe Quelle', async () => {
   test.setTimeout(120_000);
   await setzeErwachsen({ stufe: 'explicit' });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   await warteAufTausch(s, ['s1', 's2', 's3']);
   const [a1, a2, a3] = [await welches(s, 's1'), await welches(s, 's2'), await welches(s, 's3')];
@@ -284,7 +288,7 @@ test('Kacheln: Wahl nach Format, Stufenwechsel wirkt beim naechsten Bild ohne Ne
 test('Wechsel auf mildere Stufe: schon getauschte Kacheln zeigen danach Tease (Hot, Kacheln getauscht, dann Tease)', async () => {
   test.setTimeout(120_000);
   await setzeErwachsen({ stufe: 'hot' });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   const extra = Array.from({ length: 8 }, (_, i) => `x${i + 1}`);
   await warteAufTausch(s, ['s1', 's2', 's3']);
@@ -314,7 +318,7 @@ test('Wechsel auf mildere Stufe: schon getauschte Kacheln zeigen danach Tease (H
 test('Stabile Wahl je Quelle: gleiche Quelle gleiches Bild, verschiedene Quellen verteilen sich', async () => {
   test.setTimeout(120_000);
   await setzeErwachsen({ stufe: 'hot' });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   await warteAufTausch(s, ['s1']);
   const ids = Array.from({ length: 12 }, (_, i) => `k${i + 1}`);
@@ -350,7 +354,7 @@ test('Galerie (16:9) folgt der Stufe und zeigt nur Bilder erlaubter Stufen', asy
   test.setTimeout(120_000);
   const zeige = async (stufe: string): Promise<string[]> => {
     await setzeErwachsen({ stufe, komplettErsatz: true });
-    const s = await context.newPage();
+    const s = mitReitern(await context.newPage());
     try {
       await s.goto(GALERIE, { waitUntil: 'domcontentloaded' });
       let letzte = '';
@@ -385,16 +389,19 @@ test('Galerie (16:9) folgt der Stufe und zeigt nur Bilder erlaubter Stufen', asy
 
 test('Pack entfernen: der Regler ist wieder gesperrt', async () => {
   test.setTimeout(60_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
+    await reiterFuer(s, '#stufe-wahl');
     await expect(s.locator('#stufe-wahl')).toBeVisible();
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     await s.locator('#entfernen').click();
     await s.locator('#entfernen-ja').click();
+    await reiterFuer(s, '#stufe-wahl');
     await expect(s.locator('#stufe-wahl')).toBeHidden({ timeout: 15_000 });
     // Ohne Pack ist Adult sites zugeklappt: aufklappen, wie die Person.
     await oeffneZugeklapptes(s);
+    await reiterFuer(s, '#stufe-gesperrt');
     await expect(s.locator('#stufe-gesperrt')).toBeVisible();
   } finally {
     await s.close();

@@ -10,6 +10,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reiter, mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -74,7 +75,7 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
 }
 
 async function importierePack(pfad: string) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -85,11 +86,12 @@ async function importierePack(pfad: string) {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     // Session 11: die Einstellungsseite zeichnet den Pack-Stand erst nach dem Laden (sonst Wettlauf).
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
@@ -111,7 +113,7 @@ const sendeSpirale = (s: Page, d: Record<string, unknown>) =>
 
 // Seite oeffnen (das Content-Script braucht Pack und Einstellungen; ist es noch nicht fertig, holt `neuBewerten` es nach).
 async function oeffne(url = SEITE): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url);
   return s;
 }

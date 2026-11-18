@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TEXT } from '../../src/einstieg/texte';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -33,7 +34,7 @@ const schalter = (s: Page, feld: string) => s.locator('label.schalter', { has: s
 
 // Eine Verwaltungsseite der Erweiterung, auf der Nachrichten und Speicher erreichbar sind.
 async function verwaltung(seite = 'options.html'): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url(seite));
   return s;
 }
@@ -55,7 +56,7 @@ async function oeffneNeu(v: Page): Promise<Page> {
 async function interviewFuenf(v: Page, breite?: number): Promise<Page> {
   await schreibe(v, FERTIG);
   await schreibe(v, { pack: PACK_KURZ });
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   if (breite) await w.setViewportSize({ width: breite, height: 700 });
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
@@ -313,7 +314,7 @@ test('"I’m not" speichert nichts und bietet kein Weiter; "Not now" speichert d
 test('Popup: Hinweis "Meet Mia" bei offenem Einstieg sichtbar, bei fertigem weg, Knopf oeffnet die Willkommensseite', async () => {
   const v = await verwaltung();
   await sende(v, { zuruecksetzen: true });
-  const p = await context.newPage();
+  const p = mitReitern(await context.newPage());
   await p.goto(url('popup.html'));
   await expect(p.locator('#einstieg-hinweis')).toBeVisible();
   await expect(p.locator('#einstieg-knopf')).toHaveText('Meet Mia');
@@ -324,13 +325,13 @@ test('Popup: Hinweis "Meet Mia" bei offenem Einstieg sichtbar, bei fertigem weg,
   expect(w.url()).toContain('willkommen.html');
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'warnung');
   messzahl += 2;
-  const p2 = await context.newPage();
+  const p2 = mitReitern(await context.newPage());
   await p2.goto(url('popup.html'));
   await expect(p2.locator('#einstieg-hinweis')).toBeVisible();
   // Ist die Willkommensseite schon offen, holt "Meet Mia" sie nach vorn und oeffnet keine zweite
   const zaehle = () => context.pages().filter((s) => s.url().includes('willkommen.html')).length;
   expect(zaehle()).toBe(1);
-  const pz = await context.newPage();
+  const pz = mitReitern(await context.newPage());
   await pz.goto(url('popup.html'));
   await expect(pz.locator('#einstieg-knopf')).toBeVisible();
   await pz.locator('#einstieg-knopf').click(); // das Popup schliesst sich danach selbst
@@ -340,7 +341,7 @@ test('Popup: Hinweis "Meet Mia" bei offenem Einstieg sichtbar, bei fertigem weg,
   // Fertig im Speicher: der offene Hinweis verschwindet von selbst
   await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });
   await expect(p2.locator('#einstieg-hinweis')).toBeHidden();
-  const p3 = await context.newPage();
+  const p3 = mitReitern(await context.newPage());
   await p3.goto(url('popup.html'));
   await expect(p3.locator('#einstieg-hinweis')).toBeHidden();
   messzahl += 2;
@@ -352,7 +353,7 @@ test('Adresse: #interview springt bei fertigem Einstieg ins Interview, sonst zum
   const v = await verwaltung();
   await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });
   await entferne(v, ['einstellungen']);
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
   // Neuladen mitten im Interview bleibt auf der Seite
@@ -394,7 +395,7 @@ test('360 px: kein waagrechtes Scrollen in keinem Schritt', async () => {
   const v = await verwaltung();
   await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });
   await schreibe(v, { pack: PACK_KURZ }); // fuenf Seiten; unten wird das Pack entfernt, damit die Pack-Hinweise mitgemessen werden
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.setViewportSize({ width: 360, height: 700 });
   await w.goto(url('willkommen.html#interview'));
   let geprueft = 0;
@@ -503,7 +504,7 @@ test('Wiederholen: "Question n of 5", Stimmungswort, Calm mode und Hinweis auf S
   await schreibe(v, FERTIG);
   await schreibe(v, PACK); // mit Pack beim Eintritt: fuenf Fragen; nach Seite 1 faellt das Pack weg, damit die Pack-Hinweise sichtbar sind
   await schreibe(v, { einstellungen: { version: 1, schwelle: 0.2, kontrolle: { werbung: true } } }); // Werbung ist ab Werk aus (Opt-in), hier an, damit die Zeile alle drei nennt
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
   await entferne(v, ['pack']);
@@ -564,7 +565,7 @@ test('Abschluss: Satz folgt dem Pack (Fund 21)', async () => {
   const v = await verwaltung();
   await schreibe(v, FERTIG);
   await entferne(v, ['pack']);
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
   await expect(w.locator('#ende-text')).toHaveText(TEXT.endeText);
@@ -584,7 +585,7 @@ test('Fund 26: scheitert das Speichern, steht der Fehlersatz da und der Schalter
   const v = await verwaltung();
   await schreibe(v, FERTIG);
   await entferne(v, ['einstellungen']);
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#iv-strict')).not.toBeChecked();
   await w.evaluate(() => {
@@ -624,7 +625,7 @@ test('Kontrast (Fund 9 und 10): kleine Knoepfe mindestens 4,5:1, Schalterbahn au
 test('Fund N9: Unterzeile der gewaehlten Karte mindestens 4,5:1 auf dem Kartengrund', async () => {
   const v = await verwaltung();
   await schreibe(v, FERTIG);
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
   await w.locator('#iv-weiter').click(); // Seite 2: Wahlkarten
   const m = await w.evaluate(() => {
@@ -708,7 +709,7 @@ test('Fund N11: Link "Add the Mia Pack" oeffnet einen neuen Tab mit options.html
 test('Fund N12: beim Wiederholen fuehrt "All settings" am Ende im selben Tab zur Einstellungsseite, kein zweiter Tab', async () => {
   const v = await verwaltung();
   await schreibe(v, FERTIG);
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
   for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
@@ -787,7 +788,7 @@ test('Fund 3: Abschluss zeigt Anheften, Pause mit Kuerzel und Ausprobieren, Hilf
   const v = await verwaltung();
   await schreibe(v, FERTIG);
   await entferne(v, ['pack']);
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
   await expect(w.locator('#ende-liste li')).toHaveCount(3);
@@ -817,7 +818,7 @@ test('Fund 20: bei 360 px ist Mias Bild ein Band von hoechstens 160 px, "I agree
   await entferne(v, ['pack']);
   await sende(v, { zuruecksetzen: true });
   await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: false, interview: 'offen', zeit: null } });
-  const w = await context.newPage();
+  const w = mitReitern(await context.newPage());
   await w.setViewportSize({ width: 360, height: 700 });
   await w.goto(url('willkommen.html'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'einwilligung');

@@ -474,13 +474,31 @@ async function bedienung() {
     await L.warte(300);
     r.optionenFotos.push(L.foto('bedienung', `optionen-${y}`));
   }
+  // E4d1: die Einstellungsseite hat sieben Reiter, sichtbar ist nur einer. Die anderen sechs werden einzeln vermessen und fotografiert (nicht gelaufen, Android wird in E4d1 nicht gemessen).
+  r.optionenReiter = {};
+  for (const reiter of ['zonen', 'erwachsen', 'extras', 'pack', 'ledger', 'ueber']) {
+    await js(`document.getElementById('reiter-${reiter}').click(); scrollTo(0, 0)`);
+    await L.warte(300);
+    r.optionenReiter[reiter] = await vermesse();
+    r.optionenFotos.push(L.foto('bedienung', `optionen-reiter-${reiter}`));
+  }
+  // Der Ablage-Satz und der Datei-Knopf stehen im Reiter Pack and sound.
+  await js(`document.getElementById('reiter-pack').click()`);
+  await L.warte(300);
   r.ablageSichtbar = await js(`const e = document.querySelector('#ablage-text'); return !!e && getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0`);
   r.dateiKnopfHoehe = await js(`return Math.round(document.querySelector('#datei')?.getBoundingClientRect().height ?? 0)`);
   r.zeiger = await js(`return { fein: matchMedia('(pointer: fine)').matches, grob: matchMedia('(pointer: coarse)').matches, hover: matchMedia('(hover: hover)').matches }`);
-  r.desktopTexte = await js(`
-    const t = document.body.innerText;
-    return ['drop', 'Alt+Shift', 'shortcut', 'keyboard', 'Ctrl', 'right-click', 'hover', 'mouse'].filter((w) => t.toLowerCase().includes(w.toLowerCase()));
-  `);
+  // N12: die Desktop-Woerter werden im sichtbaren Text jedes der sieben Reiter gesucht (je Reiter den Text sammeln), nicht nur im ersten.
+  r.desktopTexteJeReiter = {};
+  for (const reiter of ['stil', 'zonen', 'erwachsen', 'extras', 'pack', 'ledger', 'ueber']) {
+    await js(`document.getElementById('reiter-${reiter}').click()`);
+    await L.warte(200);
+    r.desktopTexteJeReiter[reiter] = await js(`
+      const t = document.body.innerText;
+      return ['drop', 'Alt+Shift', 'shortcut', 'keyboard', 'Ctrl', 'right-click', 'hover', 'mouse'].filter((w) => t.toLowerCase().includes(w.toLowerCase()));
+    `);
+  }
+  r.desktopTexte = [...new Set(Object.values(r.desktopTexteJeReiter).flat())];
   ergebnis.schritte.bedienung = r;
   console.log(`android bedienung: Optionen ${r.optionen.breite}/${r.optionen.scrollBreite}, kleine Ziele ${r.optionen.klein.length}, Desktop-Woerter ${JSON.stringify(r.desktopTexte)}`);
 }

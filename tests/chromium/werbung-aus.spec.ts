@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -39,13 +39,14 @@ test.afterAll(async () => {
 });
 
 test('Sites without my ads: Liste, Knopf nimmt zurueck, leer verborgen, Obergrenze 200', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(`chrome-extension://${id}/options.html`);
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove(['pack', 'einstellungen']));
     await seite.reload();
     await oeffneZugeklapptes(seite);
     // Leer: Block verborgen
+    await reiterFuer(seite, '#kon-werbung-aus');
     await expect(seite.locator('#kon-werbung-aus')).toBeHidden();
     // Der Block steht gleich hinter dem Schalter "My ads"
     expect(
@@ -57,6 +58,7 @@ test('Sites without my ads: Liste, Knopf nimmt zurueck, leer verborgen, Obergren
     ).toBe('kon-werbung-aus');
     // Zwei Eintraege (eigene Liste ueber den Speicher, so wie das Etikett-Menue sie schreibt)
     await schreibe(seite, { einstellungen: { version: 1, kontrolle: { werbungAus: ['a.example', 'b.example'] } } });
+    await reiterFuer(seite, '#kon-werbung-aus');
     await expect(seite.locator('#kon-werbung-aus')).toBeVisible();
     await expect(seite.locator('#kon-werbung-aus-titel')).toHaveText('Sites without my ads');
     await expect(seite.locator('#kon-werbung-aus-liste li')).toHaveCount(2);
@@ -70,8 +72,10 @@ test('Sites without my ads: Liste, Knopf nimmt zurueck, leer verborgen, Obergren
     expect(await seite.evaluate(() => document.activeElement?.getAttribute('data-muster'))).toBe('b.example');
     // Den letzten zuruecknehmen: Block weg
     await seite.locator('#kon-werbung-aus-liste button').click();
+    await reiterFuer(seite, '#kon-werbung-aus');
     await expect(seite.locator('#kon-werbung-aus')).toBeHidden();
     // Lesung 17 R2-7: die Bestaetigung bleibt sichtbar (und hoerbar), obwohl der Block mit der leeren Liste verschwindet
+    await reiterFuer(seite, '#kon-werbung-aus-meldung');
     await expect(seite.locator('#kon-werbung-aus-meldung')).toBeVisible();
     await expect(seite.locator('#kon-werbung-aus-meldung')).toHaveText('b.example gets my ads again.');
     expect((await lies(seite, 'einstellungen')).kontrolle.werbungAus).toEqual([]);

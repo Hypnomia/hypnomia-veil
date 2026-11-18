@@ -27,6 +27,8 @@ import './ledger';
 import './ueber';
 // Session 12: Mia Pack (Auftrag P).
 import './pack';
+// Phase 11 E4d1: Reiter (alle Abschnitte stehen vorher im Dokument, ein Anker der Adresse oeffnet den Reiter, bevor ordnung.ts den Sprung haelt).
+import './reiter';
 // Phase 9: Gruppen, Hilfe-Knoepfe und Reihenfolge (muss nach den Modulen laufen, die ihre Abschnitte fuellen).
 import './ordnung';
 import { belebeRegler } from '../../src/oberflaeche/design/regler';

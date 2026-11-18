@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ZU_TEXTE } from '../../entrypoints/options/ordnung-texte';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, REITER_NAMEN } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -46,7 +46,7 @@ test.afterAll(async () => {
 
 // Frische Seite ohne Pack, gewartet bis Ordnung und Pack-Karte gezeichnet sind.
 async function frischeSeite(breite = 1280, hoehe = 800): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.setViewportSize({ width: breite, height: hoehe });
   await seite.goto(optionsUrl());
   await zuruecksetzen(seite);
@@ -56,22 +56,23 @@ async function frischeSeite(breite = 1280, hoehe = 800): Promise<Page> {
   return seite;
 }
 
-test('Fund 4: sieben Gruppen-Chips plus Help, Chip Help oeffnet die Hilfe in neuem Tab, der Untertitel hat keinen Link mehr', async () => {
+test('Fund 4 und E4d1: sieben Reiter, Help in der Leiste oeffnet die Hilfe in neuem Tab, der Untertitel hat keinen Link mehr', async () => {
   const seite = await frischeSeite();
   try {
-    expect(await seite.locator('#sprung a:not(#chip-interview)').allTextContents()).toEqual(['Covering', 'Mia Pack', 'Adult sites', 'Mia’s control', 'Sound', 'Ledger', 'About and help', 'Help']);
+    expect(await seite.locator('#sprung [role=tab]').allTextContents()).toEqual(REITER_NAMEN);
     await expect(seite.locator('#hilfe-link')).toHaveText('Help');
     await expect(seite.locator('#hilfe-link')).toHaveAttribute('href', 'hilfe.html');
     await expect(seite.locator('#hilfe-link')).toHaveAttribute('target', '_blank');
     await expect(seite.locator('#hilfe-link')).toHaveAttribute('rel', /noopener/);
     await expect(seite.locator('header .unter a')).toHaveCount(0);
-    // Calm mode hat weder Karte noch Chip; "Mia’s mood" bis "Sites I leave alone" stehen in der Gruppe Covering.
+    // Calm mode hat weder Karte noch Reiter; "Mia’s mood" bis "Sites I leave alone" stehen in der Gruppe Covering (der Stil wohnt im Reiter Style, D2).
     await expect(seite.locator('#abschnitt-ruhig')).toHaveCount(0);
-    expect(await seite.locator('#covering h2').allTextContents()).toEqual(['Mia’s mood', 'What I cover', 'Cover style', 'Sites I leave alone']);
-    // Der Chip der Gruppe springt dorthin; Pause bleibt oben.
-    await seite.locator('#sprung a[href="#ledger"]').click();
+    expect(await seite.locator('#covering h2').allTextContents()).toEqual(['Mia’s mood', 'What I cover', 'Sites I leave alone']);
+    // Der Reiter oeffnet sein Panel und setzt seinen Anker in die Adresse; Pause bleibt in jedem Reiter erreichbar.
+    await seite.locator('#sprung [role=tab]', { hasText: 'Ledger' }).click();
     await expect(seite).toHaveURL(/#ledger$/);
-    await expect(seite.locator('#pause-leiste')).toBeVisible();
+    await expect(seite.locator('#panel-ledger')).toBeVisible();
+    await expect(seite.locator('#pause')).toBeVisible();
   } finally {
     await seite.close();
   }
@@ -93,6 +94,7 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
       await expect(seite.locator(k.drin)).toBeHidden();
     }
     // Calm mode bleibt offen und wirkt ohne Aufklappen.
+    await reiter(seite, 'Mia’s extras');
     await expect(seite.locator('#ruhig')).toBeVisible();
     await seite.locator('#ruhig-zeile').click();
     await expect.poll(async () => (await einst(seite)).ruhig).toBe(true);
@@ -131,6 +133,7 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
     await seite.locator('label.schalter:has(#erw-an)').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(false);
     // Nacht N5 (Ursache des Firefox-Wacklers "Fokus liegt bei der Frage"): kommt das Pack, wandert die Pack-Karte; ein Fokus darin bleibt erhalten.
+    await reiter(seite, 'Pack and sound');
     const fokusZiel = await seite.evaluate(() => {
       const z = [...document.querySelectorAll<HTMLElement>('#stand button, #stand input, #stand a[href], #stand [tabindex]')].find((e) => e.getClientRects().length > 0);
       if (!z) return null;
@@ -151,6 +154,7 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
     await expect(seite.locator('#ton-zu-knopf')).toBeVisible();
     await expect(seite.locator('#ton')).toHaveAttribute('data-zu', '1');
+    await reiter(seite, 'Mia’s extras');
     await expect(seite.locator('#kon-blitz')).toBeVisible();
   } finally {
     await zuruecksetzen(seite).catch(() => undefined);
@@ -158,18 +162,15 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
   }
 });
 
-test('Fund 4: die Pack-Karte steht ohne Pack nach Covering, mit Pack nach Sound; der Chip folgt', async () => {
+test('Fund 4 und E4d1: die Pack-Karte steht im Reiter Pack and sound ohne Pack vor Sound, mit Pack nach Sound', async () => {
   const seite = await frischeSeite();
   try {
-    const reihe = () => seite.evaluate(() => [...document.querySelectorAll('main > section, main > .gruppe')].map((s) => s.id));
-    const chips = () => seite.evaluate(() => [...document.querySelectorAll('#sprung a[href^="#"]')].map((a) => a.getAttribute('href')!.slice(1)));
-    expect(await reihe()).toEqual(['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber']);
-    expect(await chips()).toEqual(['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber', 'abschnitt-interview']);
+    const reihe = () => seite.evaluate(() => [...document.querySelectorAll('main [role=tabpanel] > section, main [role=tabpanel] > .gruppe')].map((s) => s.id));
+    expect(await reihe()).toEqual(['abschnitt-stil', 'covering', 'erwachsen', 'kontrolle', 'stand', 'ton', 'ledger', 'ueber']);
     await schreibe(seite, { pack: packMit(['kontrolle:blitz']) });
-    await expect.poll(reihe).toEqual(['covering', 'erwachsen', 'kontrolle', 'ton', 'stand', 'ledger', 'ueber']);
-    expect(await chips()).toEqual(['covering', 'erwachsen', 'kontrolle', 'ton', 'stand', 'ledger', 'ueber', 'abschnitt-interview']);
+    await expect.poll(reihe).toEqual(['abschnitt-stil', 'covering', 'erwachsen', 'kontrolle', 'ton', 'stand', 'ledger', 'ueber']);
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
-    await expect.poll(reihe).toEqual(['covering', 'stand', 'erwachsen', 'kontrolle', 'ton', 'ledger', 'ueber']);
+    await expect.poll(reihe).toEqual(['abschnitt-stil', 'covering', 'erwachsen', 'kontrolle', 'stand', 'ton', 'ledger', 'ueber']);
   } finally {
     await zuruecksetzen(seite).catch(() => undefined);
     await seite.close();
@@ -186,14 +187,31 @@ const SCHIRM_1280 = 900;
 // Reserve: 900 px: 3,45, 800 px: 3,9 (Obergrenze der Leitung fuer 900 px: 3,5).
 const GRENZE_800 = 3.9;
 const GRENZE_900 = 3.45;
-test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280, mit der Pack-Karte', async () => {
+// E4d1: es ist immer nur ein Reiter sichtbar, die Seitenhoehe ist die des gewaehlten Reiters. Die Grenzen bleiben unveraendert und gelten fuer
+// jeden der sieben Reiter (der hoechste zaehlt); gemessen wird je Reiter mit einem echten Klick auf den Reiter.
+async function hoeheJeReiter(seite: Page): Promise<Record<string, number>> {
+  const aus: Record<string, number> = {};
+  for (const name of REITER_NAMEN) {
+    await reiter(seite, name);
+    aus[name] = await seite.evaluate(() => document.documentElement.scrollHeight);
+  }
+  await reiter(seite, 'Style');
+  return aus;
+}
+const hoechste = (h: Record<string, number>): number => Math.max(...Object.values(h));
+
+test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280, mit der Pack-Karte, in jedem Reiter', async () => {
   const seite = await frischeSeite(1280, SCHIRM_1280);
   try {
     // Erst messen, wenn die Kern-Bilder der Pack-Karte stehen (sie kommen spaeter als der Status).
+    await reiter(seite, 'Pack and sound');
     await expect(seite.locator('#kern-streifen'), 'Kern-Bilder im Testbau noetig (../02 Assets Mia/kern)').toBeVisible({ timeout: 5000 });
     await seite.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('#kern-bilder img')].every((i) => i.complete && i.naturalWidth > 0));
-    const hoehe = await seite.evaluate(() => document.documentElement.scrollHeight);
+    const jeReiter = await hoeheJeReiter(seite);
+    console.log(`einstellungen-ordnung: Hoehe je Reiter ohne Pack bei 1280: ${JSON.stringify(jeReiter)}`);
+    const hoehe = hoechste(jeReiter);
     // Frische Seite ohne Einstieg, also mit der Sperre "Meet me first" (laengster Fall).
+    await reiter(seite, 'Pack and sound');
     const stand = await seite.evaluate(() => Math.ceil(document.getElementById('stand')!.getBoundingClientRect().height));
     console.log(
       `einstellungen-ordnung: ohne Pack ${hoehe} px = ${(hoehe / SCHIRM_1280).toFixed(2)} Bildschirme zu ${SCHIRM_1280} px, ${(hoehe / 800).toFixed(2)} zu 800 px bei 1280 Breite, davon Pack-Karte ${stand} px`,
@@ -203,7 +221,7 @@ test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280, mit der Pack
     // Nach dem Einstieg (ohne Sperre) ebenso.
     await schreibe(seite, { einstieg: EINSTIEG_FERTIG });
     await expect(seite.locator('#pack-sperre')).toBeHidden();
-    const nachEinstieg = await seite.evaluate(() => document.documentElement.scrollHeight);
+    const nachEinstieg = hoechste(await hoeheJeReiter(seite));
     console.log(`einstellungen-ordnung: ohne Pack nach dem Einstieg ${nachEinstieg} px = ${(nachEinstieg / SCHIRM_1280).toFixed(2)} Bildschirme zu ${SCHIRM_1280} px, ${(nachEinstieg / 800).toFixed(2)} zu 800 px`);
     expect(nachEinstieg / SCHIRM_1280).toBeLessThanOrEqual(GRENZE_900);
     // Pruefer N2 Fund 8: ab 600 px steht der grosse Pause-Knopf rechts neben dem Status, in denselben Zeilen.
@@ -216,7 +234,7 @@ test('Messziel Fund 4: ohne Pack hoechstens 3 Bildschirme bei 1280, mit der Pack
     expect(lage.pOben < lage.stUnten && lage.pUnten > lage.stOben, `Pause in der Zeile des Status ${JSON.stringify(lage)}`).toBe(true);
     await schreibe(seite, { pack: packMit(['kontrolle:blitz', 'ton', 'erwachsen:vorschau']) });
     await expect(seite.locator('.zu-knopf:visible')).toHaveCount(0);
-    const mit = await seite.evaluate(() => document.documentElement.scrollHeight);
+    const mit = hoechste(await hoeheJeReiter(seite));
     console.log(`einstellungen-ordnung: mit Pack ${mit} px = ${(mit / 800).toFixed(2)} Bildschirme`);
   } finally {
     await zuruecksetzen(seite).catch(() => undefined);
@@ -238,6 +256,7 @@ test('Fund 8 und 10: Calm mode ist der erste Schalter in Mia’s control, bei "w
     expect(ordnung.titel).toBeLessThan(ordnung.calm);
     expect(ordnung.calm).toBeLessThan(ordnung.hinweis);
     expect(ordnung.calm).toBeLessThan(ordnung.werbung);
+    await reiter(seite, 'Mia’s extras');
     await expect(seite.locator('#ruhig-zeile strong')).toHaveText('Calm mode');
     await expect(seite.locator('#ruhig-system')).toBeHidden();
     await seite.emulateMedia({ reducedMotion: 'reduce' });
@@ -321,9 +340,22 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
       'Help: My ads': 'ads',
       'Help: Strict times': 'strict-times',
     };
-    const knoepfe = await seite.locator('a.hilfe-rund').evaluateAll((as) =>
-      as.map((a) => ({ name: a.getAttribute('aria-label'), href: a.getAttribute('href'), ziel: a.getAttribute('target'), rel: a.getAttribute('rel'), b: a.getBoundingClientRect().width, h: a.getBoundingClientRect().height })),
-    );
+    // E4d1: je Reiter die sichtbaren Hilfe-Knoepfe sammeln (verborgene Reiter haben kein Mass).
+    const sammle = async (breiteMin = false) => {
+      const alle: { name: string | null; href: string | null; ziel: string | null; rel: string | null; b: number; h: number }[] = [];
+      for (const name of REITER_NAMEN) {
+        await reiter(seite, name);
+        alle.push(
+          ...(await seite.locator('a.hilfe-rund').evaluateAll((as) =>
+            as
+              .filter((a) => a.getClientRects().length > 0)
+              .map((a) => ({ name: a.getAttribute('aria-label'), href: a.getAttribute('href'), ziel: a.getAttribute('target'), rel: a.getAttribute('rel'), b: a.getBoundingClientRect().width, h: a.getBoundingClientRect().height })),
+          )),
+        );
+      }
+      return alle;
+    };
+    const knoepfe = await sammle();
     expect(knoepfe.map((k) => k.name).sort()).toEqual(Object.keys(soll).sort());
     for (const k of knoepfe) {
       expect(k.href).toBe(`hilfe.html#${soll[k.name!]}`);
@@ -333,6 +365,7 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
       expect(Math.round(k.h)).toBe(24);
     }
     // Der Knopf steht rechts neben dem Titel, der Titel bleibt als Ueberschrift lesbar.
+    await reiter(seite, 'Mia’s extras');
     await expect(seite.getByRole('heading', { name: 'Strict times' })).toBeVisible();
     const neu = context.waitForEvent('page');
     await seite.locator('a.hilfe-rund[aria-label="Help: Strict times"]').click();
@@ -341,7 +374,7 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
     await hilfe.close();
     // Bei 360 px: Fingerziel 44 px, kein Waagrecht-Scrollen.
     await seite.setViewportSize({ width: 360, height: 800 });
-    const schmal = await seite.locator('a.hilfe-rund').evaluateAll((as) => as.map((a) => Math.round(Math.min(a.getBoundingClientRect().width, a.getBoundingClientRect().height))));
+    const schmal = (await sammle()).map((k) => Math.round(Math.min(k.b, k.h)));
     for (const m of schmal) expect(m).toBeGreaterThanOrEqual(44);
     expect(await seite.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     console.log(`einstellungen-ordnung: ${knoepfe.length} Hilfe-Knoepfe, 24 px Desktop, mindestens ${Math.min(...schmal)} px bei 360`);
@@ -354,6 +387,7 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
 test('Fund 22: About and help fuehrt zu Hilfe-Seite und Themen; das Interview ist der letzte Punkt', async () => {
   const seite = await frischeSeite();
   try {
+    await reiter(seite, 'About');
     await expect(seite.locator('#ueber-titel')).toHaveText('About and help');
     const links = await seite.locator('#ue-hilfe a').evaluateAll((as) => as.map((a) => ({ text: a.textContent, href: a.getAttribute('href'), ziel: a.getAttribute('target'), rel: a.getAttribute('rel') })));
     expect(links).toEqual([

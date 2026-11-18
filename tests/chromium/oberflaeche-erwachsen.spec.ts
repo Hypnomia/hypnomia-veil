@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, reiter, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -47,18 +47,24 @@ test.afterAll(async () => {
 });
 
 test('Popup: ohne Pack nur Hinweis, mit Pack Schalter, die auf storage.local wirken', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await expect(seite.locator('#erwachsen-titel')).toHaveText(/adult sites/i);
     await expect(seite.locator('#erwachsen-hinweis')).toContainText('Mia Pack');
+    await reiterFuer(seite, '#erwachsen-schalter');
     await expect(seite.locator('#erwachsen-schalter')).toBeHidden();
+    await reiterFuer(seite, '#erwachsen-pack-link');
     await expect(seite.locator('#erwachsen-pack-link')).toBeVisible();
+    await reiterFuer(seite, '#steigerung');
     await expect(seite.locator('#steigerung')).toBeHidden();
 
     await schreibe(seite, { pack: packMit(ALLE.filter((f) => f !== 'zensur:steigerung')) });
+    await reiterFuer(seite, '#erwachsen-schalter');
     await expect(seite.locator('#erwachsen-schalter')).toBeVisible();
+    await reiterFuer(seite, '#erwachsen-pack-link');
     await expect(seite.locator('#erwachsen-pack-link')).toBeHidden();
+    await reiterFuer(seite, '#steigerung');
     await expect(seite.locator('#steigerung')).toBeHidden();
     await expect(seite.locator('#erw-an')).toBeChecked();
     await expect(seite.locator('#erw-ersatz')).not.toBeChecked();
@@ -74,8 +80,10 @@ test('Popup: ohne Pack nur Hinweis, mit Pack Schalter, die auf storage.local wir
 
     // Ersatz-Schalter nur mit erwachsen:ersatz
     await schreibe(seite, { pack: packMit(['erwachsen:vorschau']) });
+    await reiterFuer(seite, '#erw-ersatz-zeile');
     await expect(seite.locator('#erw-ersatz-zeile')).toBeHidden();
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
+    await reiterFuer(seite, '#erwachsen-schalter');
     await expect(seite.locator('#erwachsen-schalter')).toBeHidden();
   } finally {
     await zuruecksetzen(seite).catch(() => undefined);
@@ -84,10 +92,11 @@ test('Popup: ohne Pack nur Hinweis, mit Pack Schalter, die auf storage.local wir
 });
 
 test('Popup: Steigerungsanzeige mit gestelltem Stand, Pause stellt die Uhr, Stufe folgt dem Speicher', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await schreibe(seite, { pack: packMit(ALLE), steigerung: stand({ stufe: 3, abbauAb: Date.now() - 3600_000 }) });
+    await reiterFuer(seite, '#steigerung');
     await expect(seite.locator('#steigerung')).toBeVisible();
     await expect(seite.locator('#stufe-zeile')).toHaveText('Level 3 of 4');
     await expect(seite.locator('#stufe-zeit')).toHaveText(/^Next level down in (10|11) h \d\d min$/);
@@ -110,9 +119,10 @@ test('Popup: Steigerungsanzeige mit gestelltem Stand, Pause stellt die Uhr, Stuf
 });
 
 test('Einstellungsseite: eigene Seiten, Verweigern-Anteil, Freilegen-Dauer, Ruhig-Modus', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
+    await reiterFuer(seite, '#erw-titel');
     await expect(seite.locator('#erw-titel')).toBeVisible();
     await oeffneZugeklapptes(seite);
     const anVorher = (await lies(seite, 'einstellungen'))?.erwachsen?.an;
@@ -149,8 +159,10 @@ test('Einstellungsseite: eigene Seiten, Verweigern-Anteil, Freilegen-Dauer, Ruhi
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.erwachsen?.eigeneSeiten).toEqual([]);
 
     // Begruessung nur mit Pack
+    await reiterFuer(seite, '#begruessung');
     await expect(seite.locator('#begruessung')).toBeHidden();
     await schreibe(seite, { pack: packMit(['erwachsen:vorschau'], Date.now()) });
+    await reiterFuer(seite, '#begruessung');
     await expect(seite.locator('#begruessung')).toBeVisible();
     await expect(seite.locator('#begruessung-text')).not.toBeEmpty();
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
@@ -161,21 +173,28 @@ test('Einstellungsseite: eigene Seiten, Verweigern-Anteil, Freilegen-Dauer, Ruhi
 });
 
 test('Popup: drei Lagen, Schalter nach Freischaltung, eigene Seiten bleiben stehen', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     // Pack ohne Erwachsenen-Freischaltung: kein Pack-Verweis, kein Abschnitt
     await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
+    await reiterFuer(seite, '#erwachsen');
     await expect(seite.locator('#erwachsen')).toBeHidden();
+    await reiterFuer(seite, '#erwachsen-pack-link');
     await expect(seite.locator('#erwachsen-pack-link')).toBeHidden();
     // Pack nur mit zensur:steigerung: Steigerung da, Schalter nicht
     await schreibe(seite, { pack: packMit(['zensur:steigerung']), steigerung: stand({ stufe: 2, abbauAb: Date.now() - 1000 }) });
+    await reiterFuer(seite, '#steigerung');
     await expect(seite.locator('#steigerung')).toBeVisible();
+    await reiterFuer(seite, '#erwachsen-schalter');
     await expect(seite.locator('#erwachsen-schalter')).toBeHidden();
+    await reiterFuer(seite, '#erwachsen-pack-link');
     await expect(seite.locator('#erwachsen-pack-link')).toBeHidden();
     // Mode-Schalter nur mit erwachsen:vorschau
     await schreibe(seite, { pack: packMit(['erwachsen:quiz']) });
+    await reiterFuer(seite, '#erwachsen-schalter');
     await expect(seite.locator('#erwachsen-schalter')).toBeVisible();
+    await reiterFuer(seite, '#erw-an');
     await expect(seite.locator('#erw-an')).toBeHidden();
     await schreibe(seite, { pack: packMit(['erwachsen:vorschau']), einstellungen: { erwachsen: { an: true, komplettErsatz: false, erkennenAmInhalt: true, eigeneSeiten: ['example.com'] } } });
     await seite.locator('#erw-an').evaluate((e: HTMLInputElement) => e.click());
@@ -188,7 +207,7 @@ test('Popup: drei Lagen, Schalter nach Freischaltung, eigene Seiten bleiben steh
 });
 
 test('Popup: Zeitgeber tickt unter einer Stunde, Abbau bei offenem Popup, Uhr vor abbauAb, Pause stellt Uhr und Pose', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await schreibe(seite, { pack: packMit(ALLE), steigerung: stand({ stufe: 2, abbauAb: Date.now() - 12 * 3600_000 + 90_000 }) });
@@ -221,22 +240,24 @@ const bauModul = '../../scripts/pack/baue-pack.mjs';
 
 test('Echt importiertes Dummy-Pack: Stufentexte und Chibi aus dem Pack, Begruessung nur nach dem Import', async () => {
   const ordner = await mkdtemp(path.join(tmpdir(), 'veil-oberflaeche-pack-'));
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     const bau = (await import(bauModul)) as PackBau;
     const pfad = path.join(ordner, 'dummy.miapack');
     await writeFile(pfad, (await bau.baueDummyPack()).bytes);
     await seite.goto(optionsUrl());
+    await reiterFuer(seite, '#begruessung');
     await expect(seite.locator('#begruessung')).toBeHidden();
     await seite.locator('#datei').setInputFiles(pfad);
     await seite.locator('#annehmen').click();
     await expect(seite.locator('#pack-status')).toContainText('Pack in place');
+    await reiterFuer(seite, '#begruessung');
     await expect(seite.locator('#begruessung')).toBeVisible();
     await expect(seite.locator('#begruessung-text')).toHaveText('Test greeting line.');
     await expect.poll(async () => seite.locator('#begruessung-chibi').evaluate((e: HTMLImageElement) => !e.hidden && e.src.startsWith('blob:'))).toBe(true);
     expect((await lies(seite, 'pack')).freischaltungen).toContain('chibi:pack');
     // Spaeter geoeffnet (Uhr der Seite 10 Minuten vor): kein neuer Import, keine Begruessung.
-    const spaet = await context.newPage();
+    const spaet = mitReitern(await context.newPage());
     try {
       await spaet.addInitScript(() => {
         const jetzt = Date.now.bind(Date);
@@ -244,6 +265,7 @@ test('Echt importiertes Dummy-Pack: Stufentexte und Chibi aus dem Pack, Begruess
       });
       await spaet.goto(optionsUrl());
       await expect(spaet.locator('#pack-status')).toContainText('Pack in place');
+      await reiterFuer(spaet, '#begruessung');
       await expect(spaet.locator('#begruessung')).toBeHidden();
     } finally {
       await spaet.close();
@@ -258,6 +280,7 @@ test('Echt importiertes Dummy-Pack: Stufentexte und Chibi aus dem Pack, Begruess
   } finally {
     // Pack ganz entfernen (IndexedDB), nicht nur storage.local
     await seite.goto(optionsUrl()).catch(() => undefined);
+    await reiter(seite, 'Pack and sound');
     if (await seite.locator('#entfernen').isVisible().catch(() => false)) {
       await seite.locator('#entfernen').click();
       await seite.locator('#entfernen-ja').click();

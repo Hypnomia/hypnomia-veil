@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -71,7 +72,7 @@ async function setzeEinstellungen(neu: Record<string, unknown>) {
   }, neu);
 }
 async function importierePack(pfad: string = packPfad) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -83,7 +84,7 @@ async function importierePack(pfad: string = packPfad) {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#entfernen').click();
@@ -124,7 +125,7 @@ const video = (s: Page, id: string) =>
     return { paused: v.paused, t: v.currentTime, muted: v.muted, ended: v.ended };
   }, id);
 async function oeffneSeite(url = SEITE): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(url);
   await s.waitForFunction(() => document.documentElement.dataset.filmBereit === '1', null, { timeout: 30_000 });
   return s;
@@ -493,7 +494,7 @@ test('Vollbild unter dem Standbild wird sofort verlassen', async () => {
 
 
 test('Strenge Seiten-CSP (style-src ohne unsafe-inline): das Standbild kommt trotzdem, ueber CSSOM und adoptedStyleSheets', async () => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.route(SEITE, async (r) => {
       const a = await r.fetch();

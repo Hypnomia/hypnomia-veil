@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TON_TEXTE } from '../../src/ton/texte';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, reiter, mitReitern, reiterFuer } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -78,7 +78,7 @@ const liesSpeicher = (schluessel: string) => worker.evaluate(async (s) => (await
 const TON_AN = (lautstaerke: number) => ({ ton: { an: true, lautstaerke } });
 
 async function importierePack(pfad: string) {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(pfad);
@@ -89,14 +89,16 @@ async function importierePack(pfad: string) {
   }
 }
 async function entfernePack() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     // Session 11: die Einstellungsseite zeichnet den Pack-Stand erst nach dem Laden (sonst Wettlauf).
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
+    await reiter(s, 'Pack and sound');
     if (await s.locator('#entfernen').isVisible()) {
       await s.locator('#entfernen').click();
       await s.locator('#entfernen-ja').click();
+      await reiterFuer(s, '#entfernen');
       await expect(s.locator('#entfernen')).toBeHidden({ timeout: 15_000 });
     }
   } finally {
@@ -127,7 +129,7 @@ async function erwarteStille(s: Page, ereignis: string, text: string) {
   expect((await abbildVon(s))?.nr ?? 0, text).toBe(vorher);
 }
 async function neueSeite(): Promise<Page> {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   await s.bringToFront();
   await expect.poll(() => s.evaluate(() => document.documentElement.hasAttribute('data-veil-status')), { timeout: 10_000 }).toBe(true);
@@ -136,8 +138,9 @@ async function neueSeite(): Promise<Page> {
   return s;
 }
 const extSeite = async (): Promise<Page> => {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(optionsUrl());
+  await reiterFuer(s, '#ton-titel');
   await expect(s.locator('#ton-titel')).toBeVisible();
   await abwarten(400);
   return s;
@@ -165,6 +168,7 @@ test('Einstellungsseite ohne Pack: Abschnitt Sound, Hinweis, Probe ruht, Regler 
   try {
     await expect(s.locator('#ton-titel')).toHaveText(TON_TEXTE.titel);
     // Phase 9 (Fund 4): ohne Pack ist Sound zugeklappt; "Set them now" klappt auf.
+    await reiterFuer(s, '#ton-zu-knopf');
     await expect(s.locator('#ton-zu-knopf')).toBeVisible();
     await oeffneZugeklapptes(s);
     await expect(s.locator('#ton')).toHaveAttribute('aria-labelledby', 'ton-titel');
@@ -492,14 +496,14 @@ test('abgelehntes Abspielen bleibt still: der Browser lehnt play() ab (Klang nic
   try {
     const w2 = ctx2.serviceWorkers()[0] ?? (await ctx2.waitForEvent('serviceworker', { timeout: 15_000 }));
     const id2 = new URL(w2.url()).host;
-    const opt = await ctx2.newPage();
+    const opt = mitReitern(await ctx2.newPage());
     await opt.goto(`chrome-extension://${id2}/options.html`);
     await opt.locator('#datei').setInputFiles(kaputtPfad);
     await opt.locator('#annehmen').click();
     await expect(opt.locator('#meldung')).toContainText('The pack is in', { timeout: 30_000 });
     await opt.evaluate(() => (globalThis as any).chrome.storage.local.set({ einstellungen: { ton: { an: true, lautstaerke: 0.5 } } }));
     await opt.close();
-    const s = await ctx2.newPage();
+    const s = mitReitern(await ctx2.newPage());
     const fehler: string[] = [];
     s.on('pageerror', (e) => fehler.push(String(e)));
     s.on('console', (m) => { if (m.type() === 'error' && !/favicon/.test(m.text() + (m.location().url ?? ''))) fehler.push(m.text()); });
@@ -523,7 +527,7 @@ test('Rahmen: Ausnahme der Tab-Adresse schweigt auch im Rahmen, Rahmen allein oh
   test.setTimeout(60_000);
   // Seite auf 127.0.0.1, Rahmen auf localhost: die Ausnahme steht nur fuer die Tab-Adresse.
   await setzeEinstellungen({ ...TON_AN(0.6), ausnahmen: ['127.0.0.1'] });
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(`http://127.0.0.1:${port}/ton-rahmen.html`);
   await s.bringToFront();
   await expect.poll(() => s.frames().length, { timeout: 10_000 }).toBe(2);
@@ -555,7 +559,7 @@ test('Rahmen: Ausnahme der Tab-Adresse schweigt auch im Rahmen, Rahmen allein oh
 test('Seite mit CSP media-src self: Ergebnis wird gemessen, nie ein Fehler, nichts laeuft ohne Ergebnis gespielt', async () => {
   test.setTimeout(60_000);
   await setzeEinstellungen(TON_AN(0.6));
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   const fehler: string[] = [];
   s.on('pageerror', (e) => fehler.push(String(e)));
   await s.goto(`http://127.0.0.1:${port}/ton-csp.html`);

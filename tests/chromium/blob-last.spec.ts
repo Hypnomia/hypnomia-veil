@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -70,7 +71,7 @@ async function offscreenLebt(): Promise<boolean> {
 }
 
 async function warteAufErkenner() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await expect
@@ -93,7 +94,7 @@ async function warteAufErkenner() {
 
 test('Pack mit grossen Bildern importieren', async () => {
   test.setTimeout(90_000);
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.locator('#datei').setInputFiles(packPfad);
@@ -114,7 +115,7 @@ test('Pack mit grossen Bildern importieren', async () => {
 // Ergebnisse. Ohne das beantworten ab der zweiten Welle fertige Eintraege (der Speicher haengt am Dateinamen, nicht am Schluessel) die
 // Anfragen, und es wuerde kein Blob mehr aus IndexedDB gelesen.
 async function leereZwischenspeicher() {
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
     await s.evaluate(() => {
@@ -150,7 +151,7 @@ test('viele gleichzeitige Packbild-Anfragen: Erweiterung lebt, Bilder kommen, ne
   expect(ok).toBe(gesamt);
   await leereZwischenspeicher();
   // 2. Seite mit 80 Vorschaubildern auf einer Erwachsenenseite, gleichzeitig mit dem Nachrichtenweg
-  const s = await context.newPage();
+  const s = mitReitern(await context.newPage());
   await s.goto(SEITE);
   await s.evaluate((n) => {
     for (let i = 0; i < n; i++) (window as any).addTile(`z${i}`, 320, 180, 200 + i, `ph5z${i}`);
@@ -166,7 +167,7 @@ test('viele gleichzeitige Packbild-Anfragen: Erweiterung lebt, Bilder kommen, ne
   expect(workerGeschlossen).toBe(0);
   expect(await offscreenLebt()).toBe(true);
   expect((await ausWorker({ ziel: 'erkenner', typ: 'wecke' }))?.ok).toBe(true);
-  const neu = await context.newPage();
+  const neu = mitReitern(await context.newPage());
   await neu.goto(SEITE);
   await expect
     .poll(() => neu.evaluate(() => document.querySelectorAll('[data-veil]').length), { timeout: 30_000, intervals: [250] })

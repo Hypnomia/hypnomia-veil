@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { DUMMY_STUFEN_BILDER, baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 240 s ueberschritten');
@@ -115,7 +116,11 @@ async function mitOptionen(fn) {
   }
 }
 const text = (css) => driver.findElement(By.css(css)).getText();
-const sichtbar = (css) => driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+// E4d1: wer Sichtbarkeit pruefen will, oeffnet vorher den Reiter des Elements (wie die Person).
+const sichtbar = async (css) => {
+  await oeffneReiterFuer(driver, css);
+  return driver.executeScript(`const e = document.querySelector(arguments[0]); return !!e && !e.hidden && e.getClientRects().length > 0;`, css);
+};
 const setzeErwachsen = (teil) =>
   mitOptionen(() =>
     imSeitenkontext(
@@ -177,6 +182,7 @@ try {
   optionen.setPreference('network.dns.localDomains', HOST);
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
+  mitReitern(driver);
   await driver.manage().setTimeouts({ pageLoad: 30_000, script: 60_000 });
   hauptFenster = (await driver.getAllWindowHandles())[0];
   console.log(`firefox: Version ${(await driver.getCapabilities()).get('browserVersion')}`);
@@ -188,7 +194,7 @@ try {
   await bis('Optionen gezeichnet', async () => (await text('#pack-status')).length > 0);
   // Phase 9 (Paket B): ohne Pack ist Adult sites zugeklappt; wie die Person mit "Set them now" aufklappen (wie ton.test.mjs).
   await bis('Ordnung bereit', () => driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`), 15_000);
-  await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } window.scrollTo(0, 0);`);
+  await driver.executeScript(`for (const t of document.querySelectorAll('[role=tab]')) { t.click(); for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } } document.querySelector('[role=tab]').click(); window.scrollTo(0, 0);`);
   await bis('Stufen-Satz sichtbar', () => sichtbar('#stufe-gesperrt'), 10_000).catch(() => {});
   pruefe(await sichtbar('#stufe-gesperrt'), 'ohne Pack: Satz statt Regler');
   pruefe(!(await sichtbar('#stufe-wahl')), 'ohne Pack: Knoepfe nicht sichtbar');
@@ -357,6 +363,7 @@ try {
     await bis('Rueckfrage', () => sichtbar('#entfernen-frage'));
     await driver.findElement(By.css('#entfernen-ja')).click();
     // Ohne Pack klappt die Seite Adult sites wieder zu (Phase 9, Paket B): aufklappen wie die Person.
+    await oeffneReiter(driver, 'Adult sites');
     await bis('wieder zugeklappt', () => driver.executeScript(`return [...document.querySelectorAll('.zu-knopf')].some((e) => !e.hidden && e.getClientRects().length > 0)`), 15_000).catch(() => {});
     await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); }`);
     await bis('Regler wieder gesperrt', async () => !(await sichtbar('#stufe-wahl')) && (await sichtbar('#stufe-gesperrt')), 15_000);

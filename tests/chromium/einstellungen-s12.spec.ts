@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { FEHLER_SPEICHERN, datumLang, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { LEDGER_MEHR, LEDGER_MEHR_NEUER, ZAEHLER_NAMEN, stufeWert } from '../../src/ledger/texte';
 import { TON_TEXTE } from '../../src/ton/texte';
-import { oeffneZugeklapptes } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -80,7 +80,7 @@ test.afterAll(async () => {
 });
 
 async function frischeSeite(vorher: Record<string, unknown> = {}, breite = 0): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(optionsUrl());
   await zuruecksetzen(seite);
   if (Object.keys(vorher).length) await schreibe(seite, vorher);
@@ -95,8 +95,12 @@ async function frischeSeite(vorher: Record<string, unknown> = {}, breite = 0): P
 test('Fund 5 und 29: die Leiste klebt oben, nach dem Scrollen sichtbar, Pause darin schreibt pausiert', async () => {
   const seite = await frischeSeite({ einstieg: EINSTIEG_FERTIG });
   try {
+    // E4d1: es ist nur ein Reiter sichtbar (What I cover ist der hoechste ohne Pack, gemessen 1027 px bei 800 px Fensterhoehe); gescrollt wird, bis der grosse Pause-Knopf aus dem Bild ist.
+    // Ein niedriges Fenster (500 px) gibt dem Reiter genug Scrollweg, damit der grosse Pause-Knopf auch nach dem Wechsel des Status aus dem Bild bleibt.
+    await seite.setViewportSize({ width: 1280, height: 500 });
+    await reiter(seite, 'What I cover');
     await seite.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect.poll(() => seite.evaluate(() => window.scrollY)).toBeGreaterThan(1000);
+    await expect.poll(() => seite.evaluate(() => window.scrollY)).toBeGreaterThan(300);
     const lage = await seite.evaluate(() => {
       const r = document.getElementById('leiste')!.getBoundingClientRect();
       return { oben: r.top, hoehe: r.height, scroll: window.scrollY };
@@ -104,7 +108,7 @@ test('Fund 5 und 29: die Leiste klebt oben, nach dem Scrollen sichtbar, Pause da
     console.log(`einstellungen-s12: Leiste nach Scroll ${Math.round(lage.scroll)} px: oben ${lage.oben}, Hoehe ${Math.round(lage.hoehe)}`);
     expect(Math.abs(lage.oben)).toBeLessThanOrEqual(1);
     await expect(seite.locator('#pause-leiste')).toBeInViewport();
-    await expect(seite.locator('#sprung a').first()).toBeInViewport();
+    await expect(seite.locator('#sprung [role=tab]').first()).toBeInViewport();
     // Pause in der Leiste: gleicher Weg wie #pause, gleiche Woerter, aria-pressed
     await expect(seite.locator('#pause-leiste')).toHaveText('Pause Mia');
     // Nr. 10: der Klick nimmt den Hintergrundweg (runtime.sendMessage typ "pause" mit absolutem Zielwert), nicht den Ersatzweg ueber den Speicher
@@ -126,8 +130,8 @@ test('Fund 5 und 29: die Leiste klebt oben, nach dem Scrollen sichtbar, Pause da
     await seite.locator('#pause-leiste').click();
     await expect.poll(async () => (await einst(seite)).pause).toBe(false);
     expect(await seite.evaluate(() => (globalThis as any).__pause)).toEqual([true, false]);
-    // Sprungziel rutscht nicht unter die Leiste: Chip "About" anklicken, Ueberschrift liegt unter der Leiste
-    await seite.locator('#sprung a', { hasText: 'About' }).click();
+    // Sprungziel rutscht nicht unter die Leiste: Reiter "About" anklicken, Ueberschrift liegt unter der Leiste
+    await seite.locator('#sprung [role=tab]', { hasText: 'About' }).click();
     await expect.poll(() => seite.evaluate(() => Math.round(document.getElementById('ueber-titel')!.getBoundingClientRect().top))).toBeGreaterThan(60);
     const leistenUnten = await seite.evaluate(() => document.getElementById('leiste')!.getBoundingClientRect().bottom);
     const titelOben = await seite.evaluate(() => document.getElementById('ueber-titel')!.getBoundingClientRect().top);
@@ -138,11 +142,11 @@ test('Fund 5 und 29: die Leiste klebt oben, nach dem Scrollen sichtbar, Pause da
   }
 });
 
-test('Fund 5 bei 360 px: Sprungleiste als waagrecht scrollbare Zeile, Seite ohne Ueberlauf', async () => {
+test('Fund 5 bei 360 px: Reiterleiste als waagrecht scrollbare Zeile, Seite ohne Ueberlauf', async () => {
   const seite = await frischeSeite({ einstieg: EINSTIEG_FERTIG }, 360);
   try {
     const m = await seite.evaluate(() => {
-      const n = document.getElementById('sprung')!;
+      const n = document.getElementById('reiter-liste')!;
       return { sw: n.scrollWidth, cw: n.clientWidth, ox: getComputedStyle(n).overflowX, seite: document.documentElement.scrollWidth, fenster: document.documentElement.clientWidth, hoehe: document.getElementById('leiste')!.getBoundingClientRect().height };
     });
     console.log(`einstellungen-s12: 360 px Sprungleiste scrollWidth ${m.sw} > clientWidth ${m.cw}, Leiste ${Math.round(m.hoehe)} px hoch, Seite ${m.seite}/${m.fenster}`);
@@ -194,7 +198,13 @@ test('Fund 9 und 10: Kontraste aus getComputedStyle (Knopftext 4,5:1, Schalterba
     // Bahn im Zustand aus gegen den weissen Kartengrund, Feldrand gegen den Kartengrund
     // Nr. 9: gemessen wird gegen Kartengrund UND Seitengrund (#fff5fa), Knopftext ueber alle sichtbaren button.klein
     const seitenGrund = await seite.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    const knoepfeKr = await seite.locator('button.klein').evaluateAll((l) => l.filter((e) => e.getClientRects().length > 0).map((e) => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor]));
+    // E4d1: sichtbar ist nur ein Reiter, darum je Reiter sammeln (ein Klick auf den Reiter wie bei der Person).
+    const knoepfeKr: string[][] = [];
+    for (const name of REITER_NAMEN) {
+      await reiter(seite, name);
+      knoepfeKr.push(...(await seite.locator('button.klein').evaluateAll((l) => l.filter((e) => e.getClientRects().length > 0).map((e) => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor]))));
+    }
+    await reiter(seite, 'Style');
     const kmin = Math.min(...(await Promise.all(knoepfeKr.map(([f, g]) => kontrastIn(seite, f!, g!)))));
     console.log(`einstellungen-s12: ${knoepfeKr.length} sichtbare button.klein, kleinster Textkontrast ${kmin.toFixed(2)}`);
     expect(knoepfeKr.length).toBeGreaterThan(2);
@@ -213,9 +223,18 @@ test('Fund 9 und 10: Kontraste aus getComputedStyle (Knopftext 4,5:1, Schalterba
     expect(k2).toBeGreaterThanOrEqual(3);
     expect(k3).toBeGreaterThanOrEqual(3);
     expect(k4).toBeGreaterThanOrEqual(3);
-    // Sprung-Chips tragen ebenfalls Text auf Weiss
-    const chip = await seite.locator('#sprung a').first().evaluate((e) => ({ f: getComputedStyle(e).color, g: getComputedStyle(e).backgroundColor }));
-    expect(await kontrastIn(seite, chip.f, chip.g)).toBeGreaterThanOrEqual(4.5);
+    // Der gewaehlte Reiter traegt Text auf seinem Grund (der Reiter hat im Ruhezustand keinen eigenen Grund)
+    // (die Farbe des Reiters wechselt weich: erst messen, wenn der Wechsel durch ist)
+    await expect
+      .poll(async () => {
+        const chip = await seite.locator('#sprung [role=tab][aria-selected=true]').evaluate((e) => ({ f: getComputedStyle(e).color, g: getComputedStyle(e).backgroundColor }));
+        return kontrastIn(seite, chip.f, chip.g);
+      })
+      .toBeGreaterThanOrEqual(4.5);
+    // N6: auch ein nicht gewaehlter Reiter (ohne eigenen Grund, er liegt auf der Glaskarte): Text gegen Weiss und gegen den Seitengrund, gleiche Grenze.
+    const unselected = await seite.locator('#sprung [role=tab][aria-selected=false]').first().evaluate((e) => getComputedStyle(e).color);
+    expect(await kontrastIn(seite, unselected, 'rgb(255, 255, 255)'), 'nicht gewaehlter Reiter auf Weiss').toBeGreaterThanOrEqual(4.5);
+    expect(await kontrastIn(seite, unselected, seitenGrund), 'nicht gewaehlter Reiter auf dem Seitengrund').toBeGreaterThanOrEqual(4.5);
   } finally {
     await seite.close();
   }
@@ -233,25 +252,36 @@ test('Fund 11: bei 360 px sind Chips, Listenknoepfe und Kaestchen mindestens 44 
   try {
     await seite.locator('#kon-zeit-neu').click();
     // Runde 3, N6: der Pause-Knopf der Leiste erscheint erst nach dem Scrollen.
+    await reiter(seite, 'What I cover');
     await seite.evaluate(() => window.scrollTo(0, 1500));
     await expect(seite.locator('#pause-leiste')).toBeVisible();
-    const hoehen = await seite.evaluate(() => {
-      const h = (sel: string) => {
-        const l = [...document.querySelectorAll<HTMLElement>(sel)].filter((e) => e.getClientRects().length > 0);
-        return { n: l.length, min: Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) };
-      };
-      return {
-        chips: h('#sprung a'),
-        ausnahmeRemove: h('#ausnahmen-liste button'),
-        seitenRemove: h('#seiten-liste button'),
-        zeitRemove: h('#kon-zeiten .zeit-weg'),
-        bedeckt: h('.auch'),
-        wochentage: h('.zeit-tage label'),
-        schalter: h('label.schalter'),
-        knoepfe: h('button.klein'),
-        pause: h('#pause-leiste'),
-      };
-    });
+    // E4d1: sichtbar ist nur ein Reiter; die Mindesthoehe gilt fuer alles Sichtbare in jedem Reiter, gesammelt mit einem Klick auf jeden Reiter.
+    const hoehen: Record<string, { n: number; min: number }> = {};
+    for (const name of REITER_NAMEN) {
+      await reiter(seite, name);
+      await seite.evaluate(() => window.scrollTo(0, 1500));
+      const je = await seite.evaluate(() => {
+        const h = (sel: string) => {
+          const l = [...document.querySelectorAll<HTMLElement>(sel)].filter((e) => e.getClientRects().length > 0);
+          return { n: l.length, min: l.length ? Math.round(Math.min(...l.map((e) => e.getBoundingClientRect().height))) : 9999 };
+        };
+        return {
+          chips: h('#sprung [role=tab]'),
+          ausnahmeRemove: h('#ausnahmen-liste button'),
+          seitenRemove: h('#seiten-liste button'),
+          zeitRemove: h('#kon-zeiten .zeit-weg'),
+          bedeckt: h('.auch'),
+          wochentage: h('.zeit-tage label'),
+          schalter: h('label.schalter'),
+          knoepfe: h('button.klein'),
+          pause: h('#pause-leiste'),
+        };
+      });
+      for (const [k, v] of Object.entries(je)) {
+        const alt = hoehen[k] ?? { n: 0, min: 9999 };
+        hoehen[k] = { n: alt.n + v.n, min: Math.min(alt.min, v.min) };
+      }
+    }
     console.log(`einstellungen-s12: Mindesthoehen bei 360 px ${JSON.stringify(hoehen)}`);
     for (const [name, v] of Object.entries(hoehen)) {
       expect(v.n, name).toBeGreaterThan(0);
@@ -268,18 +298,24 @@ test('Fund 14: ein Wort je Ding, keine "skip" oder "exception" im sichtbaren Tex
     await schreibe(seite, { ledger: ledgerStand({ hoechsteStufe: 3 }) });
     await seite.reload();
     await expect(seite.locator('#pack-status')).not.toHaveText('');
-    const sichtbar = (await seite.evaluate(() => document.body.innerText)).toLowerCase();
+    // E4d1: sichtbar ist immer nur ein Reiter; der sichtbare Text ist der aller sieben Reiter, je Reiter mit einem Klick geoeffnet.
+    let sichtbarRoh = '';
+    for (const name of REITER_NAMEN) {
+      await reiter(seite, name);
+      sichtbarRoh += `\n${await seite.evaluate(() => document.body.innerText)}`;
+    }
+    const sichtbar = sichtbarRoh.toLowerCase();
     expect(sichtbar).not.toMatch(/\bskip/);
     expect(sichtbar).not.toMatch(/\bexception/);
     const h2 = await seite.locator('h2').allTextContents();
-    const chips = await seite.locator('#sprung a:not([hidden])').allTextContents();
+    const chips = await seite.locator('#sprung [role=tab]').allTextContents();
     console.log(`einstellungen-s12: Ueberschriften ${JSON.stringify(h2)}, Chips ${JSON.stringify(chips)}`);
     expect(h2).toContain('Sites I leave alone');
     // Phase 9 (Fund 5): eine Pack-Karte "Mia Pack" statt zwei Karten.
     expect(h2).toContain('Mia Pack');
-    expect(chips).toContain('Mia Pack');
-    expect(chips).toContain('Covering');
-    expect(chips).toContain('About and help');
+    expect(chips).toContain('Pack and sound');
+    expect(chips).toContain('What I cover');
+    expect(chips).toContain('About');
     expect(chips).not.toContain('Pack');
     expect(chips).not.toContain('Left alone');
     expect(sichtbar).not.toContain('your pack');
@@ -311,12 +347,12 @@ test('Fund 15: Abschnittstitel groesser als Unterueberschriften, in Textfarbe, n
   }
 });
 
-test('Fund 16: Strict ist ein Schalter in "What I cover", kein eigener Abschnitt und kein eigener Chip', async () => {
+test('Fund 16: Strict ist ein Schalter in "What I cover", kein eigener Abschnitt und kein eigener Reiter', async () => {
   const seite = await frischeSeite();
   try {
     await expect(seite.locator('#abschnitt-strict')).toHaveCount(0);
     await expect(seite.locator('#abschnitt-zonen label.schalter:has(#strict)')).toHaveCount(1);
-    expect(await seite.locator('#sprung a').allTextContents()).not.toContain('Strict');
+    expect(await seite.locator('#sprung [role=tab]').allTextContents()).not.toContain('Strict');
     expect(await seite.locator('h2').allTextContents()).not.toContain('Strict');
     await seite.locator('#abschnitt-zonen label.schalter:has(#strict)').click();
     await expect.poll(async () => (await einst(seite)).strict).toBe(true);
@@ -333,10 +369,11 @@ test('Fund 22 (Phase 9): das Interview wohnt ganz unten in "About and help", vor
   try {
     await expect(seite.locator('#abschnitt-interview')).toBeHidden();
     await schreibe(seite, { einstieg: EINSTIEG_FERTIG });
+    await reiter(seite, 'About');
     await expect(seite.locator('#abschnitt-interview')).toBeVisible();
     await expect(seite.locator('#interview-neu')).toHaveText('Run the interview again');
-    // Der alte Chip bleibt nur als verborgener Anker (grund-pack.ts); die Leiste zeigt ihn nie.
-    await expect(seite.locator('#chip-interview')).toBeHidden();
+    // E4d1 (D5): der alte verborgene Anker-Chip entfaellt mit der Sprungleiste; es gibt ihn nicht mehr.
+    await expect(seite.locator('#chip-interview')).toHaveCount(0);
     // Letztes Kind von "About and help", unter Version, Links und Hilfe.
     expect(await seite.evaluate(() => document.getElementById('ueber')!.lastElementChild?.id)).toBe('abschnitt-interview');
     // Einstieg wieder offen: der Knopf verschwindet
@@ -369,6 +406,7 @@ test('Fund 24: Tonprobe bleibt in der Pause frei, der Klick zeigt den Satz', asy
 test('Fund 25: Ledger ohne Pack nur mit gezaehlten Zeilen und Sammelzeile, mit Pack alles', async () => {
   const seite = await frischeSeite({ einstieg: EINSTIEG_FERTIG });
   try {
+    await reiter(seite, 'Ledger');
     const sichtbareZeilen = () => seite.locator('#ledger .ledger-liste > li:not([hidden])').count();
     await expect(seite.locator('#ledger-mehr')).toBeVisible();
     await expect(seite.locator('#ledger-mehr')).toHaveText(LEDGER_MEHR);
@@ -509,6 +547,7 @@ test('Fund 12: "I understand" der Warnung scheitert nicht still', async () => {
       sl.set = () => Promise.reject(new Error('Test'));
     });
     await seite.locator('#kon-warnung-ok').scrollIntoViewIfNeeded();
+    await reiter(seite, 'Mia’s extras');
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await seite.locator('#kon-warnung-ok').click();
     await expect(seite.locator('#speicher-meldung')).toHaveText(FEHLER_SPEICHERN);
@@ -519,24 +558,24 @@ test('Fund 12: "I understand" der Warnung scheitert nicht still', async () => {
   }
 });
 
-test('Fund 3, 4, 5, 6: Chips umbrechen am Desktop, bei 360 px mit Fehlersatz verdeckt die Leiste weder Sprungziele noch Fokus', async () => {
+test('Fund 3, 4, 5, 6: Reiter stehen am Desktop ganz im Bild, bei 360 px mit Fehlersatz verdecken Leiste und Reiterzeile weder Sprungziele noch Fokus', async () => {
   const seite = await frischeSeite({ einstieg: EINSTIEG_FERTIG });
   try {
-    // Nr. 3: am Desktop liegt keine Chip-Zeile ausserhalb der Sicht (kein verstecktes Scrollen), alle Chips voll im Bereich der Leiste
+    // Nr. 3: am Desktop liegt kein Reiter ausserhalb der Sicht (kein verstecktes Scrollen), alle Reiter voll im Bereich der Reiterleiste
     const d = await seite.evaluate(() => {
       const n = document.getElementById('sprung')!;
       const l = n.getBoundingClientRect();
-      return { sw: n.scrollWidth, cw: n.clientWidth, ausserhalb: [...n.querySelectorAll('a')].filter((a) => a.getClientRects().length && a.getBoundingClientRect().right > l.right + 1).length, ox: getComputedStyle(n).overflowX };
+      return { sw: n.scrollWidth, cw: n.clientWidth, ausserhalb: [...n.querySelectorAll('[role=tab]')].filter((a) => a.getClientRects().length && a.getBoundingClientRect().right > l.right + 1).length, ox: getComputedStyle(n).overflowX };
     });
     console.log(`einstellungen-s12: Desktop Sprungleiste scrollWidth ${d.sw}, clientWidth ${d.cw}, Chips rechts ausserhalb ${d.ausserhalb}`);
     expect(d.ausserhalb).toBe(0);
     expect(d.sw).toBeLessThanOrEqual(d.cw);
     // Nr. 5: Fokusrahmen eines Chips wird nicht abgeschnitten (Polster der Leiste mindestens 5 px oben und unten)
-    await seite.locator('#sprung a').first().focus();
+    await seite.locator('#sprung [role=tab]').first().focus();
     const polster = await seite.evaluate(() => {
       const n = document.getElementById('sprung')!.getBoundingClientRect();
-      const a = document.querySelector<HTMLElement>('#sprung a:focus')!.getBoundingClientRect();
-      const o = parseFloat(getComputedStyle(document.querySelector('#sprung a:focus')!).outlineWidth) + parseFloat(getComputedStyle(document.querySelector('#sprung a:focus')!).outlineOffset);
+      const a = document.querySelector<HTMLElement>('#sprung [role=tab]:focus')!.getBoundingClientRect();
+      const o = parseFloat(getComputedStyle(document.querySelector('#sprung [role=tab]:focus')!).outlineWidth) + parseFloat(getComputedStyle(document.querySelector('#sprung [role=tab]:focus')!).outlineOffset);
       return { oben: a.top - n.top, unten: n.bottom - a.bottom, noetig: o };
     });
     console.log(`einstellungen-s12: Chip-Fokus Platz oben ${polster.oben}, unten ${polster.unten}, noetig ${polster.noetig}`);
@@ -547,17 +586,18 @@ test('Fund 3, 4, 5, 6: Chips umbrechen am Desktop, bei 360 px mit Fehlersatz ver
     await speichernKaputt(seite, true);
     await seite.locator('label.schalter:has(#strict)').click();
     await expect(seite.locator('#speicher-meldung')).toBeVisible();
-    const leiste = () => seite.evaluate(() => document.getElementById('leiste')!.getBoundingClientRect().bottom);
+    // E4d1: bei 360 px klebt die Reiterzeile unter der Leiste; beide zusammen duerfen nichts verdecken.
+    const leiste = () => seite.evaluate(() => Math.max(document.getElementById('leiste')!.getBoundingClientRect().bottom, document.getElementById('sprung')!.getBoundingClientRect().bottom));
     const hoehe = await seite.evaluate(() => Math.round(document.getElementById('leiste')!.getBoundingClientRect().height));
     console.log(`einstellungen-s12: 360 px Leiste mit Fehlersatz ${hoehe} px, scroll-padding-top ${await seite.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingTop)}`);
-    await seite.locator('#sprung a', { hasText: 'About' }).first().click();
+    await seite.locator('#sprung [role=tab]', { hasText: 'About' }).first().click();
     await expect.poll(async () => (await seite.evaluate(() => document.getElementById('ueber-titel')!.getBoundingClientRect().top)) >= (await leiste())).toBe(true);
     // Fokus per Tastatur nach oben (Shift+Tab): fokussiertes Element liegt unter der Leiste, nicht dahinter
     await seite.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await seite.locator('#ausnahme-feld').focus();
     await seite.keyboard.press('Shift+Tab');
     await seite.waitForTimeout(150);
-    const lage = await seite.evaluate(() => ({ el: document.activeElement!.getBoundingClientRect().top, leiste: document.getElementById('leiste')!.getBoundingClientRect().bottom }));
+    const lage = await seite.evaluate(() => ({ el: document.activeElement!.getBoundingClientRect().top, leiste: Math.max(document.getElementById('leiste')!.getBoundingClientRect().bottom, document.getElementById('sprung')!.getBoundingClientRect().bottom) }));
     console.log(`einstellungen-s12: Fokus oben ${Math.round(lage.el)}, Leiste unten ${Math.round(lage.leiste)}`);
     expect(lage.el).toBeGreaterThanOrEqual(lage.leiste);
   } finally {
@@ -598,10 +638,12 @@ test('360 px mit klebender Leiste und Fehlersatz: kein waagrechter Ueberlauf', a
 test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz, gesperrte Kaestchen, Regler, Interview im selben Tab', async () => {
   const seite = await frischeSeite({ einstieg: EINSTIEG_FERTIG }, 1280);
   try {
-    // Lesung Runde 3, Nr. 3: direkt nach dem Laden ist genau ein Chip markiert.
-    await expect.poll(() => seite.locator('#sprung a[aria-current="true"]').count()).toBe(1);
+    // Lesung Runde 3, Nr. 3 (E4d1): direkt nach dem Laden ist genau ein Reiter gewaehlt.
+    await expect.poll(() => seite.locator('#sprung [role=tab][aria-selected="true"]').count()).toBe(1);
     // N6: oben ist nur der grosse Pause-Knopf zu sehen, nach dem Scrollen der kleine in der Leiste.
     await expect(seite.locator('#pause-leiste')).toBeHidden();
+    // E4d1: der Reiter What I cover ist der hoechste ohne Pack und gibt genug Scrollweg fuer die folgenden Schritte.
+    await reiter(seite, 'What I cover');
     // Lesung Runde 3, Nr. 2: steht der grosse Knopf nur noch zur Haelfte im Bild, ist der kleine schon da.
     await seite.evaluate(() => {
       const r = document.getElementById('pause')!.getBoundingClientRect();
@@ -612,17 +654,16 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     await expect(seite.locator('#pause-leiste')).toBeVisible();
     // N5: bei 1280 px ist die Leiste niedriger als vorher (128 px), der Chip des aktuellen Abschnitts ist markiert.
     const hoehe = await seite.evaluate(() => Math.round(document.getElementById('leiste')!.getBoundingClientRect().height));
-    // Lesung Runde 3, Nr. 4: hoechstens zwei Chip-Zeilen (gemessen gegen die Hoehe eines Chips).
+    // Lesung Runde 3, Nr. 4 (E4d1): die sieben Reiter stehen am Desktop in einer Spalte untereinander (eine Spalte statt hoechstens zwei Chip-Zeilen).
     const zeilen = await seite.evaluate(() => {
-      const chip = document.querySelector('#sprung a')!.getBoundingClientRect().height;
-      const tops = new Set([...document.querySelectorAll('#sprung a:not(#chip-interview)')].map((a) => Math.round(a.getBoundingClientRect().top)));
-      return { chip: Math.round(chip), zeilen: tops.size };
+      const tabs = [...document.querySelectorAll('#sprung [role=tab]')].map((a) => a.getBoundingClientRect());
+      return { zeilen: new Set(tabs.map((r) => Math.round(r.top))).size, spalten: new Set(tabs.map((r) => Math.round(r.left))).size };
     });
-    expect(zeilen.zeilen).toBeLessThanOrEqual(2);
+    expect(zeilen).toEqual({ zeilen: 7, spalten: 1 });
     expect(hoehe).toBeLessThan(128);
-    await seite.locator('#sprung a[href="#ledger"]').click();
-    await expect(seite.locator('#sprung a[href="#ledger"]')).toHaveAttribute('aria-current', 'true');
-    expect(await seite.locator('#sprung a[aria-current="true"]').count()).toBe(1);
+    await seite.locator('#sprung [role=tab]', { hasText: 'Ledger' }).click();
+    await expect(seite.locator('#sprung [role=tab]', { hasText: 'Ledger' })).toHaveAttribute('aria-selected', 'true');
+    expect(await seite.locator('#sprung [role=tab][aria-selected="true"]').count()).toBe(1);
     // N4: Escape schliesst die Frage des Ledgers, der Fokus kehrt zum Knopf zurueck.
     await seite.locator('#ledger-loeschen').click();
     await expect(seite.locator('#ledger-frage')).toBeVisible();
@@ -631,6 +672,7 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     await expect(seite.locator('#ledger-loeschen')).toBeFocused();
     // N3 und N4: Pack-Rueckfrage, "Keep it" und Escape geben den Fokus an "Remove Mia Pack" zurueck.
     await schreibe(seite, { pack: packMit(['stil:mia-patch']) });
+    await reiter(seite, 'Pack and sound');
     await expect(seite.locator('#entfernen')).toBeVisible();
     await seite.locator('#entfernen').click();
     await expect(seite.locator('#entfernen-nein')).toBeFocused();
@@ -651,6 +693,7 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     const blass = await seite.locator('#zonen input[data-bedeckt]:disabled').first().evaluate((e) => Number(getComputedStyle(e.closest('label')!).opacity));
     expect(blass).toBeLessThan(0.7);
     // N3: "I understand" der Warnkarte gibt den Fokus an die Blitzwort-Auswahl.
+    await reiter(seite, 'Mia’s extras');
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove(['quizWarnungGesehen', 'spiraleWarnungGesehen']));
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await seite.locator('#kon-warnung-ok').click();
@@ -658,14 +701,18 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     await expect(seite.locator('#kon-blitz')).toBeFocused();
     // N10: bei 360 px sind die Regler mindestens 44 px hoch.
     await seite.setViewportSize({ width: 360, height: 800 });
-    const regler = await seite.evaluate(() => [...document.querySelectorAll('input[type="range"]')].filter((e) => (e as HTMLElement).offsetParent).map((e) => Math.round(e.getBoundingClientRect().height)));
+    const regler: number[] = [];
+    for (const name of REITER_NAMEN) {
+      await reiter(seite, name);
+      regler.push(...(await seite.evaluate(() => [...document.querySelectorAll('input[type="range"]')].filter((e) => (e as HTMLElement).offsetParent).map((e) => Math.round(e.getBoundingClientRect().height)))));
+    }
     for (const h of regler) expect(h).toBeGreaterThanOrEqual(44);
     // N12: "Redo the interview" laeuft im selben Tab.
     const tabsVorher = context.pages().length;
     await seite.locator('#interview-neu').click();
     await expect(seite).toHaveURL(/willkommen\.html#interview$/);
     expect(context.pages().length).toBe(tabsVorher);
-    console.log(`einstellungen-s12: Runde 3 Leiste 1280 px ${hoehe} px hoch, ${zeilen.zeilen} Chip-Zeilen, ${regler.length} Regler bei 360 px >= 44 px, Kaestchen-Deckkraft ${blass}`);
+    console.log(`einstellungen-s12: Runde 3 Leiste 1280 px ${hoehe} px hoch, ${zeilen.zeilen} Reiter-Zeilen, ${regler.length} Regler bei 360 px >= 44 px, Kaestchen-Deckkraft ${blass}`);
   } finally {
     await seite.close();
   }

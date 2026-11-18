@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { ABDECKUNG_AUGENBALKEN, ABDECKUNG_KURZ, GRIP_SATZ } from '../../entrypoints/popup/texte';
 import { EYE_BAR_SATZ } from '../../src/oberflaeche/gemeinsam';
+import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -178,7 +179,7 @@ test.beforeAll(async () => {
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
   erweiterungsId = new URL(worker.url()).host;
   // Warten, bis der Erkenner (Offscreen-Dokument) antwortet.
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.goto(optionsUrl());
   await expect
     .poll(
@@ -315,7 +316,7 @@ test('Eye bar auf einer Seite: das Bild bekommt den Balken, die Canvas-Leinwand 
   await brauchtBild('sfw', BILD_MIT_GESICHT);
   // alle Zonen aus: nur der Balken (wie der alte Stil), der Schalter an
   await setze({ preset: 'mosaik', augenbalken: true, zonen: zonenNur([]), pause: false });
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(`${basis}/augenbalken.html`);
     await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 20_000 }).toBe('1');
@@ -429,7 +430,7 @@ test('Eye bar: PNG mit durchsichtigen Pixeln kommt als PNG mit Alpha zurueck, ei
 });
 
 test('Popup: Kurzzeile und Satz folgen dem Schalter Eye bar; "My grip" ruht nicht mehr (Soll geaendert, E4c: der Stil Eye bar, der den Griff ruhen liess, ist entfallen)', async () => {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
     await seite.evaluate(async () => {
@@ -514,7 +515,7 @@ test('Schalter aus: dasselbe Bild mit Gesicht, alle Zonen aus: die Augen bleiben
     await worker.evaluate(async (neu) => {
       await (globalThis as any).chrome.storage.local.set({ einstellungen: neu });
     }, { preset: 'mosaik', augenbalken: an, pause: false, zonen: ZONEN_AUS() });
-    const seite = await context.newPage();
+    const seite = mitReitern(await context.newPage());
     try {
       await seite.goto(`${basis}/augenbalken.html`);
       await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 20_000 }).toBe('1');
@@ -547,7 +548,7 @@ test('Altstand ueber den echten Weg: storage.local traegt `preset: augenbalken` 
   await worker.evaluate(async (r) => {
     await (globalThis as any).chrome.storage.local.set({ einstellungen: r });
   }, roh);
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   try {
     // Die Flaechen, die der gespeicherte Stand ergibt (Erkenner liest den rohen Stand, vervollstaendige wandert ihn)
     const gespeichert = await worker.evaluate(async () => ((await (globalThis as any).chrome.storage.local.get('einstellungen')) as any).einstellungen);

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { mitReitern } from './einstellungen-ordnung';
 
 // Phase 11 Etappe 3, rote Tests (E3r): Platz fuer die Zonen-Leinwand zwischen mehreren Videos (E3a), "ganz" und vereinigte Flaeche, Huellen (E3b),
 // Pause nach Regel S2 (E3c). Grundlage: 00 Planung/KARTE-VIDEO-E3.md und PHASE-11-AUFTRAEGE-SESSION-21.md (Abschnitt E3r). Fixture video-platz.html
@@ -134,7 +135,7 @@ const testEreignis = (s: Page, detail: Record<string, unknown>) =>
 const neuesVideo = (s: Page, opt: Record<string, unknown>) => s.evaluate((o) => void (window as any).neuesVideo(o), opt);
 
 async function oeffnePlatz(abfrage = '', breite = 800, hoehe = 800, bild = BILD): Promise<Page> {
-  const seite = await context.newPage();
+  const seite = mitReitern(await context.newPage());
   await seite.setViewportSize({ width: breite, height: hoehe });
   await seite.goto(`${basis}/video-platz.html?bild=${encodeURIComponent(bild)}${abfrage ? `&${abfrage}` : ''}`);
   await expect.poll(() => seite.evaluate(() => document.documentElement.dataset.filmBereit ?? null), { timeout: 60_000, intervals: [200] }).toBe('1');
