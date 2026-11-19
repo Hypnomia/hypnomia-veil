@@ -366,6 +366,9 @@ test('Player: beginnt ein Fenster waehrend ein Video laeuft, greift der Zeitgebe
   try {
     await neuesVideo(s, { id: 'haupt', autoplay: true, abspielen: true });
     await laeuft(s, 'haupt');
+    // K8: bleiben bis zur naechsten vollen Minute weniger als 5 s, beginnt das Fenster vielleicht schon vor der Pruefung "noch nicht gesperrt": erst die Minute wechseln lassen
+    const bisMinute = 60_000 - (Date.now() % 60_000);
+    if (bisMinute < 5000) await s.waitForTimeout(bisMinute + 300);
     // Fenster ab der naechsten vollen Minute (Tag und Minute aus der Ortszeit), danach nur Wartezeit
     const n = new Date(Date.now() + 60_000);
     const von = n.getHours() * 60 + n.getMinutes();

@@ -26,6 +26,7 @@ export interface StufenElement {
 // `ort`: der Platz in der Seite; `kennung`: die id der Wurzel des Bausteins (ein Behaelter, den die Tests nach fester Regel pruefen).
 export function haengeStufenwahl(ort: HTMLElement, kennung: string, a: StufenAnschluss): StufenElement {
   let letzter: Einstellungen | null = null; // der zuletzt gesehene gespeicherte Stand, auch wenn der Regler ihn gerade nicht zeigen durfte
+  let laeuft = 0; // K3: Zahl der Speichervorgaenge dieses Elements, die noch nicht beendet sind
   const el: StufenElement = {
     handle: null,
     zeichne(e, erzwingen = false) {
@@ -40,16 +41,20 @@ export function haengeStufenwahl(ort: HTMLElement, kennung: string, a: StufenAns
           exakt: a.exakt,
           hinweisFuer: a.hinweisFuer,
           beiAenderung: (neu) => {
+            laeuft += 1;
             void speichere((alt) => a.schreibe(alt, neu), (s) => el.zeichne(s, true), false).then((gespeichert) => {
-              if (gespeichert) el.zeichne(gespeichert);
+              laeuft -= 1;
+              if (gespeichert && laeuft === 0) el.zeichne(gespeichert); // L2: erst wenn kein Speichern dieses Reglers mehr laeuft
             });
           },
         });
         h.element.id = kennung;
         h.regler.addEventListener('input', () => a.nachAnzeige?.(Number(h.regler.value)));
         // G2: verliert der Regler den Fokus, zeigt das Element wieder den gespeicherten Stand (Regler und Stufen); ein Zug ohne Loslassen schreibt nichts.
+        // K3: laeuft ein Speichern dieses Elements (Loslassen, sofort Tab), zeichnet der Fokusverlust nicht den alten Stand: gezeichnet wird nach dem Ende
+        // des Speicherns (Erfolg: neuer Stand, Fehler: gespeicherter Stand und Fehlersatz).
         h.regler.addEventListener('blur', () => {
-          if (letzter) el.zeichne(letzter, true);
+          if (letzter && laeuft === 0) el.zeichne(letzter, true);
         });
         ort.append(h.element);
         el.handle = h;
@@ -58,6 +63,8 @@ export function haengeStufenwahl(ort: HTMLElement, kennung: string, a: StufenAns
       }
       // Ein Regler, an dem der Nutzer gerade zieht, wird nicht unter der Hand zurueckgestellt, ausser nach einem Speicherfehler.
       if (!erzwingen && document.activeElement === el.handle.regler) return;
+      // L2: solange ein Speichern dieses Elements laeuft, kein ueberholter Zwischenstand (auch nicht aus einer Aenderung des Speichers); nach einem Fehler erzwungen (H1).
+      if (!erzwingen && laeuft > 0) return;
       el.handle.setze(wert);
       a.nachAnzeige?.(wert);
     },

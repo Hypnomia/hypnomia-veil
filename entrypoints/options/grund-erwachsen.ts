@@ -3,9 +3,9 @@
 // "Full replacement" ist nur waehlbar, wenn die Gruppe nicht auf "Off" steht. Folgt Speicher-Aenderungen.
 import { beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
-import { baueWahlkarten, type WahlkartenHandle } from '../../src/oberflaeche/bausteine/bausteine';
+import { baueHinweis, baueWahlkarten, type WahlkartenHandle } from '../../src/oberflaeche/bausteine/bausteine';
 import { erwachsenGesperrt, erwachsenKarte, erwachsenKarten, erwachsenNachWahl } from '../../src/oberflaeche/bausteine/erwachsen-wahl';
-import { ERWACHSEN_TEXTE } from './bedienung-texte';
+import { ERWACHSEN_TEXTE, ERWACHSEN_VERWORFEN } from './bedienung-texte';
 import { speichere } from './grund-speichern';
 
 function el<T extends HTMLElement>(id: string): T {
@@ -40,28 +40,46 @@ function zeichneStufe(): void {
       beiAenderung: waehleStufe,
     });
     wahl.element.id = 'erw-stufe-wahl';
+    // K4: stand der Fokus in der alten Gruppe, liegt er nach dem Wechsel auf der markierten Karte der neuen Form (sonst der ersten waehlbaren), nie auf `body`.
+    const hatteFokus = !!alt && alt.element.contains(document.activeElement);
     if (alt) alt.element.replaceWith(wahl.element);
     else el('erw-stufe-ort').append(wahl.element);
     form = stufeFrei;
+    fokusNachWechsel = hatteFokus;
   }
   // Erst sperren, dann markieren: die Markierung legt den Tab-Halt auf die gewaehlte, sonst auf die erste waehlbare Karte.
   wahl.setzeGesperrt(erwachsenGesperrt(stufeFrei));
   wahl.setze(erwachsenKarte(e.erwachsen, stufeFrei));
   wahl.setzeHinweis(stufeFrei ? null : ERWACHSEN_TEXTE.gesperrt);
+  if (fokusNachWechsel) {
+    fokusNachWechsel = false;
+    wahl.setzeFokus();
+  }
 }
 
+// K2: der Hinweis zu einer verworfenen Wahl (anfangs verborgen), bis zur naechsten Handlung.
+let fokusNachWechsel = false;
+const verworfenHinweis = baueHinweis(ERWACHSEN_VERWORFEN);
+verworfenHinweis.id = 'erw-verworfen';
+verworfenHinweis.setAttribute('role', 'status');
+verworfenHinweis.hidden = true;
+el('erw-stufe-ort').after(verworfenHinweis);
+
 function waehleStufe(id: string): void {
-  // Die Wahl rechnet auf dem frisch gelesenen Stand; eine gesperrte Stufe schreibt nichts, die Anzeige zeigt wieder den gespeicherten Stand.
+  // Die Wahl rechnet auf dem frisch gelesenen Stand und der Form der Gruppe beim Speichern. Gilt sie nicht (die Form hat sich zwischen Klick und Speichern
+  // geaendert), wird nichts geschrieben (`null`, nicht einmal der unveraenderte Stand), die Anzeige zeigt den gespeicherten
+  // Stand und ein kurzer Hinweis steht da, bis zur naechsten Handlung (K2, wie bei der verworfenen Zonen-Handlung).
+  verworfenHinweis.hidden = true;
   let gilt = true;
   void speichere(
     (alt) => {
-      const neu = erwachsenNachWahl(alt.erwachsen, id, stufeFrei);
+      const neu = erwachsenNachWahl(alt.erwachsen, id, stufeFrei); // die Form zum Zeitpunkt des Speicherns
       gilt = neu !== null;
-      return neu ? { erwachsen: neu } : {};
+      return neu ? { erwachsen: neu } : null;
     },
     zeichne,
   ).then(() => {
-    if (!gilt) zeichneStufe();
+    if (!gilt) verworfenHinweis.hidden = false;
   });
 }
 

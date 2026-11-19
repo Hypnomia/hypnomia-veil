@@ -48,3 +48,9 @@ export function gleicheDeckung(a: ZonenStand, b: ZonenStand): boolean {
 export function zonenUnterKleidung(zonen: ZonenStand): Zone[] {
   return ZONEN.filter((z) => BEDECKBARE_ZONEN.has(z) && zonen[z].an && zonen[z].bedeckt === true);
 }
+
+// Der Teil der Einstellungen, den Zonenwahl und Kleidungsfrage nach einer Handlung schreiben (Einstellungsseite und Interview, eine Rechnung): nur `zonen`, und nur, wenn
+// der gespeicherte Stand `alt` noch der ist, auf dem die Handlung gerechnet wurde (`vorher`); sonst null (nichts schreiben, K2/G3).
+export function zonenSchreibteil(alt: ZonenStand, vorher: ZonenStand, neu: ZonenStand): { zonen: ZonenStand } | null {
+  return gleicheDeckung(alt, vorher) ? { zonen: neu } : null;
+}

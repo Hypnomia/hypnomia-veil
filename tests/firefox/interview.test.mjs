@@ -430,6 +430,60 @@ try {
     await schliesseAlleAusser(v);
   }
 
+  // ---- K1 (E4k): Mood-Regler in Firefox: nach einem gescheiterten Speichern und dem Zuruecksetzen meldet Firefox kein `change` fuer dieselbe Taste ----
+  {
+    await interview(v, { version: 1, schwelle: 0.15 }, null);
+    await bisSeite(4);
+    await exaktOeffnen();
+    await driver.executeScript(`const a = (window.wrappedJSObject && window.wrappedJSObject.browser) || window.browser; window.__echtSet = a.storage.local.set.bind(a.storage.local); window.__k1 = 0; window.__k1kaputt = true; a.storage.local.set = (o) => { if ('einstellungen' in o) window.__k1++; return window.__k1kaputt && 'einstellungen' in o ? Promise.reject(new Error('voll')) : window.__echtSet(o); }; document.querySelector('#iv-stimmung-wahl input[type=range]').focus();`);
+    const messen = () => driver.executeScript(`const r = document.querySelector('#iv-stimmung-wahl input[type=range]'); return { fokus: document.activeElement === r, wert: Number(r.value), zahl: document.querySelector('#iv-stimmung-wahl .v-wert').textContent };`);
+    const versuche = () => driver.executeScript('return window.__k1');
+    for (const [taste, name] of [[Key.ARROW_LEFT, 'links'], [Key.ARROW_RIGHT, 'rechts']]) {
+      for (let i = 1; i <= 2; i++) {
+        await driver.executeScript(`const f = document.getElementById('fehler'); f.textContent = ''; f.hidden = true;`);
+        const n0 = await versuche();
+        await driver.actions({ async: true }).sendKeys(taste).perform();
+        await bis(`K1 ${name} ${i}: Fehlersatz`, async () => (await text('#fehler')) === FEHLER_SPEICHERN);
+        await bis(`K1 ${name} ${i}: gespeicherter Stand`, async () => { const z = await messen(); return z.wert === 0.15 && z.zahl === '0.15'; });
+        pruefe((await versuche()) === n0 + 1, `K1 Taste ${name} ${i}: genau ein Schreibversuch (waren ${(await versuche()) - n0})`);
+        pruefe(await stufeGewaehlt(stimmungsWort(0.15)), `K1 Taste ${name} ${i}: die Stufe des gespeicherten Stands ist markiert`);
+        messzahl += 2;
+      }
+    }
+    pruefe(((await einst()).schwelle) === 0.15, 'K1: nach den gescheiterten Versuchen steht der gespeicherte Stand im Speicher');
+    await driver.executeScript('window.__k1kaputt = false');
+    const n1 = await versuche();
+    await driver.actions({ async: true }).sendKeys(Key.ARROW_LEFT).perform();
+    await bis('K1: gelungen gespeichert', async () => Math.abs((await einst()).schwelle - 0.14) < 1e-9);
+    await warte(300);
+    const z = await messen();
+    pruefe(z.wert === 0.14 && z.zahl === '0.14' && (await versuche()) === n1 + 1, `K1: gelungen, Anzeige gleich Speicher, ein Schreibversuch (${JSON.stringify(z)}, Versuche ${(await versuche()) - n1})`);
+    messzahl += 2;
+    await schliesseAlleAusser(v);
+  }
+
+  // ---- L1 (E4k Nachr.): Mood mit gespeichertem Zwischenwert: kein Schreibversuch ohne Handlung ----
+  {
+    await interview(v, { version: 1, schwelle: 0.1051 }, null);
+    await bisSeite(4);
+    await driver.executeScript(`const a = (window.wrappedJSObject && window.wrappedJSObject.browser) || window.browser; window.__echtSet = a.storage.local.set.bind(a.storage.local); window.__k1 = 0; a.storage.local.set = (o) => { window.__k1++; return window.__echtSet(o); };`);
+    const roh = JSON.stringify(await speicher('einstellungen'));
+    const reg = await driver.findElement(By.css('#iv-stimmung-wahl input[type=range]'));
+    await driver.executeScript('arguments[0].focus()', reg);
+    for (const t of [Key.SHIFT, Key.CONTROL, 'a', Key.ESCAPE]) await reg.sendKeys(t);
+    const pos = await driver.executeScript(`const r = arguments[0]; r.scrollIntoView({ block: 'center' }); const b = r.getBoundingClientRect(); const a = (Number(r.value) - Number(r.min)) / (Number(r.max) - Number(r.min)); return [b.left + 8 + (b.width - 16) * a, b.top + b.height / 2];`, reg);
+    await driver.actions({ async: true }).move({ x: Math.round(pos[0]), y: Math.round(pos[1]) }).press().release().perform();
+    await driver.actions({ async: true }).sendKeys(Key.TAB).perform();
+    await driver.executeScript('arguments[0].focus()', reg);
+    await driver.actions({ async: true }).sendKeys(Key.chord(Key.SHIFT, Key.TAB)).perform();
+    await driver.executeScript('arguments[0].blur()', reg);
+    await warte(500);
+    pruefe((await driver.executeScript('return window.__k1')) === 0, 'L1: null Schreibaufrufe ohne Handlung im Interview');
+    pruefe(JSON.stringify(await speicher('einstellungen')) === roh, 'L1: der gespeicherte Wert bleibt Bit fuer Bit');
+    messzahl += 2;
+    await schliesseAlleAusser(v);
+  }
+
   // ---- N9: ein Pfeil waehlt nicht, auch nicht in der Kleidungsfrage und der Gruppe der Erwachsenenseiten ----
   for (const [seite, gruppe, name] of [[2, 'iv-kleidung-frage', 'Kleidungsfrage'], [5, 'iv-erw-wahl', 'Gruppe der Erwachsenenseiten']]) {
     await interview(v, { version: 1, erwachsen: { an: true, stufe: 'hot' } }, PACK_VOLL);

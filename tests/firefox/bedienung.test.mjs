@@ -189,8 +189,8 @@ try {
   await installiere(driver, paket);
   await oeffne('options.html');
 
-  // `VEIL_NUR=f5` fuehrt nur den Zaehler der Schreibereignisse (F5) aus (Mutationsbeleg, ohne dass ein frueherer Teil davor rot wird).
-  if (process.env.VEIL_NUR !== 'f5') {
+  // `VEIL_BEDIENUNG_NUR=f5` fuehrt nur den Zaehler der Schreibereignisse (F5) aus (Mutationsbeleg, ohne dass ein frueherer Teil davor rot wird).
+  if (process.env.VEIL_BEDIENUNG_NUR !== 'f5') {
   // ---- F1 und F2: Karten, Chips und Kleidungsfrage ueber die echte Seite, Speicher lesen, neu laden ----
   await seite(null);
   pruefe((await markiertText('zonen-wahl')).startsWith('Body') && !(await markiertText('zonen-wahl')).startsWith('Body and'), 'Standard: Karte Body markiert');
@@ -291,6 +291,81 @@ try {
   for (const s of STUFEN) await fehlerBei(s.wahl, () => stufeKlick(driver, s.wahl, s.stufen[0][0]), async () => (await markiertText(s.wahl)) === null && (await text(`#${s.wahl} .v-wert`)) === s.zahl);
   pruefe(JSON.stringify(await einst()) === gespeichert, 'F5: nichts gespeichert');
   await kaputt(false);
+
+  // ---- K1 (E4k): nach einem gescheiterten Speichern und dem Zuruecksetzen meldet Firefox kein `change` fuer dieselbe Taste; der Baustein meldet selbst ----
+  // Je Stufenwahl (alle vier): Taste links zweimal, Taste rechts zweimal bei gesperrtem Speicher: jede Taste genau ein Schreibversuch, danach steht der gespeicherte
+  // Stand da (Regler, Stufe) und der Fehlersatz; dann gelingt eine Taste: Anzeige gleich Speicher, wieder genau ein Schreibversuch.
+  const MITTE = { version: 1, schwelle: 0.15, quiz: { verweigern: 0.1, freilegenMs: 10000 }, ton: { an: false, lautstaerke: 0.6 } };
+  for (const s of STUFEN) {
+    await seite(MITTE, true);
+    await oeffneAuf(driver, s.wahl);
+    const css = reglerCss(s.wahl);
+    const [mitteName, mitte] = s.stufen[1];
+    const schritt = Number(await driver.executeScript(`return document.querySelector(arguments[0]).step`, css));
+    await driver.executeScript(`
+      const sl = (window.wrappedJSObject && window.wrappedJSObject.browser || window.browser).storage.local;
+      if (!sl.__echtSet) sl.__echtSet = sl.set.bind(sl);
+      const echt = sl.__echtSet; window.__k1 = 0; window.__k1kaputt = true;
+      sl.set = (o) => { if ('einstellungen' in o) window.__k1++; return window.__k1kaputt && 'einstellungen' in o ? Promise.reject(new Error('Test')) : echt(o); };`);
+    const regler = await driver.findElement(By.css(css));
+    await driver.executeScript(`arguments[0].focus()`, regler);
+    const reglerWert = async () => Number(await driver.executeScript(`return document.querySelector(arguments[0]).value`, css));
+    const versuche = () => driver.executeScript(`return window.__k1`);
+    for (const [taste, name] of [[Key.ARROW_LEFT, 'links'], [Key.ARROW_RIGHT, 'rechts']]) {
+      for (let i = 1; i <= 2; i++) {
+        await driver.executeScript(`const m = document.getElementById('speicher-meldung'); m.textContent = ''; m.hidden = true;`);
+        const n0 = await versuche();
+        await regler.sendKeys(taste);
+        await bis(`${s.wahl} ${name} ${i}: Fehlersatz`, async () => (await sichtbar('#speicher-meldung')) && (await text('#speicher-meldung')) === FEHLER_SPEICHERN);
+        await bis(`${s.wahl} ${name} ${i}: gespeicherter Stand`, async () => nah(await reglerWert(), mitte) && (await markiertText(s.wahl)) === mitteName);
+        pruefe((await versuche()) === n0 + 1, `K1 ${s.wahl} Taste ${name} ${i}: genau ein Schreibversuch (waren ${(await versuche()) - n0})`);
+      }
+    }
+    pruefe(nah(s.pfad(await einst()), mitte), `K1 ${s.wahl}: nach den gescheiterten Versuchen steht der gespeicherte Stand im Speicher`);
+    await driver.executeScript(`window.__k1kaputt = false`);
+    const n1 = await versuche();
+    await regler.sendKeys(Key.ARROW_LEFT);
+    await bis(`${s.wahl}: gelungen gespeichert`, async () => nah(s.pfad(await einst()), mitte - schritt));
+    await warte(300);
+    pruefe(nah(await reglerWert(), mitte - schritt) && (await versuche()) === n1 + 1, `K1 ${s.wahl}: gelungen, Anzeige gleich Speicher, ein Schreibversuch`);
+  }
+  pruefe(true, 'K1: vier Stufenwahlen, beide Richtungen');
+
+  // ---- L1 (E4k Nachr.): kein Schreibversuch ohne Handlung am Regler, auch bei einem gespeicherten Zwischenwert ----
+  const ZW_L1 = { version: 1, schwelle: 0.1051, quiz: { verweigern: 0.1051, freilegenMs: 10500 }, ton: { an: false, lautstaerke: 0.4051 } };
+  for (const [name, mitPackL1] of [['ohne Pack', false], ['mit Pack nach dem Laden', true]]) {
+    await seite(ZW_L1, mitPackL1);
+    await driver.executeScript(`
+      const sl = (window.wrappedJSObject && window.wrappedJSObject.browser || window.browser).storage.local;
+      if (!sl.__echtSet) sl.__echtSet = sl.set.bind(sl);
+      const echt = sl.__echtSet; window.__k1 = 0;
+      sl.set = (o) => { window.__k1++; return echt(o); };`);
+    const roh = JSON.stringify(await einst());
+    let gemessenL1 = 0;
+    for (const st of STUFEN) {
+      const css = reglerCss(st.wahl);
+      if (!(await driver.executeScript(`return !!document.querySelector(arguments[0])`, css))) continue;
+      await oeffneAuf(driver, st.wahl);
+      if (!(await driver.executeScript(`const r = document.querySelector(arguments[0]); return !!r && r.getClientRects().length > 0`, css))) continue; // ohne Pack sind drei der vier Abschnitte verborgen
+      gemessenL1 += 1;
+      const reg = await driver.findElement(By.css(css));
+      await driver.executeScript(`arguments[0].focus()`, reg);
+      for (const t of [Key.SHIFT, Key.CONTROL, 'a', Key.ESCAPE]) await reg.sendKeys(t);
+      const pos = await driver.executeScript(`const r = arguments[0]; const b = r.getBoundingClientRect(); const a = (Number(r.value) - Number(r.min)) / (Number(r.max) - Number(r.min)); return [b.left + 8 + (b.width - 16) * a, b.top + b.height / 2];`, reg);
+      await driver.executeScript(`arguments[0].scrollIntoView({ block: 'center' })`, reg);
+      const pos2 = await driver.executeScript(`const r = arguments[0]; const b = r.getBoundingClientRect(); const a = (Number(r.value) - Number(r.min)) / (Number(r.max) - Number(r.min)); return [b.left + 8 + (b.width - 16) * a, b.top + b.height / 2];`, reg);
+      void pos;
+      await driver.actions({ async: true }).move({ x: Math.round(pos2[0]), y: Math.round(pos2[1]) }).press().release().perform();
+      await driver.actions({ async: true }).sendKeys(Key.TAB).perform();
+      await driver.executeScript(`arguments[0].focus()`, reg);
+      await driver.actions({ async: true }).sendKeys(Key.chord(Key.SHIFT, Key.TAB)).perform();
+      await driver.executeScript(`arguments[0].blur()`, reg);
+    }
+    await warte(500);
+    pruefe(gemessenL1 >= (mitPackL1 ? 4 : 1), `L1 ${name}: gemessene Stufenwahlen ${gemessenL1}`);
+    pruefe((await driver.executeScript('return window.__k1')) === 0, `L1 ${name}: null Schreibaufrufe ohne Handlung (waren ${await driver.executeScript('return window.__k1')})`);
+    pruefe(JSON.stringify(await einst()) === roh, `L1 ${name}: der gespeicherte Wert bleibt Bit fuer Bit`);
+  }
 
   // ---- G1: ohne Freischaltung bleibt `an` an UND aus schaltbar ----
   const EXPLICIT = { version: 1, erwachsen: { ...STANDARD.erwachsen, stufe: 'explicit' } };

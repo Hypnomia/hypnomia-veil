@@ -142,6 +142,68 @@ try {
   // Hoechstens ein Hinweis
   await js(`for (const t of ['eins', 'zwei', 'drei']) window.__b.auswahl.setzeHinweis(t)`);
   pruefe((await js(`return document.querySelectorAll('[data-fall="auswahl"] .v-hinweis').length`)) === 1, 'Hinweis: nach dreimal Setzen genau einer');
+
+  // ---- K1 (E4k): der Regler "Exact value" meldet nach keyup und pointerup selbst, wenn sein Wert vom zuletzt gemeldeten oder ueber setze() gesetzten abweicht ----
+  // Firefox 160 meldet am nativen Regler kein `change`, wenn der Wert nach einem Zuruecksetzen durch die Seite wieder dem Wert des letzten `change` gleicht.
+  // Die Seite scheitert hier "von Hand": nach jeder Meldung stellt der Test den gespeicherten Stand per setze() zurueck (wie die Seite nach einem Speicherfehler).
+  await lade(1280);
+  const kMeldungen = () => js('return window.__b.log.filter((l) => l.von === "stimmung").map((l) => l.wert)');
+  await js(`document.querySelector('[data-fall="stimmung"] .v-auf-kopf').click()`);
+  const kRegler = await driver.findElement(By.css('[data-fall="stimmung"] input[type="range"]'));
+  const kFokus = () => js('arguments[0].focus()', kRegler);
+  const nahe = (a, b) => Math.abs(a - b) < 1e-9;
+  for (const [taste, name, start, schritt] of [[Key.ARROW_LEFT, 'Pfeil links', 0.22, -0.01], [Key.ARROW_RIGHT, 'Pfeil rechts', 0.1, 0.01]]) {
+    await js('window.__b.log.length = 0; window.__b.stimmung.setze(arguments[0])', start);
+    await kFokus();
+    for (let i = 1; i <= 3; i++) {
+      await kRegler.sendKeys(taste);
+      const m = await kMeldungen();
+      pruefe(m.length === i && nahe(m.at(-1), start + schritt), `K1 ${name}: Taste ${i} meldet genau einen Schreibversuch mit ${(start + schritt).toFixed(2)} (gemeldet: ${JSON.stringify(m)})`);
+      await js('window.__b.stimmung.setze(arguments[0])', start); // die Seite stellt den gespeicherten Stand zurueck (Speichern gescheitert)
+      pruefe(nahe(Number(await js('return arguments[0].value', kRegler)), start), `K1 ${name}: nach dem Zuruecksetzen steht der gespeicherte Stand da`);
+    }
+  }
+  // Ohne Zuruecksetzen (Speichern gelungen): jede Taste genau eine Meldung, kein doppeltes Speichern
+  await js('window.__b.log.length = 0; window.__b.stimmung.setze(0.1)');
+  await kFokus();
+  for (let i = 1; i <= 4; i++) {
+    await kRegler.sendKeys(Key.ARROW_RIGHT);
+    const m = await kMeldungen();
+    pruefe(m.length === i && nahe(m.at(-1), 0.1 + 0.01 * i), `K1 ohne Zuruecksetzen: Taste ${i} meldet genau einen Schreibversuch (gemeldet: ${JSON.stringify(m)})`);
+  }
+  // Ziehen mit der Maus: je Ziehen genau eine Meldung, auch nach dem Zuruecksetzen
+  await js('window.__b.log.length = 0; window.__b.stimmung.setze(0.1)');
+  for (let i = 1; i <= 2; i++) {
+    await driver.actions({ async: true }).move({ origin: kRegler }).press().move({ origin: kRegler, x: 40 }).release().perform();
+    const m = await kMeldungen();
+    pruefe(m.length === i, `K1 Ziehen ${i}: genau ein Schreibversuch (gemeldet: ${JSON.stringify(m)})`);
+    await js('window.__b.stimmung.setze(0.1)');
+  }
+  // Ein Zwischenwert (0,1049, der Regler haelt ihn als 0,10): eine Taste ohne Wirkung am Regler meldet nichts (keine stille Aenderung durch das Runden)
+  await js('window.__b.log.length = 0; window.__b.stimmung.setze(0.1049)');
+  await kFokus();
+  await kRegler.sendKeys('a');
+  await kRegler.sendKeys(Key.SHIFT);
+  pruefe((await kMeldungen()).length === 0, 'K1: eine Taste ohne Wirkung am Regler meldet bei einem Zwischenwert nichts');
+
+  // ---- L1 (E4k Nachr.): ein frisch gebauter Regler (ohne setze()) meldet ohne Handlung nichts ----
+  for (const start of [0.15, 0.1051]) {
+    await lade(1280);
+    await js('window.__b.baueFrisch(arguments[0])', start);
+    await js(`document.querySelector('[data-fall="frisch"] .v-auf-kopf').click()`);
+    const reg = await driver.findElement(By.css('[data-fall="frisch"] input[type="range"]'));
+    await js('arguments[0].focus()', reg); // Fokus
+    for (const t of [Key.SHIFT, Key.CONTROL, 'a', Key.ESCAPE, Key.TAB]) await driver.actions({ async: true }).sendKeys(t).perform();
+    await js('arguments[0].focus()', reg);
+    await driver.actions({ async: true }).sendKeys(Key.chord(Key.SHIFT, Key.TAB)).perform();
+    // Klick auf den Daumen ohne Bewegung (Browser-Pixel aus der Lage des Reglers und dem Wert)
+    const p = await js(`const r = arguments[0]; const b = r.getBoundingClientRect(); const a = (Number(r.value) - Number(r.min)) / (Number(r.max) - Number(r.min)); return [b.left + 8 + (b.width - 16) * a, b.top + b.height / 2];`, reg);
+    await driver.actions({ async: true }).move({ x: Math.round(p[0]), y: Math.round(p[1]) }).press().release().perform();
+    await js('arguments[0].blur()', reg); // Fokusverlust
+    const m = await js('return window.__b.log.filter((l) => l.von === "frisch").map((l) => l.wert)');
+    pruefe(m.length === 0, `L1 Start ${start}: Fokus, Shift, Strg, Taste ohne Wirkung, Tab, Daumenklick, Fokusverlust melden nichts (gemeldet: ${JSON.stringify(m)})`);
+    pruefe((await js(`return document.querySelector('[data-fall="frisch"] .v-wert').textContent`)) === String(start), `L1 Start ${start}: die Anzeige bleibt der gespeicherte Wert`);
+  }
 } catch (e) {
   console.error('firefox: Fehler', e);
   code = 1;

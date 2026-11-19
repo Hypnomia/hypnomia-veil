@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { STANDARD } from '../../src/einstellungen';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { REITER as REITERDATEN } from '../../entrypoints/options/reiter-daten';
-import { ZONEN_VERWORFEN } from '../../entrypoints/options/bedienung-texte';
+import { ERWACHSEN_VERWORFEN, ZONEN_VERWORFEN } from '../../entrypoints/options/bedienung-texte';
 import { kleidungHinweis } from '../../entrypoints/options/bedienung-texte';
-import { markiert, mitReitern, oeffneZugeklapptes, reiter, stufenKnopf, zonenChip } from './einstellungen-ordnung';
+import { markiert, mitReitern, oeffneZugeklapptes, reiter, reiterFuer, stufenKnopf, zonenChip } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -29,6 +29,7 @@ const einst = async (seite: Page) => ((await lies(seite, 'einstellungen')).einst
 const EINSTIEG_FERTIG = { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'uebersprungen', zeit: 1 };
 const packMit = (freischaltungen: string[]) => ({ id: 't', version: '1.0.0', titel: 'T', freischaltungen, bilder: 7, groesse: 1, importiert: 1 });
 const PACK_VOLL = packMit(['stil:mia-patch', 'erwachsen:vorschau', 'zensur:sticker', 'kontrolle:blitz', 'ton']);
+const PACK_OHNE_FREISCHALTUNG = packMit(['stil:mia-patch']); // ein Pack ohne `erwachsen:vorschau`: die Gruppe zeigt Off und On (ganz ohne Pack ist der Block verborgen)
 const zuruecksetzen = (seite: Page) =>
   seite.evaluate(() => (globalThis as any).chrome.storage.local.remove(['pack', 'einstellungen', 'einstieg', 'quizWarnungGesehen', 'spiraleWarnungGesehen']));
 const REITER = REITERDATEN.map((r) => r.name);
@@ -621,6 +622,233 @@ test('F7: kein alter Schalter und kein altes Kaestchen im Dokument, auch nicht v
       );
       expect(alt, `alte Elemente ${zustand}`).toEqual([]);
     }
+  } finally {
+    await seite.close();
+  }
+});
+
+// ---------- E4k ----------
+// Zaehlt jeden Schreibversuch der Seite auf `einstellungen` (`__k.n`) und laesst ihn gelingen, scheitern oder `verzoegerung` ms warten.
+const schreibweg = (seite: Page, art: 'gelingt' | 'scheitert', verzoegerung = 0) =>
+  seite.evaluate(([art, ms]) => {
+    const sl = (globalThis as any).chrome.storage.local;
+    sl.__echtSet ??= sl.set.bind(sl);
+    const k = ((globalThis as any).__k ??= { n: 0 });
+    k.art = art;
+    k.ms = ms;
+    sl.set = (o: Record<string, unknown>) => {
+      if (!('einstellungen' in o)) return sl.__echtSet(o);
+      k.n += 1;
+      const los = () => (k.art === 'scheitert' ? Promise.reject(new Error('Test: Speichern scheitert')) : sl.__echtSet(o));
+      return k.ms > 0 ? new Promise((r) => setTimeout(r, k.ms)).then(los) : los();
+    };
+  }, [art, verzoegerung] as const);
+const versuche = (seite: Page) => seite.evaluate(() => (globalThis as any).__k?.n ?? 0);
+
+test('K1: Einstellungsseite, Regler "Exact value": je Tastendruck und je Ziehen genau ein Schreibversuch; nach einem gescheiterten Speichern meldet dieselbe Taste wieder genau einen; gelungen: Anzeige gleich Speicher', async () => {
+  const seite = await seiteMit({ einstellungen: { version: 1, schwelle: 0.15 }, pack: PACK_VOLL });
+  try {
+    await seite.locator('#stimmung-wahl .v-auf-kopf').click();
+    const regler = seite.locator('#stimmung-wahl input[type=range]');
+    await schreibweg(seite, 'scheitert');
+    await regler.focus();
+    for (const taste of ['ArrowLeft', 'ArrowRight']) {
+      for (let i = 1; i <= 2; i++) {
+        await seite.evaluate(() => { const m = document.getElementById('speicher-meldung')!; m.textContent = ''; m.hidden = true; });
+        const n0 = await versuche(seite);
+        await seite.keyboard.press(taste);
+        await expect(seite.locator('#speicher-meldung')).toHaveText(FEHLER_SPEICHERN);
+        expect(await versuche(seite), `${taste} ${i}: genau ein Schreibversuch`).toBe(n0 + 1);
+        await expect(regler).toHaveValue('0.15');
+        await expect.poll(() => markiert(seite, 'stimmung-wahl')).toBe('Suspicious');
+      }
+    }
+    await schreibweg(seite, 'gelingt');
+    const n1 = await versuche(seite);
+    await seite.keyboard.press('ArrowLeft');
+    await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.14, 9);
+    await expect(regler).toHaveValue('0.14');
+    expect(await versuche(seite), 'gelungen: ein Schreibversuch').toBe(n1 + 1);
+    // Ziehen: genau ein Schreibversuch je Ziehen
+    const kasten = (await regler.boundingBox())!;
+    for (let i = 1; i <= 2; i++) {
+      const n = await versuche(seite);
+      await seite.mouse.move(kasten.x + 10 * i, kasten.y + kasten.height / 2);
+      await seite.mouse.down();
+      await seite.mouse.move(kasten.x + 70 * i, kasten.y + kasten.height / 2, { steps: 6 });
+      await seite.mouse.up();
+      await seite.waitForTimeout(250);
+      expect(await versuche(seite), `Ziehen ${i}: genau ein Schreibversuch`).toBe(n + 1);
+    }
+  } finally {
+    await seite.close();
+  }
+});
+
+test('K2: wechselt die Form der Erwachsenen-Gruppe zwischen Klick und Speichern, wird nichts geschrieben, der gespeicherte Stand steht da und ein Hinweis erscheint, der bei der naechsten Handlung verschwindet', async () => {
+  const seite = await seiteMit({ pack: PACK_OHNE_FREISCHALTUNG }, 1280, true);
+  try {
+    await reiter(seite, 'Adult sites');
+    await expect(seite.locator('#erw-verworfen')).toBeHidden();
+    const alt = await seite.evaluateHandle(() => document.querySelector('#erw-stufe-wahl [data-id="on"]'));
+    await mitPack(seite, PACK_VOLL); // die Form wechselt: Off, Tease, Hot, Explicit
+    await expect(seite.locator('#erw-stufe-wahl [role=radio]')).toHaveCount(4);
+    const vorher = JSON.stringify(await einst(seite));
+    await alt.evaluate((e) => (e as HTMLElement).click()); // der Klick auf "On" kommt erst jetzt beim Speichern an: dort gilt er nicht mehr
+    await expect(seite.locator('#erw-verworfen')).toBeVisible();
+    await expect(seite.locator('#erw-verworfen')).toHaveText(ERWACHSEN_VERWORFEN);
+    expect(await aufrufe(seite), 'die verworfene Wahl schreibt nichts, auch nicht den unveraenderten Stand').toBe('');
+    expect(JSON.stringify(await einst(seite))).toBe(vorher);
+    expect(await markiert(seite, 'erw-stufe-wahl'), 'der gespeicherte Stand steht da: der Standard ist an mit Hot').toContain('Hot');
+    await stufenKnopf(seite, 'erw-stufe-wahl', 'Tease').click(); // die naechste Handlung nimmt den Hinweis weg
+    await expect(seite.locator('#erw-verworfen')).toBeHidden();
+    await expect.poll(async () => (await einst(seite)).erwachsen?.stufe).toBe('tease');
+  } finally {
+    await seite.close();
+  }
+});
+
+test('K3: Regler losgelassen und sofort Tab: waehrend des Speicherns zeichnet der Fokusverlust nicht den alten Stand; nach dem Ende Erfolg: neuer Stand, Fehler: gespeicherter Stand und Fehlersatz', async () => {
+  for (const art of ['gelingt', 'scheitert'] as const) {
+    const seite = await seiteMit({ einstellungen: { version: 1, schwelle: 0.15 }, pack: PACK_VOLL });
+    try {
+      await seite.locator('#stimmung-wahl .v-auf-kopf').click();
+      const regler = seite.locator('#stimmung-wahl input[type=range]');
+      await regler.focus();
+      await schreibweg(seite, art, 900);
+      // Anzeige mitschreiben: jeder Wert, den der Regler ab jetzt zeigt
+      await seite.evaluate(() => {
+        const r = document.querySelector('#stimmung-wahl input[type=range]') as HTMLInputElement;
+        const w = ((globalThis as any).__gesehen = [r.value]);
+        const takt = setInterval(() => { if (w.at(-1) !== r.value) w.push(r.value); }, 10);
+        (globalThis as any).__takt = takt;
+      });
+      await seite.keyboard.press('ArrowRight'); // 0,16: loslassen = change, das Speichern laeuft 900 ms
+      await seite.keyboard.press('Tab'); // sofort der Fokusverlust
+      await seite.waitForTimeout(400); // mitten im Speichern
+      expect(await seite.evaluate(() => (document.querySelector('#stimmung-wahl input[type=range]') as HTMLInputElement).value), `${art}: mitten im Speichern steht nicht der alte Stand da`).toBe('0.16');
+      if (art === 'gelingt') {
+        await expect.poll(async () => (await einst(seite)).schwelle, { timeout: 5000 }).toBeCloseTo(0.16, 9);
+        await expect(regler).toHaveValue('0.16');
+        await expect(seite.locator('#stimmung-wahl .v-wert')).toHaveText('0.16');
+        expect(await seite.evaluate(() => (globalThis as any).__gesehen), 'der Regler zeigte nie den alten Stand nach dem Tastendruck').toEqual(['0.15', '0.16']);
+      } else {
+        await expect(seite.locator('#speicher-meldung')).toHaveText(FEHLER_SPEICHERN, { timeout: 5000 });
+        await expect(regler).toHaveValue('0.15');
+        await expect(seite.locator('#stimmung-wahl .v-wert')).toHaveText('0.15');
+        expect((await einst(seite)).schwelle).toBe(0.15);
+      }
+    } finally {
+      await seite.evaluate(() => clearInterval((globalThis as any).__takt)).catch(() => undefined);
+      await seite.close();
+    }
+  }
+});
+
+test('K4: stand der Fokus in der Erwachsenen-Gruppe, wenn die Form wechselt, liegt er danach auf der markierten Karte der neuen Form, nie auf body (beide Richtungen)', async () => {
+  const seite = await seiteMit({ einstellungen: { version: 1, erwachsen: { ...STANDARD.erwachsen, an: true, stufe: 'hot' } }, pack: PACK_VOLL }, 1280, true);
+  try {
+    const fokus = () => seite.evaluate(() => { const a = document.activeElement as HTMLElement; return { id: a?.dataset?.id ?? null, in: !!a?.closest('#erw-stufe-wahl'), tag: a?.tagName }; });
+    const vorher = JSON.stringify(await einst(seite));
+    await seite.locator('#erw-stufe-wahl [data-id="explicit"]').focus();
+    await seite.evaluate((p) => (globalThis as any).chrome.storage.local.set({ pack: p }), PACK_OHNE_FREISCHALTUNG); // ohne Freischaltung: Off, On, Tease, Hot, Explicit; gespeichert an: markiert ist On
+    await expect(seite.locator('#erw-stufe-wahl [role=radio]')).toHaveCount(5);
+    expect(await fokus(), 'ohne Pack: Fokus auf der markierten Karte On').toEqual({ id: 'on', in: true, tag: 'BUTTON' });
+    await seite.evaluate((p) => (globalThis as any).chrome.storage.local.set({ pack: p }), PACK_VOLL);
+    await expect(seite.locator('#erw-stufe-wahl [role=radio]')).toHaveCount(4);
+    expect(await fokus(), 'mit Pack: Fokus auf der markierten Karte Hot').toEqual({ id: 'hot', in: true, tag: 'BUTTON' });
+    expect(JSON.stringify(await einst(seite)), 'der Wechsel schreibt keine Einstellung').toBe(vorher);
+    // der Fokus ausserhalb der Gruppe bleibt, wo er ist
+    await seite.locator('#erw-ersatz').focus();
+    await seite.evaluate((p) => (globalThis as any).chrome.storage.local.set({ pack: p }), PACK_OHNE_FREISCHALTUNG);
+    await expect(seite.locator('#erw-stufe-wahl [role=radio]')).toHaveCount(5);
+    expect((await fokus()).in, 'Fokus ausserhalb der Gruppe bleibt draussen').toBe(false);
+  } finally {
+    await seite.close();
+  }
+});
+
+test('K5: eine verworfene Handlung loescht auf der Einstellungsseite keinen stehenden Fehlersatz', async () => {
+  const seite = await seiteMit({}, 1280, true);
+  try {
+    await speichernKaputt(seite, true);
+    await stufenKnopf(seite, 'zonen-wahl', 'Everything').click();
+    await expect(seite.locator('#speicher-meldung')).toHaveText(FEHLER_SPEICHERN);
+    await zonenChip(seite, 'eyes'); // Aufklapper offen
+    // Der Stand aendert sich von aussen, im selben Augenblick klickt die Person (wie G3): die Handlung wird verworfen
+    await seite.evaluate((neu) => {
+      void (globalThis as any).chrome.storage.local.__echtSet({ einstellungen: neu });
+      (document.querySelector('#zonen-wahl .v-chip[data-zone=eyes]') as HTMLElement).click();
+    }, { version: 1, zonen: alleZonen(true, true) });
+    await expect(seite.locator('#zonen-verworfen')).toBeVisible();
+    await expect(seite.locator('#speicher-meldung'), 'der stehende Fehlersatz bleibt').toHaveText(FEHLER_SPEICHERN);
+    await expect(seite.locator('#speicher-meldung')).toBeVisible();
+    await speichernKaputt(seite, false);
+  } finally {
+    await seite.close();
+  }
+});
+
+// ---------- L1 (E4k Nachr.): kein Schreibversuch ohne Handlung am Regler ----------
+const ZWISCHEN_L1 = { version: 1, schwelle: 0.1051, quiz: { verweigern: 0.1051, freilegenMs: 10500 }, ton: { an: false, lautstaerke: 0.4051 } };
+for (const [name, pack] of [['ohne Pack', undefined], ['mit Pack nach dem Laden', PACK_VOLL]] as const) {
+  test(`L1: Einstellungsseite ${name}, vier Stufenwahlen mit gespeichertem Zwischenwert: Fokus, Tab hinein und hinaus, Shift, Strg, Taste ohne Wirkung, Daumenklick ohne Bewegung schreiben nichts, der Speicher bleibt Bit fuer Bit`, async () => {
+    const seite = await seiteMit({ einstellungen: ZWISCHEN_L1, ...(pack ? { pack } : {}) }, 1280, true);
+    try {
+      const roh = JSON.stringify(await lies(seite, 'einstellungen'));
+      let gemessen = 0;
+      for (const s of STUFEN) {
+        // ohne Pack gibt es Verweigern, Freilegen und Lautstaerke nicht (ihre Abschnitte sind verborgen): nur was da ist, wird geprueft
+        if ((await seite.locator(`#${s.wahl}`).count()) === 0) continue;
+        await reiterFuer(seite, `#${s.wahl}`);
+        const regler = seite.locator(`#${s.wahl} input[type=range]`);
+        if (await seite.locator(`#${s.wahl} .v-auf-kopf`).isHidden()) continue; // ohne Pack verborgen
+        if ((await seite.locator(`#${s.wahl} .v-auf-kopf`).getAttribute('aria-expanded')) !== 'true') await seite.locator(`#${s.wahl} .v-auf-kopf`).click();
+        if (!(await regler.isVisible())) continue;
+        gemessen += 1;
+        await seite.locator(`#${s.wahl} .v-auf-kopf`).focus();
+        await seite.keyboard.press('Tab'); // in den Regler
+        await expect(regler).toBeFocused();
+        for (const t of ['Shift', 'Control', 'a', 'Escape']) await seite.keyboard.press(t);
+        const k = (await regler.boundingBox())!;
+        const [min, max, wert] = await regler.evaluate((r: HTMLInputElement) => [Number(r.min), Number(r.max), Number(r.value)]);
+        await seite.mouse.click(k.x + 8 + (k.width - 16) * ((wert - min) / (max - min)), k.y + k.height / 2);
+        await seite.keyboard.press('Tab'); // hinaus
+        await seite.keyboard.press('Shift+Tab');
+        await seite.keyboard.press('Tab');
+        await seite.waitForTimeout(150);
+        expect(await aufrufe(seite), `${s.wahl}: null Schreibaufrufe ohne Handlung`).toBe('');
+      }
+      expect(gemessen, 'mit Pack alle vier, ohne Pack mindestens die Stimmung').toBeGreaterThanOrEqual(pack ? 4 : 1);
+      expect(JSON.stringify(await lies(seite, 'einstellungen')), 'der gespeicherte Wert bleibt Bit fuer Bit').toBe(roh);
+      await expect(seite.locator('#speicher-meldung')).toBeHidden();
+    } finally {
+      await seite.close();
+    }
+  });
+}
+
+// ---------- L2 (E4k Nachr.): zwei Tasten und sofort Tab: kein ueberholter Zwischenstand in der Anzeige ----------
+test('L2: zwei Tasten am Regler und sofort Tab (Speichern verzoegert): die Anzeige zeigt nie den ueberholten ersten Stand, am Ende den gespeicherten', async () => {
+  const seite = await seiteMit({ einstellungen: { version: 1, schwelle: 0.15 }, pack: PACK_VOLL });
+  try {
+    await seite.locator('#stimmung-wahl .v-auf-kopf').click();
+    const regler = seite.locator('#stimmung-wahl input[type=range]');
+    await regler.focus();
+    await schreibweg(seite, 'gelingt', 700);
+    await seite.evaluate(() => {
+      const r = document.querySelector('#stimmung-wahl input[type=range]') as HTMLInputElement;
+      const g = ((globalThis as any).__gesehen = [r.value]);
+      (globalThis as any).__takt = setInterval(() => { if (g.at(-1) !== r.value) g.push(r.value); }, 5);
+    });
+    await seite.keyboard.press('ArrowRight');
+    await seite.keyboard.press('ArrowRight');
+    await seite.keyboard.press('Tab');
+    await expect.poll(async () => (await einst(seite)).schwelle, { timeout: 8000 }).toBeCloseTo(0.17, 9);
+    await seite.waitForTimeout(500);
+    await expect(regler).toHaveValue('0.17');
+    expect(await seite.evaluate(() => (globalThis as any).__gesehen), 'kein ueberholter Zwischenstand').toEqual(['0.15', '0.17']);
+    await seite.evaluate(() => clearInterval((globalThis as any).__takt));
   } finally {
     await seite.close();
   }

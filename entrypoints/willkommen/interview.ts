@@ -24,7 +24,7 @@ import {
   baueVorschauPlatz,
   baueWahlkarten,
   baueZonenwahl,
-  gleicheDeckung,
+  zonenSchreibteil,
   zonenUnterKleidung,
   type WahlkartenHandle,
 } from '../../src/oberflaeche/bausteine/bausteine';
@@ -98,7 +98,7 @@ function zonenSchreiber(k: Kontext): { hinweis: HTMLElement; lies: () => ZonenSt
       hinweis.hidden = true;
       const vorher = stand; // der Stand, auf dem der Baustein gerade gerechnet hat
       stand = neu; // folgt eine zweite Handlung vor dem Speichern, rechnet sie auf diesem Stand
-      void k.speichere((alt) => (gleicheDeckung(alt.zonen, vorher) ? { zonen: neu } : null)).then((erg) => {
+      void k.speichere((alt) => zonenSchreibteil(alt.zonen, vorher, neu)).then((erg) => {
         if (erg === 'verworfen') hinweis.hidden = false;
       });
     },
@@ -252,6 +252,7 @@ export function seiteStil(k: Kontext, seiten: number): Seite {
 // ---------- 4 Mood ----------
 
 export function seiteStimmung(k: Kontext): Seite {
+  let laeuft = 0; // K3i: Zahl der Speichervorgaenge dieses Elements, die noch nicht beendet sind
   const wurzel = knoten('div');
   wurzel.append(knoten('p', undefined, TEXT.i4Text));
   const stufen = baueStufenwahl({
@@ -259,12 +260,22 @@ export function seiteStimmung(k: Kontext): Seite {
     liste: STIMMUNG_STUFEN_INTERVIEW,
     wert: k.einst().schwelle,
     exakt: { titel: TEXT.stimmungExakt.titel, formatiere: zahlGenau, reglerLabel: TEXT.stimmungExakt.reglerLabel },
-    beiAenderung: (wert) => void k.speichere(() => ({ schwelle: wert })),
+    beiAenderung: (wert) => {
+      laeuft += 1;
+      void k.speichere(() => ({ schwelle: wert })).then((erg) => {
+        laeuft -= 1;
+        // K3i: nach dem Ende des Speicherns (Erfolg): hat der Regler den Fokus nicht mehr, steht der gespeicherte Stand da (bei einem Fehler zeichnet `nachFehler` erzwungen)
+        if (erg === 'gespeichert' && laeuft === 0 && document.activeElement !== stufen.regler) stufen.setze(gespeichert);
+      });
+    },
   });
   stufen.element.id = 'iv-stimmung-wahl';
   let gespeichert = k.einst().schwelle;
   // Verliert der Regler "Exact value" den Fokus, zeigt das Element wieder den gespeicherten Stand (ein Zug ohne Loslassen hat nichts geschrieben).
-  stufen.regler.addEventListener('blur', () => stufen.setze(gespeichert));
+  // K3i: laeuft ein Speichern dieses Elements (Loslassen, sofort Tab), zeichnet der Fokusverlust nicht den alten Stand.
+  stufen.regler.addEventListener('blur', () => {
+    if (laeuft === 0) stufen.setze(gespeichert);
+  });
   // Strict bleibt als Schalter auf dieser Seite (Regel I4: ob Strict aus dem Interview faellt, ist eine offene Frage; bis zur Antwort gilt der strengere Weg).
   const strict = baueSchalter({
     titel: TEXT.strictTitel,
@@ -279,7 +290,8 @@ export function seiteStimmung(k: Kontext): Seite {
     aktualisiere: (e, _p, erzwingen = false) => {
       gespeichert = e.schwelle;
       // Ein Regler, an dem der Nutzer gerade zieht, wird nicht unter der Hand zurueckgestellt, ausser nach einem Speicherfehler.
-      if (erzwingen || document.activeElement !== stufen.regler) stufen.setze(e.schwelle);
+      // L2: solange ein Speichern dieses Elements laeuft, kein ueberholter Zwischenstand; nach einem Fehler erzwungen (H1)
+      if (erzwingen || (document.activeElement !== stufen.regler && laeuft === 0)) stufen.setze(e.schwelle);
       strict.setze(e.strict);
     },
   };
@@ -294,22 +306,36 @@ export function seiteErwachsen(k: Kontext): Seite {
   const ersatz = baueHinweis(TEXT.ersatzAn);
   ersatz.id = 'iv-ersatz-an';
   ersatz.hidden = true;
+  // K2: Hinweis zu einer verworfenen Wahl (die Form der Gruppe hat sich zwischen Klick und Speichern geaendert), bis zur naechsten Handlung
+  const verworfen = baueHinweis(TEXT.erwachsenVerworfen);
+  verworfen.id = 'iv-erw-verworfen';
+  verworfen.setAttribute('role', 'status');
+  verworfen.hidden = true;
   const ort = knoten('div', undefined, undefined, 'iv-erw-ort');
-  wurzel.append(hinweis, ort, ersatz);
+  wurzel.append(hinweis, ort, verworfen, ersatz);
   let wahl: WahlkartenHandle | null = null;
   let form: boolean | null = null;
   let stufeFrei = false;
+  let fokusNachWechsel = false;
   // Eine Wahl rechnet auf dem frisch gelesenen Stand (erwachsen-wahl.ts); eine unzulaessige Wahl (gesperrte Stufe) schreibt nichts (null, I8a).
-  const waehle = (id: string): void => void k.speichere((alt) => {
-    const neu = erwachsenNachWahl(alt.erwachsen, id, stufeFrei);
-    return neu ? { erwachsen: neu } : null;
-  });
+  const waehle = (id: string): void => {
+    verworfen.hidden = true;
+    void k
+      .speichere((alt) => {
+        const neu = erwachsenNachWahl(alt.erwachsen, id, stufeFrei);
+        return neu ? { erwachsen: neu } : null;
+      })
+      .then((erg) => {
+        if (erg === 'verworfen') verworfen.hidden = false;
+      });
+  };
   const zeichne = (e: Einstellungen, p: PackKurz | null): void => {
     stufeFrei = istFreigeschaltet(p, 'erwachsen:vorschau');
     // Die Gruppe hat zwei Formen (G1): mit Freischaltung Off, Tease, Hot, Explicit; ohne sie Off und On (waehlbar) und die drei Stufen gesperrt und nie markiert.
     // Wechselt die Form (Pack kommt oder geht bei offener Seite), wird der Baustein neu gebaut und gezeichnet, nie geschrieben.
     if (!wahl || form !== stufeFrei) {
       const alt = wahl;
+      const hatteFokus = !!alt && alt.element.contains(document.activeElement); // K4i
       wahl = baueWahlkarten({
         titel: TEXT.erwachsenTitel,
         karten: erwachsenKarten(stufeFrei).map((id) => ({ id, ...TEXT.erwachsenKarten[id] })),
@@ -321,11 +347,17 @@ export function seiteErwachsen(k: Kontext): Seite {
       if (alt) alt.element.replaceWith(wahl.element);
       else ort.append(wahl.element);
       form = stufeFrei;
+      fokusNachWechsel = hatteFokus;
     }
     // Erst sperren (I5b: nur ueber setzeGesperrt, nie `disabled` von aussen), dann markieren: die Markierung legt den Tab-Halt auf die gewaehlte, sonst auf die erste waehlbare Karte.
     wahl.setzeGesperrt(erwachsenGesperrt(stufeFrei));
     wahl.setze(erwachsenKarte(e.erwachsen, stufeFrei));
     wahl.setzeHinweis(stufeFrei ? null : TEXT.erwachsenGesperrt);
+    // K4i: stand der Fokus in der alten Gruppe, liegt er auf der markierten Karte der neuen Form (sonst der ersten waehlbaren), nie auf body
+    if (fokusNachWechsel) {
+      fokusNachWechsel = false;
+      wahl.setzeFokus();
+    }
     hinweis.hidden = p !== null;
     ersatz.hidden = !e.erwachsen.komplettErsatz;
   };

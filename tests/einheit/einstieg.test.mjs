@@ -6,7 +6,7 @@ import { BEDECKBARE_ZONEN, STANDARD, STUFEN_WAHL, ZONEN, vervollstaendige } from
 import { EINSTIEG_LEER, INTERVIEW_SEITEN, INTERVIEW_SEITEN_OHNE_PACK, einstiegFertig } from '../../src/einstieg/vertrag.ts';
 import { ALLE_SCHRITTE, ETAPPEN, INTERVIEW_SCHRITTE, etappe, fortschritt, interviewSeiten, naechster, startSchritt, vorheriger } from '../../src/einstieg/schritte.ts';
 import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenDerWahl, zonenWahl } from '../../src/einstieg/zonen.ts';
-import { kleidungsStand, setzeKleidung, zonenUnterKleidung } from '../../src/oberflaeche/bausteine/kleidung.ts';
+import { kleidungsStand, setzeEineZone, setzeKleidung, zonenSchreibteil, zonenUnterKleidung } from '../../src/oberflaeche/bausteine/kleidung.ts';
 import { erwachsenGesperrt, erwachsenKarte, erwachsenKarten, erwachsenNachWahl } from '../../src/oberflaeche/bausteine/erwachsen-wahl.ts';
 
 const an = (zonen) => ZONEN.filter((z) => zonen[z].an).sort();
@@ -234,18 +234,42 @@ test('I7: die Schreibfunktionen des Interviews (Zonen, Kleidung, Erwachsenen-Wah
   ].map((e) => vervollstaendige({ version: 1, ...e }));
   const ohne = (e, ...schluessel) => Object.fromEntries(Object.entries(e).filter(([k]) => !schluessel.includes(k)));
   let faelle = 0;
+  // K7 (E4k): Zonen und Kleidung gehen ueber die wirklichen Schreibfunktionen: die Handlung rechnet (setzeZonenWahl, setzeEineZone, setzeKleidung), der Teil, den
+  // Einstellungsseite und Interview schreiben, ist `zonenSchreibteil`, und der Speicher macht daraus `vervollstaendige({ ...alt, ...teil })` (aendereEinstellungen).
+  // Fasst eine dieser Funktionen einen anderen Wert an, wird der Vergleich rot.
+  const schreibe = (alt, neu) => {
+    const teil = zonenSchreibteil(alt.zonen, alt.zonen, neu);
+    assert.ok(teil, 'auf dem Stand, auf dem gerechnet wurde, wird geschrieben');
+    return vervollstaendige({ ...alt, ...teil });
+  };
+  const nurZonen = (gespeichert, geschrieben, name) => {
+    assert.deepEqual(ohne(geschrieben, 'zonen'), ohne(gespeichert, 'zonen'), `${name} fasst nur zonen an`);
+    for (const z of ZONEN) assert.deepEqual(Object.keys(geschrieben.zonen[z]).filter((k) => k !== 'an' && k !== 'bedeckt'), [], `${name}: ${z} hat nur an und bedeckt`);
+  };
   for (const e of staende) {
     tief(structuredClone(e));
     for (const w of ZONEN_WAHLEN) {
-      const neu = { ...e, zonen: setzeZonenWahl(e.zonen, w) };
-      assert.deepEqual(ohne(neu, 'zonen'), ohne(e, 'zonen'), `Zones ${w} fasst nur zonen an`);
+      const g = schreibe(e, setzeZonenWahl(e.zonen, w));
+      nurZonen(e, g, `Zones ${w}`);
+      assert.equal(zonenWahl(g.zonen), w);
+      faelle++;
+    }
+    for (const z of ZONEN) {
+      const g = schreibe(e, setzeEineZone(e.zonen, z, !e.zonen[z].an));
+      nurZonen(e, g, `Chip ${z}`);
+      for (const k of ZONEN) if (k !== z) assert.equal(g.zonen[k].an, e.zonen[k].an, `Chip ${z} aendert an von ${k} nicht`);
       faelle++;
     }
     for (const a of ['haut', 'auch-bedeckt']) {
-      const neu = { ...e, zonen: setzeKleidung(e.zonen, a) };
-      assert.deepEqual(ohne(neu, 'zonen'), ohne(e, 'zonen'), `Clothes ${a} fasst nur zonen an`);
+      const g = schreibe(e, setzeKleidung(e.zonen, a));
+      nurZonen(e, g, `Clothes ${a}`);
+      for (const z of ZONEN) assert.equal(g.zonen[z].an, e.zonen[z].an, `Clothes ${a} aendert an von ${z} nicht`);
       faelle++;
     }
+    // eine Handlung auf einem anderen Stand als dem, auf dem sie gerechnet wurde, schreibt nichts (null)
+    const anders = structuredClone(e.zonen);
+    anders.genitals.an = !anders.genitals.an;
+    assert.equal(zonenSchreibteil(anders, e.zonen, setzeZonenWahl(e.zonen, 'alles')), null, 'verworfen: nichts schreiben');
     for (const frei of [true, false]) {
       for (const karte of ['off', 'on', ...STUFEN_WAHL]) {
         const erw = erwachsenNachWahl(e.erwachsen, karte, frei);

@@ -689,3 +689,106 @@ test('Zwischenwert 0,1049 (R14): die Zahl zeigt den gespeicherten Wert, keine St
     await context.close();
   }
 });
+
+// K1 (E4k): je Tastendruck und je Ziehen genau ein Schreibversuch (kein doppeltes Speichern), auch wenn die Seite nach jeder Meldung den gespeicherten Stand
+// zuruecksetzt (Speichern gescheitert); ein Zwischenwert wird durch eine Taste ohne Wirkung nie "gemeldet" (der Regler rundet 0,1049 auf 0,10).
+test('K1 Regler: je Tastendruck und je Ziehen genau eine Meldung, mit und ohne Zuruecksetzen; eine Taste ohne Wirkung meldet bei einem Zwischenwert nichts', async () => {
+  const { context, seite } = await oeffne(1280, false);
+  try {
+    const w = seite.locator('[data-fall="stimmung"]');
+    await w.locator('.v-auf-kopf').click();
+    const regler = w.locator('input[type="range"]');
+    const meldungen = async () => (await log(seite)).filter((x) => x.von === 'stimmung').map((x) => x.wert as number);
+    const zurueck = (wert: number) => seite.evaluate((v) => (window as any).__b.stimmung.setze(v), wert);
+    for (const [taste, start, schritt] of [['ArrowLeft', 0.22, -0.01], ['ArrowRight', 0.1, 0.01]] as const) {
+      await seite.evaluate((v) => { (window as any).__b.log.length = 0; (window as any).__b.stimmung.setze(v); }, start);
+      await regler.focus();
+      for (let i = 1; i <= 3; i++) {
+        await seite.keyboard.press(taste);
+        const m = await meldungen();
+        expect(m.length, `${taste}: Taste ${i} meldet genau einmal`).toBe(i);
+        expect(m.at(-1)).toBeCloseTo(start + schritt, 9);
+        await zurueck(start); // gescheitertes Speichern: die Seite stellt den gespeicherten Stand zurueck
+      }
+    }
+    await seite.evaluate(() => { (window as any).__b.log.length = 0; (window as any).__b.stimmung.setze(0.1); });
+    await regler.focus();
+    for (let i = 1; i <= 4; i++) {
+      await seite.keyboard.press('ArrowRight');
+      expect((await meldungen()).length, `ohne Zuruecksetzen: Taste ${i}`).toBe(i);
+    }
+    // Ziehen: je Ziehen genau eine Meldung
+    await seite.evaluate(() => { (window as any).__b.log.length = 0; (window as any).__b.stimmung.setze(0.1); });
+    const kasten = (await regler.boundingBox())!;
+    for (let i = 1; i <= 2; i++) {
+      await seite.mouse.move(kasten.x + 8, kasten.y + kasten.height / 2);
+      await seite.mouse.down();
+      await seite.mouse.move(kasten.x + 60, kasten.y + kasten.height / 2, { steps: 5 });
+      await seite.mouse.up();
+      expect((await meldungen()).length, `Ziehen ${i}: genau eine Meldung`).toBe(i);
+      await zurueck(0.1);
+    }
+    // Zwischenwert: eine Taste ohne Wirkung meldet nichts
+    await seite.evaluate(() => { (window as any).__b.log.length = 0; (window as any).__b.stimmung.setze(0.1049); });
+    await regler.focus();
+    await seite.keyboard.press('a');
+    await seite.keyboard.press('Shift');
+    expect(await meldungen()).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+// K4 (E4k): setzeFokus legt den Fokus auf den Tab-Halt: die markierte Karte, ist keine markiert (oder die markierte gesperrt) die erste waehlbare; es aendert nie einen Wert.
+test('Wahlkarte (K4): setzeFokus fokussiert die markierte, sonst die erste waehlbare Karte und meldet nichts', async () => {
+  const { context, seite } = await oeffne(1280, false);
+  try {
+    const r = seite.locator('[data-fall="wahlkarten"] [role="radio"]');
+    await b(seite, "b.wahlkarten.setze('drei')");
+    await b(seite, 'b.wahlkarten.setzeFokus()');
+    await expect(r.nth(2)).toBeFocused();
+    await b(seite, 'b.wahlkarten.setze(null)');
+    await b(seite, 'b.wahlkarten.setzeFokus()');
+    await expect(r.nth(0)).toBeFocused();
+    await b(seite, "b.wahlkarten.setzeGesperrt(['eins'])");
+    await b(seite, 'b.wahlkarten.setzeFokus()');
+    await expect(r.nth(1)).toBeFocused();
+    await b(seite, "b.wahlkarten.setze('eins')"); // die markierte Karte ist gesperrt: der Halt liegt auf der ersten waehlbaren
+    await b(seite, 'b.wahlkarten.setzeFokus()');
+    await expect(r.nth(1)).toBeFocused();
+    expect((await log(seite)).filter((l) => l.von === 'wahlkarten')).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+// L1 (E4k Nachr.): ein frisch gebauter Regler (ohne folgendes setze()) meldet ohne Handlung nichts: Tab hinein und hinaus, Shift, Strg, eine Taste ohne Wirkung,
+// ein Klick auf den Daumen ohne Bewegung, Fokus und Fokusverlust. Startwert auf einem Schritt (0,15) und zwischen zwei Schritten (0,1051).
+for (const start of [0.15, 0.1051]) {
+  test(`L1: frischer Regler mit Startwert ${start}: Tab, Shift, Strg, Taste ohne Wirkung, Daumenklick ohne Bewegung melden nichts`, async () => {
+    const { context, seite } = await oeffne(1280, false);
+    try {
+      await seite.evaluate((w) => (window as any).__b.baueFrisch(w), start);
+      const w = seite.locator('[data-fall="frisch"]');
+      if ((await w.locator('.v-auf-kopf').getAttribute('aria-expanded')) !== 'true') await w.locator('.v-auf-kopf').click(); // ein Zwischenwert klappt den Aufklapper selbst auf
+      const regler = w.locator('input[type="range"]');
+      const meldungen = async () => (await log(seite)).filter((x) => x.von === 'frisch');
+      await w.locator('.v-auf-kopf').focus();
+      await seite.keyboard.press('Tab'); // in den Regler
+      await expect(regler).toBeFocused();
+      for (const t of ['Shift', 'Control', 'a', 'Escape']) await seite.keyboard.press(t);
+      const k = (await regler.boundingBox())!;
+      // Klick auf den Daumen ohne Bewegung: der Daumen sitzt bei (Wert - min) / (max - min) der Breite
+      const [min, max] = await regler.evaluate((r: HTMLInputElement) => [Number(r.min), Number(r.max)]);
+      const anteil = (Number(await regler.inputValue()) - min) / (max - min);
+      await seite.mouse.click(k.x + 8 + (k.width - 16) * anteil, k.y + k.height / 2);
+      await seite.keyboard.press('Tab'); // hinaus
+      await seite.keyboard.press('Shift+Tab');
+      await seite.keyboard.press('Tab');
+      expect(await meldungen(), 'null Meldungen ohne Handlung').toEqual([]);
+      await expect(w.locator('.v-wert')).toHaveText(String(start)); // die Anzeige bleibt der gespeicherte Wert
+    } finally {
+      await context.close();
+    }
+  });
+}

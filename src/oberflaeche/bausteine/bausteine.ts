@@ -10,7 +10,7 @@ import { kleidungsStand, setzeEineZone, setzeKleidung, type KleidungsAntwort } f
 import { stufenAnsicht, type StufenAnsicht, type StufenListe } from './stufen.ts';
 
 export { baueErklaerungTeile as baueErklaerung, baueHinweis, baueTitel, type ErklaerungEingabe, type TitelEingabe, type TitelHandle } from './dom.ts';
-export { gleicheDeckung, kleidungsStand, setzeEineZone, setzeKleidung, zonenUnterKleidung, type KleidungsAntwort, type KleidungsStand } from './kleidung.ts';
+export { gleicheDeckung, kleidungsStand, setzeEineZone, setzeKleidung, zonenSchreibteil, zonenUnterKleidung, type KleidungsAntwort, type KleidungsStand } from './kleidung.ts';
 export { inEinheiten, markierteStufe, pruefeStufenliste, stufenAnsicht, type Stufe, type StufenAnsicht, type StufenListe } from './stufen.ts';
 export { STUFENLISTEN, type StufenSchluessel } from './stufen-daten.ts';
 
@@ -217,6 +217,8 @@ export interface WahlkartenHandle {
   // Vertrag (E4d2 G4): sperrt genau diese Karten und gibt alle anderen frei. Eine gesperrte Karte ist durch Bedienung nie waehlbar; `setze()` darf sie aber
   // als gespeicherten Stand anzeigen.
   setzeGesperrt(ids: readonly string[]): void;
+  // K4: legt den Fokus auf den Tab-Halt der Gruppe: die markierte Karte, ist keine markiert (oder die markierte gesperrt) die erste waehlbare. Aendert nie einen Wert.
+  setzeFokus(): void;
   setzeHinweis(text: string | null): void;
 }
 
@@ -229,7 +231,8 @@ export function baueWahlkarten(e: WahlkartenEingabe): WahlkartenHandle {
   });
   w.append(titel.element, g.gruppe);
   const fach = new HinweisFach(g.gruppe, g.gruppe, e.hinweis);
-  return { element: w, gruppe: g.gruppe, wert: g.markiert, setze: g.setze, setzeGesperrt: g.setzeGesperrt, setzeHinweis: (t) => fach.setze(t) };
+  const setzeFokus = () => g.knoepfe.find((k) => k.tabIndex === 0 && !k.disabled)?.focus();
+  return { element: w, gruppe: g.gruppe, wert: g.markiert, setze: g.setze, setzeGesperrt: g.setzeGesperrt, setzeFokus, setzeHinweis: (t) => fach.setze(t) };
 }
 
 // ---------- Stufenwahl ----------
@@ -285,13 +288,25 @@ export function baueStufenwahl(e: StufenwahlEingabe): StufenwahlHandle {
   });
   const fach = new HinweisFach(gruppe, gruppe);
   let ansicht = stufenAnsicht(e.liste, wert);
-  const zeige = () => {
+  // K1/L1: der Wert, den der Regler zuletzt hatte, als der Baustein ihn meldete oder vom Programm bekam (in der Form, wie der Regler ihn haelt: ein Regler mit
+  // Schritt rundet einen Zwischenwert wie 0,1049 auf seinen Schritt, ein Vergleich mit `wert` saehe sonst bei jeder Taste eine Aenderung).
+  // Firefox meldet am nativen Regler kein `change`, wenn der Wert nach einem Zuruecksetzen durch die Seite wieder dem Wert des letzten `change` gleicht:
+  // dann meldet der Baustein selbst, sobald Taste oder Zeiger losgelassen sind und der Wert vom zuletzt gemeldeten abweicht. Hat der Browser `change` schon
+  // gemeldet, ist der Wert gleich und es gibt keinen zweiten Schreibversuch (je Tastendruck und je Ziehen genau einer).
+  // L1: genau EINE Stelle setzt `regler.value` vom Programm aus und merkt den Wert im selben Schritt (erster Stand beim Bau, jedes `setze()`, jede Stufe).
+  // Der Baustein schreibt nie einen Wert, den der Nutzer nicht gewaehlt hat: ohne Handlung weicht `regler.value` nie von `gemeldet` ab.
+  let gemeldet = '';
+  const setzeReglerWert = (w: number) => {
+    regler.value = String(w);
+    gemeldet = regler.value;
+  };
+  const zeige = (vomRegler = false) => {
     ansicht = stufenAnsicht(e.liste, wert);
     markiereRadios(knoepfe, ansicht.markiert);
     const text = e.exakt.formatiere(wert);
     anzeige.textContent = text;
     auf.setzeStand(text);
-    regler.value = String(wert);
+    if (!vomRegler) setzeReglerWert(wert); // der Regler selbst hat den Wert schon (Handlung des Nutzers): keine zweite Zuweisung
     regler.setAttribute('aria-valuetext', text);
     // Zwischenwert: der Aufklapper ist offen und zeigt den Wert. Bei einer Stufe schliesst er wieder, ausser der Nutzer hat ihn selbst geoeffnet.
     auf.setzeOffen(ansicht.zwischenwert || manuell);
@@ -307,9 +322,17 @@ export function baueStufenwahl(e: StufenwahlEingabe): StufenwahlHandle {
   regler.addEventListener('input', () => {
     wert = Number(regler.value);
     manuell = true; // wer am Regler arbeitet, dem klappt der Aufklapper nicht unter der Hand zu
-    zeige();
+    zeige(true);
   });
-  regler.addEventListener('change', () => e.beiAenderung?.(wert));
+  const meldeReglerWert = () => {
+    if (regler.value === gemeldet) return;
+    gemeldet = regler.value;
+    wert = Number(regler.value);
+    e.beiAenderung?.(wert);
+  };
+  regler.addEventListener('change', meldeReglerWert);
+  regler.addEventListener('keyup', meldeReglerWert);
+  regler.addEventListener('pointerup', meldeReglerWert);
   w.append(titel.element, gruppe, auf.element);
   zeige();
   return {

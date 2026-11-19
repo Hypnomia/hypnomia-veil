@@ -451,6 +451,214 @@ for (const [richtung, gespeichert, taste] of [['zu weniger Deckung', 0.1, 'Arrow
   });
 }
 
+// ---------- K1 (E4k): je Tastendruck und je Ziehen genau ein Schreibversuch, auch nach einem gescheiterten Speichern ----------
+test('K1: Mood-Regler im Interview: je Tastendruck und je Ziehen genau ein Schreibversuch; nach einem gescheiterten Speichern meldet dieselbe Taste wieder genau einen; gelungen: Anzeige gleich Speicher', async () => {
+  const v = await verwaltung();
+  try {
+    const w = await oeffne(v, { version: 1, schwelle: 0.15 }, null);
+    await bisSeite(w, 4);
+    await w.locator('#iv-stimmung-wahl .v-auf-kopf').click();
+    await w.evaluate(() => {
+      const sl = (globalThis as any).chrome.storage.local;
+      const k = ((globalThis as any).__k = { n: 0, kaputt: true });
+      sl.set = (o: Record<string, unknown>) => {
+        if ('einstellungen' in o) k.n += 1;
+        return k.kaputt && 'einstellungen' in o ? Promise.reject(new Error('voll')) : sl.__echtSet(o);
+      };
+    });
+    const n = () => w.evaluate(() => (globalThis as any).__k.n as number);
+    const regler = w.locator('#iv-stimmung-wahl input[type=range]');
+    await regler.focus();
+    for (const taste of ['ArrowLeft', 'ArrowRight']) {
+      for (let i = 1; i <= 2; i++) {
+        await w.evaluate(() => { const f = document.getElementById('fehler')!; f.textContent = ''; f.hidden = true; });
+        const n0 = await n();
+        await w.keyboard.press(taste);
+        await expect(w.locator('#fehler')).toHaveText(FEHLER_SPEICHERN);
+        expect(await n(), `${taste} ${i}: genau ein Schreibversuch`).toBe(n0 + 1);
+        await expect(regler).toHaveValue('0.15');
+        await expect(w.locator('#iv-stimmung-wahl .v-wert')).toHaveText('0.15');
+        await expect(stufe(w, stimmungsWort(0.15))).toHaveAttribute('aria-checked', 'true');
+      }
+    }
+    expect(((await lies(v, 'einstellungen')) ?? {}).schwelle).toBe(0.15);
+    await w.evaluate(() => ((globalThis as any).__k.kaputt = false));
+    const n1 = await n();
+    await w.keyboard.press('ArrowLeft');
+    await expect.poll(async () => ((await lies(v, 'einstellungen')) ?? {}).schwelle).toBeCloseTo(0.14, 9);
+    await expect(regler).toHaveValue('0.14');
+    await expect(w.locator('#iv-stimmung-wahl .v-wert')).toHaveText('0.14');
+    expect(await n(), 'gelungen: ein Schreibversuch').toBe(n1 + 1);
+    const kasten = (await regler.boundingBox())!;
+    for (let i = 1; i <= 2; i++) {
+      const vor = await n();
+      await w.mouse.move(kasten.x + 10 * i, kasten.y + kasten.height / 2);
+      await w.mouse.down();
+      await w.mouse.move(kasten.x + 70 * i, kasten.y + kasten.height / 2, { steps: 6 });
+      await w.mouse.up();
+      await w.waitForTimeout(250);
+      expect(await n(), `Ziehen ${i}: genau ein Schreibversuch`).toBe(vor + 1);
+    }
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});
+
+// ---------- K2 (E4k): wechselt die Form der Gruppe zwischen Klick und Speichern, wird nichts geschrieben, ein Hinweis erscheint ----------
+test('K2: Adult sites im Interview: wechselt die Form der Gruppe zwischen Klick und Speichern, wird nichts geschrieben, der gespeicherte Stand steht da und ein Hinweis erscheint, der bei der naechsten Handlung verschwindet', async () => {
+  const v = await verwaltung();
+  try {
+    const w = await oeffne(v, undefined, PACK_OHNE_ERW);
+    await bisSeite(w, 5);
+    await expect(w.locator('#iv-erw-verworfen')).toBeHidden();
+    const alt = await w.evaluateHandle(() => document.querySelector('#iv-erw-wahl [data-id="on"]'));
+    await schreibe(v, { pack: PACK_VOLL }); // die Form wechselt: Off, Tease, Hot, Explicit
+    await expect(w.locator('#iv-erw-wahl [role=radio]')).toHaveCount(4);
+    const vorher = JSON.stringify(await lies(v, 'einstellungen'));
+    const n0 = await aufrufe(w);
+    await alt.evaluate((e) => (e as HTMLElement).click()); // der Klick auf "On" kommt erst beim Speichern an: dort gilt er nicht mehr
+    await expect(w.locator('#iv-erw-verworfen')).toBeVisible();
+    await expect(w.locator('#iv-erw-verworfen')).toHaveText(TEXT.erwachsenVerworfen);
+    await w.waitForTimeout(300);
+    expect(await aufrufe(w), 'die verworfene Wahl schreibt nichts, auch nicht den unveraenderten Stand').toBe(n0);
+    expect(JSON.stringify(await lies(v, 'einstellungen'))).toBe(vorher);
+    await karte(w, 'iv-erw-wahl', 'tease').click(); // die naechste Handlung nimmt den Hinweis weg
+    await expect(w.locator('#iv-erw-verworfen')).toBeHidden();
+    await expect.poll(async () => ((await lies(v, 'einstellungen')) ?? {}).erwachsen?.stufe).toBe('tease');
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});
+
+// ---------- K3i (E4k Nachtrag): Loslassen und sofort Tab, waehrend des Speicherns zeichnet der Fokusverlust nicht den alten Stand ----------
+test('K3i: Mood-Regler losgelassen und sofort Tab: waehrend des Speicherns nicht der alte Stand; danach Erfolg: neuer Stand, Fehler: gespeicherter Stand und Fehlersatz', async () => {
+  for (const art of ['gelingt', 'scheitert'] as const) {
+    const v = await verwaltung();
+    try {
+      const w = await oeffne(v, { version: 1, schwelle: 0.15 }, null);
+      await bisSeite(w, 4);
+      await w.locator('#iv-stimmung-wahl .v-auf-kopf').click();
+      const regler = w.locator('#iv-stimmung-wahl input[type=range]');
+      await regler.focus();
+      await w.evaluate((art) => {
+        const sl = (globalThis as any).chrome.storage.local;
+        sl.set = (o: Record<string, unknown>) =>
+          'einstellungen' in o
+            ? new Promise((r) => setTimeout(r, 900)).then(() => (art === 'scheitert' ? Promise.reject(new Error('voll')) : sl.__echtSet(o)))
+            : sl.__echtSet(o);
+        const r = document.querySelector('#iv-stimmung-wahl input[type=range]') as HTMLInputElement;
+        const g = ((globalThis as any).__gesehen = [r.value]);
+        (globalThis as any).__takt = setInterval(() => { if (g.at(-1) !== r.value) g.push(r.value); }, 10);
+      }, art);
+      await w.keyboard.press('ArrowRight');
+      await w.keyboard.press('Tab');
+      await w.waitForTimeout(400);
+      expect(await regler.inputValue(), `${art}: mitten im Speichern nicht der alte Stand`).toBe('0.16');
+      if (art === 'gelingt') {
+        await expect.poll(async () => ((await lies(v, 'einstellungen')) ?? {}).schwelle, { timeout: 5000 }).toBeCloseTo(0.16, 9);
+        await expect(regler).toHaveValue('0.16');
+        await expect(w.locator('#iv-stimmung-wahl .v-wert')).toHaveText('0.16');
+        expect(await w.evaluate(() => (globalThis as any).__gesehen), 'nie der alte Stand nach dem Tastendruck').toEqual(['0.15', '0.16']);
+      } else {
+        await expect(w.locator('#fehler')).toHaveText(FEHLER_SPEICHERN, { timeout: 5000 });
+        await expect(regler).toHaveValue('0.15');
+        await expect(w.locator('#iv-stimmung-wahl .v-wert')).toHaveText('0.15');
+      }
+      await w.evaluate(() => clearInterval((globalThis as any).__takt));
+      await w.close();
+    } finally {
+      await v.close();
+    }
+  }
+});
+
+// ---------- L1 (E4k Nachr.): im Interview (Mood) kein Schreibversuch ohne Handlung ----------
+test('L1: Interview Mood mit gespeichertem Zwischenwert: Fokus, Tab, Shift, Strg, Taste ohne Wirkung, Daumenklick ohne Bewegung schreiben nichts, der Speicher bleibt Bit fuer Bit', async () => {
+  const v = await verwaltung();
+  try {
+    const w = await oeffne(v, { version: 1, schwelle: 0.1051 }, null);
+    await bisSeite(w, 4);
+    const roh = JSON.stringify(await lies(v, 'einstellungen'));
+    const n0 = await aufrufe(w);
+    const regler = w.locator('#iv-stimmung-wahl input[type=range]');
+    await expect(regler).toBeVisible(); // Zwischenwert: der Aufklapper ist offen
+    await w.locator('#iv-stimmung-wahl .v-auf-kopf').focus();
+    await w.keyboard.press('Tab');
+    await expect(regler).toBeFocused();
+    for (const t of ['Shift', 'Control', 'a', 'Escape']) await w.keyboard.press(t);
+    const k = (await regler.boundingBox())!;
+    const [min, max, wert] = await regler.evaluate((r: HTMLInputElement) => [Number(r.min), Number(r.max), Number(r.value)]);
+    await w.mouse.click(k.x + 8 + (k.width - 16) * ((wert - min) / (max - min)), k.y + k.height / 2);
+    await w.keyboard.press('Tab');
+    await w.keyboard.press('Shift+Tab');
+    await w.keyboard.press('Tab');
+    await w.waitForTimeout(200);
+    expect(await aufrufe(w), 'null Schreibaufrufe ohne Handlung').toBe(n0);
+    expect(JSON.stringify(await lies(v, 'einstellungen'))).toBe(roh);
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});
+
+// ---------- L2: zwei Tasten und sofort Tab ----------
+test('L2: Interview Mood: zwei Tasten und sofort Tab (Speichern verzoegert): die Anzeige zeigt nie den ueberholten ersten Stand', async () => {
+  const v = await verwaltung();
+  try {
+    const w = await oeffne(v, { version: 1, schwelle: 0.15 }, null);
+    await bisSeite(w, 4);
+    await w.locator('#iv-stimmung-wahl .v-auf-kopf').click();
+    const regler = w.locator('#iv-stimmung-wahl input[type=range]');
+    await regler.focus();
+    await w.evaluate(() => {
+      const sl = (globalThis as any).chrome.storage.local;
+      sl.set = (o: Record<string, unknown>) => ('einstellungen' in o ? new Promise((r) => setTimeout(r, 700)).then(() => sl.__echtSet(o)) : sl.__echtSet(o));
+      const r = document.querySelector('#iv-stimmung-wahl input[type=range]') as HTMLInputElement;
+      const g = ((globalThis as any).__gesehen = [r.value]);
+      (globalThis as any).__takt = setInterval(() => { if (g.at(-1) !== r.value) g.push(r.value); }, 5);
+    });
+    await w.keyboard.press('ArrowRight');
+    await w.keyboard.press('ArrowRight');
+    await w.keyboard.press('Tab');
+    await expect.poll(async () => ((await lies(v, 'einstellungen')) ?? {}).schwelle, { timeout: 8000 }).toBeCloseTo(0.17, 9);
+    await w.waitForTimeout(500);
+    await expect(regler).toHaveValue('0.17');
+    expect(await w.evaluate(() => (globalThis as any).__gesehen), 'kein ueberholter Zwischenstand').toEqual(['0.15', '0.17']);
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});
+
+// ---------- K4i: Fokus beim Formwechsel der Gruppe der Erwachsenenseiten ----------
+test('K4i: Fokus in der Gruppe beim Formwechsel liegt danach auf der markierten Karte der neuen Form (beide Richtungen), nie auf body; ausserhalb bleibt er dort', async () => {
+  const v = await verwaltung();
+  try {
+    const w = await oeffne(v, { version: 1, erwachsen: { ...STANDARD.erwachsen, an: true, stufe: 'hot' } }, PACK_VOLL);
+    await bisSeite(w, 5);
+    const fokus = () => w.evaluate(() => { const a = document.activeElement as HTMLElement; return { id: a?.dataset?.id ?? null, in: !!a?.closest('#iv-erw-wahl') }; });
+    const vorher = JSON.stringify(await lies(v, 'einstellungen'));
+    await w.locator('#iv-erw-wahl [data-id="explicit"]').focus();
+    await schreibe(v, { pack: PACK_OHNE_ERW });
+    await expect(w.locator('#iv-erw-wahl [role=radio]')).toHaveCount(5);
+    expect(await fokus(), 'ohne Freischaltung: markierte Karte On').toEqual({ id: 'on', in: true });
+    await schreibe(v, { pack: PACK_VOLL });
+    await expect(w.locator('#iv-erw-wahl [role=radio]')).toHaveCount(4);
+    expect(await fokus(), 'mit Freischaltung: markierte Karte Hot').toEqual({ id: 'hot', in: true });
+    await w.locator('#iv-weiter').focus();
+    await schreibe(v, { pack: PACK_OHNE_ERW });
+    await expect(w.locator('#iv-erw-wahl [role=radio]')).toHaveCount(5);
+    expect((await fokus()).in, 'ausserhalb bleibt der Fokus draussen').toBe(false);
+    await expect(w.locator('#iv-weiter')).toBeFocused();
+    expect(JSON.stringify(await lies(v, 'einstellungen')), 'der Wechsel schreibt nichts').toBe(vorher);
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});
+
 // ---------- H4 (N9): ein Pfeil waehlt nicht, auch nicht in der Kleidungsfrage und der Gruppe der Erwachsenenseiten ----------
 for (const [seite, gruppe, name] of [[2, 'iv-kleidung-frage', 'Kleidungsfrage'], [5, 'iv-erw-wahl', 'Gruppe der Erwachsenenseiten']] as const) {
   test(`Tastatur (${name}): Pfeile, Pos1 und Ende bewegen nur den Fokus und schreiben nichts, Leertaste waehlt`, async () => {

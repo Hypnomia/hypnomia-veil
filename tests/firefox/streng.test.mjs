@@ -366,6 +366,9 @@ try {
     await oeffneSeite(NEUTRAL);
     await neuesVideo({ id: 'haupt', autoplay: true, abspielen: true });
     await laeuft('haupt', 'vor dem Fenster');
+    // K8: bleiben bis zur naechsten vollen Minute weniger als 5 s, erst die Minute wechseln lassen (sonst beginnt das Fenster schon beim Setzen)
+    const bisMinute = 60_000 - (Date.now() % 60_000);
+    if (bisMinute < 5000) await warte(bisMinute + 300);
     const n = new Date(Date.now() + 60_000);
     const von = n.getHours() * 60 + n.getMinutes();
     await zeitenSetzen([{ tage: [n.getDay(), (n.getDay() + 6) % 7], von, bis: (von + 30) % 1440 }]);

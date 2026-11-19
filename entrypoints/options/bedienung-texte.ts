@@ -113,3 +113,6 @@ export const ERWACHSEN_TEXTE = {
 
 // G3: eine Zonen-Handlung, die verworfen wurde, weil sich der gespeicherte Stand zwischen Anzeige und Klick geaendert hat (vorlaeufig, Texterin in Schritt (e)).
 export const ZONEN_VERWORFEN = 'The zones changed somewhere else while you were choosing, so I kept the saved ones. Choose again if you still want it.';
+
+// K2: eine Wahl in der Gruppe der Erwachsenenseiten, die verworfen wurde, weil sich die Form der Gruppe zwischen Klick und Speichern geaendert hat (Pack kam oder ging); vorlaeufig, Texterin in Schritt (e).
+export const ERWACHSEN_VERWORFEN = 'The adult sites choices changed while you were choosing, so I kept the saved one. Choose again if you still want it.';

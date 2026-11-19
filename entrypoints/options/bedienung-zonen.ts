@@ -3,7 +3,7 @@
 // wenn der gespeicherte Stand noch der ist, auf dem die Handlung gerechnet wurde (sonst wuerde ein alter Stand neuere Deckung ueberschreiben).
 // Nach jeder Aenderung, jedem Speicherfehler und jeder Aenderung von aussen ruft die Seite `zeichne`, das beide Bausteine neu zeichnet.
 import { STANDARD, type Einstellungen } from '../../src/einstellungen';
-import { baueHinweis, baueKleidungsfrage, baueZonenwahl, gleicheDeckung, type KleidungsfrageHandle, type ZonenwahlHandle } from '../../src/oberflaeche/bausteine/bausteine';
+import { baueHinweis, baueKleidungsfrage, baueZonenwahl, zonenSchreibteil, type KleidungsfrageHandle, type ZonenwahlHandle } from '../../src/oberflaeche/bausteine/bausteine';
 import type { ZonenStand } from '../../src/einstieg/zonen';
 import { KLEIDUNG_TEXTE, ZONEN_NAMEN, ZONEN_TEXTE, ZONEN_VERWORFEN, kleidungHinweis } from './bedienung-texte';
 import { speichere } from './grund-speichern';
@@ -22,9 +22,9 @@ function schreibe(neu: ZonenStand, zeichneAlles: (e: Einstellungen, erzwingen?: 
   // G3: eine Handlung gilt nur fuer den Stand, den der Nutzer gesehen hat; hat er sich geaendert, wird nichts geschrieben, KEIN zweiter Versuch, aber ein Hinweis.
   void speichere(
     (alt) => {
-      if (gleicheDeckung(alt.zonen, vorher)) return { zonen: neu };
-      verworfenJetzt = true;
-      return null; // nichts schreiben
+      const teil = zonenSchreibteil(alt.zonen, vorher, neu);
+      if (teil === null) verworfenJetzt = true; // nichts schreiben
+      return teil;
     },
     (e) => zeichneAlles(e, true),
   ).then(() => {

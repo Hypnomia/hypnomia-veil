@@ -118,6 +118,8 @@ export const TEXT = {
   wahlKeine: 'Your zones match none of these, so nothing is picked. Choose one to reset them.',
   // Eine Zonen-Handlung, die verworfen wurde, weil sich der gespeicherte Stand zwischen Anzeige und Klick geaendert hat.
   zonenVerworfen: 'The zones changed somewhere else while you were choosing, so I kept the saved ones. Choose again if you still want it.',
+  // K2: vorlaeufig, derselbe Satz wie auf der Einstellungsseite (Texterin in Schritt (e))
+  erwachsenVerworfen: 'The adult sites choices changed while you were choosing, so I kept the saved one. Choose again if you still want it.',
   kleidungTitel: 'Under clothes',
   kleidungErklaerung: {
     knopfLabel: 'What does this do?',

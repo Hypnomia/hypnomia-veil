@@ -118,5 +118,21 @@ const aussen = document.createElement('button');
 aussen.id = 'fremd-aussen';
 aussen.textContent = 'Foreign button';
 document.body.append(aussen);
-(window as unknown as { __b: unknown }).__b = { ...handles, log, zonenStart, gespeichert: () => gespeichert, setzeStand: (z: ZonenStand) => (gespeichert = JSON.parse(JSON.stringify(z))) };
+// L1: baut eine frische Stufenwahl (Mood) mit diesem Startwert und ruft NIE `setze()`; jede Meldung steht als 'frisch' im Protokoll.
+const baueFrisch = (wert: number) => {
+  document.querySelector('[data-fall="frisch"]')?.remove();
+  const h = baueStufenwahl({
+    titel: 'Fresh',
+    liste: STUFENLISTEN.stimmung,
+    wert,
+    exakt: { titel: 'Exact fresh', formatiere: zeigeGenau, reglerLabel: 'Exact fresh mood' },
+    beiAenderung: melde('frisch'),
+  });
+  const huelle = document.createElement('section');
+  huelle.dataset.fall = 'frisch';
+  huelle.append(h.element);
+  wurzel.append(huelle);
+  return h;
+};
+(window as unknown as { __b: unknown }).__b = { ...handles, log, baueFrisch, zonenStart, gespeichert: () => gespeichert, setzeStand: (z: ZonenStand) => (gespeichert = JSON.parse(JSON.stringify(z))) };
 document.documentElement.dataset.bereit = '1';

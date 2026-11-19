@@ -37,8 +37,14 @@ export async function speichere(
   auchBeiErfolg = true,
 ): Promise<Einstellungen | null> {
   try {
-    const neu = await aendereEinstellungen(teil);
-    loescheSpeicherFehler();
+    let verworfen = false;
+    const neu = await aendereEinstellungen((alt) => {
+      const t = teil(alt);
+      if (t === null) verworfen = true;
+      return t;
+    });
+    // K5: eine verworfene Handlung (`null`) hat nichts gespeichert, ein stehender Fehlersatz bleibt.
+    if (!verworfen) loescheSpeicherFehler();
     if (auchBeiErfolg) zeichneNeu(neu);
     return neu;
   } catch {
