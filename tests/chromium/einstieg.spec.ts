@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TEXT } from '../../src/einstieg/texte';
+import { STANDARD } from '../../src/einstellungen';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { mitReitern } from './einstellungen-ordnung';
 
@@ -26,11 +27,15 @@ const schreibe = (seite: Page, o: Record<string, unknown>) => seite.evaluate((o)
 const entferne = (seite: Page, k: string[]) => seite.evaluate((k) => (globalThis as any).chrome.storage.local.remove(k), k);
 const sende = (seite: Page, n: Record<string, unknown>) =>
   seite.evaluate((n) => (globalThis as any).chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'einstieg-test', ...n }), n);
-// Ein Pack im Speicher (Fund 7: mit Pack beim Einstieg hat das Interview 5 Seiten, ohne 3).
+// Ein Pack im Speicher (Fund 7, E4e I1: mit Pack beim Einstieg hat das Interview 6 Seiten, ohne 4).
 const PACK_KURZ = { id: 't', version: '1.0.0', titel: 'T', freischaltungen: [], bilder: 1, groesse: 1, importiert: 1 };
 const einst = async (s: Page) => (await lies(s, 'einstellungen')) ?? {};
-// Schalter: die Eingabe ist unsichtbar, geklickt wird die Zeile.
-const schalter = (s: Page, feld: string) => s.locator('label.schalter', { has: s.locator(feld) }).click();
+// Schalter aus den Bausteinen (E4e): ein Knopf mit role="switch", geklickt wird der Knopf selbst.
+const schalter = (s: Page, feld: string) => s.locator(feld).click();
+// Karte einer Wahlgruppe der Bausteine (data-id) und Stufe der Stimmung.
+const karte = (s: Page, gruppe: string, kartenId: string) => s.locator(`#${gruppe} [data-id="${kartenId}"]`);
+const stufe = (s: Page, name: string) => s.locator('#iv-stimmung-wahl .v-stufe', { hasText: new RegExp(`^${name}$`) });
+const exaktOeffnen = (s: Page) => s.locator('#iv-stimmung-wahl .v-auf-kopf').click();
 
 // Eine Verwaltungsseite der Erweiterung, auf der Nachrichten und Speicher erreichbar sind.
 async function verwaltung(seite = 'options.html'): Promise<Page> {
@@ -51,16 +56,16 @@ async function oeffneNeu(v: Page): Promise<Page> {
   return w;
 }
 
-// Interview mit fuenf Seiten, aber ohne Pack danach: das Pack liegt beim Eintritt im Speicher (Fund 7) und wird gleich wieder entfernt,
-// damit die Hinweise "ohne Pack" auf Seite 4 und 5 sichtbar sind.
-async function interviewFuenf(v: Page, breite?: number): Promise<Page> {
+// Interview mit sechs Seiten, aber ohne Pack danach: das Pack liegt beim Eintritt im Speicher (Fund 7) und wird gleich wieder entfernt,
+// damit die Hinweise "ohne Pack" auf Seite 5 und 6 sichtbar sind.
+async function interviewSechs(v: Page, breite?: number): Promise<Page> {
   await schreibe(v, FERTIG);
   await schreibe(v, { pack: PACK_KURZ });
   const w = mitReitern(await context.newPage());
   if (breite) await w.setViewportSize({ width: breite, height: 700 });
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5));
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 6));
   await entferne(v, ['pack']);
   return w;
 }
@@ -101,12 +106,12 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   // Die Verwaltungsseite ist hier nicht die Einstellungsseite, damit "All settings" eine neue Seite oeffnet (sonst springt Chrome zur offenen).
   const v = await verwaltung('popup.html');
   await entferne(v, ['einstellungen', 'pack', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);
-  await schreibe(v, { pack: PACK_KURZ }); // mit Pack beim Einstieg: fuenf Seiten
+  await schreibe(v, { pack: PACK_KURZ }); // mit Pack beim Einstieg: sechs Seiten
   const w = await oeffneNeu(v);
   // a. Warnung
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'warnung');
   await expect(w.locator('#warnung-kern')).toHaveText(TEXT.warnungKern);
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.schrittVon(1, 8));
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.schrittVon(1, 9));
   await w.locator('#warnung-ok').click();
   await expect.poll(async () => (await lies(v, 'einstieg')).warnung).toBe(true);
   expect(await lies(v, 'quizWarnungGesehen')).toBe(true);
@@ -128,54 +133,57 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   expect(typeof stand.zeit).toBe('number');
   expect(stand.interview).toBe('offen');
   messzahl += 3;
-  // d1. Stimmung und Strict
+  // d1. Zones (E4e I2): der Standard markiert "Body"
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5)); // Fund 19
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 6)); // Fund 19
   await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.interview);
   await expect(w.locator('#iv-zurueck')).toHaveCount(0);
-  await entferne(v, ['pack']); // ab hier wie ohne Pack; die Zahl der Seiten bleibt bei 5
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5));
-  await expect(w.locator('#iv-stimmung')).toHaveValue('0.1');
-  await w.locator('#iv-stimmung').fill('0.2');
-  await expect.poll(async () => (await einst(v)).schwelle).toBe(0.2);
-  await schalter(w, '#iv-strict');
-  await expect.poll(async () => (await einst(v)).strict).toBe(true);
-  messzahl += 2;
-  await w.locator('#iv-weiter').click();
-  // d2. Zonen
-  await expect(w.locator('#iv-zonen-koerper')).toBeChecked();
-  await w.locator('label', { has: w.locator('#iv-zonen-alles') }).click();
+  await expect(w.locator('.iv-schritte li')).toHaveText(TEXT.schritteNamen); // sechs Schritte mit Pack
+  await entferne(v, ['pack']); // ab hier wie ohne Pack; die Zahl der Seiten bleibt bei 6
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 6));
+  await expect(karte(w, 'iv-zonen-wahl', 'koerper')).toHaveAttribute('aria-checked', 'true');
+  await karte(w, 'iv-zonen-wahl', 'alles').click();
   await expect.poll(async () => Object.values((await einst(v)).zonen).every((z: any) => z.an)).toBe(true);
-  await schalter(w, '#iv-bedeckt');
-  await expect.poll(async () => (await einst(v)).zonen.feet.bedeckt).toBe(true);
-  await expect.poll(async () => (await einst(v)).zonen.breast.bedeckt).toBe(true);
-  await w.locator('label', { has: w.locator('#iv-zonen-koerper-gesicht') }).click();
+  await karte(w, 'iv-zonen-wahl', 'koerper-gesicht').click();
   await expect.poll(async () => (await einst(v)).zonen.face.an).toBe(true);
   expect((await einst(v)).zonen.feet.an).toBe(false);
-  messzahl += 4;
+  messzahl += 3;
+  await w.locator('#iv-weiter').click();
+  // d2. Clothes (I2): bei gemischtem Stand (Standard) ist keine Antwort markiert, der Hinweis nennt den gespeicherten Stand
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-2');
+  await expect(w.locator('#iv-kleidung-frage [role="radio"][aria-checked="true"]')).toHaveCount(0);
+  await expect(w.locator('#iv-kleidung-frage .v-hinweis')).toContainText('Genitals');
+  await karte(w, 'iv-kleidung-frage', 'auch-bedeckt').click();
+  await expect.poll(async () => (await einst(v)).zonen.feet.bedeckt).toBe(true);
+  await expect.poll(async () => (await einst(v)).zonen.breast.bedeckt).toBe(true);
+  expect((await einst(v)).zonen.face.an).toBe(true); // Kleidung aendert nie ein `an`
+  await karte(w, 'iv-kleidung-frage', 'haut').click();
+  await expect.poll(async () => (await einst(v)).zonen.breast.bedeckt).toBe(false);
+  await karte(w, 'iv-kleidung-frage', 'auch-bedeckt').click();
+  await expect.poll(async () => (await einst(v)).zonen.breast.bedeckt).toBe(true);
+  messzahl += 5;
   // Zurueck und wieder vor: Seite 1 zeigt die gespeicherten Werte
   await w.locator('#iv-zurueck').click();
-  await expect(w.locator('#iv-stimmung')).toHaveValue('0.2');
-  await expect(w.locator('#iv-strict')).toBeChecked();
+  await expect(karte(w, 'iv-zonen-wahl', 'koerper-gesicht')).toHaveAttribute('aria-checked', 'true');
   await w.locator('#iv-weiter').click();
-  await expect(w.locator('#iv-zonen-koerper-gesicht')).toBeChecked();
-  await expect(w.locator('#iv-bedeckt')).toBeChecked();
+  await expect(karte(w, 'iv-kleidung-frage', 'auch-bedeckt')).toHaveAttribute('aria-checked', 'true');
   await w.locator('#iv-weiter').click();
-  // d3. Stil und Calm
+  // d3. Style (Stilkarten und Eye bar wie heute)
   await expect(w.locator('#iv-preset-mosaik')).toBeChecked();
   await expect(w.locator('#iv-preset-mia-wort')).toBeDisabled();
   await expect(w.locator('#iv-stil-sperre')).toBeVisible();
   await expect(w.locator('#iv-preset-karten input[name="iv-preset"]')).toHaveCount(12); // dieselben Karten wie auf der Einstellungsseite
   await w.locator('label', { has: w.locator('#iv-preset-blur') }).click();
   await expect.poll(async () => (await einst(v)).preset).toBe('blur');
+  await expect(w.locator('.iv-vorschau .v-vorschau-etikett')).toHaveText('Blur'); // der Platz der Vorschau folgt dem gespeicherten Stil
   // Eye bar (E4c): ein Schalter unter dem Raster, aendert nur sich selbst
   await expect(w.locator('#iv-augenbalken')).not.toBeChecked();
-  await w.locator('label', { has: w.locator('#iv-augenbalken') }).click();
+  await schalter(w, '#iv-augenbalken');
   await expect.poll(async () => (await einst(v)).augenbalken).toBe(true);
   expect((await einst(v)).preset).toBe('blur');
-  await w.locator('label', { has: w.locator('#iv-augenbalken') }).click();
+  await schalter(w, '#iv-augenbalken');
   await expect.poll(async () => (await einst(v)).augenbalken).toBe(false);
-  await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Calm mode steht auf Seite 5 (Fund 23)
+  await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Calm mode steht mit Pack auf der letzten Seite (Fund 23)
   // Mit Pack werden die Presets mit meinem Gesicht waehlbar und der Hinweis verschwindet (folgt dem Speicher)
   await schreibe(v, { pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch'], bilder: 1, groesse: 1, importiert: 1 } });
   await expect(w.locator('#iv-preset-mia-wort')).toBeEnabled();
@@ -186,12 +194,12 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   await schreibe(v, { pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch', 'zensur:sticker'], bilder: 1, sticker: 1, groesse: 1, importiert: 1 } });
   await expect(w.locator('#iv-preset-sticker')).toBeEnabled();
   await expect(w.locator('#iv-stil-sperre')).toBeHidden();
-  // Face steht aus ("Body" ohne Gesicht gewaehlt): das Mia-Preset schaltet es ein
+  // Face steht aus: das Mia-Preset schaltet es ein
   const vorMia = await einst(v);
   await schreibe(v, { einstellungen: { ...vorMia, zonen: { ...vorMia.zonen, face: { an: false } } } });
   await w.locator('label', { has: w.locator('#iv-preset-mia-wort') }).click();
   await expect.poll(async () => (await einst(v)).preset).toBe('mia-wort');
-  // Entscheidung der Inhaberin: das Mia-Preset schaltet Face ein (die Zonenwahl "Body" der Seite davor hatte es aus), mit kurzem Hinweis
+  // Entscheidung der Inhaberin: das Mia-Preset schaltet Face ein, mit kurzem Hinweis
   await expect.poll(async () => (await einst(v)).zonen.face.an).toBe(true);
   await expect(w.locator('#iv-stil-face')).toHaveText(HINWEIS_FACE_EIN);
   await expect(w.locator('#iv-preset-karten')).toHaveAttribute('role', 'radiogroup');
@@ -202,31 +210,38 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   // Das Pack ist direkt aus dem Speicher weg (nicht ueber entfernePack): der gespeicherte Stil bleibt, also stellen wir ihn ausdruecklich auf Blur.
   await w.locator('label', { has: w.locator('#iv-preset-blur') }).click();
   await expect.poll(async () => (await einst(v)).preset).toBe('blur');
-  messzahl += 5;
+  messzahl += 6;
   await w.locator('#iv-weiter').click();
-  // d4. Erwachsenenseiten
-  await expect(w.locator('#iv-ohne-pack')).toBeVisible();
-  await schalter(w, '#iv-erw-an');
-  await expect.poll(async () => (await einst(v)).erwachsen.an).toBe(false);
-  await schalter(w, '#iv-erw-ersatz');
-  await expect.poll(async () => (await einst(v)).erwachsen.komplettErsatz).toBe(true);
-  await w.locator('#iv-verweigern').fill('20');
-  await expect.poll(async () => (await einst(v)).quiz.verweigern).toBe(0.2);
+  // d4. Mood (I4): Stufen mit Namen, "Exact value", Strict als Schalter
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-4');
+  await expect(stufe(w, stimmungsWort(0.1))).toHaveAttribute('aria-checked', 'true');
+  await stufe(w, stimmungsWort(0.22)).click();
+  await expect.poll(async () => (await einst(v)).schwelle).toBe(0.22);
+  await exaktOeffnen(w);
+  await w.locator('#iv-stimmung-wahl input[type=range]').fill('0.2');
+  await expect.poll(async () => (await einst(v)).schwelle).toBe(0.2);
+  await schalter(w, '#iv-strict');
+  await expect.poll(async () => (await einst(v)).strict).toBe(true);
   messzahl += 3;
   await w.locator('#iv-weiter').click();
-  // d5. Kontrolle und Ton
+  // d5. Adult sites (I5, I5a): das Pack fehlt hier, also die Form ohne Freischaltung: Off und On waehlbar, die drei Stufen gesperrt
+  await expect(w.locator('#iv-ohne-pack')).toBeVisible();
+  await expect(karte(w, 'iv-erw-wahl', 'on')).toHaveAttribute('aria-checked', 'true'); // Standard: an
+  await karte(w, 'iv-erw-wahl', 'off').click();
+  await expect.poll(async () => (await einst(v)).erwachsen.an).toBe(false);
+  expect((await einst(v)).erwachsen.stufe).toBe(STANDARD.erwachsen.stufe); // Off laesst die Stufe stehen
+  await karte(w, 'iv-erw-wahl', 'on').click();
+  await expect.poll(async () => (await einst(v)).erwachsen.an).toBe(true);
+  messzahl += 3;
+  await w.locator('#iv-weiter').click();
+  // d6. Extras (I6): Calm mode oben, Flash words als Auswahl; Leerlauf, Zeiger und Ton werden nicht mehr gefragt
   await expect(w.locator('#iv-weiter')).toHaveText(TEXT.fertig);
-  await w.locator('#iv-blitz').selectOption('oft');
-  await expect.poll(async () => (await einst(v)).kontrolle.blitz).toBe('oft');
-  await schalter(w, '#iv-leerlauf');
-  await expect.poll(async () => (await einst(v)).kontrolle.leerlauf).toBe(false);
   await schalter(w, '#iv-ruhig');
   await expect.poll(async () => (await einst(v)).ruhig).toBe(true);
-  await w.locator('#iv-cursor').selectOption('herz');
-  await expect.poll(async () => (await einst(v)).kontrolle.cursor).toBe('herz');
-  await schalter(w, '#iv-ton');
-  await expect.poll(async () => (await einst(v)).ton.an).toBe(true);
-  messzahl += 5;
+  await w.locator('#iv-blitz').selectOption('oft');
+  await expect.poll(async () => (await einst(v)).kontrolle.blitz).toBe('oft');
+  for (const weg of ['#iv-leerlauf', '#iv-cursor', '#iv-ton', '#iv-verweigern', '#iv-erw-ersatz', '#iv-erw-an', '#iv-bedeckt']) await expect(w.locator(weg)).toHaveCount(0);
+  messzahl += 2;
   // Abschluss
   await w.locator('#iv-weiter').click();
   await expect.poll(async () => (await lies(v, 'einstieg')).interview).toBe('fertig');
@@ -247,8 +262,10 @@ test('ganzer Durchgang mit echten Klicks: Einstellungen wie gewaehlt, einstieg f
   messzahl += 3;
   // Einstellungen blieben wie gewaehlt
   const e = await einst(v);
-  expect([e.schwelle, e.strict, e.preset, e.ruhig, e.erwachsen.an, e.erwachsen.komplettErsatz, e.quiz.verweigern, e.kontrolle.blitz, e.kontrolle.leerlauf, e.kontrolle.cursor, e.ton.an]).toEqual([
-    0.2, true, 'blur', true, false, true, 0.2, 'oft', false, 'herz', true,
+  // Was gefragt wurde, steht wie gewaehlt; was nicht mehr gefragt wird, bleibt beim Standard (I7).
+  expect([e.schwelle, e.strict, e.preset, e.ruhig, e.erwachsen.an, e.kontrolle.blitz]).toEqual([0.2, true, 'blur', true, true, 'oft']);
+  expect([e.erwachsen.komplettErsatz, e.quiz.verweigern, e.kontrolle.leerlauf, e.kontrolle.cursor, e.ton.an]).toEqual([
+    STANDARD.erwachsen.komplettErsatz, STANDARD.quiz.verweigern, STANDARD.kontrolle.leerlauf, STANDARD.kontrolle.cursor, STANDARD.ton.an,
   ]);
   for (const p of context.pages()) if (p !== v) await p.close();
   await v.close();
@@ -265,15 +282,13 @@ test('Ueberspringen: interview uebersprungen, Einstellungen unveraendert, Gate u
   await expect(w.locator('#iv-ueberspringen')).toHaveCount(0);
   await w.locator('#einwilligung-ok').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
-  // Erst Antworten geben, dann auf Seite 2 ueberspringen: die gesetzten Einstellungen bleiben, es wird nichts zurueckgesetzt.
-  await w.locator('#iv-stimmung').fill('0.15');
-  await expect.poll(async () => (await einst(v)).schwelle).toBe(0.15);
-  await schalter(w, '#iv-strict');
-  await expect.poll(async () => (await einst(v)).strict).toBe(true);
+  // Erst eine Antwort geben, dann auf Seite 2 ueberspringen: die gesetzten Einstellungen bleiben, es wird nichts zurueckgesetzt.
+  await karte(w, 'iv-zonen-wahl', 'alles').click();
+  await expect.poll(async () => Object.values((await einst(v)).zonen).every((z: any) => z.an)).toBe(true);
   await w.locator('#iv-weiter').click();
-  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-2'); // ohne Pack gibt es nur drei Seiten (Fund 7)
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-2'); // ohne Pack gibt es nur vier Seiten (Fund 7)
   const vorher = await lies(v, 'einstellungen');
-  expect(vorher.schwelle).toBe(0.15);
+  expect(Object.values(vorher.zonen).every((z: any) => z.an)).toBe(true);
   await w.locator('#iv-ueberspringen').click();
   await expect.poll(async () => (await lies(v, 'einstieg')).interview).toBe('uebersprungen');
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
@@ -373,12 +388,11 @@ test('Adresse: #interview springt bei fertigem Einstieg ins Interview, sonst zum
   await schreibe(v, { einstellungen: { version: 1, zonen: { eyes: { an: true } } } });
   await w.goto(url('willkommen.html#interview'));
   await w.reload();
-  await w.locator('#iv-weiter').click();
-  await expect(w.locator('#iv-zonen-keine')).toBeVisible();
-  for (const f of ['koerper', 'koerper-gesicht', 'alles']) await expect(w.locator(`#iv-zonen-${f}`)).not.toBeChecked();
-  await w.locator('label', { has: w.locator('#iv-zonen-koerper') }).click();
+  await expect(w.locator('#iv-zonen-wahl .v-hinweis')).toHaveText(TEXT.wahlKeine);
+  for (const f of ['koerper', 'koerper-gesicht', 'alles']) await expect(karte(w, 'iv-zonen-wahl', f)).toHaveAttribute('aria-checked', 'false');
+  await karte(w, 'iv-zonen-wahl', 'koerper').click();
   await expect.poll(async () => (await einst(v)).zonen.eyes.an).toBe(false);
-  await expect(w.locator('#iv-zonen-keine')).toBeHidden();
+  await expect(w.locator('#iv-zonen-wahl .v-hinweis')).toHaveCount(0);
   messzahl += 4;
   // Einstieg offen: #interview kommt nicht am Gate vorbei
   await sende(v, { zuruecksetzen: true });
@@ -394,12 +408,12 @@ test('Adresse: #interview springt bei fertigem Einstieg ins Interview, sonst zum
 test('360 px: kein waagrechtes Scrollen in keinem Schritt', async () => {
   const v = await verwaltung();
   await schreibe(v, { einstieg: { version: 1, warnung: true, alter: true, einwilligung: true, interview: 'fertig', zeit: 1 } });
-  await schreibe(v, { pack: PACK_KURZ }); // fuenf Seiten; unten wird das Pack entfernt, damit die Pack-Hinweise mitgemessen werden
+  await schreibe(v, { pack: PACK_KURZ }); // sechs Seiten; unten wird das Pack entfernt, damit die Pack-Hinweise mitgemessen werden
   const w = mitReitern(await context.newPage());
   await w.setViewportSize({ width: 360, height: 700 });
   await w.goto(url('willkommen.html#interview'));
   let geprueft = 0;
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 6; i++) {
     await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', `interview-${i}`);
     if (i === 1) await entferne(v, ['pack']);
     const m = await w.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
@@ -413,9 +427,11 @@ test('360 px: kein waagrechtes Scrollen in keinem Schritt', async () => {
     expect(m.s, 'ende').toBeLessThanOrEqual(m.c);
     geprueft++;
   }
-  // Fehlerzeile sichtbar (Speichern scheitert) auf Seite 1, auch beim zweiten Fehler
+  // Fehlerzeile sichtbar (Speichern scheitert) auf Seite 4 (Strict), auch beim zweiten Fehler
   await w.reload();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
+  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
+  await expect(w.locator('#iv-strict')).toBeVisible();
   await w.evaluate(() => {
     (globalThis as any).chrome.storage.local.set = () => Promise.reject(new Error('voll'));
   });
@@ -499,39 +515,42 @@ test('Fund 2 und 18: Einwilligungsseite sagt, was schon laeuft und was bei "Not 
   await v.close();
 });
 
-test('Wiederholen: "Question n of 5", Stimmungswort, Calm mode und Hinweis auf Seite 5, kein Ueberspringen auf Seite 5, Pack-Link auf Seite 4 und 5', async () => {
+test('Wiederholen: "Question n of 6", Stimmung mit genauem Wert, Hinweis und Pack-Link auf Seite 5 und 6, Calm mode nur auf Seite 6, kein Ueberspringen auf Seite 6', async () => {
   const v = await verwaltung();
   await schreibe(v, FERTIG);
-  await schreibe(v, PACK); // mit Pack beim Eintritt: fuenf Fragen; nach Seite 1 faellt das Pack weg, damit die Pack-Hinweise sichtbar sind
+  await schreibe(v, PACK); // mit Pack beim Eintritt: sechs Fragen; nach Seite 1 faellt das Pack weg, damit die Pack-Hinweise sichtbar sind
   await schreibe(v, { einstellungen: { version: 1, schwelle: 0.2, kontrolle: { werbung: true } } }); // Werbung ist ab Werk aus (Opt-in), hier an, damit die Zeile alle drei nennt
   const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
   await entferne(v, ['pack']);
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5)); // Fund 19
-  await expect(w.locator('#fortschritt')).toHaveAttribute('max', '5');
-  // Fund 6: Wort statt Zahl
-  await expect(w.locator('#iv-stimmung-wert')).toHaveText(stimmungsWort(0.2));
-  await expect(w.locator('#iv-stimmung')).toHaveAttribute('aria-valuetext', stimmungsWort(0.2));
-  await w.locator('#iv-stimmung').fill('0.11');
-  await expect(w.locator('#iv-stimmung-wert')).toHaveText(stimmungsWort(0.11));
-  await expect.poll(async () => (await einst(v)).schwelle).toBe(0.11);
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 6)); // Fund 19
+  await expect(w.locator('#fortschritt')).toHaveAttribute('max', '6');
   await expect(w.locator('#iv-ueberspringen')).toBeVisible();
-  messzahl += 6;
   await w.locator('#iv-weiter').click();
   await w.locator('#iv-weiter').click();
-  await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Fund 23: nicht auf Seite 3
+  await expect(w.locator('#iv-ruhig')).toHaveCount(0); // Fund 23: nicht auf der Stil-Seite, wenn das Interview sechs Seiten hat
   await w.locator('#iv-weiter').click();
-  // Seite 4: Satz und Link (Fund 4)
+  // Seite 4: der gespeicherte Zwischenwert 0.2 markiert keine Stufe, "Exact value" ist offen und zeigt ihn genau (E4d2 F3), nichts wird geschrieben
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-4');
-  await expect(w.locator('#iv-ohne-pack')).toContainText(TEXT.ohnePack4);
+  await expect(w.locator('#iv-stimmung-wahl .v-stufe[aria-checked="true"]')).toHaveCount(0);
+  await expect(w.locator('#iv-stimmung-wahl .v-wert')).toHaveText('0.2');
+  await expect(w.locator('#iv-stimmung-wahl input[type=range]')).toBeVisible();
+  await w.locator('#iv-stimmung-wahl input[type=range]').fill('0.11');
+  await expect(w.locator('#iv-stimmung-wahl .v-wert')).toHaveText('0.11');
+  await expect.poll(async () => (await einst(v)).schwelle).toBe(0.11);
+  messzahl += 5;
+  await w.locator('#iv-weiter').click();
+  // Seite 5: Satz und Link (Fund 4)
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-5');
+  await expect(w.locator('#iv-ohne-pack')).toContainText(TEXT.ohnePack5);
   await expect(w.locator('#iv-pack-link')).toHaveText(TEXT.packLink);
   await expect(w.locator('#iv-pack-link')).toHaveAttribute('href', `chrome-extension://${id}/options.html#neu`);
   messzahl += 3;
   await w.locator('#iv-weiter').click();
-  // Seite 5
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(5, 5));
-  await expect(w.locator('#iv-ohne-pack')).toContainText(TEXT.ohnePack5);
+  // Seite 6
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(6, 6));
+  await expect(w.locator('#iv-ohne-pack')).toContainText(TEXT.ohnePack6);
   const alle = [TEXT.auchAnNamen.werbung, TEXT.auchAnNamen.tabtitel, TEXT.auchAnNamen.meldungen];
   await expect(w.locator('#iv-auch-an')).toContainText(TEXT.auchAn(alle)); // Fund 3
   await expect(w.locator('#iv-auch-an-link')).toHaveText(TEXT.auchAnLink); // Fund 21
@@ -581,39 +600,49 @@ test('Abschluss: Satz folgt dem Pack (Fund 21)', async () => {
   await v.close();
 });
 
-test('Fund 26: scheitert das Speichern, steht der Fehlersatz da und der Schalter springt auf den gespeicherten Stand', async () => {
+test('Fund 26: scheitert das Speichern, steht der Fehlersatz da und jedes Element springt auf den gespeicherten Stand (Strict, Stimmung, Zonen)', async () => {
   const v = await verwaltung();
   await schreibe(v, FERTIG);
   await entferne(v, ['einstellungen']);
   const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
-  await expect(w.locator('#iv-strict')).not.toBeChecked();
   await w.evaluate(() => {
     (globalThis as any).chrome.storage.local.set = () => Promise.reject(new Error('Speicher voll'));
   });
+  // Zones
+  await karte(w, 'iv-zonen-wahl', 'alles').click();
+  await expect(w.locator('#fehler')).toHaveText(FEHLER_SPEICHERN);
+  await expect(karte(w, 'iv-zonen-wahl', 'koerper')).toHaveAttribute('aria-checked', 'true');
+  await expect(karte(w, 'iv-zonen-wahl', 'alles')).toHaveAttribute('aria-checked', 'false');
+  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
+  // Mood und Strict (Seite 4)
+  await expect(w.locator('#iv-strict')).not.toBeChecked();
   await schalter(w, '#iv-strict');
   await expect(w.locator('#fehler')).toHaveText(FEHLER_SPEICHERN);
   await expect(w.locator('#iv-strict')).not.toBeChecked();
   expect((await einst(v)).strict ?? false).toBe(false);
-  await w.locator('#iv-stimmung').fill('0.24');
-  await expect(w.locator('#iv-stimmung')).toHaveValue('0.1');
-  await expect(w.locator('#iv-stimmung-wert')).toHaveText(stimmungsWort(0.1));
-  messzahl += 4;
+  await stufe(w, stimmungsWort(0.22)).click();
+  await expect(stufe(w, stimmungsWort(0.1))).toHaveAttribute('aria-checked', 'true');
+  await expect(w.locator('#iv-stimmung-wahl input[type=range]')).toHaveValue('0.1');
+  expect((await einst(v)).schwelle ?? 0.1).toBe(0.1);
+  messzahl += 6;
   await w.close();
   await v.close();
 });
 
 test('Kontrast (Fund 9 und 10): kleine Knoepfe mindestens 4,5:1, Schalterbahn aus und Feldraender mindestens 3:1', async () => {
   const v = await verwaltung();
-  const w = await interviewFuenf(v);
-  const knopf = await kontrast(w, '#iv-ueberspringen', 'color', 'eigen');
+  const w = await interviewSechs(v);
+  // "Skip the rest" ist seit E4e (I9) ein Textlink ohne eigenen Grund: gemessen gegen die zwei hellsten Gruende der Karte
+  const knopf = Math.min(await kontrast(w, '#iv-ueberspringen', 'color', '#ffffff'), await kontrast(w, '#iv-ueberspringen', 'color', '#fff5fa'));
   expect(knopf).toBeGreaterThanOrEqual(4.5);
-  await w.locator('#iv-weiter').click(); // Seite 2: Wahlkarten und Schalter
-  const bahn = await kontrast(w, '.schalter .regler', 'backgroundColor', '#ffffff');
-  const bahnGrund = await kontrast(w, '.schalter .regler', 'backgroundColor', '#fff5fa');
-  const rand = await kontrast(w, '.wahl label', 'borderTopColor', '#ffffff');
-  expect(Math.min(bahn, bahnGrund, rand)).toBeGreaterThanOrEqual(3);
-  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click(); // Seite 5: Auswahlfeld
+  const rand = await kontrast(w, '.v-wahl-karte', 'borderTopColor', '#ffffff'); // Seite 1: Wahlkarten
+  expect(rand).toBeGreaterThanOrEqual(3);
+  for (let i = 0; i < 2; i++) await w.locator('#iv-weiter').click(); // Seite 3: Eye bar (Schalter)
+  const bahn = await kontrast(w, '.v-bahn', 'backgroundColor', '#ffffff');
+  const bahnGrund = await kontrast(w, '.v-bahn', 'backgroundColor', '#fff5fa');
+  expect(Math.min(bahn, bahnGrund)).toBeGreaterThanOrEqual(3);
+  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click(); // Seite 6: Auswahlfeld
   const feld = await kontrast(w, '#iv-blitz', 'borderTopColor', '#ffffff');
   expect(feld).toBeGreaterThanOrEqual(3);
   console.log(`chromium: einstieg Kontrast Knopf ${knopf.toFixed(2)}, Bahn ${bahn.toFixed(2)}, Rand ${rand.toFixed(2)}, Feld ${feld.toFixed(2)}`);
@@ -627,7 +656,6 @@ test('Fund N9: Unterzeile der gewaehlten Karte mindestens 4,5:1 auf dem Kartengr
   await schreibe(v, FERTIG);
   const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
-  await w.locator('#iv-weiter').click(); // Seite 2: Wahlkarten
   const m = await w.evaluate(() => {
     const rgb = (t: string) => (t.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
     const lum = (c: number[]) => {
@@ -639,9 +667,9 @@ test('Fund N9: Unterzeile der gewaehlten Karte mindestens 4,5:1 auf dem Kartengr
       return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
     };
     const out: number[] = [];
-    document.querySelectorAll('.wahl label').forEach((l) => {
-      const sm = l.querySelector('small');
-      if (!sm || !l.querySelector('input:checked')) return;
+    document.querySelectorAll('.v-wahl-karte[aria-checked="true"]').forEach((l) => {
+      const sm = l.querySelector('.v-wahl-satz');
+      if (!sm) return;
       out.push(kontr(getComputedStyle(sm).color, getComputedStyle(l).backgroundColor));
     });
     return out;
@@ -656,12 +684,12 @@ test('Fund N9: Unterzeile der gewaehlten Karte mindestens 4,5:1 auf dem Kartengr
 
 test('Fund N10: bei 360 px sind Auswahlen, Knoepfe, Schalter, Regler und der Pack-Link mindestens 44 px hoch', async () => {
   const v = await verwaltung();
-  const w = await interviewFuenf(v, 360);
+  const w = await interviewSechs(v, 360);
   const hoehen: string[] = [];
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 6; i++) {
     await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', `interview-${i}`);
     const kleinste = await w.evaluate(() => {
-      const ziele = [...document.querySelectorAll<HTMLElement>('#schritt button, #schritt select, #schritt input[type=range], #schritt label.schalter, #schritt .wahl label, #schritt #iv-pack-link')];
+      const ziele = [...document.querySelectorAll<HTMLElement>('#schritt button, #schritt select, #schritt input[type=range], #schritt #iv-pack-link')];
       return ziele
         .filter((e) => e.offsetParent !== null)
         .map((e) => ({ id: e.id || e.className || e.tagName, h: e.getBoundingClientRect().height }));
@@ -669,8 +697,8 @@ test('Fund N10: bei 360 px sind Auswahlen, Knoepfe, Schalter, Regler und der Pac
     for (const z of kleinste) expect(z.h, `Seite ${i}: ${z.id}`).toBeGreaterThanOrEqual(43.99);
     if (kleinste.length) hoehen.push(`${i}:${Math.min(...kleinste.map((z) => z.h)).toFixed(1)}`);
     messzahl += kleinste.length;
-    if (i === 4) await expect(w.locator('#iv-pack-link')).toBeVisible();
-    if (i < 5) await w.locator('#iv-weiter').click();
+    if (i === 5) await expect(w.locator('#iv-pack-link')).toBeVisible();
+    if (i < 6) await w.locator('#iv-weiter').click();
   }
   await w.locator('#iv-weiter').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
@@ -686,9 +714,9 @@ test('Fund N10: bei 360 px sind Auswahlen, Knoepfe, Schalter, Regler und der Pac
 
 test('Fund N11: Link "Add the Mia Pack" oeffnet einen neuen Tab mit options.html#neu, der Interview-Tab bleibt auf seiner Seite', async () => {
   const v = await verwaltung();
-  const w = await interviewFuenf(v);
-  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
-  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-4');
+  const w = await interviewSechs(v);
+  for (let i = 0; i < 4; i++) await w.locator('#iv-weiter').click();
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-5');
   const vorher = context.pages().length;
   const neu = context.waitForEvent('page');
   await w.locator('#iv-pack-link').click();
@@ -697,8 +725,8 @@ test('Fund N11: Link "Add the Mia Pack" oeffnet einen neuen Tab mit options.html
   await n.waitForURL(/options\.html#neu$/);
   expect(context.pages().length).toBe(vorher + 1);
   expect(w.url()).toContain('willkommen.html');
-  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-4');
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(4, 5));
+  await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-5');
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(5, 6));
   console.log(`chromium: einstieg N11 Tabs ${vorher} auf ${context.pages().length}, neuer Tab ${n.url().split('/').pop()}, Interview-Tab bleibt ${w.url().split('/').pop()}`);
   messzahl += 4;
   await n.close();
@@ -711,7 +739,7 @@ test('Fund N12: beim Wiederholen fuehrt "All settings" am Ende im selben Tab zur
   await schreibe(v, FERTIG);
   const w = mitReitern(await context.newPage());
   await w.goto(url('willkommen.html#interview'));
-  for (let i = 0; i < 3; i++) await w.locator('#iv-weiter').click();
+  for (let i = 0; i < 4; i++) await w.locator('#iv-weiter').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
   const vorher = context.pages().length;
   await w.locator('#ende-einstellungen').click();
@@ -723,7 +751,7 @@ test('Fund N12: beim Wiederholen fuehrt "All settings" am Ende im selben Tab zur
   await v.close();
 });
 
-test('Fund 7, 8 und 19: ohne Pack drei Fragen mit Calm mode auf Seite 3, Etappen unter der Bahn, "Calm mode on, then continue" auf der Warnseite', async () => {
+test('Fund 7, 8 und 19: ohne Pack vier Fragen mit Calm mode auf Seite 3, Etappen unter der Bahn, "Calm mode on, then continue" auf der Warnseite', async () => {
   const v = await verwaltung('popup.html');
   await entferne(v, ['einstellungen', 'pack', 'quizWarnungGesehen', 'spiraleWarnungGesehen']);
   const w = await oeffneNeu(v);
@@ -735,7 +763,7 @@ test('Fund 7, 8 und 19: ohne Pack drei Fragen mit Calm mode auf Seite 3, Etappen
   await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.warnung);
   expect(await w.locator('#etappen li[aria-current="step"]').evaluate((e) => Number(getComputedStyle(e).fontWeight))).toBeGreaterThanOrEqual(700);
   expect(((await einst(v)) as any).ruhig ?? false).toBe(false);
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.schrittVon(1, 6)); // ohne Pack: 3 Gate-Schritte + 3 Fragen
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.schrittVon(1, 7)); // ohne Pack: 3 Gate-Schritte + 4 Fragen
   await w.locator('#warnung-ruhig').click();
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'alter');
   await expect.poll(async () => (await einst(v)).ruhig).toBe(true);
@@ -745,27 +773,30 @@ test('Fund 7, 8 und 19: ohne Pack drei Fragen mit Calm mode auf Seite 3, Etappen
   await w.locator('#alter-ja').click();
   await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.einwilligung);
   await w.locator('#einwilligung-ok').click();
-  // drei Fragen
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 3));
+  // vier Fragen
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 4));
+  await expect(w.locator('.iv-schritte li')).toHaveText(TEXT.schritteNamen.slice(0, 4));
   await expect(w.locator('#etappen li[aria-current="step"]')).toHaveText(TEXT.etappen.interview);
   await expect(w.locator('#iv-ueberspringen')).toBeVisible();
   await w.locator('#iv-weiter').click();
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(2, 3));
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(2, 4));
   await w.locator('#iv-weiter').click();
-  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(3, 3));
-  await expect(w.locator('#iv-weiter')).toHaveText(TEXT.fertig);
-  await expect(w.locator('#iv-ueberspringen')).toHaveCount(0);
-  // Calm mode steht auf Seite 3 und ist schon an (Warnseite), ausschalten wird gespeichert
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(3, 4));
+  // Calm mode steht auf der Stil-Seite (Seite 3) und ist schon an (Warnseite), ausschalten wird gespeichert
   await expect(w.locator('#iv-ruhig')).toBeChecked();
   await schalter(w, '#iv-ruhig');
   await expect.poll(async () => (await einst(v)).ruhig).toBe(false);
   await schalter(w, '#iv-ruhig');
   await expect.poll(async () => (await einst(v)).ruhig).toBe(true);
   await w.locator('#iv-weiter').click();
+  await expect(w.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(4, 4));
+  await expect(w.locator('#iv-weiter')).toHaveText(TEXT.fertig);
+  await expect(w.locator('#iv-ueberspringen')).toHaveCount(0);
+  await w.locator('#iv-weiter').click();
   await expect.poll(async () => (await lies(v, 'einstieg')).interview).toBe('fertig');
   await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'ende');
   messzahl += 8;
-  // Wer mit Pack kommt, bekommt alle fuenf Fragen und Calm mode erst auf Seite 5; "I understand" laesst Calm mode aus
+  // Wer mit Pack kommt, bekommt alle sechs Fragen und Calm mode erst auf Seite 6; "I understand" laesst Calm mode aus
   await entferne(v, ['einstellungen']);
   await schreibe(v, { pack: PACK_KURZ });
   const w2 = await oeffneNeu(v);
@@ -774,7 +805,7 @@ test('Fund 7, 8 und 19: ohne Pack drei Fragen mit Calm mode auf Seite 3, Etappen
   expect(((await einst(v)) as any).ruhig ?? false).toBe(false);
   await w2.locator('#alter-ja').click();
   await w2.locator('#einwilligung-ok').click();
-  await expect(w2.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 5));
+  await expect(w2.locator('#fortschritt-text')).toHaveText(TEXT.frageVon(1, 6));
   await w2.locator('#iv-weiter').click();
   await w2.locator('#iv-weiter').click();
   await expect(w2.locator('#iv-ruhig')).toHaveCount(0);

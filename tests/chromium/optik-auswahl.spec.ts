@@ -1,5 +1,5 @@
 // Chromium: Phase 11 Etappe 4a (Regel O6). Jedes Auswahlfeld (`select`) der Erweiterungsseiten hat dieselbe berechnete Gestaltung: Willkommen
-// (Interview Seite 5), Einstellungen (Mia's control) und Pack "Set me up". Gemessen bei 1280 und 360 Pixel Breite: Pfeil mit festem Abstand zum
+// (Interview Seite 6), Einstellungen (Mia's control) und Pack "Set me up". Gemessen bei 1280 und 360 Pixel Breite: Pfeil mit festem Abstand zum
 // rechten Rand (mindestens 12 Pixel), Text nie unter dem Pfeil, Hoehe, Radius, Rand, Schrift, sichtbarer Fokusrahmen.
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -93,7 +93,7 @@ function pruefeGleich(alle: Mass[], breite: number, erwartet: string[]): void {
     expect(m.pfeilAbstand, `${m.kennung}: Pfeilabstand`).toBeGreaterThanOrEqual(12);
     // Text liegt nie unter dem Pfeil: Innenabstand rechts mindestens Pfeilabstand + Pfeilbreite + 8
     expect(m.textRechts, `${m.kennung}: Innenabstand rechts`).toBeGreaterThanOrEqual(m.pfeilAbstand + m.pfeilBreite + 8);
-    expect(m.hoehe, `${m.kennung}: Hoehe`).toBeGreaterThanOrEqual(breite <= 480 ? 44 : 40);
+    expect(m.hoehe, `${m.kennung}: Hoehe`).toBeGreaterThanOrEqual(44); // E4e H2: Mindesthoehe 44 px bei jeder Breite (tokens.css), keine Ausnahme
     expect(m.hoehe, `${m.kennung}: Hoehe wie die anderen`).toBe(erstes.hoehe);
     expect(m.gestalt.borderTopLeftRadius).toBe('12px');
   }
@@ -110,12 +110,12 @@ async function fokusRahmen(seite: Page, sel: string): Promise<string> {
 }
 
 for (const breite of [1280, 360]) {
-  test(`Auswahlfelder: Willkommen (Interview Seite 5), Einstellungen (Mia's control) und Pack "Set me up" gleich gestaltet bei ${breite} px`, async () => {
+  test(`Auswahlfelder: Willkommen (Interview Seite 6), Einstellungen (Mia's control) und Pack "Set me up" gleich gestaltet bei ${breite} px`, async () => {
     const hoehe = breite === 360 ? 780 : 800;
     test.setTimeout(150_000);
     const v = mitReitern(await context.newPage());
     try {
-      // 1. Willkommen, Interview Seite 5 (Pack im Speicher: fuenf Seiten). Der Speicher wird von der Willkommensseite selbst geschrieben,
+      // 1. Willkommen, Interview Seite 6 (Pack im Speicher: sechs Seiten). Der Speicher wird von der Willkommensseite selbst geschrieben,
       // die Einstellungsseite wuerde einen Pack-Eintrag ohne Datenbank sofort wegraeumen.
       const w = mitReitern(await context.newPage());
       await w.setViewportSize({ width: breite, height: hoehe });
@@ -124,14 +124,14 @@ for (const breite of [1280, 360]) {
       await w.goto(url('willkommen.html#interview'));
       await w.reload();
       await expect(w.locator('#schritt')).toHaveAttribute('data-schritt', 'interview-1');
-      await expect(w.locator('#fortschritt-text')).toHaveText('Question 1 of 5');
-      for (let i = 0; i < 4 && !(await w.locator('#iv-blitz').isVisible()); i++) {
+      await expect(w.locator('#fortschritt-text')).toHaveText('Question 1 of 6');
+      for (let i = 0; i < 5 && !(await w.locator('#iv-blitz').isVisible()); i++) {
         await w.locator('#iv-weiter').click();
         await w.waitForTimeout(300);
       }
       await expect(w.locator('#iv-blitz')).toBeVisible();
       const willkommen = await messeAuswahl(w);
-      pruefeGleich(willkommen, breite, ['iv-blitz', 'iv-cursor']);
+      pruefeGleich(willkommen, breite, ['iv-blitz']); // E4e I6: der Zeiger wird im Interview nicht mehr gefragt
       expect(await fokusRahmen(w, '#iv-blitz')).toMatch(/solid 3px/);
       await entferne(w, ['pack']);
       await w.close();

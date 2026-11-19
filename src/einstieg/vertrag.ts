@@ -1,12 +1,13 @@
 // Einstieg (Vertrag Session 11, Auftrag E, PHASE-6-BAUPLAN Abschnitt 2, Entscheidung 133). Reihenfolge wie SUBMERGE: Warnung vor
-// Fotosensibilitaet, Altersgate 18+, Einwilligung, dann das Interview (5 Seiten, ueberspringbar). Der Schleier laeuft auch vor dem
+// Fotosensibilitaet, Altersgate 18+, Einwilligung, dann das Interview (6 Seiten mit Pack, 4 ohne, ueberspringbar). Der Schleier laeuft auch vor dem
 // Einstieg (Inhaberin, Entscheidung 133); nur das Mia Pack wartet: Import erst nach `einstiegFertig`.
 // Ablage: storage.local, Schluessel `einstieg`. Rein (keine Laufzeit-Importe ausser dem Speicher-Zugriff in ladeEinstieg).
 
 export const EINSTIEG_SCHLUESSEL = 'einstieg';
-export const INTERVIEW_SEITEN = 5;
-// Session 17 (UX-Fund 7): ohne Mia Pack beim Einstieg fragt das Interview nur das, was ohne Pack wirkt (Mood und Strict, Zonen, Stil und Calm mode).
-export const INTERVIEW_SEITEN_OHNE_PACK = 3;
+// Phase 11 E4e (Regel I1): mit Pack sechs Seiten (Zones, Clothes, Style, Mood, Adult sites, Extras), ohne Pack die ersten vier. Die Zahlen stehen nur hier.
+export const INTERVIEW_SEITEN = 6;
+// Session 17 (UX-Fund 7): ohne Mia Pack beim Einstieg fragt das Interview nur das, was ohne Pack wirkt (Zones, Clothes, Style mit Calm mode, Mood mit Strict).
+export const INTERVIEW_SEITEN_OHNE_PACK = 4;
 // Erweiterungsseite des Einstiegs (entrypoints/willkommen/). `#interview` springt direkt ins Interview (ohne Gate, nur wenn fertig).
 export const WILLKOMMEN_PFAD = '/willkommen.html';
 

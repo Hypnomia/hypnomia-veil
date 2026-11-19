@@ -1,34 +1,18 @@
 // Einstieg (Auftrag E, PHASE-6-AUFTRAEGE-SESSION-11.md, PHASE-6-BAUPLAN Abschnitt 2): Erweiterungsseite, immer nur ein Schritt sichtbar.
-// Reihenfolge: Warnung, 18+, Einwilligung, Interview (5 Seiten, jede Antwort sofort gespeichert), Abschluss. Texte nur per textContent.
-import {
-  SCHWELLE_MAX,
-  SCHWELLE_MIN,
-  VERWEIGERN_MAX,
-  VERWEIGERN_MIN,
-  aendereEinstellungen,
-  waehlePreset,
-  beiEinstellungsAenderung,
-  ladeEinstellungen,
-  type BlitzHaeufigkeit,
-  type CursorArt,
-  type Einstellungen,
-} from '../../src/einstellungen';
+// Reihenfolge: Warnung, 18+, Einwilligung, Interview (6 Seiten mit Pack, 4 ohne, jede Antwort sofort gespeichert; die Bedienelemente stehen in interview.ts), Abschluss. Texte nur per textContent.
+import { aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
 import { QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL } from '../../src/kontrolle/grenzen';
-import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
-import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
-import { EYE_BAR_TEXT, EYE_BAR_TITEL, HINWEIS_FACE_AUS, HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
-import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
-import { presetDef } from '../../src/preset-def';
-import { packHinweis as packHinweisText, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
+import { PACK_SPEICHER_SCHLUESSEL, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { WILLKOMMEN_KANAL, aendereEinstieg } from '../../src/einstieg/speicher';
 import { einstiegFertig, ladeEinstieg, type EinstiegStand } from '../../src/einstieg/vertrag';
 import type { ChibiPose } from '../../src/chibi';
 import { ETAPPEN, etappe, fortschritt, interviewSeiten, istInterview, naechster, startSchritt, vorheriger, type Schritt } from '../../src/einstieg/schritte';
 import { INTERVIEW_SEITEN } from '../../src/einstieg/vertrag';
+import '../../src/oberflaeche/bausteine/bausteine.css';
 import { hilfeAdresse } from '../../src/hilfe/anker';
-import { ZONEN_WAHLEN, bedecktAlle, setzeBedeckt, setzeZonenWahl, zonenWahl, type ZonenWahl } from '../../src/einstieg/zonen';
+import { baueSchritteListe, baueSeite, baueVorschau, type Kontext, type Seite, type Speicherergebnis } from './interview';
 import { TEXT } from '../../src/einstieg/texte';
-import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { FEHLER_SPEICHERN } from '../../src/oberflaeche/gemeinsam';
 import { zeigeKernBilder } from '../../src/oberflaeche/kern-platz';
 import { gibChibiFrei, zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import { augenpaar } from '../../src/oberflaeche/design/motive';
@@ -79,55 +63,6 @@ function knopf(id: string, text: string, klasse: string, beiKlick: () => void): 
   return k;
 }
 
-interface Schalter {
-  zeile: HTMLLabelElement;
-  feld: HTMLInputElement;
-}
-function schalter(id: string, titel: string, text: string, beiAenderung: (an: boolean) => void): Schalter {
-  const zeile = knoten('label', 'schalter');
-  const feld = knoten('input', undefined, undefined, id);
-  feld.type = 'checkbox';
-  feld.setAttribute('role', 'switch');
-  const regler = knoten('span', 'regler');
-  regler.setAttribute('aria-hidden', 'true');
-  const t = knoten('span', 'text');
-  t.append(knoten('strong', undefined, titel), knoten('small', undefined, text));
-  zeile.append(feld, regler, t);
-  feld.addEventListener('change', () => beiAenderung(feld.checked));
-  return { zeile, feld };
-}
-
-interface WahlKarte {
-  label: HTMLLabelElement;
-  feld: HTMLInputElement;
-}
-function wahlKarte(id: string, name: string, wert: string, titel: string, text: string, beiWahl: () => void): WahlKarte {
-  const label = knoten('label');
-  const feld = knoten('input', undefined, undefined, id);
-  feld.type = 'radio';
-  feld.name = name;
-  feld.value = wert;
-  const t = knoten('span', 'text');
-  t.append(knoten('strong', undefined, titel));
-  if (text) t.append(knoten('small', undefined, text));
-  label.append(feld, t);
-  feld.addEventListener('change', () => {
-    if (feld.checked) beiWahl();
-  });
-  return { label, feld };
-}
-
-function auswahl(id: string, optionen: ReadonlyArray<[string, string]>, beiAenderung: (wert: string) => void): HTMLSelectElement {
-  const s = knoten('select', undefined, undefined, id);
-  for (const [wert, text] of optionen) {
-    const o = knoten('option', undefined, text);
-    o.value = wert;
-    s.append(o);
-  }
-  s.addEventListener('change', () => beiAenderung(s.value));
-  return s;
-}
-
 // ---------- Zustand ----------
 
 const platz = el<HTMLElement>('schritt');
@@ -138,12 +73,12 @@ const fortschrittText = el<HTMLSpanElement>('fortschritt-text');
 let einstieg: EinstiegStand;
 let einst: Einstellungen;
 let pack: PackKurz | null = null;
-let aktualisiere: ((e: Einstellungen, p: PackKurz | null) => void) | null = null;
+let aktualisiere: ((e: Einstellungen, p: PackKurz | null, erzwingen?: boolean) => void) | null = null;
 
 const istFirefox = location.protocol === 'moz-extension:';
 // Beim Wiederholen des Interviews zaehlen nur seine Seiten ("Question 1 of 5", Fund 19).
 let wiederholung = false;
-// Zahl der Interview-Seiten dieses Durchgangs: mit Pack beim Einstieg 5, ohne Pack 3 (Fund 7). Gilt ab Seite 1 bis zum Abschluss.
+// Zahl der Interview-Seiten dieses Durchgangs: mit Pack beim Einstieg 6, ohne Pack 4 (Fund 7). Gilt ab Seite 1 bis zum Abschluss.
 let seiten = INTERVIEW_SEITEN;
 // Fund 26: scheitert ein Speichern, steht der Satz FEHLER_SPEICHERN auf der Seite und das Bedienelement springt auf den gespeicherten Stand.
 let fehlerZeile: HTMLParagraphElement | null = null;
@@ -164,15 +99,35 @@ async function nachFehler(): Promise<void> {
   } catch {
     // dann gilt der zuletzt gesehene gespeicherte Stand
   }
-  aktualisiere?.(einst, pack);
+  aktualisiere?.(einst, pack, true); // E4e H1: nach einem Speicherfehler zeigt jedes Element den gespeicherten Stand, auch ein Regler mit Fokus
 }
-const speichere = (teil: Parameters<typeof aendereEinstellungen>[0]) =>
-  void aendereEinstellungen(teil).then(
-    () => {
-      if (fehlerZeile) fehlerZeile.hidden = true;
-    },
-    () => void nachFehler(),
-  );
+// Schreibt auf den frisch gelesenen Stand. Liefert `teil` null, wird nicht geschrieben (auch nicht der unveraenderte Stand, I8a) und ein stehender Fehlersatz
+// bleibt stehen (RN4). Nach einem Fehler und nach einer verworfenen Handlung zeigt jedes Element den gespeicherten Stand.
+async function speichere(teil: (alt: Einstellungen) => Partial<Einstellungen> | null): Promise<Speicherergebnis> {
+  let verworfen = false;
+  try {
+    await aendereEinstellungen((alt) => {
+      const t = teil(alt);
+      if (t === null) verworfen = true;
+      return t;
+    });
+  } catch {
+    await nachFehler();
+    return 'fehler';
+  }
+  if (verworfen) {
+    try {
+      einst = await ladeEinstellungen();
+    } catch {
+      // dann gilt der zuletzt gesehene Stand
+    }
+    aktualisiere?.(einst, pack, true);
+    return 'verworfen';
+  }
+  if (fehlerZeile) fehlerZeile.hidden = true;
+  return 'gespeichert';
+}
+const kontext: Kontext = { einst: () => einst, speichere, pfadOptionen: (anker) => pfadOptionen(anker) };
 const pfadOptionen = (anker = '') => (browser.runtime.getURL as (p: string) => string)('/options.html') + anker;
 
 async function schliesse(): Promise<void> {
@@ -292,287 +247,9 @@ function seiteEinwilligung(): HTMLElement {
 }
 
 // ---------- Interview ----------
-
-interface Seite {
-  knoten: HTMLElement;
-  aktualisiere: (e: Einstellungen, p: PackKurz | null) => void;
-  // Aufraeumen, wenn die Seite verlassen wird (laufende Beobachtungen beenden)
-  abbau?: () => void;
-}
+// Die Seiten stehen in interview.ts (Bausteine); hier nur Navigation, Mia mit Sprechblase und das Raster.
 let abbauSeite: (() => void) | null = null;
 window.addEventListener('pagehide', () => abbauSeite?.(), { once: true });
-
-// Fund 4: ohne Pack ein Satz, was das Pack auf dieser Seite zeigt, und der Link zum Pack-Abschnitt (die Seite merkt sich den Schritt).
-function packHinweis(text: string): HTMLParagraphElement {
-  const p = knoten('p', 'hinweis', `${text} `, 'iv-ohne-pack');
-  const link = knoten('a', undefined, TEXT.packLink, 'iv-pack-link');
-  link.href = pfadOptionen(PACK_ANKER);
-  // Fund N11: neuer Tab, das Interview bleibt auf seiner Seite (Zurueck-Taste und gemerkter Schritt bleiben unberuehrt).
-  link.target = '_blank';
-  link.rel = 'noopener';
-  p.append(link);
-  p.hidden = true;
-  return p;
-}
-
-function seite1(): Seite {
-  const k = knoten('div');
-  k.append(knoten('p', undefined, TEXT.i1Text));
-  const kopf = knoten('div', 'kopf');
-  const wert = knoten('output', undefined, undefined, 'iv-stimmung-wert');
-  wert.htmlFor.add('iv-stimmung');
-  kopf.append(knoten('span', undefined, TEXT.stimmungLabel, 'iv-stimmung-titel'), wert);
-  const regler = knoten('input', undefined, undefined, 'iv-stimmung');
-  regler.type = 'range';
-  regler.min = String(SCHWELLE_MIN);
-  regler.max = String(SCHWELLE_MAX);
-  regler.step = '0.01';
-  regler.setAttribute('aria-labelledby', 'iv-stimmung-titel');
-  // Beim Ziehen nur die Anzeige, gespeichert wird beim Loslassen (change).
-  const zeigeWort = () => {
-    const w = stimmungsWort(Number(regler.value));
-    wert.textContent = w;
-    regler.setAttribute('aria-valuetext', w);
-  };
-  regler.addEventListener('input', zeigeWort);
-  regler.addEventListener('change', () => speichere({ schwelle: Number(regler.value) }));
-  const enden = knoten('div', 'enden');
-  enden.append(knoten('span', undefined, TEXT.stimmungSuspicious), knoten('span', undefined, TEXT.stimmungRelaxed));
-  const strict = schalter('iv-strict', TEXT.strictTitel, TEXT.strictText, (an) => speichere({ strict: an }));
-  k.append(kopf, regler, enden, strict.zeile);
-  return {
-    knoten: k,
-    aktualisiere: (e) => {
-      regler.value = String(e.schwelle);
-      zeigeWort();
-      strict.feld.checked = e.strict;
-    },
-  };
-}
-
-function seite2(): Seite {
-  const k = knoten('div');
-  k.append(knoten('p', undefined, TEXT.i2Text));
-  const gruppe = knoten('div', 'wahl');
-  gruppe.setAttribute('role', 'radiogroup');
-  gruppe.setAttribute('aria-labelledby', 'schritt-titel');
-  const infos: Record<ZonenWahl, [string, string, string]> = {
-    koerper: ['iv-zonen-koerper', TEXT.wahlKoerper, TEXT.wahlKoerperText],
-    'koerper-gesicht': ['iv-zonen-koerper-gesicht', TEXT.wahlKoerperGesicht, TEXT.wahlKoerperGesichtText],
-    alles: ['iv-zonen-alles', TEXT.wahlAlles, TEXT.wahlAllesText],
-  };
-  const karten = {} as Record<ZonenWahl, WahlKarte>;
-  for (const w of ZONEN_WAHLEN) {
-    const [id, titel, text] = infos[w];
-    karten[w] = wahlKarte(id, 'iv-zonen', w, titel, text, () => speichere((alt) => ({ zonen: setzeZonenWahl(alt.zonen, w) })));
-    gruppe.append(karten[w].label);
-  }
-  const keine = knoten('p', 'hinweis', TEXT.wahlKeine, 'iv-zonen-keine');
-  keine.hidden = true;
-  const bedeckt = schalter('iv-bedeckt', TEXT.bedecktTitel, TEXT.bedecktText, (an) => speichere((alt) => ({ zonen: setzeBedeckt(alt.zonen, an) })));
-  k.append(gruppe, keine, bedeckt.zeile);
-  return {
-    knoten: k,
-    aktualisiere: (e) => {
-      const w = zonenWahl(e.zonen);
-      for (const z of ZONEN_WAHLEN) karten[z].feld.checked = z === w;
-      keine.hidden = w !== null;
-      bedeckt.feld.checked = bedecktAlle(e.zonen);
-    },
-  };
-}
-
-function seite3(): Seite {
-  const k = knoten('div');
-  k.append(knoten('p', undefined, TEXT.i3Text));
-  // Dieselben Preset-Karten wie auf der Einstellungsseite, kompakt (nur Vorschau und Name).
-  let faceHinweisAn = false;
-  const kartenHost = knoten('div', undefined, undefined, 'iv-preset-karten');
-  const karten = baueKarten(kartenHost, {
-    name: 'iv-preset',
-    praefix: 'iv-preset',
-    kompakt: true,
-    labelId: 'schritt-titel',
-    // Wechsel auf ein Preset mit Mias Gesicht schaltet Face ein (waehlePreset); der Hinweis steht darunter
-    beiWahl: (preset) => {
-      let faceEin = false;
-      void aendereEinstellungen((alt) => {
-        const r = waehlePreset(alt, preset);
-        faceEin = r.faceEingeschaltet;
-        return r.teil;
-      }).then(
-        () => {
-          // Hinweis erst nach erfolgreichem Speichern
-          if (fehlerZeile) fehlerZeile.hidden = true;
-          faceHinweisAn = faceEin;
-          zeichneSatz();
-        },
-        () => void nachFehler(),
-      );
-    },
-  });
-  const satz = knoten('p', 'hinweis', '', 'iv-stil-satz');
-  const sperre = knoten('p', 'hinweis', '', 'iv-stil-sperre');
-  sperre.hidden = true;
-  const zonenText = knoten('p', 'hinweis', '', 'iv-stil-zonen');
-  zonenText.hidden = true;
-  const faceText = knoten('p', 'hinweis', '', 'iv-stil-face');
-  faceText.hidden = true;
-  faceText.setAttribute('role', 'status');
-  // Stand der Gesichtssuche (Zahl der Bilder mit Gesicht im Satz), einmal angestossen
-  let gesichter: GesichterStand | null = null;
-  let beobachtet: (() => void) | null = null;
-  // zuletzt gesehener Stand: die Beobachtung der Gesichtssuche und der Hinweis zeichnen mit den aktuellen Werten, nicht mit denen von damals
-  let letzt: { e: Einstellungen; p: PackKurz | null } | null = null;
-  const zeichneSatz = (): void => {
-    if (letzt) zeichne(letzt.e, letzt.p);
-  };
-  let zeichne: (e: Einstellungen, p: PackKurz | null) => void = () => undefined;
-  // Eye bar (E4c): derselbe Schalter wie auf der Einstellungsseite, direkt unter dem Raster.
-  const augenbalken = schalter('iv-augenbalken', EYE_BAR_TITEL, EYE_BAR_TEXT, (an) => speichere({ augenbalken: an }));
-  k.append(kartenHost, augenbalken.zeile, satz, sperre, zonenText, faceText);
-  // Fund 7 und 8: ohne Pack ist Seite 3 die letzte, dort steht Calm mode (mit Pack steht er auf Seite 5).
-  const ruhig = seiten < INTERVIEW_SEITEN ? schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an })) : null;
-  if (ruhig) k.append(ruhig.zeile);
-  zeichne = (e, p) => {
-      if (ruhig) ruhig.feld.checked = e.ruhig;
-      augenbalken.feld.checked = e.augenbalken;
-      const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
-      const stickerFrei = istFreigeschaltet(p, 'zensur:sticker');
-      karten.aktualisiere(e.preset, patchFrei, stickerFrei);
-      const def = presetDef(e, p).gilt;
-      const wirksam = def.id;
-      if (patchFrei && !beobachtet) {
-        beobachtet = beobachteGesichter((st) => {
-          gesichter = st;
-          zeichneSatz(); // mit dem aktuellen Stand, nicht mit dem von damals
-        });
-      }
-      satz.textContent = presetSatz(wirksam, patchFrei, patchFrei && gesichter?.fertig ? gesichter.mit : null);
-      const sperreText = packHinweisText(patchFrei, p, stickerFrei);
-      sperre.textContent = sperreText;
-      sperre.hidden = sperreText === '';
-      // Hinweise der Zonen (Balken-Presets) und zu Face: gerade eingeschaltet (kurz), oder spaeter wieder aus (dann sagt es der Hinweis)
-      const zh = zonenHinweis(wirksam);
-      zonenText.textContent = zh;
-      zonenText.hidden = zh === '';
-      const mia = def.gesicht === 'mia-gesicht';
-      const ft = mia ? (faceHinweisAn && e.zonen.face.an ? HINWEIS_FACE_EIN : e.zonen.face.an ? '' : HINWEIS_FACE_AUS) : '';
-      faceText.textContent = ft;
-      faceText.hidden = ft === '';
-  };
-  return {
-    knoten: k,
-    abbau: () => beobachtet?.(),
-    aktualisiere: (e, p) => {
-      letzt = { e, p };
-      zeichne(e, p);
-    },
-  };
-}
-
-function seite4(): Seite {
-  const k = knoten('div');
-  k.append(knoten('p', undefined, TEXT.i4Text));
-  const hinweis = packHinweis(TEXT.ohnePack4);
-  const an = schalter('iv-erw-an', TEXT.erwAnTitel, TEXT.erwAnText, (a) =>
-    speichere((alt) => ({ erwachsen: { ...alt.erwachsen, an: a } })),
-  );
-  const ersatz = schalter('iv-erw-ersatz', TEXT.erwErsatzTitel, TEXT.erwErsatzText, (a) =>
-    speichere((alt) => ({ erwachsen: { ...alt.erwachsen, komplettErsatz: a } })),
-  );
-  const kopf = knoten('div', 'kopf');
-  const wert = knoten('output', undefined, undefined, 'iv-verweigern-wert');
-  wert.htmlFor.add('iv-verweigern');
-  kopf.append(knoten('span', undefined, TEXT.verweigernTitel, 'iv-verweigern-titel'), wert);
-  const regler = knoten('input', undefined, undefined, 'iv-verweigern');
-  regler.type = 'range';
-  regler.min = String(Math.round(VERWEIGERN_MIN * 100));
-  regler.max = String(Math.round(VERWEIGERN_MAX * 100));
-  regler.step = '1';
-  regler.setAttribute('aria-labelledby', 'iv-verweigern-titel');
-  regler.addEventListener('input', () => {
-    wert.textContent = `${regler.value}%`;
-  });
-  regler.addEventListener('change', () => speichere((alt) => ({ quiz: { ...alt.quiz, verweigern: Number(regler.value) / 100 } })));
-  k.append(hinweis, an.zeile, ersatz.zeile, kopf, regler, knoten('p', 'hinweis', TEXT.verweigernText));
-  return {
-    knoten: k,
-    aktualisiere: (e, p) => {
-      hinweis.hidden = p !== null;
-      an.feld.checked = e.erwachsen.an;
-      ersatz.feld.checked = e.erwachsen.komplettErsatz;
-      const prozent = Math.round(e.quiz.verweigern * 100);
-      regler.value = String(prozent);
-      wert.textContent = `${prozent}%`;
-    },
-  };
-}
-
-function seite5(): Seite {
-  const k = knoten('div');
-  k.append(knoten('p', undefined, TEXT.i5Text));
-  const hinweis = packHinweis(TEXT.ohnePack5);
-  const blitz = auswahl(
-    'iv-blitz',
-    [
-      ['aus', TEXT.blitzAus],
-      ['selten', TEXT.blitzSelten],
-      ['oft', TEXT.blitzOft],
-    ],
-    (w) => speichere((alt) => ({ kontrolle: { ...alt.kontrolle, blitz: w as BlitzHaeufigkeit } })),
-  );
-  blitz.setAttribute('aria-labelledby', 'iv-blitz-titel');
-  const blitzZeile = knoten('div', 'regel');
-  blitzZeile.append(knoten('strong', undefined, TEXT.blitzTitel, 'iv-blitz-titel'), blitz);
-  const leerlauf = schalter('iv-leerlauf', TEXT.leerlaufTitel, TEXT.leerlaufText, (a) =>
-    speichere((alt) => ({ kontrolle: { ...alt.kontrolle, leerlauf: a } })),
-  );
-  const ruhig = schalter('iv-ruhig', TEXT.ruhigTitel, TEXT.ruhigText, (an) => speichere({ ruhig: an }));
-  const cursor = auswahl(
-    'iv-cursor',
-    [
-      ['spirale', TEXT.cursorSpirale],
-      ['herz', TEXT.cursorHerz],
-      ['aus', TEXT.cursorAus],
-    ],
-    (w) => speichere((alt) => ({ kontrolle: { ...alt.kontrolle, cursor: w as CursorArt } })),
-  );
-  cursor.setAttribute('aria-labelledby', 'iv-cursor-titel');
-  const cursorZeile = knoten('div', 'regel');
-  cursorZeile.append(knoten('strong', undefined, TEXT.cursorTitel, 'iv-cursor-titel'), cursor);
-  const ton = schalter('iv-ton', TEXT.tonTitel, TEXT.tonText, (a) => speichere((alt) => ({ ton: { ...alt.ton, an: a } })));
-  const auchAn = knoten('p', 'hinweis auch-an', undefined, 'iv-auch-an');
-  k.append(hinweis, blitzZeile, leerlauf.zeile, ruhig.zeile, cursorZeile, ton.zeile, auchAn);
-  return {
-    knoten: k,
-    aktualisiere: (e, p) => {
-      hinweis.hidden = p !== null;
-      blitz.value = e.kontrolle.blitz;
-      leerlauf.feld.checked = e.kontrolle.leerlauf;
-      ruhig.feld.checked = e.ruhig;
-      const an = (['werbung', 'tabtitel', 'meldungen'] as const).filter((n) => e.kontrolle[n]).map((n) => TEXT.auchAnNamen[n]);
-      // Fund 21: eigener Absatz mit Link zu den Einstellungen (neuer Tab, das Interview bleibt).
-      const link = knoten('a', undefined, TEXT.auchAnLink, 'iv-auch-an-link');
-      link.href = pfadOptionen('#kontrolle');
-      link.target = '_blank';
-      link.rel = 'noopener';
-      if (an.length) auchAn.replaceChildren(`${TEXT.auchAn(an)} `, link);
-      else auchAn.replaceChildren();
-      auchAn.hidden = an.length === 0;
-      cursor.value = e.kontrolle.cursor;
-      ton.feld.checked = e.ton.an;
-    },
-  };
-}
-
-const INTERVIEW: Record<string, { titel: string; bauen: () => Seite }> = {
-  'interview-1': { titel: TEXT.i1Titel, bauen: seite1 },
-  'interview-2': { titel: TEXT.i2Titel, bauen: seite2 },
-  'interview-3': { titel: TEXT.i3Titel, bauen: seite3 },
-  'interview-4': { titel: TEXT.i4Titel, bauen: seite4 },
-  'interview-5': { titel: TEXT.i5Titel, bauen: seite5 },
-};
 
 function navigation(s: Schritt): HTMLElement {
   const zeile = knoten('div', 'knoepfe');
@@ -589,56 +266,62 @@ function navigation(s: Schritt): HTMLElement {
 }
 
 const POSE_JE_SEITE: Record<string, ChibiPose> = {
-  'interview-1': 'arme',
-  'interview-2': 'schild',
+  'interview-1': 'schild',
+  'interview-2': 'arme',
   'interview-3': 'nein',
-  'interview-4': 'schmollen',
-  'interview-5': 'jubeln',
+  'interview-4': 'arme',
+  'interview-5': 'schmollen',
+  'interview-6': 'jubeln',
 };
 
-function seiteInterview(s: Schritt): HTMLElement {
+// Eine Interview-Seite: links die Schritte, in der Mitte die Frage, rechts (schmal oben) der Platz der Vorschau (I9).
+function seiteInterview(s: Schritt, titel: HTMLElement, fehler: HTMLElement): HTMLElement[] {
   abbauSeite?.();
-  const s1 = INTERVIEW[s]!.bauen();
+  const nr = Number(s.slice(-1));
+  const s1: Seite = baueSeite(nr, kontext, seiten);
   abbauSeite = s1.abbau ?? null;
-  aktualisiere = s1.aktualisiere;
-  s1.aktualisiere(einst, pack);
+  const vorschau = baueVorschau();
+  const innen = s1.aktualisiere;
+  let letztes: PackKurz | null | undefined;
+  let chibi: HTMLImageElement | null = null;
+  const pose = POSE_JE_SEITE[s] ?? 'arme';
+  aktualisiere = (e, p, erzwingen) => {
+    innen(e, p, erzwingen);
+    vorschau.zeichne(e, p);
+    if (chibi && p !== letztes) {
+      letztes = p;
+      void zeigeChibi(chibi, pose, p);
+    }
+  };
   // Phase 8b (Auftrag W): der Erklaertext steht in einer Sprechblase neben dem Chibi (Demo-Chibi oder Pack-Chibi ueber den vorhandenen Weg).
   const erklaer = s1.knoten.firstElementChild;
   if (erklaer && erklaer.tagName === 'P') {
-    const chibi = knoten('img', 'chibi');
+    chibi = knoten('img', 'chibi');
     chibi.alt = '';
     chibi.hidden = true;
-    // UX-Pruefung 8b Nr. 16: je Interview-Seite eine andere Pose (nie sprechblase, die echte Blase steht daneben).
-    const pose = POSE_JE_SEITE[s] ?? 'arme';
     erklaer.classList.add('blase');
     const zeile = knoten('div', 'mia-zeile');
     zeile.append(chibi, erklaer);
     s1.knoten.prepend(zeile);
-    let letztes: PackKurz | null | undefined;
-    const innen = s1.aktualisiere;
-    s1.aktualisiere = (e, p) => {
-      innen(e, p);
-      if (p !== letztes) {
-        letztes = p;
-        void zeigeChibi(chibi, pose, p);
-      }
-    };
-    aktualisiere = s1.aktualisiere;
-    s1.aktualisiere(einst, pack);
   }
+  aktualisiere(einst, pack);
   const alles = knoten('div');
   alles.append(s1.knoten, navigation(s));
   // Auf der letzten Seite tut "Skip the rest" dasselbe wie "Finish", dort fehlt der Block (Fund 20).
-  if (naechster(s, seiten) === 'ende') return alles;
-  const ueber = knoten('div', 'ueberspringen');
-  ueber.append(
-    knopf('iv-ueberspringen', TEXT.ueberspringen, 'klein', () => {
-      void aendereEinstieg((alt) => ({ interview: alt.interview === 'fertig' ? 'fertig' : 'uebersprungen' })).then(() => zeige('ende'), zeigeFehler);
-    }),
-    knoten('p', 'hinweis', TEXT.ueberspringenHinweis),
-  );
-  alles.append(ueber);
-  return alles;
+  if (naechster(s, seiten) !== 'ende') {
+    const ueber = knoten('div', 'ueberspringen');
+    ueber.append(
+      knopf('iv-ueberspringen', TEXT.ueberspringen, 'textlink', () => {
+        // Nur der Stand des Einstiegs aendert sich, nie ein Wert der Einstellungen.
+        void aendereEinstieg((alt) => ({ interview: alt.interview === 'fertig' ? 'fertig' : 'uebersprungen' })).then(() => zeige('ende'), zeigeFehler);
+      }),
+      knoten('p', 'hinweis', TEXT.ueberspringenHinweis),
+    );
+    alles.append(ueber);
+  }
+  const karte = knoten('div', 'iv-karte');
+  karte.append(titel, alles, fehler);
+  return [baueSchritteListe(nr, seiten), karte, vorschau.element];
 }
 
 // ---------- Abschluss ----------
@@ -757,18 +440,23 @@ function zeige(s: Schritt): void {
   merke(istInterview(s) ? s : null);
   platz.querySelectorAll('img.chibi').forEach((b) => gibChibiFrei(b as HTMLImageElement));
   platz.replaceChildren();
-  const titel = knoten('h2', undefined, INTERVIEW[s]?.titel ?? TITEL[s] ?? '', 'schritt-titel');
+  const titel = knoten('h2', undefined, istInterview(s) ? TEXT[`i${s.slice(-1)}Titel` as 'i1Titel'] : (TITEL[s] ?? ''), 'schritt-titel');
   titel.tabIndex = -1;
-  let inhalt: HTMLElement;
-  if (s === 'warnung') inhalt = seiteWarnung();
-  else if (s === 'alter') inhalt = seiteAlter();
-  else if (s === 'einwilligung') inhalt = seiteEinwilligung();
-  else if (istInterview(s)) inhalt = seiteInterview(s);
-  else inhalt = seiteEnde();
   fehlerZeile = knoten('p', 'fehler', undefined, 'fehler');
   fehlerZeile.setAttribute('role', 'alert');
   fehlerZeile.hidden = true;
-  if (s === 'einwilligung' && szeneBild) {
+  let inhalt: HTMLElement = platz;
+  let teile: HTMLElement[] | null = null;
+  if (s === 'warnung') inhalt = seiteWarnung();
+  else if (s === 'alter') inhalt = seiteAlter();
+  else if (s === 'einwilligung') inhalt = seiteEinwilligung();
+  else if (istInterview(s)) teile = seiteInterview(s, titel, fehlerZeile);
+  else inhalt = seiteEnde();
+  if (teile) {
+    const raster = knoten('div', 'iv-raster');
+    raster.append(...teile);
+    platz.append(raster);
+  } else if (s === 'einwilligung' && szeneBild) {
     // Zweispaltige Szene: Mia-Bild mit Namensschild links, Glas-Karte rechts (unter 640 px gestapelt).
     const links = knoten('div', 'szene-links');
     const schild = knoten('div', 'namensschild');

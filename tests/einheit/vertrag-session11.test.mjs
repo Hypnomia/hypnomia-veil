@@ -19,7 +19,7 @@ test('Ton: Standard aus, Lautstaerke begrenzt', () => {
 });
 
 test('Einstieg: leer, bereinigt, fertig nur mit Warnung, 18+ und Einwilligung', () => {
-  assert.equal(INTERVIEW_SEITEN, 5);
+  assert.equal(INTERVIEW_SEITEN, 6);
   assert.deepEqual(vervollstaendigeEinstieg(undefined), EINSTIEG_LEER);
   assert.equal(einstiegFertig(vervollstaendigeEinstieg({ warnung: true, alter: true })), false);
   assert.equal(einstiegFertig(vervollstaendigeEinstieg({ warnung: true, alter: true, einwilligung: true })), true);

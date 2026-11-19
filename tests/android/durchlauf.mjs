@@ -149,10 +149,10 @@ async function einstieg() {
   await bisSchritt('einwilligung');
   await halte('einwilligung');
   await klick('#einwilligung-ok');
-  // Session 17 (Paket D): ohne Pack beim Eintritt nur 3 Interview-Seiten, mit Pack 5: weiter, solange Interview-Seiten kommen.
+  // Session 17 (Paket D): ohne Pack beim Eintritt nur 4 Interview-Seiten, mit Pack 6 (E4e): weiter, solange Interview-Seiten kommen.
   await bisSchritt('interview-1');
   let n = 0;
-  while (n < 6 && /^interview-\d+$/.test((await schritt()) ?? '')) {
+  while (n < 7 && /^interview-\d+$/.test((await schritt()) ?? '')) {
     n = Number(((await schritt()) ?? '').split('-')[1]);
     await halte(`interview-${n}`);
     // Unterer Teil langer Seiten auch fotografieren

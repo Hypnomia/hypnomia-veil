@@ -113,14 +113,13 @@ export const GEMEINSAM = `.v-augenpaar { display: inline-flex; gap: 3px; flex: n
 // Nur Erweiterungsseiten (tokens.css, nicht SEITEN_TOKENS): ein gemeinsamer Regler fuer Willkommensseite, Popup und Einstellungsseite
 // (Lesung W/U/O Nr. 3). Spur zart rosa nach lavendel, gefuellt im Akzent-Verlauf bis zum Wert; Chromium liest den Wert aus `--wert`
 // (regler.ts setzt ihn), Firefox fuellt selbst. Griff weiss mit rosa Ring. Fingerflaeche: Feldhoehe 32 px, 44 px bei Finger und schmal.
-export const ERWEITERUNG = `/* Auswahlfelder (Regel O6): eine Gestalt fuer alle select der Erweiterungsseiten; Pfeil 16 px vom rechten Rand, Text nie darunter. */
-select { -webkit-appearance: none; appearance: none; box-sizing: border-box; max-width: 100%; min-height: 40px; padding: 6px 44px 6px 12px;
+export const ERWEITERUNG = `/* Auswahlfelder (Regel O6): eine Gestalt fuer alle select der Erweiterungsseiten; Pfeil 16 px vom rechten Rand, Text nie darunter; mindestens 44 px hoch bei jeder Breite (E4e H2). */
+select { -webkit-appearance: none; appearance: none; box-sizing: border-box; max-width: 100%; min-height: var(--v-fingerziel); padding: 6px 44px 6px 12px;
   border: 1.5px solid var(--v-rand); border-radius: var(--v-r-s); color: var(--v-text); cursor: pointer; text-overflow: ellipsis;
   font: 700 16px var(--v-schrift-text);
   background: var(--v-weiss) var(--v-ikon-pfeil) right 16px center / 12px 8px no-repeat; }
 select:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 3px; }
 select:disabled { opacity: 0.55; cursor: default; }
-@media (max-width: 480px), (pointer: coarse) { select { min-height: var(--v-fingerziel); } }
 input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; }
 input[type='range']::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; box-shadow: inset 0 1px 2px rgba(67, 40, 60, 0.18);
   background: linear-gradient(90deg, #b8327a, #8a3fb8) 0 0 / var(--wert, 0%) 100% no-repeat, linear-gradient(90deg, var(--v-rosa-200), var(--v-lav-200)); }

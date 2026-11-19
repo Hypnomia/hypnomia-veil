@@ -4,7 +4,7 @@ import { INTERVIEW_SEITEN, INTERVIEW_SEITEN_OHNE_PACK, einstiegFertig, type Eins
 
 export const GATE_SCHRITTE = ['warnung', 'alter', 'einwilligung'] as const;
 export type GateSchritt = (typeof GATE_SCHRITTE)[number];
-export type InterviewSchritt = `interview-${1 | 2 | 3 | 4 | 5}`;
+export type InterviewSchritt = `interview-${1 | 2 | 3 | 4 | 5 | 6}`;
 export type Schritt = GateSchritt | InterviewSchritt | 'ende';
 
 export const INTERVIEW_SCHRITTE: readonly InterviewSchritt[] = Array.from(
@@ -13,7 +13,7 @@ export const INTERVIEW_SCHRITTE: readonly InterviewSchritt[] = Array.from(
 );
 export const ALLE_SCHRITTE: readonly Schritt[] = [...GATE_SCHRITTE, ...INTERVIEW_SCHRITTE, 'ende'];
 
-// Zahl der Interview-Seiten: mit Pack beim Einstieg 5, ohne Pack 3 (UX-Fund 7).
+// Zahl der Interview-Seiten: mit Pack beim Einstieg 6, ohne Pack 4 (UX-Fund 7, E4e Regel I1).
 export function interviewSeiten(mitPack: boolean): number {
   return mitPack ? INTERVIEW_SEITEN : INTERVIEW_SEITEN_OHNE_PACK;
 }
@@ -21,7 +21,7 @@ export function interviewSeiten(mitPack: boolean): number {
 export function naechster(s: Schritt, seiten: number = INTERVIEW_SEITEN): Schritt {
   const reihe: readonly Schritt[] = [...GATE_SCHRITTE, ...INTERVIEW_SCHRITTE.slice(0, seiten), 'ende'];
   const i = reihe.indexOf(s);
-  if (i < 0) return 'ende'; // eine Seite jenseits der Zahl (z. B. gemerkter Schritt 4 bei 3 Seiten)
+  if (i < 0) return 'ende'; // eine Seite jenseits der Zahl (z. B. gemerkter Schritt 5 bei 4 Seiten)
   return reihe[Math.min(reihe.length - 1, i + 1)] ?? 'ende';
 }
 
@@ -56,7 +56,7 @@ export function startSchritt(stand: EinstiegStand, adresse: string): Schritt {
 }
 
 // Fortschritt als "Schritt n von m" ueber Gate und Interview (der Abschluss zaehlt nicht mit). Beim Wiederholen des Interviews
-// (`nurInterview`, UX-Fund 19) zaehlen nur die Interview-Seiten: "Frage 1 von 5".
+// (`nurInterview`, UX-Fund 19) zaehlen nur die Interview-Seiten: "Frage 1 von 6".
 export function fortschritt(s: Schritt, nurInterview = false, seiten: number = INTERVIEW_SEITEN): { nr: number; von: number } {
   if (nurInterview) {
     const k = INTERVIEW_SCHRITTE.indexOf(s as InterviewSchritt);

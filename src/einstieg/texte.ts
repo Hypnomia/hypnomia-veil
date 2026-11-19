@@ -1,5 +1,8 @@
 // Einstieg (Auftrag E): eingebaute Texte, Entwuerfe fuer den Texter. Amerikanisches Englisch in Mias Stimme, typografisches Apostroph,
 // keine Gedankenstriche. Sicherheitshinweise mit sachlichem Kern. Tests pruefen gegen diese Konstanten, nicht gegen den Wortlaut.
+import { stimmungsWort } from '../oberflaeche/gemeinsam.ts';
+import { STUFENLISTEN } from '../oberflaeche/bausteine/stufen-daten.ts';
+import type { StufenListe } from '../oberflaeche/bausteine/stufen.ts';
 
 export const TEXT = {
   seitenTitel: 'HYPNOMIA VEIL: Welcome',
@@ -50,60 +53,96 @@ export const TEXT = {
   fertig: 'Finish',
   ueberspringen: 'Skip the rest',
   ueberspringenHinweis: 'Skipping keeps everything on the next pages as it is. On a fresh install, that’s exactly how I like it.',
-  // Fund 4: je Seite ein Satz, was das Pack hier zeigt, und ein Link zum Pack-Abschnitt der Einstellungen.
-  ohnePack4: 'Set these now. Once the Mia Pack is in, my own pictures replace the thumbnails and my quiz gets its questions.',
-  ohnePack5: 'Set these now. Once the Mia Pack is in, my flash words get their words, my spiral and my pointer show up, and my sounds can play.',
-  packLink: 'Get the Mia Pack',
 
-  i1Titel: 'How suspicious am I?',
-  i1Text: 'When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.',
-  stimmungLabel: 'Mia’s mood',
-  stimmungSuspicious: 'Very suspicious',
-  stimmungRelaxed: 'Relaxed',
-  strictTitel: 'Strict',
-  strictText: 'hide each page until I’ve checked it (a little slower)',
+  // ---------- Interview (Phase 11 E4e, Regeln I1 bis I11; Texte vorlaeufig, die Texterin legt sie in Schritt (e) fest) ----------
+  // Namen der Schritte links (mit Pack alle sechs, ohne Pack die ersten vier).
+  schritteNamen: ['Zones', 'Clothes', 'Style', 'Mood', 'Adult sites', 'Extras'],
+  schritteAria: 'Questions',
+  vorschauKopf: 'Preview',
+  vorschauLabel: 'Preview of your cover style',
 
-  i2Titel: 'What do I cover?',
-  i2Text: 'Pick how much I hunt for. You can fine-tune each zone in the settings later.',
-  wahlKoerper: 'Body',
-  wahlKoerperText: 'breasts, genitals, buttocks: my default',
-  wahlKoerperGesicht: 'Body and face',
-  wahlKoerperGesichtText: 'the same, plus faces',
-  wahlAlles: 'Everything',
-  wahlAllesText: 'every zone I know',
-  wahlKeine: 'Your zones match none of these, so nothing is picked. Choose one to reset them.',
-  bedecktTitel: 'Even when clothed',
-  bedecktText: 'I cover it under clothing too',
-
+  // 1 Zones
+  i1Titel: 'What do I cover?',
+  i1Text: 'Pick how much I hunt for. You can fine-tune each zone in the settings later.',
+  // 2 Clothes
+  i2Titel: 'Also under clothes?',
+  i2Text: 'One answer for every part I can cover under clothes.',
+  // 3 Style
   i3Titel: 'How do I cover it?',
   i3Text: 'Classic and Whole person work right away. The styles with my face need the Mia Pack.',
-  // Fund 8: Calm mode steht ohne Pack auf Interview-Seite 3.
+  // Fund 8: Calm mode steht ohne Pack auf der Stil-Seite (er wirkt dort auf bewegte Stile).
   ruhigTitel: 'Calm mode',
   ruhigText: 'slower spiral, no moving or flashing words',
-
-  i4Titel: 'Adult sites',
-  i4Text: 'On the adult sites I know, I swap the thumbnails for mine and quiz you before a video plays or a covered picture opens up.',
-  erwAnTitel: 'Adult-site mode',
-  erwAnText: 'on the sites I know, I swap the thumbnails for mine',
-  erwErsatzTitel: 'Full replacement',
-  erwErsatzText: 'Careful: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.',
-  verweigernTitel: 'Refusing right answers',
-  verweigernText: 'How often I say no, even when you got it right. Never twice in a row.',
-
-  i5Titel: 'My control',
-  i5Text: 'The bits where I take a little more of the wheel. All of it stops the moment you pause me.',
+  // 4 Mood
+  i4Titel: 'How suspicious am I?',
+  i4Text: 'When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.',
+  strictTitel: 'Strict',
+  strictText: 'hide each page until I’ve checked it (a little slower)',
+  // 5 Adult sites (nur mit Pack beim Einstieg)
+  i5Titel: 'Adult sites',
+  i5Text: 'On the adult sites I know, I swap the thumbnails for mine. The quiz, full replacement and your own sites wait in the settings.',
+  // Nur wenn Komplett-Ersatz gespeichert an ist: der Warnsatz bleibt sichtbar, auch wenn das Interview den Schalter nicht mehr fragt (Regel I8 (5)).
+  ersatzAn: 'Full replacement is on, set in the settings: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.',
+  // 6 Extras (nur mit Pack beim Einstieg)
+  i6Titel: 'Calm or playful?',
+  i6Text: 'The bits where I take a little more of the wheel. All of it stops the moment you pause me.',
   blitzTitel: 'Flash words',
   blitzAus: 'Off',
   blitzSelten: 'Now and then',
   blitzOft: 'Often',
-  leerlaufTitel: 'Idle spiral',
-  leerlaufText: 'Sit still too long and my spiral comes. Any move or key ends it.',
-  cursorTitel: 'Your pointer',
-  cursorSpirale: 'My pink spiral',
-  cursorHerz: 'My pink heart',
-  cursorAus: 'Your normal pointer',
-  tonTitel: 'Sound',
-  tonText: 'short sounds for my quiz and flash words, off until you switch them on',
+  // Fund 4: je Seite ein Satz, was das Pack hier zeigt, und ein Link zum Pack-Abschnitt der Einstellungen.
+  ohnePack5: 'Set these now. Once the Mia Pack is in, my own pictures replace the thumbnails and my quiz gets its questions.',
+  ohnePack6: 'Set these now. Once the Mia Pack is in, my flash words get their words, my spiral and my pointer show up, and my sounds can play.',
+  packLink: 'Get the Mia Pack',
+
+  // Bausteine (Zonenwahl, Kleidungsfrage, Stufenwahl, Gruppe der Erwachsenenseiten): dieselben Namen wie auf der Einstellungsseite.
+  zonenTitel: 'Zones',
+  zonenKarten: {
+    koerper: { titel: 'Body', satz: 'Breasts, genitals and buttocks.' },
+    'koerper-gesicht': { titel: 'Body and face', satz: 'The body, and faces as well.' },
+    alles: { titel: 'Everything', satz: 'All ten zones.' },
+  },
+  zonenEinzeln: { titel: 'Pick zones one by one', stand: (an: number, gesamt: number): string => `${an} of ${gesamt} on`, gruppenLabel: 'Zones, one by one' },
+  zonenNamen: {
+    eyes: 'Eyes',
+    mouth: 'Mouth',
+    face: 'Face',
+    head: 'Head',
+    breast: 'Breasts',
+    genitals: 'Genitals',
+    buttocks: 'Buttocks',
+    belly: 'Belly',
+    feet: 'Feet',
+    armpits: 'Armpits',
+  },
+  wahlKeine: 'Your zones match none of these, so nothing is picked. Choose one to reset them.',
+  // Eine Zonen-Handlung, die verworfen wurde, weil sich der gespeicherte Stand zwischen Anzeige und Klick geaendert hat.
+  zonenVerworfen: 'The zones changed somewhere else while you were choosing, so I kept the saved ones. Choose again if you still want it.',
+  kleidungTitel: 'Under clothes',
+  kleidungErklaerung: {
+    knopfLabel: 'What does this do?',
+    text: 'One answer for every zone that can be covered under clothes. “Under clothes too” covers it even when it is dressed. “Bare skin only” leaves clothed parts alone.',
+  },
+  kleidungAntworten: {
+    haut: { titel: 'Bare skin only', satz: 'I cover only what is bare.' },
+    'auch-bedeckt': { titel: 'Under clothes too', satz: 'I cover these parts even when they are clothed.' },
+  },
+  // Der eine Hinweis der Frage bei einem gemischten Stand (keine Antwort markiert): nennt genau, was heute unter Kleidung gedeckt wird.
+  kleidungHeuteNichts: 'Right now I cover nothing under clothes.',
+  kleidungHeute: (namen: readonly string[]) => `Right now I also cover under clothes: ${namen.join(', ')}.`,
+  kleidungAntwortGilt: 'Pick an answer and it counts for every zone.',
+  stimmungTitel: 'Mood',
+  stimmungExakt: { titel: 'Exact value', reglerLabel: 'Exact mood value' },
+  erwachsenTitel: 'My pictures on adult sites',
+  erwachsenKarten: {
+    off: { titel: 'Off', satz: 'No picture swaps on adult sites.' },
+    on: { titel: 'On', satz: 'I treat adult sites as adult sites.' },
+    tease: { titel: 'Tease', satz: 'I only hint.' },
+    hot: { titel: 'Hot', satz: 'I show more.' },
+    explicit: { titel: 'Explicit', satz: 'Nothing held back.' },
+  },
+  // Ohne die Freischaltung `erwachsen:vorschau` bleiben die drei Stufen gesperrt.
+  erwachsenGesperrt: 'My pictures decide how hot I get, so this unlocks with the Mia Pack.',
   // Fund 3: was ab Werk schon an ist und nicht abgefragt wird.
   // Fund 3: nennt nur, was gerade wirklich an ist.
   auchAnNamen: { werbung: 'my ads', tabtitel: 'my tab titles', meldungen: 'my little notes' },
@@ -132,3 +171,17 @@ export const TEXT = {
   endeVersuchTitel: 'Try me.',
   endeVersuch: 'Open any page with pictures and watch me veil them.',
 } as const;
+
+// Zahl ohne Gleitkomma-Reste, sonst genau: 0.1049 bleibt 0.1049 (kein Runden auf zwei Stellen), wie auf der Einstellungsseite.
+export function zahlGenau(wert: number): string {
+  return String(Number(wert.toPrecision(12)));
+}
+
+// Namen der Stimmung wie auf der Einstellungsseite: die Woerter, die `stimmungsWort` fuer die drei Stufenwerte liefert (ein Wortschatz mit Kopf und Popup),
+// wenn das drei verschiedene sind, sonst die Platzhalter aus STUFENLISTEN. Ein Test in Chromium vergleicht sie mit den Stufen der Einstellungsseite.
+export const STIMMUNG_STUFEN_INTERVIEW: StufenListe = (() => {
+  const basis = STUFENLISTEN.stimmung;
+  const woerter = basis.stufen.map((st) => stimmungsWort(st.wert));
+  if (new Set(woerter).size !== basis.stufen.length) return basis;
+  return { ...basis, stufen: basis.stufen.map((st, i) => ({ name: woerter[i] as string, wert: st.wert })) };
+})();

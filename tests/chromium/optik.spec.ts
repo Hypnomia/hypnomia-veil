@@ -169,7 +169,7 @@ test('Einstellungsseite ohne Pack bei 360 px: Hoehe in Bildschirmen', async () =
   await s.close();
 });
 
-test('Willkommensseite bei 360 px: Interview-Seiten (ohne Pack drei), Abschluss mit Checkliste, Ziele 44 px', async () => {
+test('Willkommensseite bei 360 px: Interview-Seiten (ohne Pack vier), Abschluss mit Checkliste, Ziele 44 px', async () => {
   const s = mitReitern(await context.newPage());
   await s.goto(url('willkommen.html#interview'));
   await expect(s.locator('#schritt-titel')).toBeVisible();
@@ -182,7 +182,7 @@ test('Willkommensseite bei 360 px: Interview-Seiten (ohne Pack drei), Abschluss 
     if (letzte) break;
     i++;
   }
-  expect(i).toBe(3); // Fund 7: ohne Pack drei Fragen
+  expect(i).toBe(4); // Fund 7, E4e I1: ohne Pack vier Fragen
   await expect(s.locator('#ende-liste')).toBeVisible();
   await s.waitForTimeout(300);
   pruefe('willkommen abschluss', await miss(s));
