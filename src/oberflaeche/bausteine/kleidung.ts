@@ -37,3 +37,14 @@ export function setzeEineZone(zonen: ZonenStand, zone: Zone, an: boolean): Zonen
   neu[zone] = e;
   return neu;
 }
+
+// Gleich im Sinn der Deckung: `an` jeder Zone und `bedeckt` der bedeckbaren Zonen (fehlt es, gilt es als falsch). Die Einstellungsseite schreibt eine Handlung
+// nur, wenn der gespeicherte Stand noch der ist, auf dem sie gerechnet wurde (sonst wuerde ein alter Stand neuere Deckung ueberschreiben).
+export function gleicheDeckung(a: ZonenStand, b: ZonenStand): boolean {
+  return ZONEN.every((z) => a[z].an === b[z].an && (!BEDECKBARE_ZONEN.has(z) || (a[z].bedeckt === true) === (b[z].bedeckt === true)));
+}
+
+// Die Zonen, die heute eingeschaltet UND unter Kleidung gedeckt sind: das, was die Kleidungsfrage bei einem gemischten Stand nennt (nie mehr als gespeichert ist).
+export function zonenUnterKleidung(zonen: ZonenStand): Zone[] {
+  return ZONEN.filter((z) => BEDECKBARE_ZONEN.has(z) && zonen[z].an && zonen[z].bedeckt === true);
+}

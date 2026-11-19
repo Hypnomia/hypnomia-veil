@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import sharp from 'sharp';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
-import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer, chipKlick } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 330 s ueberschritten');
@@ -304,10 +304,10 @@ try {
   // Teil A: das erste Pack hat Face eingeschaltet; Abschalten wird respektiert, Wechsel auf ein Mia-Preset schaltet wieder ein
   pruefe((await speicher('einstellungen'))?.zonen?.face?.an === true, 'erstes Pack: Face ist an');
   pruefe((await text('#meldung')).includes('Face is on under What I cover'), 'Import-Meldung nennt Face');
-  await driver.findElement(By.css('#zonen label.schalter:has(input[data-zone="face"])')).click();
+  await chipKlick(driver, 'face');
   await bis('Face aus', async () => (await speicher('einstellungen'))?.zonen?.face?.an === false);
   await driver.navigate().refresh();
-  await bis('Face bleibt aus', async () => !(await driver.findElement(By.css('#zonen input[data-zone="face"]')).isSelected()));
+  await bis('Face bleibt aus', async () => (await driver.executeScript(`return document.querySelector('#zonen-wahl .v-chip[data-zone="face"]')?.getAttribute('aria-pressed') ?? null`)) === 'false');
   await driver.findElement(By.css('label:has(#preset-mia-blur)')).click();
   await bis('mia-blur', async () => (await speicher('einstellungen'))?.preset === 'mia-blur');
   pruefe((await speicher('einstellungen'))?.zonen?.face?.an === false && (await sichtbar('#preset-face-hinweis')) && !(await text('#preset-face-hinweis')).includes('I switched'), 'Mia zu Mia: Face bleibt aus, der Hinweis sagt, was dann gilt (nicht "eingeschaltet")');

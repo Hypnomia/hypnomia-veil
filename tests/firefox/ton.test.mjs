@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
 import { TON_TEXTE } from '../../src/ton/texte.ts';
-import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer, oeffneAuf, stufeKlick, markierteKarte } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 420 s ueberschritten');
@@ -259,31 +259,38 @@ try {
       pruefe((await driver.findElement(By.css('#ton-titel')).getAttribute('textContent')) === TON_TEXTE.titel, 'Ueberschrift');
       pruefe((await driver.findElement(By.css('#ton')).getAttribute('aria-labelledby')) === 'ton-titel', 'aria-labelledby ton-titel');
       pruefe(!(await driver.findElement(By.css('#ton-an')).isSelected()), 'Schalter standardmaessig aus');
-      pruefe((await driver.findElement(By.css('#ton-lautstaerke')).getAttribute('value')) === '60', 'Regler steht auf 60');
-      pruefe((await text('#ton-lautstaerke-wert')) === '60%', 'Anzeige 60%');
+      // E4d2 (F3): Lautstaerke als Stufen (Standard Medium 0,6), der Regler "Exact value" zeigt den Wert im Speichermass
+      pruefe((await driver.findElement(By.css('#lautstaerke-wahl input[type=range]')).getAttribute('value')) === '0.6', 'Regler steht auf 0,6');
+      pruefe((await driver.findElement(By.css('#lautstaerke-wahl .v-wert')).getAttribute('textContent')) === '60%', 'Anzeige 60% (im geschlossenen Aufklapper)');
+      pruefe((await markierteKarte(driver, 'lautstaerke-wahl')) === 'Medium', 'Stufe Medium markiert');
       pruefe((await driver.findElement(By.css('#ton-pack-hinweis')).getAttribute('textContent')) === TON_TEXTE.hinweisOhnePack, 'Hinweis ohne Pack');
       pruefe(!(await driver.findElement(By.css('#ton-probe')).isEnabled()), 'Probe ohne Pack gesperrt');
-      pruefe(await driver.findElement(By.css('#ton-lautstaerke')).isEnabled(), 'Regler ohne Pack stellbar');
+      pruefe(await driver.findElement(By.css('#lautstaerke-wahl input[type=range]')).isEnabled(), 'Regler ohne Pack stellbar');
       // echte Klicks
       await driver.findElement(By.css('#ton-an-zeile')).click();
       await bis('an gespeichert', async () => (await liesHier('einstellungen'))?.ton?.an === true, 5000);
       await driver.findElement(By.css('#ton-an-zeile')).click();
       await bis('aus gespeichert', async () => (await liesHier('einstellungen'))?.ton?.an === false, 5000);
       pruefe(true, 'Schalter: Klick an und aus im Speicher');
-      const regler = driver.findElement(By.css('#ton-lautstaerke'));
+      await stufeKlick(driver, 'lautstaerke-wahl', 'Soft');
+      await bis('Soft gespeichert', async () => Math.abs(((await liesHier('einstellungen'))?.ton?.lautstaerke ?? 0) - 0.3) < 1e-6, 5000);
+      await stufeKlick(driver, 'lautstaerke-wahl', 'Loud');
+      await bis('Loud gespeichert', async () => Math.abs(((await liesHier('einstellungen'))?.ton?.lautstaerke ?? 0) - 0.9) < 1e-6, 5000);
+      await oeffneAuf(driver, 'lautstaerke-wahl');
+      const regler = driver.findElement(By.css('#lautstaerke-wahl input[type=range]'));
       await regler.sendKeys(Key.END);
       await bis('Ende gespeichert', async () => (await liesHier('einstellungen'))?.ton?.lautstaerke === 1, 5000);
-      pruefe((await text('#ton-lautstaerke-wert')) === '100%', 'Anzeige 100% nach Ende');
+      pruefe((await text('#lautstaerke-wahl .v-wert')) === '100%', 'Anzeige 100% nach Ende');
       await regler.sendKeys(Key.HOME);
       await bis('Anfang gespeichert', async () => (await liesHier('einstellungen'))?.ton?.lautstaerke === 0, 5000);
-      pruefe((await text('#ton-lautstaerke-wert')) === '0%', 'Anzeige 0% nach Anfang');
+      pruefe((await text('#lautstaerke-wahl .v-wert')) === '0%', 'Anzeige 0% nach Anfang');
       await driver.executeScript('arguments[0].scrollIntoView({ block: "center" })', regler);
       const r = await driver.executeScript('const b = arguments[0].getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height };', regler);
       await driver.actions({ async: true }).move({ x: Math.round(r.x + r.width * 0.25), y: Math.round(r.y + r.height / 2), origin: 'viewport' }).click().perform();
       await bis('Klick gespeichert', async () => ((await liesHier('einstellungen'))?.ton?.lautstaerke ?? 0) > 0.15, 5000);
       const l = (await liesHier('einstellungen')).ton.lautstaerke;
       console.log(`firefox ton: Schalter an/aus, Regler Ende 1, Anfang 0, Klick bei 25 Prozent der Breite ergibt ${l} (Speicher)`);
-      pruefe(l > 0.15 && l < 0.35 && (await text('#ton-lautstaerke-wert')) === `${Math.round(l * 100)}%`, 'Reglerklick nahe 25 Prozent, Anzeige passt');
+      pruefe(l > 0.15 && l < 0.35 && (await text('#lautstaerke-wahl .v-wert')) === `${Math.round(l * 100)}%`, 'Reglerklick nahe 25 Prozent, Anzeige passt');
     } finally {
       await zurueckZumHaupt();
     }
@@ -515,7 +522,8 @@ try {
     await loescheEinstellungen();
     await oeffneErweiterung('options.html');
     try {
-      const regler = driver.findElement(By.css('#ton-lautstaerke'));
+      await oeffneAuf(driver, 'lautstaerke-wahl');
+      const regler = driver.findElement(By.css('#lautstaerke-wahl input[type=range]'));
       await regler.sendKeys(Key.HOME);
       for (let i = 0; i < 30; i++) await regler.sendKeys(Key.ARROW_RIGHT);
       await bis('30 gespeichert', async () => Math.abs(((await liesHier('einstellungen'))?.ton?.lautstaerke ?? 0) - 0.3) < 1e-6, 5000);

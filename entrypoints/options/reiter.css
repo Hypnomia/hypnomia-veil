@@ -174,3 +174,8 @@
     order: 3;
   }
 }
+
+/* E4d2: Plaetze der Bausteine (Zonenwahl, Kleidungsfrage, Stufen, Gruppe der Erwachsenenseiten): ein Abstand, sonst steuern die Bausteine ihr Aussehen selbst. */
+.bedienung-ort:not(:empty) {
+  margin-block: var(--v-a-3);
+}

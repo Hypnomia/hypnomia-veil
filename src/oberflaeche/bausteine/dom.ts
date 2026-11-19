@@ -149,13 +149,23 @@ export function radioTastatur(gruppe: HTMLElement): void {
     knoepfe.forEach((k, i) => (k.tabIndex = i === ziel ? 0 : -1));
     knoepfe[ziel]?.focus();
   });
+  // Beim Verlassen der Gruppe (Fokus geht ausserhalb) liegt der Tab-Halt wieder auf der gewaehlten, sonst auf der ersten Stufe.
+  gruppe.addEventListener('focusout', (e) => {
+    if (e.relatedTarget instanceof Node && gruppe.contains(e.relatedTarget)) return;
+    setzeTabHalt([...gruppe.querySelectorAll<HTMLButtonElement>('[role="radio"]')]);
+  });
 }
 
-// Markierung und Tab-Reihenfolge: genau ein Knopf mit tabindex 0 (der markierte, sonst der erste).
+// Markierung und Tab-Reihenfolge: genau ein Knopf mit tabindex 0 (der markierte, sonst der erste), siehe `setzeTabHalt`.
 export function markiereRadios(knoepfe: readonly HTMLButtonElement[], markiert: number | null): void {
-  knoepfe.forEach((k, i) => {
-    const an = i === markiert;
-    k.setAttribute('aria-checked', String(an));
-    k.tabIndex = an || (markiert === null && i === 0) ? 0 : -1;
-  });
+  knoepfe.forEach((k, i) => k.setAttribute('aria-checked', String(i === markiert)));
+  setzeTabHalt(knoepfe);
+}
+
+// Der eine Tab-Halt einer Gruppe liegt auf dem markierten Knopf, ist keiner markiert (oder der markierte gesperrt) auf dem ersten nicht gesperrten
+// (Nacharbeit NN1: nach dem Verlassen der Gruppe liegt er wieder dort, nicht auf dem Knopf, der zuletzt den Fokus hatte).
+export function setzeTabHalt(knoepfe: readonly HTMLButtonElement[]): void {
+  const markiert = knoepfe.findIndex((k) => k.getAttribute('aria-checked') === 'true' && !k.disabled);
+  const halt = markiert >= 0 ? markiert : knoepfe.findIndex((k) => !k.disabled);
+  knoepfe.forEach((k, i) => (k.tabIndex = i === halt ? 0 : -1));
 }

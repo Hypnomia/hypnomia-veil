@@ -69,18 +69,18 @@
       <section aria-labelledby="stimmung-titel" id="abschnitt-stimmung">
         <div class="regel">
           <h2 id="stimmung-titel">Mia’s mood</h2>
-          <output id="stimmung-wert" for="stimmung"></output>
+          <output id="stimmung-wert"></output>
         </div>
-        <input id="stimmung" type="range" min="0.10" max="0.25" step="0.01" aria-labelledby="stimmung-titel" />
-        <div class="enden"><span>Very suspicious</span><span>Relaxed</span></div>
-        <p class="hinweis">When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.</p>
+        <!-- E4d2: die Stufenwahl der Stimmung baut bedienung-stufen.ts hierhin (Baustein, Regler im Aufklapper "Exact value"). -->
+        <div id="stimmung-ort" class="bedienung-ort"></div>
       </section>
 
       <section aria-labelledby="zonen-titel" id="abschnitt-zonen">
         <h2 id="zonen-titel">What I cover</h2>
-        <ul id="zonen" class="zonen" aria-describedby="zonen-hinweis"></ul>
-        <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+        <!-- E4d2: Zonenwahl und Kleidungsfrage baut bedienung-zonen.ts hierhin (Bausteine, ein gemeinsamer gespeicherter Stand). -->
+        <div id="zonen-ort" class="bedienung-ort"></div>
         <p id="zonen-hinweis" class="hinweis" hidden></p>
+        <div id="kleidung-ort" class="bedienung-ort"></div>
         <label class="schalter">
           <input id="strict" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
@@ -106,22 +106,9 @@
         <h2 id="erw-titel">Adult sites</h2>
         <p id="erw-pack-hinweis" class="hinweis"></p>
 
-        <h3 id="stufe-titel" class="regel-titel">How hot do I get?</h3>
-        <!-- Anfangs verborgen und gesperrt: grund-erwachsen.ts schaltet frei, sobald das Pack mit erwachsen:vorschau gelesen ist (keine Klickflaeche vorher). -->
-        <div id="stufe-wahl" hidden>
-          <div class="wahl stufen" role="radiogroup" aria-labelledby="stufe-titel">
-            <label><input type="radio" name="stufe" value="tease" disabled /><span><strong>Tease</strong><small>I only hint.</small></span></label>
-            <label><input type="radio" name="stufe" value="hot" disabled /><span><strong>Hot</strong><small>I show more.</small></span></label>
-            <label><input type="radio" name="stufe" value="explicit" disabled /><span><strong>Explicit</strong><small>Nothing held back.</small></span></label>
-          </div>
-        </div>
-        <p id="stufe-gesperrt" class="hinweis" hidden>My pictures decide how hot I get, so this unlocks with the Mia Pack.</p>
+        <!-- E4d2 (F4): eine Gruppe Off, Tease, Hot, Explicit fuer `erwachsen.an` und `erwachsen.stufe`, gebaut von grund-erwachsen.ts. -->
+        <div id="erw-stufe-ort" class="bedienung-ort"></div>
 
-        <label class="schalter">
-          <input id="erw-an" type="checkbox" role="switch" />
-          <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Adult-site mode</strong><small>on the sites I know, I swap the thumbnails for mine</small></span>
-        </label>
         <label class="schalter" id="erw-ersatz-zeile">
           <input id="erw-ersatz" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
@@ -143,18 +130,9 @@
         <ul id="seiten-liste" class="liste"></ul>
 
         <h3 id="quiz-titel">Quiz</h3>
-        <div class="regel">
-          <label for="verweigern">How often I refuse a right answer</label>
-          <output id="verweigern-wert" for="verweigern"></output>
-        </div>
-        <input id="verweigern" type="range" min="0" max="30" step="1" />
-        <p class="hinweis">Never twice in a row. Pause Mia is always free, whatever I say.</p>
-
-        <div class="regel">
-          <label for="freilegen">How long a picture stays uncovered after a quiz</label>
-          <output id="freilegen-wert" for="freilegen"></output>
-        </div>
-        <input id="freilegen" type="range" min="3" max="30" step="1" />
+        <!-- E4d2 (F3): Verweigern und Freilegen als Stufen mit Namen, gebaut von main.ts. -->
+        <div id="verweigern-ort" class="bedienung-ort"></div>
+        <div id="freilegen-ort" class="bedienung-ort"></div>
       </section>
 
       </div>

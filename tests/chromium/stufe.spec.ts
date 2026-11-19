@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { oeffneZugeklapptes, mitReitern, reiterFuer } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiterFuer, stufenKnopf, markiert } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -142,21 +142,23 @@ async function warteAufTausch(s: Page, ids: string[]) {
 const ergaenze = (s: Page, id: string, b: number, h: number, n: number, key?: string) =>
   s.evaluate(([i, w, hh, nn, k]) => (window as any).addTile(i, w, hh, nn, k), [id, b, h, n, key] as const);
 
-test('ohne Pack: der Regler ist gesperrt, ein Satz steht da, die Knoepfe sind nicht zu sehen', async () => {
+test('ohne Pack: die drei Stufen sind gesperrt und nie markiert, ein Satz steht da, Off und On bleiben waehlbar (auch ohne Pack einstellbar)', async () => {
   test.setTimeout(60_000);
   const s = mitReitern(await context.newPage());
   await s.goto(optionsUrl());
   await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
   // Ohne Pack steht Adult sites zugeklappt ("Set them now"): erst aufklappen, wie die Person.
   await oeffneZugeklapptes(s);
-  await reiterFuer(s, '#stufe-gesperrt');
-  await expect(s.locator('#stufe-gesperrt')).toBeVisible();
-  await expect(s.locator('#stufe-gesperrt')).toContainText('Mia Pack');
-  await reiterFuer(s, '#stufe-wahl');
-  await expect(s.locator('#stufe-wahl')).toBeHidden();
-  expect(await s.locator('input[name="stufe"]').evaluateAll((l) => l.every((i) => (i as HTMLInputElement).disabled))).toBe(true);
-  // Ein gespeicherter Wert aendert sich ohne Pack nicht ueber die Oberflaeche
+  await reiterFuer(s, '#erw-stufe-wahl');
+  // E4d2 (F4, G1): ohne Freischaltung Off und On waehlbar, Tease, Hot, Explicit gesperrt; der Satz zur Sperre ist der eine Hinweis der Gruppe
+  await expect(s.locator('#erw-stufe-wahl .v-hinweis')).toBeVisible();
+  await expect(s.locator('#erw-stufe-wahl .v-hinweis')).toContainText('Mia Pack');
+  for (const n of ['Tease', 'Hot', 'Explicit']) await expect(stufenKnopf(s, 'erw-stufe-wahl', n)).toBeDisabled();
+  for (const n of ['Off', 'On']) await expect(stufenKnopf(s, 'erw-stufe-wahl', n)).toBeEnabled();
+  expect(await markiert(s, 'erw-stufe-wahl')).toContain('On'); // Standard: an, die Stufe wirkt ohne Pack nicht und wird nicht als gewaehlt gezeigt
+  // Die gespeicherte Stufe bleibt ohne Pack stehen
   expect((await lies('einstellungen'))?.erwachsen?.stufe ?? 'hot').toBe('hot');
+  expect((await lies('einstellungen'))?.erwachsen?.an ?? true).toBe(true);
   await s.close();
 });
 
@@ -174,36 +176,48 @@ test('Pack mit Stufen importieren', async () => {
   await warteAufErkenner();
 });
 
-test('mit Pack: Regler sichtbar, Standard Hot, Wahl speichert, Zeile in Mias Stimme, Fingerziele 44 px bei 360 px', async () => {
+test('mit Pack: Gruppe waehlbar, Standard Hot, Wahl speichert, Zeile in Mias Stimme, Pfeile waehlen nicht, Fingerziele 44 px bei 360 px', async () => {
   test.setTimeout(60_000);
   const s = mitReitern(await context.newPage());
   await s.setViewportSize({ width: 360, height: 800 });
   await s.goto(optionsUrl());
-  await reiterFuer(s, '#stufe-wahl');
-  await expect(s.locator('#stufe-wahl')).toBeVisible();
-  await reiterFuer(s, '#stufe-gesperrt');
-  await expect(s.locator('#stufe-gesperrt')).toBeHidden();
-  await expect(s.getByRole('radiogroup', { name: 'How hot do I get?' }).first()).toBeVisible(); // zweiter Regler steht in "Set me up"
-  await expect(s.locator('input[name="stufe"][value="hot"]')).toBeChecked();
-  // Jeder Knopf traegt seine eigene Zeile in Mias Stimme
-  expect(await s.locator('input[name="stufe"] + span small').allTextContents()).toEqual(['I only hint.', 'I show more.', 'Nothing held back.']);
+  await reiterFuer(s, '#erw-stufe-wahl');
+  await expect(s.locator('#erw-stufe-wahl')).toBeVisible();
+  await expect(s.locator('#erw-stufe-wahl .v-hinweis')).toHaveCount(0);
+  await expect(s.getByRole('radiogroup', { name: 'My pictures on adult sites' }).first()).toBeVisible();
+  await expect.poll(() => markiert(s, 'erw-stufe-wahl')).toContain('Hot');
+  // Jede Karte traegt ihre eigene Zeile in Mias Stimme
+  expect(await s.locator('#erw-stufe-wahl .v-wahl-satz').allTextContents()).toEqual(['No picture swaps on adult sites.', 'I only hint.', 'I show more.', 'Nothing held back.']);
   const masse = await s.evaluate(() => ({
-    hoehen: [...document.querySelectorAll('input[name="stufe"]')].map((i) => (i.nextElementSibling as HTMLElement).getBoundingClientRect().height),
-    breiten: [...document.querySelectorAll('input[name="stufe"] + span strong')].map((e) => e.textContent),
+    hoehen: [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].map((i) => i.getBoundingClientRect().height),
+    namen: [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-titel')].map((e) => e.textContent),
     scrollB: document.documentElement.scrollWidth,
     innen: document.documentElement.clientWidth,
   }));
-  console.log(`chromium I1: Fingerziele ${masse.hoehen.map((h) => Math.round(h)).join('/')} px, Knoepfe ${masse.breiten.join('/')}, scrollWidth ${masse.scrollB} von ${masse.innen}`);
-  expect(masse.breiten).toEqual(['Tease', 'Hot', 'Explicit']);
+  console.log(`chromium I1: Fingerziele ${masse.hoehen.map((h) => Math.round(h)).join('/')} px, Karten ${masse.namen.join('/')}, scrollWidth ${masse.scrollB} von ${masse.innen}`);
+  expect(masse.namen).toEqual(['Off', 'Tease', 'Hot', 'Explicit']);
   for (const h of masse.hoehen) expect(h).toBeGreaterThanOrEqual(44);
   expect(masse.scrollB).toBeLessThanOrEqual(masse.innen);
-  await s.locator('input[name="stufe"][value="tease"] + span').click();
+  await stufenKnopf(s, 'erw-stufe-wahl', 'Tease').click();
   await expect.poll(async () => (await lies('einstellungen'))?.erwachsen?.stufe).toBe('tease');
-  // Tastatur: Pfeil nach rechts auf der Radiogruppe geht zu Hot, dann Explicit
-  await s.locator('input[name="stufe"][value="tease"]').focus();
+  // Tastatur: ein Pfeil bewegt nur den Fokus und waehlt nichts (Vertrag der Bausteine); Eingabe und Leertaste waehlen
+  const schreibEreignisse = await s.evaluate(() => {
+    (window as any).__schreib = 0;
+    const sl = (globalThis as any).chrome.storage.local;
+    const echt = sl.set.bind(sl);
+    sl.set = (...a: unknown[]) => ((window as any).__schreib++, echt(...a));
+  });
+  void schreibEreignisse;
+  await stufenKnopf(s, 'erw-stufe-wahl', 'Tease').focus();
   await s.keyboard.press('ArrowRight');
+  await expect(stufenKnopf(s, 'erw-stufe-wahl', 'Hot')).toBeFocused();
+  await s.waitForTimeout(500);
+  expect((await lies('einstellungen'))?.erwachsen?.stufe).toBe('tease');
+  expect(await s.evaluate(() => (window as any).__schreib)).toBe(0);
+  await s.keyboard.press('Enter');
   await expect.poll(async () => (await lies('einstellungen'))?.erwachsen?.stufe).toBe('hot');
   await s.keyboard.press('ArrowRight');
+  await s.keyboard.press('Space');
   await expect.poll(async () => (await lies('einstellungen'))?.erwachsen?.stufe).toBe('explicit');
   // Die anderen Werte des Abschnitts bleiben stehen
   const e = (await lies('einstellungen')).erwachsen;
@@ -215,7 +229,7 @@ test('mit Pack: Regler sichtbar, Standard Hot, Wahl speichert, Zeile in Mias Sti
     const alt = (await api.storage.local.get('einstellungen')).einstellungen;
     await api.storage.local.set({ einstellungen: { ...alt, erwachsen: { ...alt.erwachsen, stufe: 'hot' } } });
   });
-  await expect(s.locator('input[name="stufe"][value="hot"]')).toBeChecked();
+  await expect.poll(() => markiert(s, 'erw-stufe-wahl')).toContain('Hot');
   await s.close();
 });
 
@@ -387,22 +401,21 @@ test('Galerie (16:9) folgt der Stufe und zeigt nur Bilder erlaubter Stufen', asy
   await setzeErwachsen({ komplettErsatz: false });
 });
 
-test('Pack entfernen: der Regler ist wieder gesperrt', async () => {
+test('Pack entfernen: die Stufen sind wieder gesperrt', async () => {
   test.setTimeout(60_000);
   const s = mitReitern(await context.newPage());
   try {
     await s.goto(optionsUrl());
-    await reiterFuer(s, '#stufe-wahl');
-    await expect(s.locator('#stufe-wahl')).toBeVisible();
+    await reiterFuer(s, '#erw-stufe-wahl');
+    await expect(stufenKnopf(s, 'erw-stufe-wahl', 'Hot')).toBeEnabled();
     await expect(s.locator('#pack-status')).not.toHaveText('', { timeout: 10_000 });
     await s.locator('#entfernen').click();
     await s.locator('#entfernen-ja').click();
-    await reiterFuer(s, '#stufe-wahl');
-    await expect(s.locator('#stufe-wahl')).toBeHidden({ timeout: 15_000 });
     // Ohne Pack ist Adult sites zugeklappt: aufklappen, wie die Person.
     await oeffneZugeklapptes(s);
-    await reiterFuer(s, '#stufe-gesperrt');
-    await expect(s.locator('#stufe-gesperrt')).toBeVisible();
+    await reiterFuer(s, '#erw-stufe-wahl');
+    await expect(stufenKnopf(s, 'erw-stufe-wahl', 'Hot')).toBeDisabled({ timeout: 15_000 });
+    await expect(s.locator('#erw-stufe-wahl .v-hinweis')).toBeVisible();
   } finally {
     await s.close();
   }

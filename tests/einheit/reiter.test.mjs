@@ -59,8 +59,10 @@ test('D2: jeder Teil steht in index.html im Panel seines Reiters, jede id genau 
   assert.deepEqual(Object.keys(je), ['stil', 'zonen', 'erwachsen', 'extras', 'pack', 'ledger', 'ueber']);
   const sollTeile = {
     stil: ['abschnitt-stil', 'preset-karten', 'augenbalken', 'wort-themen', 'video-zonen'],
-    zonen: ['covering', 'abschnitt-stimmung', 'stimmung', 'abschnitt-zonen', 'zonen', 'strict', 'abschnitt-ausnahmen'],
-    erwachsen: ['erwachsen', 'erw-an', 'erw-ersatz', 'erw-inhalt', 'verweigern', 'freilegen'],
+    // E4d2 (F1 bis F3): die Plaetze der Bausteine ersetzen den Regler `stimmung` und die Liste `zonen`
+    zonen: ['covering', 'abschnitt-stimmung', 'stimmung-ort', 'abschnitt-zonen', 'zonen-ort', 'kleidung-ort', 'strict', 'abschnitt-ausnahmen'],
+    // E4d2 (F3, F4): Gruppe der Erwachsenenseiten statt `erw-an`, Plaetze der Stufen statt der Regler `verweigern` und `freilegen`
+    erwachsen: ['erwachsen', 'erw-stufe-ort', 'erw-ersatz', 'erw-inhalt', 'verweigern-ort', 'freilegen-ort'],
     extras: ['kontrolle', 'ruhig', 'kon-werbung', 'kon-blitz', 'kon-leerlauf', 'kon-warnung-ok'],
     pack: ['stand', 'ton'],
     ledger: ['ledger'],

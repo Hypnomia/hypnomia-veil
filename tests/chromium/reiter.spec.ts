@@ -81,7 +81,7 @@ test('Aufbau: tablist mit sieben tab, jedes tab steuert ein tabpanel, genau eine
     expect(bau.map((b) => b.tabindex)).toEqual([0, -1, -1, -1, -1, -1, -1]);
     // D4: alle Module laufen wie heute, auch in den verborgenen Reitern ist alles aufgebaut.
     const aufgebaut = await seite.evaluate(() => ({
-      zonen: document.querySelectorAll('#panel-zonen #zonen li').length,
+      zonen: document.querySelectorAll('#panel-zonen #zonen-wahl .v-chip').length,
       karten: document.querySelectorAll('#panel-stil #preset-karten label.preset-karte').length,
       pack: !!document.querySelector('#panel-pack #stand h2'),
       ueber: !!document.querySelector('#panel-ueber #ueber h2'),
@@ -373,9 +373,9 @@ test('D9: Oeffnen der Seite und Wechsel jedes Reiters schreiben nichts in den Sp
 test('Jede Einstellung genau einmal: alle Bedienelemente der Panels gegen die Soll-Liste aus HEAD, ohne und mit Pack', async () => {
   const seite = await frischeSeite();
   try {
-    const pruefe = async (zustand: string) => {
+    const pruefe = async (zustand: string, eintraege: Record<string, number> = {}, erwachsenFrei = false) => {
       const ist = await seite.evaluate(`(() => { ${SAMMLE_SKRIPT} })()`);
-      expect(vergleicheBedienelemente(ist as never), `Bedienelemente ${zustand}`).toEqual([]);
+      expect(vergleicheBedienelemente(ist as never, eintraege, { erwachsenFrei }), `Bedienelemente ${zustand}`).toEqual([]);
       const doppelt = await seite.evaluate(() => {
         const ids = [...document.querySelectorAll('[id]')].map((e) => e.id);
         return [...new Set(ids.filter((i, n) => ids.indexOf(i) !== n))];
@@ -383,7 +383,7 @@ test('Jede Einstellung genau einmal: alle Bedienelemente der Panels gegen die So
       expect(doppelt, `doppelte ids ${zustand}`).toEqual([]);
       // Kein Bedienelement liegt ausserhalb der Panels (ausser #pause im Kopf und #pause-leiste in der Leiste).
       const ausserhalb = await seite.evaluate(() =>
-        [...document.querySelectorAll('main :is(input, select, textarea, button, [role=switch], [role=radio], [role=slider], [contenteditable])')]
+        [...document.querySelectorAll('main :is(input, select, textarea, button, summary, a[role=button], [role=switch], [role=radio], [role=slider], [role=checkbox], [contenteditable])')]
           .filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung'))
           .map((e) => e.id || e.tagName),
       );
@@ -392,7 +392,25 @@ test('Jede Einstellung genau einmal: alle Bedienelemente der Panels gegen die So
     await pruefe('ohne Pack');
     await schreibe(seite, { pack: packMit(['stil:mia-patch', 'erwachsen:vorschau', 'zensur:sticker', 'kontrolle:blitz', 'ton']) });
     await expect(seite.locator('#erwachsen')).toHaveAttribute('data-zu', '0'); // das Pack ist gelesen, nichts mehr zugeklappt
-    await pruefe('mit Pack');
+    // G1: ein Pack ohne `erwachsen:vorschau` zeigt die Gruppe in der Form ohne Freischaltung (mit der Karte On)
+    await schreibe(seite, { pack: packMit(['stil:mia-patch', 'erwachsen:quiz']) });
+    await expect(seite.locator('#erwachsen')).toHaveAttribute('data-zu', '0');
+    await pruefe('mit Pack ohne erwachsen:vorschau', {}, false);
+    await schreibe(seite, { pack: packMit(['stil:mia-patch', 'erwachsen:vorschau', 'zensur:sticker', 'kontrolle:blitz', 'ton']) });
+    await expect(seite.locator('#erw-stufe-wahl [role=radio]')).toHaveCount(4);
+    await pruefe('mit Pack', {}, true);
+    // Nachtrag RN3: mit je einem gespeicherten Eintrag in den Listen (Ausnahmen, eigene Seiten, strenge Zeiten) steht ein Bedienelement je Zeile da
+    await schreibe(seite, {
+      einstellungen: {
+        ausnahmen: ['kurz.de'],
+        erwachsen: { eigeneSeiten: ['adult.example'] },
+        kontrolle: { zeiten: [{ tage: [1, 2, 3], von: 60, bis: 120 }] },
+      },
+    });
+    await expect(seite.locator('#ausnahmen-liste button')).toHaveCount(1);
+    await expect(seite.locator('#seiten-liste button')).toHaveCount(1);
+    await expect(seite.locator('#kon-zeiten .zeit-zeile')).toHaveCount(1);
+    await pruefe('mit Pack und je einem Eintrag in den Listen', { '#ausnahmen-liste': 1, '#seiten-liste': 1, '#kon-zeiten': 1 }, true);
   } finally {
     await seite.close();
   }

@@ -92,3 +92,23 @@ export function mitReitern(seite: Page): Page {
     },
   });
 }
+
+// ---------- Bedienelemente aus den Bausteinen (Phase 11 E4d2) ----------
+// Jeder Baustein hat die Wurzel mit einer festen id (`stimmung-wahl`, `zonen-wahl`, `kleidung-frage`, `erw-stufe-wahl`, `verweigern-wahl`,
+// `freilegen-wahl`, `lautstaerke-wahl`). Die Stufe oder Karte mit diesem Namen:
+export const stufenKnopf = (seite: Page, wahl: string, name: string): Locator =>
+  seite.locator(`#${wahl} [role=radio]`).filter({ has: seite.locator('.v-wahl-titel', { hasText: new RegExp(`^${name}$`) }) }).or(seite.locator(`#${wahl} button.v-stufe`).filter({ hasText: new RegExp(`^${name}$`) })).first();
+// Wie ein Mensch: erst den Aufklapper "Exact value" (oder "Pick zones one by one") oeffnen, wenn er zu ist; gibt den Regler zurueck.
+export async function oeffneAuf(seite: Page, wahl: string): Promise<Locator> {
+  const kopf = seite.locator(`#${wahl} .v-aufklapper .v-auf-kopf`).first();
+  if ((await kopf.getAttribute('aria-expanded')) !== 'true') await kopf.click();
+  return seite.locator(`#${wahl} input[type=range]`);
+}
+export async function zonenChip(seite: Page, zone: string): Promise<Locator> {
+  const kopf = seite.locator('#zonen-wahl .v-aufklapper .v-auf-kopf').first();
+  if ((await kopf.getAttribute('aria-expanded')) !== 'true') await kopf.click();
+  return seite.locator(`#zonen-wahl .v-chip[data-zone="${zone}"]`);
+}
+// Die Marke der Gruppe: id der markierten Karte (oder null), und der Wert des Reglers im Speichermass.
+export const markiert = (seite: Page, wahl: string) =>
+  seite.evaluate((w) => document.querySelector(`#${w} [role=radio][aria-checked=true]`)?.textContent ?? null, wahl);

@@ -4,7 +4,10 @@
 // per textContent. Die Klaenge holt der Hintergrund aus dem Pack (`packton`).
 import './ton.css';
 import { speichere } from './grund-speichern';
-import { TON_LAUTSTAERKE_STANDARD, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
+import { beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
+import { STUFENLISTEN } from '../../src/oberflaeche/bausteine/bausteine';
+import { haengeStufenwahl } from './bedienung-stufen';
+import { LAUTSTAERKE_TEXTE } from './bedienung-texte';
 import type { AntwortPackTon, NachrichtHintergrundPackTon } from '../../src/nachrichten';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { TESTHAKEN } from '../../src/schleier/konstanten';
@@ -41,12 +44,15 @@ if (abschnitt) {
   );
   schalterZeile.append(an, regler, schalterText);
 
-  const lautZeile = neu('div', { class: 'regel', id: 'ton-lautstaerke-zeile' });
-  const lautLabel = neu('label', { textContent: TON_TEXTE.lautstaerke, htmlFor: 'ton-lautstaerke' });
-  const lautWert = neu('output', { id: 'ton-lautstaerke-wert' });
-  lautWert.htmlFor.add('ton-lautstaerke');
-  lautZeile.append(lautLabel, lautWert);
-  const laut = neu('input', { id: 'ton-lautstaerke', type: 'range', min: '0', max: '100', step: '1' });
+  // F3 (E4d2): Lautstaerke als Stufen mit Namen (Soft, Medium, Loud), der Regler steht im Aufklapper "Exact value".
+  const lautOrt = neu('div', { class: 'bedienung-ort', id: 'lautstaerke-ort' });
+  const laut = haengeStufenwahl(lautOrt, 'lautstaerke-wahl', {
+    titel: LAUTSTAERKE_TEXTE.titel,
+    liste: STUFENLISTEN.lautstaerke,
+    exakt: LAUTSTAERKE_TEXTE.exakt,
+    lies: (e) => e.ton.lautstaerke,
+    schreibe: (alt, wert) => ({ ton: { ...alt.ton, lautstaerke: Math.min(Math.max(wert, 0), 1) } }),
+  });
 
   const probeZeile = neu('div', { class: 'ton-probe' });
   const probe = neu('button', { id: 'ton-probe', class: 'klein', type: 'button', textContent: TON_TEXTE.probe });
@@ -61,17 +67,11 @@ if (abschnitt) {
     textContent: TON_TEXTE.regel,
   });
 
-  abschnitt.append(titel, hinweis, schalterZeile, lautZeile, laut, probeZeile, regel);
+  abschnitt.append(titel, hinweis, schalterZeile, lautOrt, probeZeile, regel);
 
   let pack: PackKurz | null = null;
   let zuletzt: Einstellungen | null = null;
   let probeAudio: HTMLAudioElement | null = null;
-
-  const prozent = (v: number): number => Math.round(Math.min(Math.max(v, 0), 1) * 100);
-  function zeigeLautstaerke(p: number): void {
-    lautWert.textContent = `${p}%`;
-    laut.setAttribute('aria-valuetext', `${p} percent`);
-  }
 
   function zeichnePack(): void {
     const mit = istFreigeschaltet(pack, 'ton');
@@ -81,15 +81,14 @@ if (abschnitt) {
     if (!mit) probeMeldung.textContent = '';
   }
 
-  // `erzwingen`: auch den Regler mit Fokus neu zeichnen (nach dem eigenen Speichern).
+  // `erzwingen`: auch den Regler mit Fokus neu zeichnen (nach einem Speicherfehler).
   function zeichne(e: Einstellungen, erzwingen = false): void {
     zuletzt = e;
     probe.disabled = !istFreigeschaltet(pack, 'ton');
     // Fund 24: der Satz aus der Pause verschwindet, sobald Mia wieder da ist.
     if (!e.pause && probeMeldung.textContent === TON_TEXTE.probePause) probeMeldung.textContent = '';
     an.checked = e.ton.an;
-    if (erzwingen || document.activeElement !== laut) laut.value = String(prozent(e.ton.lautstaerke));
-    zeigeLautstaerke(Number(laut.value));
+    laut.zeichne(e, erzwingen);
   }
 
   // Fund 26: Speichern ueber die gemeinsame Stelle (Fehlersatz in der Leiste, Schalter und Regler springen auf den gespeicherten Stand).
@@ -97,20 +96,6 @@ if (abschnitt) {
     const wert = an.checked;
     void speichere((alt) => ({ ton: { ...alt.ton, an: wert } }), (e) => zeichne(e, true));
   });
-  laut.addEventListener('input', () => zeigeLautstaerke(Number(laut.value)));
-  laut.addEventListener('change', () => {
-    const v = Number(laut.value);
-    if (!Number.isFinite(v)) return;
-    // Nach dem Speichern den gespeicherten Stand zeigen, aber nur, wenn der Regler seither nicht weitergeschoben wurde (schnelle Tastenfolge).
-    void speichere(
-      (alt) => ({ ton: { ...alt.ton, lautstaerke: Math.min(Math.max(v, 0), 100) / 100 } }),
-      (e) => {
-        if (Number(laut.value) === v) zeichne(e, true);
-      },
-    );
-  });
-  laut.addEventListener('blur', () => zuletzt && zeichne(zuletzt, true));
-
   async function holeProbe(): Promise<{ name: TonName; dataUrl: string } | null> {
     for (const name of PROBE_REIHE) {
       if (!(TON_NAMEN as readonly string[]).includes(name)) continue;
@@ -139,7 +124,7 @@ if (abschnitt) {
     probe.disabled = true;
     try {
       const klang = await holeProbe();
-      const lautstaerke = Number(laut.value) / 100;
+      const lautstaerke = laut.handle?.wert() ?? zuletzt?.ton.lautstaerke ?? 0;
       if (!klang) {
         probeMeldung.textContent = TON_TEXTE.probeKeinKlang;
         notiere(null, lautstaerke, 'ohne-klang');
@@ -174,8 +159,6 @@ if (abschnitt) {
     zeichnePack();
   });
 
-  zeigeLautstaerke(prozent(TON_LAUTSTAERKE_STANDARD));
-  laut.value = String(prozent(TON_LAUTSTAERKE_STANDARD));
   zeichnePack();
   void Promise.all([ladeEinstellungen(), ladePackKurz()]).then(([e, p]) => {
     pack = p;

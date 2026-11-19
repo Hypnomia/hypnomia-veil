@@ -1,6 +1,6 @@
 // Einstellungsseite: Einstieg der Module und Abschnitt 'Adult sites' (eigene Seiten, Quiz, Calm mode) mit Begruessung.
 // Session 12 (Vertragsschritt): der Pack-Teil liegt jetzt in pack.ts (Auftrag P).
-import { FREILEGEN_MAX_MS, FREILEGEN_MIN_MS, VERWEIGERN_MAX, VERWEIGERN_MIN, aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
+import { aendereEinstellungen, beiEinstellungsAenderung, ladeEinstellungen, type Einstellungen } from '../../src/einstellungen';
 // Phase 9 (Vertrag mit Paket C): die Pack-Karte baut pack-karte.ts beim Import synchron in #stand, darum steht der Import ganz oben.
 import './pack-karte';
 import { hostAus } from '../../src/adapter/liste';
@@ -11,6 +11,9 @@ import { PACK_SPEICHER_SCHLUESSEL, ladePackKurz, type PackKurz } from '../../src
 import type { Texte } from '../../src/quiz/vertrag';
 import { FEHLER_SPEICHERN } from '../../src/oberflaeche/gemeinsam';
 import { speichere } from './grund-speichern';
+import { haengeStufenwahl } from './bedienung-stufen';
+import { STUFENLISTEN } from '../../src/oberflaeche/bausteine/bausteine';
+import { FREILEGEN_TEXTE, VERWEIGERN_TEXTE } from './bedienung-texte';
 import { augenpaar } from '../../src/oberflaeche/design/motive';
 // Phase 5: Abschnitt "Mia’s control" (eigenes Modul).
 import './kontrolle';
@@ -50,20 +53,28 @@ const seiteForm = el<HTMLFormElement>('seite-form');
 const seiteFeld = el<HTMLInputElement>('seite-feld');
 const seiteMeldung = el<HTMLParagraphElement>('seite-meldung');
 const seitenListe = el<HTMLUListElement>('seiten-liste');
-const verweigern = el<HTMLInputElement>('verweigern');
-const verweigernWert = el<HTMLOutputElement>('verweigern-wert');
-const freilegen = el<HTMLInputElement>('freilegen');
-const freilegenWert = el<HTMLOutputElement>('freilegen-wert');
 const ruhig = el<HTMLInputElement>('ruhig');
 const erwPackHinweis = el<HTMLParagraphElement>('erw-pack-hinweis');
 const begruessung = el<HTMLDivElement>('begruessung');
 const begruessungText = el<HTMLParagraphElement>('begruessung-text');
 const begruessungChibi = el<HTMLImageElement>('begruessung-chibi');
 
-verweigern.min = String(Math.round(VERWEIGERN_MIN * 100));
-verweigern.max = String(Math.round(VERWEIGERN_MAX * 100));
-freilegen.min = String(FREILEGEN_MIN_MS / 1000);
-freilegen.max = String(FREILEGEN_MAX_MS / 1000);
+// F3 (E4d2): Verweigern und Freilegen als Stufen mit Namen, der Regler steht im Aufklapper "Exact value".
+const verweigernWahl = haengeStufenwahl(el('verweigern-ort'), 'verweigern-wahl', {
+  titel: VERWEIGERN_TEXTE.titel,
+  liste: STUFENLISTEN.verweigern,
+  exakt: VERWEIGERN_TEXTE.exakt,
+  hinweisFuer: () => VERWEIGERN_TEXTE.hinweis,
+  lies: (e) => e.quiz.verweigern,
+  schreibe: (alt, wert) => ({ quiz: { ...alt.quiz, verweigern: wert } }),
+});
+const freilegenWahl = haengeStufenwahl(el('freilegen-ort'), 'freilegen-wahl', {
+  titel: FREILEGEN_TEXTE.titel,
+  liste: STUFENLISTEN.freilegen,
+  exakt: FREILEGEN_TEXTE.exakt,
+  lies: (e) => e.quiz.freilegenMs,
+  schreibe: (alt, wert) => ({ quiz: { ...alt.quiz, freilegenMs: wert } }),
+});
 
 let gezeichneteListe = '';
 let ausnahmenListe: string[] = [];
@@ -106,12 +117,8 @@ function zeichneErwachsen(e: Einstellungen, erzwingen = false): void {
       if (host === fokusHost) weg.focus();
     }
   }
-  if (erzwingen || document.activeElement !== verweigern) verweigern.value = String(Math.round(e.quiz.verweigern * 100));
-  verweigernWert.textContent = `${Math.round(e.quiz.verweigern * 100)}%`;
-  verweigern.setAttribute('aria-valuetext', verweigernWert.textContent);
-  if (erzwingen || document.activeElement !== freilegen) freilegen.value = String(Math.round(e.quiz.freilegenMs / 1000));
-  freilegenWert.textContent = `${Math.round(e.quiz.freilegenMs / 1000)} s`;
-  freilegen.setAttribute('aria-valuetext', freilegenWert.textContent);
+  verweigernWahl.zeichne(e, erzwingen);
+  freilegenWahl.zeichne(e, erzwingen);
   ruhig.checked = e.ruhig;
 }
 
@@ -146,22 +153,6 @@ seiteForm.addEventListener('submit', (ereignis) => {
   );
 });
 
-verweigern.addEventListener('input', () => {
-  verweigernWert.textContent = `${verweigern.value}%`;
-  verweigern.setAttribute('aria-valuetext', verweigernWert.textContent);
-});
-verweigern.addEventListener('change', () => {
-  const wert = Number(verweigern.value) / 100;
-  void speichere((alt) => ({ quiz: { ...alt.quiz, verweigern: wert } }), (e) => zeichneErwachsen(e, true), false);
-});
-freilegen.addEventListener('input', () => {
-  freilegenWert.textContent = `${freilegen.value} s`;
-  freilegen.setAttribute('aria-valuetext', freilegenWert.textContent);
-});
-freilegen.addEventListener('change', () => {
-  const wert = Number(freilegen.value) * 1000;
-  void speichere((alt) => ({ quiz: { ...alt.quiz, freilegenMs: wert } }), (e) => zeichneErwachsen(e, true), false);
-});
 ruhig.addEventListener('change', () => {
   const wert = ruhig.checked;
   void speichere(() => ({ ruhig: wert }), (e) => zeichneErwachsen(e, true), false);

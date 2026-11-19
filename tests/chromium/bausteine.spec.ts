@@ -172,6 +172,37 @@ test('Schalter mit Finger: Antippen schaltet', async () => {
   }
 });
 
+test('Wahlkarte (E4d2 G4): setzeGesperrt sperrt genau diese Karten (kein Klick, keine Eingabe, keine Leertaste, Pfeile ueberspringen sie, Tab-Halt meidet sie), setze zeigt sie trotzdem, setzeGesperrt([]) gibt alle frei', async () => {
+  const { context, seite } = await oeffne(1280, false);
+  try {
+    const g = seite.locator('[data-fall="wahlkarten"] [role="radiogroup"]');
+    const r = g.locator('[role="radio"]');
+    await b(seite, "b.wahlkarten.setzeGesperrt(['zwei'])");
+    expect(await r.evaluateAll((a) => a.map((e) => (e as HTMLButtonElement).disabled))).toEqual([false, true, false]);
+    // die gesperrte Karte ist als gespeicherter Stand markiert (gewaehlt: 'zwei'), der Tab-Halt liegt nicht auf ihr
+    await expect(r.nth(1)).toHaveAttribute('aria-checked', 'true');
+    expect(await r.evaluateAll((a) => a.map((e) => (e as HTMLElement).tabIndex))).toEqual([0, -1, -1]);
+    // kein Klick, keine Eingabe, keine Leertaste waehlt sie, die Pfeile ueberspringen sie
+    await r.nth(1).click({ force: true }).catch(() => undefined);
+    await r.nth(0).focus();
+    await seite.keyboard.press('ArrowRight');
+    await expect(r.nth(2)).toBeFocused();
+    await seite.keyboard.press('ArrowLeft');
+    await expect(r.nth(0)).toBeFocused();
+    await seite.keyboard.press('Enter');
+    await seite.keyboard.press('Space');
+    expect((await log(seite)).filter((l) => l.von === 'wahlkarten').map((l) => l.wert)).toEqual(['eins', 'eins']); // Eingabe und Leertaste: nur die freie Karte meldet, nie 'zwei'
+    // setze() darf eine gesperrte Karte als gespeicherten Stand zeigen
+    await b(seite, "b.wahlkarten.setze('zwei')");
+    await expect(r.nth(1)).toHaveAttribute('aria-checked', 'true');
+    // alle frei
+    await b(seite, 'b.wahlkarten.setzeGesperrt([])');
+    expect(await r.evaluateAll((a) => a.map((e) => (e as HTMLButtonElement).disabled))).toEqual([false, false, false]);
+  } finally {
+    await context.close();
+  }
+});
+
 test('Stufenwahl: Pfeiltasten, Pos1 und Ende bewegen NUR den Fokus, gewaehlt wird mit Leertaste, Eingabe oder Klick, nur ein Tab-Halt', async () => {
   const { context, seite } = await oeffne(1280, false);
   try {

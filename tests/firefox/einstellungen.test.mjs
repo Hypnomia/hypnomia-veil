@@ -139,7 +139,19 @@ const anzeige = (css) => driver.executeScript(`const e = document.querySelector(
 // Echte WebDriver-Klicks und Tasten (Mausklick aufs Label, Pfeiltasten am Regler), kein element.click() im Seitenskript.
 const wdKlick = async (by) => (await driver.findElement(by)).click();
 const labelMit = (bereich, text) => By.xpath(`//*[@id='${bereich}']//label[contains(., '${text}')]`);
-const zone = (text) => wdKlick(labelMit('zonen', text));
+// E4d2: die Zonen sind Chips im Aufklapper "Pick zones one by one"; Stufen und Karten sind Radios der Bausteine (Wurzel mit fester id).
+const ZONE_KEY = { Eyes: 'eyes', Mouth: 'mouth', Belly: 'belly', Breasts: 'breast', Face: 'face' };
+const oeffneAuf = async (wahl) => {
+  const kopf = await driver.findElement(By.css(`#${wahl} .v-aufklapper .v-auf-kopf`));
+  if ((await kopf.getAttribute('aria-expanded')) !== 'true') await kopf.click();
+};
+const zone = async (text) => {
+  await oeffneAuf('zonen-wahl');
+  await wdKlick(By.css(`#zonen-wahl .v-chip[data-zone="${ZONE_KEY[text]}"]`));
+};
+const stufe = (wahl, name) => wdKlick(By.xpath(`//*[@id='${wahl}']//*[@role='radio'][normalize-space(.)='${name}' or ./strong[normalize-space(.)='${name}']]`));
+const markiert = (wahl) => driver.executeScript(`const k = document.querySelector('#' + arguments[0] + ' [role=radio][aria-checked=true]'); return k ? k.textContent : null`, wahl);
+const REGLER = (wahl) => `#${wahl} input[type=range]`;
 // Preset-Karten: Klick aufs Label der Karte mit diesem Namen
 const stilWahl = (text) => wdKlick(By.xpath(`//div[@id='preset-karten']//label[.//strong[normalize-space(.)='${text}']]`));
 const strictKlick = () => wdKlick(By.xpath(`//label[.//input[@id='strict']]`));
@@ -204,8 +216,9 @@ try {
   pruefe(JSON.stringify(reihenfolge) === JSON.stringify(soll), `Abschnitte in der Reihenfolge des Auftrags (${reihenfolge.length})`);
   const links = await driver.executeScript(`return [...document.querySelectorAll('#sprung [role=tab]')].every((t) => !!document.getElementById(t.getAttribute('aria-controls'))) ? document.querySelectorAll('#sprung [role=tab]').length : -1`);
   pruefe(links === 7, `Reiterleiste: ${links} Reiter, alle mit Panel`);
-  pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-zone]').length`)) === 10, '10 Zonen aufgebaut');
-  pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen input[data-bedeckt]').length`)) === 6, '6 "even when clothed"');
+  pruefe((await driver.executeScript(`return document.querySelectorAll('#zonen-wahl .v-chip').length`)) === 10, '10 Zonen als Chips aufgebaut');
+  pruefe((await driver.executeScript(`return document.querySelectorAll('#kleidung-frage [role=radio]').length`)) === 2, 'Kleidungsfrage mit zwei Antworten');
+  pruefe((await driver.executeScript(`return ['#zonen', '[data-bedeckt]', 'input[data-zone]', '#stimmung', '#verweigern', '#freilegen', '#erw-an', '#ton-lautstaerke', 'input[name=stufe]'].filter((s) => document.querySelector(s)).length`)) === 0, 'F7: kein alter Schalter und kein altes Kaestchen im Dokument');
 
   // ---- Pause ----
   await klick('#pause');
@@ -216,32 +229,39 @@ try {
   await bis('pause aus', async () => (await einst()).pause === false);
   pruefe(true, 'Pause-Knopf schreibt pause true und wieder false');
 
-  // ---- Stimmung ----
-  await tasten('#stimmung', Key.ARROW_RIGHT, 8);
+  // ---- Stimmung (E4d2: Stufen mit Namen, Regler im Aufklapper "Exact value") ----
+  await stufe('stimmung-wahl', 'Relaxed');
+  await bis('schwelle 0.22 (Stufe)', async () => Math.abs((await einst()).schwelle - 0.22) < 1e-6);
+  await stufe('stimmung-wahl', 'Suspicious');
+  await bis('schwelle 0.15 (Stufe)', async () => Math.abs((await einst()).schwelle - 0.15) < 1e-6);
+  await stufe('stimmung-wahl', 'Very suspicious');
+  await bis('schwelle 0.10 (Stufe)', async () => Math.abs((await einst()).schwelle - 0.1) < 1e-6);
+  await oeffneAuf('stimmung-wahl');
+  await tasten(REGLER('stimmung-wahl'), Key.ARROW_RIGHT, 8);
   await bis('schwelle 0.18', async () => Math.abs((await einst()).schwelle - 0.18) < 1e-6);
-  pruefe((await text('#stimmung-wert')) === stimmungsWort(0.18), 'Stimmung 0.18 (8 Pfeiltasten) gespeichert, als Wort angezeigt');
-  await tasten('#stimmung', Key.END, 1);
+  pruefe((await text('#stimmung-wert')) === stimmungsWort(0.18), 'Stimmung 0.18 (8 Pfeiltasten am Regler) gespeichert, als Wort angezeigt');
+  await tasten(REGLER('stimmung-wahl'), Key.END, 1);
   await bis('schwelle 0.25', async () => Math.abs((await einst()).schwelle - 0.25) < 1e-6);
-  await tasten('#stimmung', Key.ARROW_RIGHT, 1);
+  await tasten(REGLER('stimmung-wahl'), Key.ARROW_RIGHT, 1);
   await warte(300);
   pruefe(Math.abs((await einst()).schwelle - 0.25) < 1e-6, 'Stimmung: Ende setzt 0.25, weiter nach rechts bleibt bei 0.25');
-  await tasten('#stimmung', Key.HOME, 1);
+  await tasten(REGLER('stimmung-wahl'), Key.HOME, 1);
   await bis('schwelle 0.10', async () => Math.abs((await einst()).schwelle - 0.1) < 1e-6);
-  await tasten('#stimmung', Key.ARROW_RIGHT, 8);
+  await tasten(REGLER('stimmung-wahl'), Key.ARROW_RIGHT, 8);
   await bis('schwelle 0.18 (2)', async () => Math.abs((await einst()).schwelle - 0.18) < 1e-6);
 
-  // ---- Zonen und bedeckt ----
+  // ---- Zonen und Kleidungsfrage (E4d2: Chips, eine Antwort fuer alle sechs bedeckbaren Zonen) ----
   await zone('Eyes');
   await bis('eyes an', async () => (await einst()).zonen?.eyes?.an === true);
-  pruefe(await gesperrt('#zonen input[data-bedeckt="belly"]'), 'bedeckt-Feld Bauch gesperrt, solange die Zone aus ist');
   await zone('Belly');
   await bis('belly an', async () => (await einst()).zonen?.belly?.an === true);
-  pruefe(!(await gesperrt('#zonen input[data-bedeckt="belly"]')), 'bedeckt-Feld Bauch frei, sobald die Zone an ist');
-  await wdKlick(By.css('#zonen input[data-bedeckt="belly"]'));
+  pruefe((await einst()).zonen?.belly?.bedeckt === false, 'Chip Bauch schaltet nur die Zone ein, bedeckt bleibt aus');
+  await stufe('kleidung-frage', 'Under clothes too');
   await bis('belly bedeckt', async () => (await einst()).zonen?.belly?.bedeckt === true);
   await zone('Breasts');
   await bis('breast aus', async () => (await einst()).zonen?.breast?.an === false);
-  pruefe(true, 'Zonen: Augen an, Bauch an und bedeckt, Brueste aus gespeichert');
+  pruefe((await driver.executeScript(`return document.querySelectorAll('[data-bedeckt]').length`)) === 0, 'Keine Kaestchen "even when clothed" mehr');
+  pruefe(true, 'Zonen: Augen an, Bauch an, "Under clothes too", Brueste aus gespeichert');
 
   // ---- Stil ----
   await stilWahl('Blur');
@@ -309,7 +329,7 @@ try {
   // Jede Aenderung einzeln im Speicher abwarten (das Popup liest seine Felder erst beim Schreiben, schnelle Folgeklicks wuerden sich ueberholen).
   await klick('#pause');
   await bis('pause an (2)', async () => (await einst()).pause === true);
-  await tasten('#stimmung', Key.ARROW_RIGHT, 4);
+  await stufe('stimmung-wahl', 'Relaxed');
   await bis('schwelle 0.22', async () => Math.abs((await einst()).schwelle - 0.22) < 1e-6);
   await strictKlick();
   await bis('strict an (2)', async () => (await einst()).strict === true);
@@ -329,14 +349,22 @@ try {
   await bis('Seite zeigt Aenderungen', async () => (await text('#pause')) === 'Pause Mia' && (await text('#stimmung-wert')) === stimmungsWort(0.12) && !(await geprueft('#strict')));
   pruefe(true, 'Popup aendert, die Einstellungsseite zeigt Pause aus, Stimmung 0.12 und Strict aus');
 
-  // ---- Adult sites: drei Schalter ----
+  // ---- Adult sites: Gruppe Off, Tease, Hot, Explicit und zwei Schalter ----
   await entferne('pack');
   await driver.switchTo().window(optionenSeite);
   const erwSchalter = (feld) => wdKlick(By.xpath(`//label[.//input[@id='${feld}']]`));
   const erwSpeicher = async () => (await einst()).erwachsen ?? {};
   pruefe((await text('#erw-pack-hinweis')).includes('they’ll be ready'), 'Adult sites ohne Pack: Hinweis "ready"');
-  pruefe((await sichtbar('#erw-an')) || (await sichtbar('#erw-an + .regler')), 'Adult-site mode auch ohne Pack sichtbar');
-  pruefe((await geprueft('#erw-an')) === true && (await geprueft('#erw-ersatz')) === false && (await geprueft('#erw-inhalt')) === true, 'Standard: Mode an, Replacement aus, Content an');
+  pruefe(await sichtbar('#erw-stufe-wahl'), 'Gruppe der Erwachsenenseiten auch ohne Pack sichtbar');
+  pruefe((await markiert('erw-stufe-wahl')).includes('On') && (await geprueft('#erw-ersatz')) === false && (await geprueft('#erw-inhalt')) === true, 'Standard: On markiert (an), Replacement aus, Content an');
+  pruefe((await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].map((k) => k.disabled).join()`)) === 'false,false,true,true,true', 'Ohne Pack (G1): Off und On waehlbar, die drei Stufen gesperrt');
+  // ohne Pack: Off sperrt Full replacement, On gibt es frei, die Stufe bleibt stehen (Absicht von HEAD)
+  await stufe('erw-stufe-wahl', 'Off');
+  await bis('mode aus (ohne Pack)', async () => (await erwSpeicher()).an === false);
+  pruefe((await erwSpeicher()).stufe === 'hot' && (await gesperrt('#erw-ersatz')), 'Ohne Pack: Off schreibt nur an, die Stufe bleibt, Replacement gesperrt');
+  await stufe('erw-stufe-wahl', 'On');
+  await bis('mode an (ohne Pack)', async () => (await erwSpeicher()).an === true);
+  pruefe((await erwSpeicher()).stufe === 'hot' && !(await gesperrt('#erw-ersatz')), 'Ohne Pack: On schreibt nur an, die Stufe bleibt, Replacement frei');
   await erwSchalter('erw-ersatz');
   await bis('ersatz an', async () => (await erwSpeicher()).komplettErsatz === true);
   await erwSchalter('erw-inhalt');
@@ -346,13 +374,15 @@ try {
   await bis('Popup erw gezeichnet', async () => (await geprueft('#erw-ersatz')) === true);
   pruefe((await geprueft('#erw-inhalt')) === false, 'Popup zeigt Replacement an und Content aus wie die Seite');
   await driver.switchTo().window(optionenSeite);
-  await erwSchalter('erw-an');
+  await bis('Stufen frei', async () => (await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].every((k) => !k.disabled)`)) === true);
+  await stufe('erw-stufe-wahl', 'Off');
   await bis('mode aus', async () => (await erwSpeicher()).an === false);
+  pruefe((await erwSpeicher()).stufe === 'hot', 'Off laesst die Stufe stehen');
   await bis('ersatz gesperrt', async () => await gesperrt('#erw-ersatz'));
-  await erwSchalter('erw-an');
-  await bis('mode an', async () => (await erwSpeicher()).an === true);
+  await stufe('erw-stufe-wahl', 'Tease');
+  await bis('mode an', async () => (await erwSpeicher()).an === true && (await erwSpeicher()).stufe === 'tease');
   await bis('ersatz frei', async () => !(await gesperrt('#erw-ersatz')));
-  pruefe(true, 'Full replacement nur waehlbar, solange Adult-site mode an ist');
+  pruefe(true, 'Full replacement nur waehlbar, solange die Gruppe nicht auf Off steht');
   await driver.switchTo().window(popup2);
   await warte(700);
   await wdKlick(By.xpath(`//label[.//input[@id='erw-inhalt']]`));

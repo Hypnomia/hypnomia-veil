@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stimmungsWort } from '../../src/oberflaeche/gemeinsam';
-import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN, stufenKnopf, oeffneAuf, zonenChip, markiert } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -40,8 +40,8 @@ const taste = async (seite: Page, css: string, taste: string, n = 1) => {
   await seite.locator(css).focus();
   for (let i = 0; i < n; i++) await seite.keyboard.press(taste);
 };
-// Echte Mausklicks auf die sichtbare Beschriftung (Label) des Schalters, nicht auf das versteckte Eingabefeld.
-const zonenLabel = (seite: Page, name: string) => seite.locator('#zonen label.schalter').filter({ hasText: name });
+// E4d2: die Zonen sind Chips im Aufklapper "Pick zones one by one" (Baustein Zonenwahl), Echte Klicks.
+const zonenLabel = (seite: Page, name: string) => zonenChip(seite, name.toLowerCase().replace('breasts', 'breast'));
 // Preset-Karten (Zensur-Presets): Klick aufs Label der Karte mit diesem Namen
 const stilLabel = (seite: Page, name: string) => seite.locator('#preset-karten label.preset-karte').filter({ has: seite.locator('strong', { hasText: new RegExp(`^${name}$`) }) });
 
@@ -93,10 +93,13 @@ test('Aufbau: Titel, Status, Sprungleiste und alle Abschnitte in der Reihenfolge
     expect(reiter.map((r) => r.name)).toEqual(REITER_NAMEN);
     expect(reiter.filter((r) => !r.da).map((r) => r.name)).toEqual([]);
     // Bestehende Abschnitte behalten ihre ids.
-    for (const sel of ['#kon-titel', '#erw-titel', '#seite-feld', '#verweigern', '#freilegen', '#ruhig', '#datei', '#pack-status']) await expect(seite.locator(sel)).toHaveCount(1);
-    // Alle Zonen aufgebaut (10), sechs davon mit "even when clothed".
-    await expect(seite.locator('#zonen input[data-zone]')).toHaveCount(10);
-    await expect(seite.locator('#zonen input[data-bedeckt]')).toHaveCount(6);
+    for (const sel of ['#kon-titel', '#erw-titel', '#seite-feld', '#verweigern-wahl', '#freilegen-wahl', '#stimmung-wahl', '#zonen-wahl', '#kleidung-frage', '#erw-stufe-wahl', '#ruhig', '#datei', '#pack-status']) await expect(seite.locator(sel)).toHaveCount(1);
+    // E4d2 (F1, F7): alle zehn Zonen als Chips aufgebaut, die zwei Antworten der Kleidungsfrage; die zehn Schalter, sechs Kaestchen und die alten Regler sind weg.
+    await expect(seite.locator('#zonen-wahl .v-chip')).toHaveCount(10);
+    await expect(seite.locator('#kleidung-frage [role=radio]')).toHaveCount(2);
+    for (const alt of ['#zonen', '[data-bedeckt]', '[data-zone]:not(.v-chip)', '#stimmung', '#verweigern', '#freilegen', '#erw-an', '#ton-lautstaerke', 'input[name=stufe]']) {
+      await expect(seite.locator(alt), `alt ${alt}`).toHaveCount(0);
+    }
   } finally {
     await seite.close();
   }
@@ -114,33 +117,40 @@ test('Pause, Stimmung, Zonen, bedeckt, Stil und Strict: jeder Klick landet im Sp
     await expect.poll(async () => (await einst(seite)).pause).toBe(false);
     await expect(seite.locator('#status')).toContainText('On watch');
 
-    // Stimmung per Tastatur: 8 Pfeil-rechts-Schritte von 0.10 auf 0.18, Ende setzt den Hoechstwert 0.25, Pos1 den Tiefstwert 0.10
-    await taste(seite, '#stimmung', 'ArrowRight', 8);
+    // Stimmung (E4d2, F3): die Stufen mit Namen schreiben ihren Wert, der Regler im Aufklapper "Exact value" bleibt per Tastatur bedienbar:
+    // 8 Pfeil-rechts-Schritte von 0.10 auf 0.18, Ende setzt den Hoechstwert 0.25, Pos1 den Tiefstwert 0.10
+    await stufenKnopf(seite, 'stimmung-wahl', 'Relaxed').click();
+    await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.22, 5);
+    await stufenKnopf(seite, 'stimmung-wahl', 'Suspicious').click();
+    await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.15, 5);
+    await stufenKnopf(seite, 'stimmung-wahl', 'Very suspicious').click();
+    await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.1, 5);
+    const stimmungRegler = await oeffneAuf(seite, 'stimmung-wahl');
+    await taste(seite, '#stimmung-wahl input[type=range]', 'ArrowRight', 8);
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.18, 5);
     await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.18));
-    await taste(seite, '#stimmung', 'End');
+    await taste(seite, '#stimmung-wahl input[type=range]', 'End');
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.25, 5);
-    await taste(seite, '#stimmung', 'ArrowRight');
+    await taste(seite, '#stimmung-wahl input[type=range]', 'ArrowRight');
     await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.25));
-    await taste(seite, '#stimmung', 'Home');
+    await taste(seite, '#stimmung-wahl input[type=range]', 'Home');
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.1, 5);
-    await taste(seite, '#stimmung', 'ArrowRight', 8);
+    await taste(seite, '#stimmung-wahl input[type=range]', 'ArrowRight', 8);
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.18, 5);
+    void stimmungRegler;
 
-    // Zonen mit echten Klicks aufs Label: Augen an, Bauch an, dann "even when clothed" fuer den Bauch; Brueste aus
-    await zonenLabel(seite, 'Eyes').click();
+    // Zonen mit echten Klicks (Chips): Augen an, Bauch an, dann die Kleidungsfrage "Under clothes too" (gilt fuer alle sechs bedeckbaren Zonen); Brueste aus
+    await (await zonenLabel(seite, 'Eyes')).click();
     await expect.poll(async () => (await einst(seite)).zonen?.eyes?.an).toBe(true);
-    await expect(seite.locator('#zonen input[data-bedeckt="belly"]')).toBeDisabled();
-    await zonenLabel(seite, 'Belly').click();
+    await (await zonenLabel(seite, 'Belly')).click();
     await expect.poll(async () => (await einst(seite)).zonen?.belly?.an).toBe(true);
-    await expect(seite.locator('#zonen input[data-bedeckt="belly"]')).toBeEnabled();
-    await seite.getByLabel('Belly: even when clothed').click();
+    expect((await einst(seite)).zonen?.belly?.bedeckt).toBe(false);
+    await stufenKnopf(seite, 'kleidung-frage', 'Under clothes too').click();
     await expect.poll(async () => (await einst(seite)).zonen?.belly?.bedeckt).toBe(true);
-    await zonenLabel(seite, 'Breasts').click();
+    await (await zonenLabel(seite, 'Breasts')).click();
     await expect.poll(async () => (await einst(seite)).zonen?.breast?.an).toBe(false);
-    // Jedes "even when clothed"-Kaestchen hat einen eigenen Namen
-    const namen = await seite.locator('#zonen input[data-bedeckt]').evaluateAll((l) => l.map((e) => e.getAttribute('aria-label')));
-    expect(new Set(namen).size).toBe(6);
+    // Eine Wahl je Zone gibt es nicht mehr (Entscheidung 245 e): keine Kaestchen im Dokument
+    await expect(seite.locator('[data-bedeckt]')).toHaveCount(0);
 
     // Preset: Blur gewaehlt; die Presets mit meinem Gesicht sind ohne Pack gesperrt, mit Hinweis
     await stilLabel(seite, 'Blur').click();
@@ -235,11 +245,11 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
     // Aenderung auf der Einstellungsseite (echte Klicks und Tasten), Popup folgt; jede Aenderung einzeln im Speicher abwarten
     await seite.locator('#pause').click();
     await expect.poll(async () => (await einst(seite)).pause).toBe(true);
-    await taste(seite, '#stimmung', 'ArrowRight', 12);
+    await stufenKnopf(seite, 'stimmung-wahl', 'Relaxed').click();
     await expect.poll(async () => (await einst(seite)).schwelle).toBeCloseTo(0.22, 5);
     await seite.locator('label.schalter:has(#strict)').click();
     await expect.poll(async () => (await einst(seite)).strict).toBe(true);
-    await zonenLabel(seite, 'Mouth').click();
+    await (await zonenLabel(seite, 'Mouth')).click();
     await expect.poll(async () => (await einst(seite)).zonen?.mouth?.an).toBe(true);
     await stilLabel(seite, 'Blur').click();
     await expect.poll(async () => (await einst(seite)).preset).toBe('blur');
@@ -260,7 +270,7 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
     await expect(seite.locator('#pause')).toHaveText('Pause Mia');
     await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(0.12));
     await expect(seite.locator('#strict')).not.toBeChecked();
-    await expect(seite.locator('#zonen input[data-zone="mouth"]')).not.toBeChecked();
+    await expect(await zonenLabel(seite, 'Mouth')).toHaveAttribute('aria-pressed', 'false');
     const e = await einst(seite);
     expect(e.schwelle).toBeCloseTo(0.12, 5);
     console.log(`einstellungen: Popup und Seite gleich, schwelle ${e.schwelle}`);
@@ -270,16 +280,21 @@ test('Popup und Einstellungsseite zeigen nach einer Aenderung denselben Stand', 
   }
 });
 
-test('Adult sites: drei Schalter auch ohne Pack, Full replacement nur mit Adult-site mode, Popup zeigt denselben Stand', async () => {
+test('Adult sites: Gruppe auch ohne Pack einstellbar (Off und On), mit Pack Off, Tease, Hot, Explicit, Full replacement nur ausserhalb von Off, Popup zeigt denselben Stand', async () => {
   const seite = await frischeSeite();
   const popup = mitReitern(await context.newPage());
   try {
     const sw = (feld: string) => seite.locator(`label.schalter:has(#${feld})`);
     await reiter(seite, 'Adult sites');
-    // Ohne Pack: alle drei sichtbar, Hinweis "ready", Standardwerte an, aus, an
+    // Ohne Pack (wie HEAD: `an` ist auch ohne Pack schaltbar): die Gruppe und die zwei Schalter sichtbar, Hinweis "ready", Standard: On markiert (an), Off und On
+    // waehlbar, die drei Stufen gesperrt und nie markiert
     await expect(seite.locator('#erw-pack-hinweis')).toContainText('they’ll be ready');
-    for (const f of ['erw-an', 'erw-ersatz', 'erw-inhalt']) await expect(sw(f)).toBeVisible();
-    await expect(seite.locator('#erw-an')).toBeChecked();
+    for (const f of ['erw-ersatz', 'erw-inhalt']) await expect(sw(f)).toBeVisible();
+    await expect(seite.locator('#erw-stufe-wahl')).toBeVisible();
+    expect(await markiert(seite, 'erw-stufe-wahl')).toContain('On');
+    for (const n of ['Tease', 'Hot', 'Explicit']) await expect(stufenKnopf(seite, 'erw-stufe-wahl', n)).toBeDisabled();
+    for (const n of ['Off', 'On']) await expect(stufenKnopf(seite, 'erw-stufe-wahl', n)).toBeEnabled();
+    await expect(seite.locator('#erw-stufe-wahl .v-hinweis')).toContainText('unlocks with the Mia Pack');
     await expect(seite.locator('#erw-ersatz')).not.toBeChecked();
     await expect(seite.locator('#erw-inhalt')).toBeChecked();
     await expect(seite.locator('#erw-ersatz')).toBeEnabled();
@@ -288,17 +303,30 @@ test('Adult sites: drei Schalter auch ohne Pack, Full replacement nur mit Adult-
     await expect.poll(async () => (await einst(seite)).erwachsen?.komplettErsatz).toBe(true);
     await sw('erw-inhalt').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.erkennenAmInhalt).toBe(false);
+    // Ohne Pack: Off sperrt Full replacement, On gibt es wieder frei; die gespeicherte Stufe bleibt in beiden Faellen stehen (G1, Absicht von HEAD)
+    await stufenKnopf(seite, 'erw-stufe-wahl', 'Off').click();
+    await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(false);
+    expect((await einst(seite)).erwachsen?.stufe).toBe('hot');
+    await expect(seite.locator('#erw-ersatz')).toBeDisabled();
+    await stufenKnopf(seite, 'erw-stufe-wahl', 'On').click();
+    await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(true);
+    expect((await einst(seite)).erwachsen?.stufe).toBe('hot');
+    await expect(seite.locator('#erw-ersatz')).toBeEnabled();
     // Popup mit Pack zeigt denselben Stand
     await schreibe(seite, { pack: packMit(['erwachsen:vorschau', 'erwachsen:ersatz']) });
     await popup.goto(popupUrl());
     await expect(popup.locator('#erw-ersatz')).toBeChecked();
     await expect(popup.locator('#erw-inhalt')).not.toBeChecked();
-    await sw('erw-an').click();
+    // Mit Pack sind die Stufen waehlbar. Off schreibt nur `an: false`, die Stufe bleibt; eine Stufe schreibt `an: true` und die Stufe (F4).
+    await expect(stufenKnopf(seite, 'erw-stufe-wahl', 'Tease')).toBeEnabled();
+    await stufenKnopf(seite, 'erw-stufe-wahl', 'Off').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(false);
+    expect((await einst(seite)).erwachsen?.stufe).toBe('hot');
     await expect(seite.locator('#erw-ersatz')).toBeDisabled();
     await expect(popup.locator('#erw-an')).not.toBeChecked();
-    await sw('erw-an').click();
+    await stufenKnopf(seite, 'erw-stufe-wahl', 'Tease').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(true);
+    expect((await einst(seite)).erwachsen?.stufe).toBe('tease');
     await expect(seite.locator('#erw-ersatz')).toBeEnabled();
     // Aenderung im Popup, Seite folgt
     await popup.locator('label.schalter:has(#erw-inhalt)').click();

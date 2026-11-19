@@ -1,19 +1,7 @@
 // Einstellungsseite, Grundeinstellungen (Session 11, Auftrag S, Entscheidung 133): Status und Pause, Stimmung, Zonen, Stil und Strict.
 // Dieselben Einstellungen wie im Popup, derselbe Speicher (src/einstellungen.ts); beide Seiten zeigen nach einer Aenderung denselben Stand.
 // Texte nur per textContent.
-import {
-  BEDECKBARE_ZONEN,
-  SCHWELLE_MAX,
-  SCHWELLE_MIN,
-  STANDARD,
-  ZONEN,
-  beiEinstellungsAenderung,
-  ladeEinstellungen,
-  waehlePreset,
-  type Einstellungen,
-  type VideoModus,
-  type Zone,
-} from '../../src/einstellungen';
+import { STANDARD, beiEinstellungsAenderung, ladeEinstellungen, waehlePreset, type Einstellungen, type VideoModus } from '../../src/einstellungen';
 import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_WORT_OHNE_PACK, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
@@ -23,20 +11,10 @@ import { presetDef } from '../../src/preset-def';
 import type { PresetDef } from '../../src/presets';
 import { ladeThemen } from '../../src/pack/woerter';
 import { speichere } from './grund-speichern';
+import { haengeStufenwahl } from './bedienung-stufen';
+import { zeichneZonenBedienung, zonenwahlHandle } from './bedienung-zonen';
+import { STIMMUNG_STUFEN, STIMMUNG_TEXTE } from './bedienung-texte';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, kurzAusRoh, type PackKurz } from '../../src/pack/vertrag';
-
-const ZONEN_NAMEN: Record<Zone, string> = {
-  eyes: 'Eyes',
-  mouth: 'Mouth',
-  face: 'Face',
-  head: 'Head',
-  breast: 'Breasts',
-  genitals: 'Genitals',
-  buttocks: 'Buttocks',
-  belly: 'Belly',
-  feet: 'Feet',
-  armpits: 'Armpits',
-};
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -48,10 +26,8 @@ const statusZeile = el<HTMLParagraphElement>('status');
 const pauseKnopf = el<HTMLButtonElement>('pause');
 // Fund 5 und 29: derselbe Knopf in der klebenden Leiste, gleicher Weg, gleiche Woerter.
 const pauseLeiste = el<HTMLButtonElement>('pause-leiste');
-const stimmung = el<HTMLInputElement>('stimmung');
 const stimmungWert = el<HTMLOutputElement>('stimmung-wert');
 const strict = el<HTMLInputElement>('strict');
-const zonenListe = el<HTMLUListElement>('zonen');
 const videoSchalter = el<HTMLInputElement>('video-zonen');
 const augenbalkenSchalter = el<HTMLInputElement>('augenbalken');
 const stilHinweis = el<HTMLParagraphElement>('stil-hinweis');
@@ -88,12 +64,25 @@ let aktuell: Einstellungen | null = null;
 // ---------- Anzeige ----------
 
 // Fund 6: ein Wort statt der rohen Schwelle, auch als aria-valuetext (die Zahl bleibt im Wert des Reglers).
-// Phase 9, Fund 28: bei Mias Standard steht "(my default)" dabei, damit der linke Rand der Skala nicht wie "ganz aufgedreht" wirkt.
+// Phase 9, Fund 28: bei Mias Standard steht "(my default)" dabei, damit der linke Rand der Skala nicht wie "ganz aufgedreht" wirkt. E4d2: nur bei genau dem
+// Standardwert, ein gespeicherter Zwischenwert wie 0.1049 ist nicht Mias Standard (die Anzeige sagt nie mehr, als gespeichert ist).
 function zeigeStimmung(schwelle: number): void {
-  const wort = stimmungsWort(schwelle) + (Math.round(schwelle * 100) === Math.round(STANDARD.schwelle * 100) ? ' (my default)' : '');
+  const wort = stimmungsWort(schwelle) + (Math.abs(schwelle - STANDARD.schwelle) < 1e-9 ? ' (my default)' : '');
   stimmungWert.textContent = wort;
-  stimmung.setAttribute('aria-valuetext', wort);
+  stimmungWahl.handle?.regler.setAttribute('aria-valuetext', STIMMUNG_TEXTE.exakt.formatiere(schwelle) + ', ' + wort);
 }
+
+// F3: Stimmung als Stufen mit Namen, der Regler steht im Aufklapper "Exact value"; das Wort im Kopf der Seite bleibt.
+const stimmungWahl = haengeStufenwahl(el('stimmung-ort'), 'stimmung-wahl', {
+  titel: STIMMUNG_TEXTE.titel,
+  erklaerung: STIMMUNG_TEXTE.erklaerung,
+  liste: STIMMUNG_STUFEN,
+  exakt: STIMMUNG_TEXTE.exakt,
+  hinweisFuer: () => STIMMUNG_TEXTE.hinweis,
+  lies: (e) => e.schwelle,
+  schreibe: (_alt, wert) => ({ schwelle: wert }),
+  nachAnzeige: (w) => zeigeStimmung(w),
+});
 
 function statusText(e: Einstellungen): string {
   return e.pause ? 'Paused on every page. I’ll be here when you want me back.' : 'On watch. I’ll keep the pages quiet for you.';
@@ -198,7 +187,7 @@ function zeichne(e: Einstellungen, erzwingen = false): void {
     knopf.setAttribute('aria-pressed', String(e.pause));
   }
 
-  if (erzwingen || document.activeElement !== stimmung) stimmung.value = e.schwelle.toFixed(2);
+  stimmungWahl.zeichne(e, erzwingen);
   zeigeStimmung(e.schwelle);
 
   zeichnePreset(e);
@@ -206,46 +195,9 @@ function zeichne(e: Einstellungen, erzwingen = false): void {
   augenbalkenSchalter.checked = e.augenbalken;
   strict.checked = e.strict;
 
-  for (const zone of ZONEN) {
-    const an = zonenListe.querySelector<HTMLInputElement>(`input[data-zone="${zone}"]`);
-    if (an) an.checked = e.zonen[zone].an;
-    const bedeckt = zonenListe.querySelector<HTMLInputElement>(`input[data-bedeckt="${zone}"]`);
-    if (bedeckt) {
-      bedeckt.checked = !!e.zonen[zone].bedeckt;
-      bedeckt.disabled = !e.zonen[zone].an;
-    }
-  }
-}
-
-// ---------- Zonen aufbauen ----------
-
-for (const zone of ZONEN) {
-  const zeile = document.createElement('li');
-  const name = document.createElement('label');
-  name.className = 'schalter';
-  const an = document.createElement('input');
-  an.type = 'checkbox';
-  an.setAttribute('role', 'switch');
-  an.dataset.zone = zone;
-  const regler = document.createElement('span');
-  regler.className = 'regler';
-  regler.setAttribute('aria-hidden', 'true');
-  const text = document.createElement('span');
-  text.textContent = ZONEN_NAMEN[zone];
-  name.append(an, regler, text);
-  zeile.append(name);
-  if (BEDECKBARE_ZONEN.has(zone)) {
-    const auch = document.createElement('label');
-    auch.className = 'auch';
-    auch.title = 'Also cover this when it is under clothing';
-    const bedeckt = document.createElement('input');
-    bedeckt.setAttribute('aria-label', `${ZONEN_NAMEN[zone]}: even when clothed`);
-    bedeckt.type = 'checkbox';
-    bedeckt.dataset.bedeckt = zone;
-    auch.append(bedeckt, document.createTextNode('even when clothed'));
-    zeile.append(auch);
-  }
-  zonenListe.append(zeile);
+  // F1 und F2: Zonenwahl und Kleidungsfrage lesen denselben gespeicherten Stand; nach jedem Zeichnen werden beide neu gezeichnet.
+  zeichneZonenBedienung(e, el('zonen-ort'), el('kleidung-ort'), zeichne);
+  zonenwahlHandle()?.gruppe.setAttribute('aria-describedby', 'zonen-hinweis');
 }
 
 // ---------- Aenderungen schreiben (immer auf den frisch geladenen Stand aufsetzen) ----------
@@ -267,18 +219,6 @@ function pausiere(): void {
 pauseKnopf.addEventListener('click', pausiere);
 pauseLeiste.addEventListener('click', pausiere);
 
-stimmung.min = String(SCHWELLE_MIN);
-stimmung.max = String(SCHWELLE_MAX);
-// Beim Ziehen nur die Zahl nachfuehren; gespeichert wird erst beim Loslassen (jede Speicherung setzt auf allen Seiten die Urteile zurueck).
-stimmung.addEventListener('input', () => {
-  zeigeStimmung(Number(stimmung.value));
-});
-// Wert beim Ereignis festhalten: ein Zeichnen aus einer fremden Aenderung darf ihn nicht mehr ueberschreiben, bevor geschrieben wird.
-stimmung.addEventListener('change', () => {
-  const wert = Number(stimmung.value);
-  void aendere(() => ({ schwelle: wert }));
-});
-
 videoSchalter.addEventListener('change', () => {
   const video: VideoModus = videoSchalter.checked ? 'zonen' : 'ganz';
   void aendere(() => ({ video }));
@@ -293,20 +233,6 @@ augenbalkenSchalter.addEventListener('change', () => {
 strict.addEventListener('change', () => {
   const an = strict.checked;
   void aendere(() => ({ strict: an }));
-});
-
-zonenListe.addEventListener('change', (ereignis) => {
-  const feld = ereignis.target as HTMLInputElement;
-  const zone = (feld.dataset.zone ?? feld.dataset.bedeckt) as Zone | undefined;
-  if (!zone) return;
-  const an = feld.checked;
-  const istAn = !!feld.dataset.zone;
-  void aendere((alt) => {
-    const z = { ...alt.zonen[zone] };
-    if (istAn) z.an = an;
-    else z.bedeckt = an;
-    return { zonen: { ...alt.zonen, [zone]: z } };
-  });
 });
 
 // ---------- Start ----------

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { FEHLER_SPEICHERN, datumLang, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 import { LEDGER_MEHR, LEDGER_MEHR_NEUER, stufeWert } from '../../src/ledger/texte.ts';
 import { TON_TEXTE } from '../../src/ton/texte.ts';
-import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer, oeffneAuf, stufeKlick, chipKlick, markierteKarte, reglerCss } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 200 s ueberschritten');
@@ -256,22 +256,25 @@ try {
   console.log(`firefox: Desktop Sprungleiste scrollWidth ${dk.sw}, clientWidth ${dk.cw}, Chips ausserhalb ${dk.aus}`);
   pruefe(dk.aus === 0 && dk.sw <= dk.cw, 'Fund 3: am Desktop liegt kein Reiter ausserhalb der Reiterleiste');
 
-  // ---- Fund 6: Stimmungswort ----
+  // ---- Fund 6: Stimmungswort (E4d2: Kopf der Seite und aria-valuetext des Reglers "Exact value", die Stufen tragen dieselben Woerter) ----
   const woerter = [];
-  await tasten('#stimmung', Key.HOME, 1);
+  await oeffneAuf(driver, 'stimmung-wahl');
+  await tasten(reglerCss('stimmung-wahl'), Key.HOME, 1);
   await bis('schwelle 0.10', async () => Math.abs((await einst()).schwelle - 0.1) < 1e-6);
   woerter.push(await text('#stimmung-wert'));
   let ziel = 10;
   for (const n of [3, 4, 4]) {
     ziel += n;
-    await tasten('#stimmung', Key.ARROW_RIGHT, n);
+    await tasten(reglerCss('stimmung-wahl'), Key.ARROW_RIGHT, n);
     await bis(`schwelle ${ziel}`, async () => Math.round((await einst()).schwelle * 100) === ziel);
     const w = await text('#stimmung-wert');
-    pruefe(w === stimmungsWort(ziel / 100) && (await driver.executeScript(`return document.getElementById('stimmung').getAttribute('aria-valuetext')`)) === w, `Fund 6: Schwelle 0.${ziel} als Wort "${w}", aria-valuetext gleich`);
+    pruefe(w === stimmungsWort(ziel / 100) && (await driver.executeScript(`return document.querySelector(arguments[0]).getAttribute('aria-valuetext')`, reglerCss('stimmung-wahl'))).includes(w), `Fund 6: Schwelle 0.${ziel} als Wort "${w}", aria-valuetext enthaelt es`);
     woerter.push(w);
   }
   console.log(`firefox: Stimmungswoerter ${woerter.join(', ')}`);
   pruefe(new Set(woerter).size === 4 && !/\d/.test(woerter.join('')), 'Fund 6: vier verschiedene Woerter, keine Ziffer');
+  const stufenNamen = await driver.executeScript(`return [...document.querySelectorAll('#stimmung-wahl button.v-stufe')].map((b) => b.textContent)`);
+  pruefe(JSON.stringify(stufenNamen) === JSON.stringify([0.1, 0.15, 0.22].map((w) => stimmungsWort(w))), `F3: die drei Stufen heissen wie die Woerter fuer ihre Werte (${stufenNamen})`);
 
   // ---- Fund 9 und 10: Kontraste ----
   const k = await driver.executeScript(`${kontrast}
@@ -282,6 +285,9 @@ try {
     const karte = cs(bahn.closest('section')).backgroundColor;
     return { knopf: kr(cs(knopf).color, cs(knopf).backgroundColor), bahn: kr(cs(bahn).backgroundColor, karte), feld: kr(cs(feld).borderTopColor, karte), auswahl: kr(cs(document.getElementById('kon-blitz')).borderTopColor, karte) };`);
   console.log(`firefox: Kontraste Knopftext ${k.knopf.toFixed(2)}, Bahn aus ${k.bahn.toFixed(2)}, Textfeldrand ${k.feld.toFixed(2)}, Auswahlrand ${k.auswahl.toFixed(2)}`);
+  // Die Seite steht oben: der grosse Pause-Knopf im Bild, die kleine Pause in der Leiste verborgen (die Bausteine weiter unten haben die Seite gescrollt).
+  await driver.executeScript('window.scrollTo(0, 0)');
+  await bis('kleine Pause verborgen', async () => (await driver.executeScript("return document.getElementById('pause-leiste').hidden")) === true);
   const k2 = await driver.executeScript(`${kontrast}
     const bg = getComputedStyle(document.body).backgroundColor;
     // E4d1: sichtbar ist nur ein Reiter, darum je Reiter sammeln (Klick auf den Reiter).
@@ -375,20 +381,28 @@ try {
     pruefe(await driver.executeScript(`const r = document.getElementById('speicher-meldung').getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight;`), `Fund 26: ${name}: Satz ohne Scrollen sichtbar`);
     await bis(`${name} zurueck`, zurueck);
   };
-  for (const [name, css] of [['Strict', '#strict'], ['Adult-site mode', '#erw-an'], ['Calm mode', '#ruhig'], ['My ads', '#kon-werbung'], ['Tab-Titel', '#kon-tabtitel'], ['Ton', '#ton-an']]) {
+  for (const [name, css] of [['Strict', '#strict'], ['Calm mode', '#ruhig'], ['My ads', '#kon-werbung'], ['Tab-Titel', '#kon-tabtitel'], ['Ton', '#ton-an']]) {
     const vor = await geprueft(css);
     await fehlerBei(name, () => geklickt(css), async () => (await geprueft(css)) === vor);
   }
   const vorBlitz = await wertVon('#kon-blitz');
   await fehlerBei('Blitz-Auswahl', () => waehle('#kon-blitz', vorBlitz === 'oft' ? 'selten' : 'oft'), async () => (await wertVon('#kon-blitz')) === vorBlitz);
-  for (const [name, css, key, n] of [['Lautstaerke', '#ton-lautstaerke', Key.ARROW_RIGHT, 1], ['Stimmung', '#stimmung', Key.ARROW_RIGHT, 2], ['Verweigern', '#verweigern', Key.END, 1], ['Freilegen', '#freilegen', Key.END, 1]]) {
+  // E4d2: Stufen und Gruppe der Erwachsenenseiten: nach dem Fehler zeigt jedes Element wieder den gespeicherten Stand
+  for (const [name, wahl, knopf] of [['Adult-site Gruppe (Off)', 'erw-stufe-wahl', 'Off'], ['Adult-site Gruppe (On)', 'erw-stufe-wahl', 'On'], ['Lautstaerke (Stufe)', 'lautstaerke-wahl', 'Loud'], ['Stimmung (Stufe)', 'stimmung-wahl', 'Relaxed'], ['Verweigern (Stufe)', 'verweigern-wahl', 'Often'], ['Freilegen (Stufe)', 'freilegen-wahl', 'Long'], ['Kleidungsfrage', 'kleidung-frage', 'Under clothes too']]) {
+    const vor = await markierteKarte(driver, wahl);
+    await fehlerBei(name, () => stufeKlick(driver, wahl, knopf), async () => (await markierteKarte(driver, wahl)) === vor);
+  }
+  for (const [name, wahl, key, n] of [['Lautstaerke', 'lautstaerke-wahl', Key.ARROW_RIGHT, 1], ['Stimmung', 'stimmung-wahl', Key.ARROW_RIGHT, 2], ['Verweigern', 'verweigern-wahl', Key.END, 1], ['Freilegen', 'freilegen-wahl', Key.END, 1]]) {
+    await oeffneAuf(driver, wahl);
+    const css = reglerCss(wahl);
     const vor = await wertVon(css);
     await fehlerBei(name, () => tasten(css, key, n), async () => (await wertVon(css)) === vor);
   }
-  pruefe((await text('#stimmung-wert')) === stimmungsWort(Number(await wertVon('#stimmung'))) + (Math.round(Number(await wertVon('#stimmung')) * 100) === 10 ? ' (my default)' : ''), 'Fund 26: Stimmungswort passt zum gespeicherten Regler');
+  await fehlerBei('Zone (Chip)', () => chipKlick(driver, 'eyes'), async () => (await driver.executeScript(`return document.querySelector('#zonen-wahl .v-chip[data-zone=eyes]').getAttribute('aria-pressed')`)) === 'false');
+  pruefe((await text('#stimmung-wert')) === stimmungsWort(Number(await wertVon(reglerCss('stimmung-wahl')))) + (Math.abs(Number(await wertVon(reglerCss('stimmung-wahl'))) - 0.1) < 1e-9 ? ' (my default)' : ''), 'Fund 26: Stimmungswort passt zum gespeicherten Regler');
   pruefe(((await einst()).strict ?? false) === false && ((await einst()).ruhig ?? false) === false, 'Fund 26: nichts gespeichert');
   pruefe((await wertVon('#seite-feld')) === 'getippt.example' && (await wertVon('#ausnahme-feld')) === 'auch-getippt.example', 'Fund 26: getippter Text in unbeteiligten Feldern bleibt');
-  pruefe(true, 'Fund 26: 12 Elemente mit Speicherfehler, je Satz gesehen');
+  pruefe(true, 'Fund 26: Schalter, Stufen, Regler, Kleidungsfrage und Zone mit Speicherfehler, je Satz gesehen');
   await kaputt(false);
   await strictKlick();
   await bis('strict gespeichert', async () => (await einst()).strict === true);
@@ -412,7 +426,7 @@ try {
       for (const t of d.querySelectorAll('[role=tab]')) {
         t.click();
         breite = Math.max(breite, d.documentElement.scrollWidth);
-        const je = { chips: h('#sprung [role=tab]'), ausnahme: h('#ausnahmen-liste button'), seiten: h('#seiten-liste button'), zeit: h('#kon-zeiten .zeit-weg'), bedeckt: h('.auch'), tage: h('.zeit-tage label'), schalter: h('label.schalter'), knoepfe: h('button.klein') };
+        const je = { chips: h('#sprung [role=tab]'), ausnahme: h('#ausnahmen-liste button'), seiten: h('#seiten-liste button'), zeit: h('#kon-zeiten .zeit-weg'), bausteine: h('.v-stufe, .v-wahl-karte, .v-chip, .v-frage, .v-auf-kopf'), tage: h('.zeit-tage label'), schalter: h('label.schalter'), knoepfe: h('button.klein') };
         for (const [k, v] of Object.entries(je)) { const alt = hoehen[k] || { n: 0, min: 9999 }; hoehen[k] = { n: alt.n + v.n, min: Math.min(alt.min, v.min) }; }
       }
       const nav = d.getElementById('reiter-liste');

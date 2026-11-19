@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { FEHLER_SPEICHERN, datumLang, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { LEDGER_MEHR, LEDGER_MEHR_NEUER, ZAEHLER_NAMEN, stufeWert } from '../../src/ledger/texte';
 import { TON_TEXTE } from '../../src/ton/texte';
-import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN, stufenKnopf, oeffneAuf, markiert, zonenChip } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -161,29 +161,34 @@ test('Fund 5 bei 360 px: Reiterleiste als waagrecht scrollbare Zeile, Seite ohne
   }
 });
 
-test('Fund 6: Stimmung als Wort, auch als aria-valuetext', async () => {
+test('Fund 6: Stimmung als Wort im Kopf und als aria-valuetext des Reglers "Exact value", die Stufen tragen dieselben Woerter', async () => {
   const seite = await frischeSeite();
   try {
-    await taste(seite, '#stimmung', 'Home');
+    const regler = '#stimmung-wahl input[type=range]';
+    await oeffneAuf(seite, 'stimmung-wahl');
+    await taste(seite, regler, 'Home');
     // Fund 28 (Phase 9): bei Mias Standard steht "(my default)" dabei.
     await expect(seite.locator('#stimmung-wert')).toHaveText(`${stimmungsWort(0.1)} (my default)`);
-    await expect(seite.locator('#stimmung')).toHaveAttribute('aria-valuetext', `${stimmungsWort(0.1)} (my default)`);
+    await expect(seite.locator(regler)).toHaveAttribute('aria-valuetext', new RegExp(`${stimmungsWort(0.1)} \\(my default\\)$`));
     const gesehen: string[] = [(await seite.locator('#stimmung-wert').textContent()) ?? ''];
     let ziel = 10;
     for (const n of [3, 4, 4]) {
       ziel += n;
-      await seite.locator('#stimmung').focus();
+      await seite.locator(regler).focus();
       for (let i = 0; i < n; i++) await seite.keyboard.press('ArrowRight');
       await expect.poll(async () => Math.round(((await einst(seite)).schwelle ?? 0) * 100)).toBe(ziel);
       const wort = (await seite.locator('#stimmung-wert').textContent()) ?? '';
-      const soll = stimmungsWort(Number(await seite.locator('#stimmung').inputValue()));
+      const soll = stimmungsWort(Number(await seite.locator(regler).inputValue()));
       expect(wort).toBe(soll);
-      expect(await seite.locator('#stimmung').getAttribute('aria-valuetext')).toBe(soll);
+      expect(await seite.locator(regler).getAttribute('aria-valuetext')).toContain(soll);
       gesehen.push(wort);
     }
     console.log(`einstellungen-s12: Stimmungswoerter ${gesehen.join(', ')}`);
     expect(new Set(gesehen).size).toBe(4);
     expect(await seite.locator('#stimmung-wert').textContent()).not.toMatch(/\d/);
+    // F3: die drei Stufen heissen wie die Woerter fuer ihre Werte (derselbe Wortschatz wie Kopf und Popup)
+    const namen = await seite.locator('#stimmung-wahl button.v-stufe').allTextContents();
+    expect(namen).toEqual([0.1, 0.15, 0.22].map((w) => stimmungsWort(w)));
   } finally {
     await seite.close();
   }
@@ -270,7 +275,8 @@ test('Fund 11: bei 360 px sind Chips, Listenknoepfe und Kaestchen mindestens 44 
           ausnahmeRemove: h('#ausnahmen-liste button'),
           seitenRemove: h('#seiten-liste button'),
           zeitRemove: h('#kon-zeiten .zeit-weg'),
-          bedeckt: h('.auch'),
+          // E4d2: die Kaestchen "even when clothed" sind durch die Bausteine ersetzt (Stufen, Karten, Chips, "?", Aufklapper)
+          bausteine: h('.v-stufe, .v-wahl-karte, .v-chip, .v-frage, .v-auf-kopf'),
           wochentage: h('.zeit-tage label'),
           schalter: h('label.schalter'),
           knoepfe: h('button.klein'),
@@ -481,7 +487,6 @@ test('Fund 26: je Element erscheint der Satz in der Leiste, der Wert springt zur
       });
     };
     await schalterFehler('Strict', '#strict', 'label.schalter:has(#strict)');
-    await schalterFehler('Adult-site mode', '#erw-an', 'label.schalter:has(#erw-an)');
     await schalterFehler('Calm mode', '#ruhig', 'label.schalter:has(#ruhig)');
     await schalterFehler('My ads', '#kon-werbung', 'label.schalter:has(#kon-werbung)');
     await schalterFehler('Tab-Titel', '#kon-tabtitel', '#kon-tabtitel-zeile');
@@ -491,7 +496,28 @@ test('Fund 26: je Element erscheint der Satz in der Leiste, der Wert springt zur
     await fehlerBei('Blitz-Auswahl', async () => void (await seite.locator('#kon-blitz').selectOption('oft')), async () => {
       await expect(seite.locator('#kon-blitz')).toHaveValue(blitzVorher);
     });
-    const regler = async (name: string, css: string, taste: string, n: number) => {
+    // E4d2: Stufen (Klick) und Gruppe der Erwachsenenseiten: nach dem Fehler zeigt jedes Element wieder den gespeicherten Stand
+    const stufeFehler = async (name: string, wahl: string, knopf: string) => {
+      const vorher = await markiert(seite, wahl);
+      const reglerVorher = (await seite.locator(`#${wahl} input[type=range]`).count()) ? await seite.locator(`#${wahl} input[type=range]`).inputValue() : null;
+      await fehlerBei(name, () => stufenKnopf(seite, wahl, knopf).click(), async () => {
+        await expect.poll(() => markiert(seite, wahl), name).toBe(vorher);
+        if (reglerVorher !== null) await expect(seite.locator(`#${wahl} input[type=range]`), name).toHaveValue(reglerVorher);
+      });
+    };
+    await stufeFehler('Adult-site Gruppe (Off)', 'erw-stufe-wahl', 'Off');
+    await stufeFehler('Adult-site Gruppe (On)', 'erw-stufe-wahl', 'On'); // ohne Pack: `an` ist wie bei HEAD schaltbar
+    await stufeFehler('Lautstaerke (Stufe)', 'lautstaerke-wahl', 'Loud');
+    await stufeFehler('Stimmung (Stufe)', 'stimmung-wahl', 'Relaxed');
+    await stufeFehler('Verweigern (Stufe)', 'verweigern-wahl', 'Often');
+    await stufeFehler('Freilegen (Stufe)', 'freilegen-wahl', 'Long');
+    const kleidungVorher = await markiert(seite, 'kleidung-frage');
+    await fehlerBei('Kleidungsfrage', () => stufenKnopf(seite, 'kleidung-frage', 'Under clothes too').click(), async () => {
+      await expect.poll(() => markiert(seite, 'kleidung-frage')).toBe(kleidungVorher);
+    });
+    const regler = async (name: string, wahl: string, taste: string, n: number) => {
+      const css = `#${wahl} input[type=range]`;
+      await oeffneAuf(seite, wahl);
       const vorher = await wert(css);
       await fehlerBei(name, async () => {
         await seite.locator(css).focus();
@@ -500,15 +526,17 @@ test('Fund 26: je Element erscheint der Satz in der Leiste, der Wert springt zur
         await expect(seite.locator(css), name).toHaveValue(vorher);
       });
     };
-    await regler('Lautstaerke', '#ton-lautstaerke', 'ArrowRight', 1);
-    await regler('Stimmung', '#stimmung', 'ArrowRight', 2);
-    await regler('Verweigern', '#verweigern', 'End', 1);
-    await regler('Freilegen', '#freilegen', 'End', 1);
-    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(Number(await wert('#stimmung'))) + (Math.round(Number(await wert('#stimmung')) * 100) === 10 ? ' (my default)' : ''));
-    // Zonen-Schalter
-    const zoneVorher = await seite.locator('#zonen input[data-zone="eyes"]').isChecked();
-    await fehlerBei('Zone', () => seite.locator('#zonen label.schalter').filter({ hasText: 'Eyes' }).click(), async () => {
-      await expect(seite.locator('#zonen input[data-zone="eyes"]')).toBeChecked({ checked: zoneVorher });
+    await regler('Lautstaerke (Regler)', 'lautstaerke-wahl', 'ArrowRight', 1);
+    await regler('Stimmung (Regler)', 'stimmung-wahl', 'ArrowRight', 2);
+    await regler('Verweigern (Regler)', 'verweigern-wahl', 'End', 1);
+    await regler('Freilegen (Regler)', 'freilegen-wahl', 'End', 1);
+    const sw = Number(await wert('#stimmung-wahl input[type=range]'));
+    await expect(seite.locator('#stimmung-wert')).toHaveText(stimmungsWort(sw) + (Math.round(sw * 100) === 10 ? ' (my default)' : ''));
+    // Zonen (Chips)
+    const chip = await zonenChip(seite, 'eyes');
+    const zoneVorher = await chip.getAttribute('aria-pressed');
+    await fehlerBei('Zone', () => chip.click(), async () => {
+      await expect(chip).toHaveAttribute('aria-pressed', zoneVorher!);
     });
     // Nichts gespeichert, unbeteiligte Felder unveraendert
     const e = await einst(seite);
@@ -516,7 +544,7 @@ test('Fund 26: je Element erscheint der Satz in der Leiste, der Wert springt zur
     expect(e.ruhig ?? false).toBe(false);
     await expect(seite.locator('#seite-feld')).toHaveValue('getippt.example');
     await expect(seite.locator('#ausnahme-feld')).toHaveValue('auch-getippt.example');
-    console.log(`einstellungen-s12: 12 Elemente mit Speicherfehler, je Satz gesehen, gespeichert strict ${e.strict}, ruhig ${e.ruhig}, Felder bleiben`);
+    console.log(`einstellungen-s12: Schalter, Stufen, Regler, Kleidungsfrage und Zone mit Speicherfehler, je Satz gesehen, gespeichert strict ${e.strict}, ruhig ${e.ruhig}, Felder bleiben`);
     // Nr. 7: ein zweiter Fehler wird neu angesagt (Text wechselt kurz, sonst meldet role=alert nichts)
     await seite.evaluate(() => {
       (globalThis as any).__aend = 0;
@@ -689,8 +717,8 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     await expect(seite.locator('#meldung')).toBeFocused();
     // N7: mit Maus (pointer: fine) steht der Ablage-Satz da.
     await expect(seite.locator('#ablage-text')).toBeVisible();
-    // N8: gesperrtes "even when clothed" ist blass.
-    const blass = await seite.locator('#zonen input[data-bedeckt]:disabled').first().evaluate((e) => Number(getComputedStyle(e.closest('label')!).opacity));
+    // N8 (E4d2): eine gesperrte Karte der Gruppe der Erwachsenenseiten ist blass (ohne Pack sind die drei Stufen gesperrt).
+    const blass = await seite.locator('#erw-stufe-wahl [role=radio]:disabled').first().evaluate((e) => Number(getComputedStyle(e).opacity));
     expect(blass).toBeLessThan(0.7);
     // N3: "I understand" der Warnkarte gibt den Fokus an die Blitzwort-Auswahl.
     await reiter(seite, 'Mia’s extras');

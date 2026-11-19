@@ -145,11 +145,12 @@ test('Einstellungsseite: eigene Seiten, Verweigern-Anteil, Freilegen-Dauer, Ruhi
         e.dispatchEvent(new Event('input', { bubbles: true }));
         e.dispatchEvent(new Event('change', { bubbles: true }));
       }, wert);
-    await setze('#verweigern', 20);
+    // E4d2 (F3): der Regler "Exact value" steht im Speichermass (0 bis 0,3 und Millisekunden)
+    await setze('#verweigern-wahl input[type=range]', 0.2);
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.quiz?.verweigern).toBeCloseTo(0.2, 5);
-    await setze('#verweigern', 99);
+    await setze('#verweigern-wahl input[type=range]', 0.99);
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.quiz?.verweigern).toBeCloseTo(0.3, 5);
-    await setze('#freilegen', 15);
+    await setze('#freilegen-wahl input[type=range]', 15000);
     await expect.poll(async () => (await lies(seite, 'einstellungen'))?.quiz?.freilegenMs).toBe(15000);
     expect((await lies(seite, 'einstellungen')).quiz.verweigern).toBeCloseTo(0.3, 5);
     await seite.locator('#ruhig').evaluate((e: HTMLInputElement) => e.click());

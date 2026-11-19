@@ -318,12 +318,15 @@ export async function speichereEinstellungen(e: Einstellungen): Promise<void> {
 // Aenderungen laufen nacheinander (Laden, Zusammenfuehren, Speichern), damit zwei schnelle Aenderungen sich nicht ueberschreiben.
 // Eine Funktion als Aenderung bekommt den frisch gelesenen Stand und liefert den Teil, der sich aendert (fuer Zonen, Ausnahmen, Umschalten).
 let aenderungsKette: Promise<unknown> = Promise.resolve();
+// Liefert die Funktion `null`, wird NICHT geschrieben (E4d2 G3: eine verworfene Handlung schreibt nichts, auch nicht den unveraenderten Stand); der Rueckgabewert ist der
+// gelesene Stand.
 export function aendereEinstellungen(
-  aenderung: Partial<Einstellungen> | ((alt: Einstellungen) => Partial<Einstellungen>),
+  aenderung: Partial<Einstellungen> | ((alt: Einstellungen) => Partial<Einstellungen> | null),
 ): Promise<Einstellungen> {
   const schritt = aenderungsKette.then(async () => {
     const alt = await ladeEinstellungen();
     const teil = typeof aenderung === 'function' ? aenderung(alt) : aenderung;
+    if (teil === null) return alt;
     const neu = vervollstaendige({ ...alt, ...teil });
     await browser.storage.local.set({ [SPEICHER_SCHLUESSEL]: neu });
     return neu;

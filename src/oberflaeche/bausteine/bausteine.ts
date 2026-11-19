@@ -10,7 +10,7 @@ import { kleidungsStand, setzeEineZone, setzeKleidung, type KleidungsAntwort } f
 import { stufenAnsicht, type StufenAnsicht, type StufenListe } from './stufen.ts';
 
 export { baueErklaerungTeile as baueErklaerung, baueHinweis, baueTitel, type ErklaerungEingabe, type TitelEingabe, type TitelHandle } from './dom.ts';
-export { kleidungsStand, setzeEineZone, setzeKleidung, type KleidungsAntwort, type KleidungsStand } from './kleidung.ts';
+export { gleicheDeckung, kleidungsStand, setzeEineZone, setzeKleidung, zonenUnterKleidung, type KleidungsAntwort, type KleidungsStand } from './kleidung.ts';
 export { inEinheiten, markierteStufe, pruefeStufenliste, stufenAnsicht, type Stufe, type StufenAnsicht, type StufenListe } from './stufen.ts';
 export { STUFENLISTEN, type StufenSchluessel } from './stufen-daten.ts';
 
@@ -151,6 +151,7 @@ interface KartenGruppe {
   gruppe: HTMLElement;
   knoepfe: HTMLButtonElement[];
   setze(id: string | null): void;
+  setzeGesperrt(ids: readonly string[]): void;
   markiert(): string | null;
 }
 
@@ -190,6 +191,11 @@ function baueKartenGruppe(karten: readonly Wahlkarte[], wert: string | null, spa
       markiert = id;
       zeige();
     },
+    // Gesperrte Karten tragen `disabled` (kein Klick, keine Eingabe, keine Leertaste, die Pfeile ueberspringen sie, der Tab-Halt meidet sie).
+    setzeGesperrt: (ids) => {
+      knoepfe.forEach((k) => (k.disabled = ids.includes(k.dataset.id ?? '')));
+      zeige();
+    },
     markiert: () => markiert,
   };
 }
@@ -208,6 +214,9 @@ export interface WahlkartenHandle {
   gruppe: HTMLElement; // role="radiogroup"
   wert(): string | null;
   setze(id: string | null): void;
+  // Vertrag (E4d2 G4): sperrt genau diese Karten und gibt alle anderen frei. Eine gesperrte Karte ist durch Bedienung nie waehlbar; `setze()` darf sie aber
+  // als gespeicherten Stand anzeigen.
+  setzeGesperrt(ids: readonly string[]): void;
   setzeHinweis(text: string | null): void;
 }
 
@@ -220,7 +229,7 @@ export function baueWahlkarten(e: WahlkartenEingabe): WahlkartenHandle {
   });
   w.append(titel.element, g.gruppe);
   const fach = new HinweisFach(g.gruppe, g.gruppe, e.hinweis);
-  return { element: w, gruppe: g.gruppe, wert: g.markiert, setze: g.setze, setzeHinweis: (t) => fach.setze(t) };
+  return { element: w, gruppe: g.gruppe, wert: g.markiert, setze: g.setze, setzeGesperrt: g.setzeGesperrt, setzeHinweis: (t) => fach.setze(t) };
 }
 
 // ---------- Stufenwahl ----------

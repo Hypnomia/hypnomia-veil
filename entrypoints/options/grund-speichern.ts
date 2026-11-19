@@ -32,7 +32,7 @@ export function loescheSpeicherFehler(): void {
 // Speichert und zeichnet den gespeicherten Stand neu (bei Erfolg nur mit `auchBeiErfolg`, sonst nur beim Scheitern). Rueckgabe: der neue
 // Stand, bei Fehler null (nach Meldung und Zuruecksetzen).
 export async function speichere(
-  teil: (alt: Einstellungen) => Partial<Einstellungen>,
+  teil: (alt: Einstellungen) => Partial<Einstellungen> | null,
   zeichneNeu: (e: Einstellungen) => void,
   auchBeiErfolg = true,
 ): Promise<Einstellungen | null> {

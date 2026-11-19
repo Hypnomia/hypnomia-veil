@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { starteFixtureServer } from '../fixtures-server.mjs';
 import { DUMMY_STUFEN_BILDER, baueDummyPack } from '../../scripts/pack/baue-pack.mjs';
-import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
+import { mitReitern, oeffneReiter, oeffneReiterFuer, stufeKlick, markierteKarte } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
   console.error('firefox: Zeitlimit von 240 s ueberschritten');
@@ -195,10 +195,12 @@ try {
   // Phase 9 (Paket B): ohne Pack ist Adult sites zugeklappt; wie die Person mit "Set them now" aufklappen (wie ton.test.mjs).
   await bis('Ordnung bereit', () => driver.executeScript(`return document.body.getAttribute('data-veil-ordnung') === 'bereit'`), 15_000);
   await driver.executeScript(`for (const t of document.querySelectorAll('[role=tab]')) { t.click(); for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); } } document.querySelector('[role=tab]').click(); window.scrollTo(0, 0);`);
-  await bis('Stufen-Satz sichtbar', () => sichtbar('#stufe-gesperrt'), 10_000).catch(() => {});
-  pruefe(await sichtbar('#stufe-gesperrt'), 'ohne Pack: Satz statt Regler');
-  pruefe(!(await sichtbar('#stufe-wahl')), 'ohne Pack: Knoepfe nicht sichtbar');
-  pruefe((await text('#stufe-gesperrt')).includes('Mia Pack'), 'ohne Pack: der Satz nennt das Pack');
+  // E4d2 (F4): die Gruppe Off, Tease, Hot, Explicit; ohne Pack sind die drei Stufen gesperrt, der Satz dazu ist der eine Hinweis der Gruppe
+  await bis('Stufen-Satz sichtbar', () => sichtbar('#erw-stufe-wahl .v-hinweis'), 10_000).catch(() => {});
+  pruefe(await sichtbar('#erw-stufe-wahl .v-hinweis'), 'ohne Pack: Satz zur Sperre steht da');
+  pruefe((await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].map((k) => k.disabled).join()`)) === 'false,false,true,true,true', 'ohne Pack: Off und On waehlbar, die drei Stufen gesperrt (G1)');
+  pruefe((await markierteKarte(driver, 'erw-stufe-wahl')).includes('On'), 'ohne Pack: On markiert, keine Stufe');
+  pruefe((await text('#erw-stufe-wahl .v-hinweis')).includes('Mia Pack'), 'ohne Pack: der Satz nennt das Pack');
   await zurueckZumHaupt();
 
   // ---------- Pack importieren ----------
@@ -207,21 +209,22 @@ try {
 
   // ---------- Regler mit Pack ----------
   await oeffneErweiterung('options.html');
-  await bis('Regler sichtbar', () => sichtbar('#stufe-wahl'));
-  pruefe(!(await sichtbar('#stufe-gesperrt')), 'mit Pack: kein Sperr-Satz');
-  pruefe((await driver.executeScript(`return document.querySelector('input[name="stufe"]:checked')?.value`)) === 'hot', 'Standard Hot ist angewaehlt');
+  await bis('Gruppe sichtbar', () => sichtbar('#erw-stufe-wahl'));
+  await bis('Stufen frei', async () => (await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].every((k) => !k.disabled)`)) === true);
+  pruefe(!(await sichtbar('#erw-stufe-wahl .v-hinweis')), 'mit Pack: kein Sperr-Satz');
+  pruefe((await markierteKarte(driver, 'erw-stufe-wahl')).includes('Hot'), 'Standard Hot ist markiert');
   pruefe(
-    JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('input[name="stufe"] + span small')].map((s) => s.textContent)`)) === '["I only hint.","I show more.","Nothing held back."]',
-    'jeder Knopf traegt seine Zeile in Mias Stimme',
+    JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-satz')].map((s) => s.textContent)`)) === '["No picture swaps on adult sites.","I only hint.","I show more.","Nothing held back."]',
+    'jede Karte traegt ihre Zeile in Mias Stimme',
   );
   pruefe(
-    JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('input[name="stufe"] + span strong')].map((s) => s.textContent)`)) === '["Tease","Hot","Explicit"]',
-    'drei Knoepfe Tease, Hot, Explicit',
+    JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-titel')].map((s) => s.textContent)`)) === '["Off","Tease","Hot","Explicit"]',
+    'vier Karten Off, Tease, Hot, Explicit',
   );
-  pruefe((await driver.executeScript(`const g = document.querySelector('#stufe-wahl [role=radiogroup]'); return document.getElementById(g.getAttribute('aria-labelledby')).textContent`)) === 'How hot do I get?', 'Radiogruppe heisst "How hot do I get?"');
-  await driver.executeScript(`document.querySelector('input[name="stufe"][value="tease"] + span').click()`);
+  pruefe((await driver.executeScript(`const g = document.querySelector('#erw-stufe-wahl [role=radiogroup]'); return document.getElementById(g.getAttribute('aria-labelledby')).textContent`)) === 'My pictures on adult sites', 'Radiogruppe heisst "My pictures on adult sites"');
+  await stufeKlick(driver, 'erw-stufe-wahl', 'Tease');
   await bis('Tease gespeichert', async () => (await imSeitenkontext(`return (await api.storage.local.get('einstellungen')).einstellungen?.erwachsen?.stufe ?? null`)) === 'tease');
-  await driver.executeScript(`document.querySelector('input[name="stufe"][value="explicit"] + span').click()`);
+  await stufeKlick(driver, 'erw-stufe-wahl', 'Explicit');
   await bis('Explicit gespeichert', async () => (await imSeitenkontext(`return (await api.storage.local.get('einstellungen')).einstellungen?.erwachsen?.stufe ?? null`)) === 'explicit');
   const rest = (await imSeitenkontext(`return (await api.storage.local.get('einstellungen')).einstellungen.erwachsen`));
   pruefe(rest.an === true && Array.isArray(rest.eigeneSeiten) && rest.eigeneSeiten.length === 0, 'die anderen Werte des Abschnitts bleiben stehen');
@@ -232,11 +235,11 @@ try {
      f.style.cssText = 'width:360px;height:800px;position:fixed;left:0;top:0;border:0';
      f.src = location.href;
      f.onload = () => setTimeout(() => { const d = f.contentDocument;
-       fertig({ hoehen: [...d.querySelectorAll('input[name="stufe"] + span')].map((s) => Math.round(s.getBoundingClientRect().height)), breite: d.documentElement.scrollWidth, fenster: d.documentElement.clientWidth }); }, 900);
+       fertig({ hoehen: [...d.querySelectorAll('#erw-stufe-wahl [role=radio]')].map((s) => Math.round(s.getBoundingClientRect().height)), breite: d.documentElement.scrollWidth, fenster: d.documentElement.clientWidth }); }, 900);
      document.body.append(f);`,
   );
   console.log(`firefox I1: 360 px Fingerziele ${m.hoehen.join('/')} px, Seite ${m.breite}/${m.fenster}`);
-  pruefe(m.hoehen.length === 3 && m.hoehen.every((h) => h >= 44) && m.breite <= m.fenster, 'Fingerziele mindestens 44 px bei 360 px, kein Ueberlauf');
+  pruefe(m.hoehen.length === 4 && m.hoehen.every((h) => h >= 44) && m.breite <= m.fenster, 'Fingerziele mindestens 44 px bei 360 px, kein Ueberlauf');
   await zurueckZumHaupt();
 
   // ---------- Erkenner ----------
@@ -366,8 +369,8 @@ try {
     await oeffneReiter(driver, 'Adult sites');
     await bis('wieder zugeklappt', () => driver.executeScript(`return [...document.querySelectorAll('.zu-knopf')].some((e) => !e.hidden && e.getClientRects().length > 0)`), 15_000).catch(() => {});
     await driver.executeScript(`for (let i = 0; i < 5; i++) { const k = [...document.querySelectorAll('.zu-knopf')].find((e) => !e.hidden && e.getClientRects().length > 0); if (!k) break; k.click(); }`);
-    await bis('Regler wieder gesperrt', async () => !(await sichtbar('#stufe-wahl')) && (await sichtbar('#stufe-gesperrt')), 15_000);
-    pruefe(true, 'Pack entfernt: Regler wieder gesperrt');
+    await bis('Stufen wieder gesperrt', async () => (await sichtbar('#erw-stufe-wahl .v-hinweis')) && (await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].some((k) => k.disabled)`)), 15_000);
+    pruefe(true, 'Pack entfernt: Stufen wieder gesperrt');
   });
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

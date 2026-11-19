@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ZU_TEXTE } from '../../entrypoints/options/ordnung-texte';
-import { oeffneZugeklapptes, mitReitern, reiter, REITER_NAMEN } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, mitReitern, reiter, REITER_NAMEN, stufenKnopf } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -82,7 +82,7 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
   const seite = await frischeSeite();
   try {
     const karten = [
-      { karte: 'erwachsen', satz: ZU_TEXTE.erwachsen, drin: '#erw-an' },
+      { karte: 'erwachsen', satz: ZU_TEXTE.erwachsen, drin: '#erw-stufe-wahl' },
       { karte: 'kontrolle', satz: ZU_TEXTE.kontrolle, drin: '#kon-blitz' },
       { karte: 'ton', satz: ZU_TEXTE.ton, drin: '#ton-an' },
     ];
@@ -108,10 +108,10 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
     await expect(seite.locator('#kontrolle-zu-satz')).toBeHidden();
     expect(await seite.evaluate(() => document.getElementById('kontrolle-block')!.contains(document.activeElement))).toBe(true);
     // Die anderen bleiben zu, bis man sie aufklappt.
-    await expect(seite.locator('#erw-an')).toBeHidden();
+    await expect(seite.locator('#erw-stufe-wahl')).toBeHidden();
     // Erste Lesung 17, Fund 17: liegt das erste Bedienelement in einem verborgenen Teil, geht der Fokus auf ein sichtbares, nie auf body.
     await seite.evaluate(() => {
-      const zeile = document.querySelector('#erwachsen-block label.schalter:has(#erw-an)') as HTMLElement;
+      const zeile = document.querySelector('#erwachsen-block #erw-stufe-ort') as HTMLElement;
       zeile.dataset.testVerborgen = '1';
       zeile.hidden = true;
     });
@@ -129,8 +129,8 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
         delete e.dataset.testVerborgen;
       }
     });
-    await expect(seite.locator('#erw-an')).toBeVisible();
-    await seite.locator('label.schalter:has(#erw-an)').click();
+    await expect(seite.locator('#erw-stufe-wahl')).toBeVisible();
+    await stufenKnopf(seite, 'erw-stufe-wahl', 'Off').click();
     await expect.poll(async () => (await einst(seite)).erwachsen?.an).toBe(false);
     // Nacht N5 (Ursache des Firefox-Wacklers "Fokus liegt bei der Frage"): kommt das Pack, wandert die Pack-Karte; ein Fokus darin bleibt erhalten.
     await reiter(seite, 'Pack and sound');
@@ -268,13 +268,13 @@ test('Fund 8 und 10: Calm mode ist der erste Schalter in Mia’s control, bei "w
     await expect.poll(async () => (await einst(seite)).ruhig).toBe(true);
     await seite.emulateMedia({ reducedMotion: 'no-preference' });
     await expect(seite.locator('#ruhig-system')).toBeHidden();
-    // Fund 10: "How hot do I get?" ist die erste Bedienung in Adult sites, gleich gross wie die anderen Bedienungen (kein Grossbuchstaben-h3).
+    // Fund 10 (E4d2: die Gruppe "My pictures on adult sites" ersetzt "How hot do I get?"): sie ist die erste Bedienung in Adult sites, gleich gross wie die anderen Bedienungen (kein Grossbuchstaben-h3).
     await oeffneZugeklapptes(seite);
     const reihe = await seite.evaluate(() => {
       const nr = (css: string) => [...document.querySelectorAll('#erwachsen *')].indexOf(document.querySelector(css)!);
-      const stil = getComputedStyle(document.querySelector('#stufe-titel')!);
-      const regel = getComputedStyle(document.querySelector('#erw-an ~ .text strong, #erw-an + .regler + .text strong')!);
-      return { stufe: nr('#stufe-titel'), schalter: nr('#erw-an'), eigene: nr('#seite-form'), gross: stil.textTransform, groesse: parseFloat(stil.fontSize), regel: parseFloat(regel.fontSize) };
+      const stil = getComputedStyle(document.querySelector('#erw-stufe-wahl .v-titeltext')!);
+      const regel = getComputedStyle(document.querySelector('#erw-ersatz ~ .text strong, #erw-ersatz + .regler + .text strong')!);
+      return { stufe: nr('#erw-stufe-wahl'), schalter: nr('#erw-ersatz'), eigene: nr('#seite-form'), gross: stil.textTransform, groesse: parseFloat(stil.fontSize), regel: parseFloat(regel.fontSize) };
     });
     expect(reihe.stufe).toBeLessThan(reihe.schalter);
     expect(reihe.stufe).toBeLessThan(reihe.eigene);
@@ -331,7 +331,7 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
     await oeffneZugeklapptes(seite);
     const soll: Record<string, string> = {
       'Help: Adult sites': 'adult',
-      'Help: How hot do I get?': 'adult',
+      'Help: My pictures on adult sites': 'adult',
       'Help: Full replacement': 'full-replacement',
       'Help: Spot adult pages by content': 'adult',
       'Help: Quiz': 'quiz',

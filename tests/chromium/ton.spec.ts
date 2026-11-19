@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TON_TEXTE } from '../../src/ton/texte';
-import { oeffneZugeklapptes, reiter, mitReitern, reiterFuer } from './einstellungen-ordnung';
+import { oeffneZugeklapptes, reiter, mitReitern, reiterFuer, stufenKnopf, oeffneAuf, markiert } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -173,32 +173,40 @@ test('Einstellungsseite ohne Pack: Abschnitt Sound, Hinweis, Probe ruht, Regler 
     await oeffneZugeklapptes(s);
     await expect(s.locator('#ton')).toHaveAttribute('aria-labelledby', 'ton-titel');
     await expect(s.locator('#ton-an')).not.toBeChecked();
-    await expect(s.locator('#ton-lautstaerke')).toHaveValue('60');
-    await expect(s.locator('#ton-lautstaerke-wert')).toHaveText('60%');
+    // E4d2 (F3): Lautstaerke als Stufen (Standard Medium 0,6), der Regler "Exact value" zeigt den Wert im Speichermass
+    await expect(s.locator('#lautstaerke-wahl input[type=range]')).toHaveValue('0.6');
+    await expect(s.locator('#lautstaerke-wahl .v-wert')).toHaveText('60%');
+    expect(await markiert(s, 'lautstaerke-wahl')).toBe('Medium');
     await expect(s.locator('#ton-pack-hinweis')).toHaveText(TON_TEXTE.hinweisOhnePack);
     await expect(s.locator('#ton-probe')).toHaveText(TON_TEXTE.probe);
     await expect(s.locator('#ton-probe')).toBeDisabled();
-    await expect(s.locator('#ton-lautstaerke')).toBeEnabled();
+    await expect(s.locator('#lautstaerke-wahl input[type=range]')).toBeEnabled();
     // echter Klick auf den Schalter (die Beschriftung), Wirkung im Speicher
     await s.locator('#ton-an-zeile').click();
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.an, { timeout: 5000 }).toBe(true);
     await s.locator('#ton-an-zeile').click();
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.an, { timeout: 5000 }).toBe(false);
-    // Regler: Klick in die Mitte und Tasten Ende, Anfang
-    await s.locator('#ton-lautstaerke').focus();
+    // Stufen: Soft 0,3 und Loud 0,9 schreiben ihren Wert
+    await stufenKnopf(s, 'lautstaerke-wahl', 'Soft').click();
+    await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBeCloseTo(0.3, 5);
+    await stufenKnopf(s, 'lautstaerke-wahl', 'Loud').click();
+    await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBeCloseTo(0.9, 5);
+    // Regler "Exact value": Klick in die Mitte und Tasten Ende, Anfang
+    await oeffneAuf(s, 'lautstaerke-wahl');
+    await s.locator('#lautstaerke-wahl input[type=range]').focus();
     await s.keyboard.press('End');
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBe(1);
-    await expect(s.locator('#ton-lautstaerke-wert')).toHaveText('100%');
+    await expect(s.locator('#lautstaerke-wahl .v-wert')).toHaveText('100%');
     await s.keyboard.press('Home');
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBe(0);
-    await expect(s.locator('#ton-lautstaerke-wert')).toHaveText('0%');
-    const kasten = (await s.locator('#ton-lautstaerke').boundingBox())!;
+    await expect(s.locator('#lautstaerke-wahl .v-wert')).toHaveText('0%');
+    const kasten = (await s.locator('#lautstaerke-wahl input[type=range]').boundingBox())!;
     await s.mouse.click(kasten.x + kasten.width * 0.25, kasten.y + kasten.height / 2);
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBeGreaterThan(0.15);
     const l = (await liesSpeicher('einstellungen')).ton.lautstaerke as number;
     console.log(`chromium ton: Schalter an/aus und Regler Ende 1, Anfang 0, Klick bei 25 Prozent der Breite ergibt ${l} (Speicher)`);
     expect(l).toBeLessThan(0.35);
-    await expect(s.locator('#ton-lautstaerke-wert')).toHaveText(`${Math.round(l * 100)}%`);
+    await expect(s.locator('#lautstaerke-wahl .v-wert')).toHaveText(`${Math.round(l * 100)}%`);
   } finally {
     await s.close();
   }
@@ -577,7 +585,8 @@ test('Probe auf der Einstellungsseite: Klick spielt einen Klang aus dem Pack mit
   test.setTimeout(60_000);
   const s = await extSeite();
   try {
-    await s.locator('#ton-lautstaerke').focus();
+    await oeffneAuf(s, 'lautstaerke-wahl');
+    await s.locator('#lautstaerke-wahl input[type=range]').focus();
     await s.keyboard.press('Home');
     for (let i = 0; i < 30; i++) await s.keyboard.press('ArrowRight'); // 30
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBeCloseTo(0.3, 5);
@@ -592,7 +601,7 @@ test('Probe auf der Einstellungsseite: Klick spielt einen Klang aus dem Pack mit
     // die Probe ist unabhaengig vom Schalter: auch bei "aus" spielt sie
     expect((await liesSpeicher('einstellungen')).ton.an).toBe(false);
     // Lautstaerke 0: die Probe laeuft, die Meldung sagt es
-    await s.locator('#ton-lautstaerke').focus();
+    await s.locator('#lautstaerke-wahl input[type=range]').focus();
     await s.keyboard.press('Home');
     await expect.poll(async () => (await liesSpeicher('einstellungen'))?.ton?.lautstaerke, { timeout: 5000 }).toBe(0);
     await s.locator('#ton-probe').click();

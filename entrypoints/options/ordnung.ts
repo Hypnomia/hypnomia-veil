@@ -163,7 +163,7 @@ browser.storage.onChanged.addListener((aenderungen: Record<string, { newValue?: 
 // Runder "?"-Knopf neben dem Element, oeffnet die Hilfe am Anker in neuem Tab. Das Element und der Knopf stehen in einer Zeile.
 const HILFEN: readonly { wo: string; kurz: HilfeAnker; name: string; label?: boolean }[] = [
   { wo: '#erw-titel', kurz: 'adult', name: 'Adult sites' },
-  { wo: '#stufe-titel', kurz: 'adult', name: 'How hot do I get?' },
+  { wo: '#erw-stufe-ort', kurz: 'adult', name: 'My pictures on adult sites' },
   { wo: '#erw-ersatz-zeile', kurz: 'full-replacement', name: 'Full replacement' },
   { wo: '#erw-inhalt', kurz: 'adult', name: 'Spot adult pages by content', label: true },
   { wo: '#quiz-titel', kurz: 'quiz', name: 'Quiz' },

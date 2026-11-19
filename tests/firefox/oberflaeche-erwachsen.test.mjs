@@ -304,13 +304,13 @@ try {
   await bis('Fehler gemeldet', async () => (await text('#seite-meldung')).includes('doesn’t look like'));
   pruefe(((await einst()).erwachsen.eigeneSeiten ?? []).length === 1, 'ungueltige Eingabe wird abgewiesen');
 
-  await setzeRange('#verweigern', 20);
+  await setzeRange('#verweigern-wahl input[type=range]', 0.2); // E4d2: Regler "Exact value" im Speichermass
   await bis('verweigern', async () => Math.abs(((await einst()).quiz?.verweigern ?? 0) - 0.2) < 1e-9);
   pruefe(true, 'Verweigern-Anteil 20 % schreibt quiz.verweigern = 0.2');
-  await setzeRange('#verweigern', 99);
+  await setzeRange('#verweigern-wahl input[type=range]', 0.99);
   await bis('verweigern gedeckelt', async () => Math.abs(((await einst()).quiz?.verweigern ?? 0) - 0.3) < 1e-9);
   pruefe(true, 'Verweigern-Anteil ist bei 30 % gedeckelt');
-  await setzeRange('#freilegen', 15);
+  await setzeRange('#freilegen-wahl input[type=range]', 15000);
   await bis('freilegen', async () => (await einst()).quiz?.freilegenMs === 15000);
   pruefe((await einst()).quiz.verweigern > 0.29, 'Freilegen-Dauer 15 s schreibt quiz.freilegenMs = 15000, Verweigern bleibt');
   await klick('#ruhig');

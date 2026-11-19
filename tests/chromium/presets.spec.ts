@@ -12,7 +12,7 @@ import { PRESETS, PRESET_IDS } from '../../src/presets';
 import { PERSON_GRENZE } from '../../src/presets';
 import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, EYE_BAR_TEXT, EYE_BAR_TITEL, HINWEIS_MIA_PACK_FEHLT, HINWEIS_PACK_OHNE_STICKER, HINWEIS_WORT_OHNE_PACK, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam';
 import { PACK_HINWEIS_BIS_DAHIN } from '../../entrypoints/popup/texte';
-import { mitReitern, reiter } from './einstellungen-ordnung';
+import { mitReitern, reiter, zonenChip } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -278,7 +278,7 @@ test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, 
     // Hinweise bei den Zonen je Preset
     const hinweis = seite.locator('#zonen-hinweis');
     await expect(hinweis).toBeHidden();
-    await expect(seite.locator('#zonen')).toHaveAttribute('aria-describedby', 'zonen-hinweis');
+    await expect(seite.locator('#zonen-wahl [role=radiogroup]')).toHaveAttribute('aria-describedby', 'zonen-hinweis');
     for (const [id, text] of [['zensurbalken', HINWEIS_ZONEN_ZENSURBALKEN]] as const) {
       await seite.locator(`label:has(#preset-${id})`).click();
       await expect(hinweis).toHaveText(text);
@@ -469,11 +469,11 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
   try {
     await seiteA.goto(optionsUrl());
     expect((await speicher(seiteA, 'einstellungen')).zonen.face.an).toBe(true);
-    await expect(seiteA.locator('#zonen input[data-zone="face"]')).toBeChecked();
-    await seiteA.locator('#zonen label.schalter').filter({ hasText: 'Face' }).first().click();
+    await expect(await zonenChip(seiteA, 'face')).toHaveAttribute('aria-pressed', 'true');
+    await (await zonenChip(seiteA, 'face')).click();
     await expect.poll(async () => (await speicher(seiteA, 'einstellungen')).zonen.face.an).toBe(false);
     await seiteA.reload();
-    await expect(seiteA.locator('#zonen input[data-zone="face"]')).not.toBeChecked(); // nicht bei jedem Laden wieder an
+    await expect(await zonenChip(seiteA, 'face')).toHaveAttribute('aria-pressed', 'false'); // nicht bei jedem Laden wieder an
     // Mia-Preset mit Face aus: Hinweis, was dann gilt (Einstellungsseite und Popup), Kartensatz bleibt zustandsneutral
     await expect(seiteA.locator('#preset-face-hinweis')).toHaveText(HINWEIS_FACE_AUS);
     await expect(seiteA.locator('#stil-hinweis')).toContainText('With Face on, every face becomes mine.');
@@ -493,7 +493,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
     await seiteA.locator('label:has(#preset-mia-mosaik)').click();
     await expect.poll(async () => (await speicher(seiteA, 'einstellungen')).zonen.face.an).toBe(true);
     await expect(seiteA.locator('#preset-face-hinweis')).toHaveText(HINWEIS_FACE_EIN);
-    await expect(seiteA.locator('#zonen input[data-zone="face"]')).toBeChecked();
+    await expect(await zonenChip(seiteA, 'face')).toHaveAttribute('aria-pressed', 'true');
     await seiteA.locator('label:has(#preset-mia-wort)').click(); // Mia zu Mia: Hinweis weg
     await expect(seiteA.locator('#preset-face-hinweis')).toBeHidden();
     // Wort-Themen: unbekannte Kennungen (anderes Pack): alle Chips aus, Hinweis "MIA"

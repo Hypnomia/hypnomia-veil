@@ -165,7 +165,7 @@ try {
   const bau = await driver.executeScript(`return [...document.querySelectorAll('[role=tab]')].map((t) => { const p = document.getElementById(t.getAttribute('aria-controls')); return { rolle: p.getAttribute('role'), benannt: p.getAttribute('aria-labelledby') === t.id, offen: !p.hidden, tabindex: t.tabIndex }; })`);
   pruefe(bau.every((b) => b.rolle === 'tabpanel' && b.benannt) && bau.filter((b) => b.offen).length === 1, 'tabpanel je Reiter, genau eines offen');
   pruefe(JSON.stringify(bau.map((b) => b.tabindex)) === '[0,-1,-1,-1,-1,-1,-1]', 'Tab-Halt nur am gewaehlten Reiter');
-  const aufgebaut = await driver.executeScript(`return { zonen: document.querySelectorAll('#panel-zonen #zonen li').length, karten: document.querySelectorAll('#panel-stil #preset-karten label.preset-karte').length, verborgen: document.querySelectorAll('[role=tabpanel][hidden]').length }`);
+  const aufgebaut = await driver.executeScript(`return { zonen: document.querySelectorAll('#panel-zonen #zonen-wahl .v-chip').length, karten: document.querySelectorAll('#panel-stil #preset-karten label.preset-karte').length, verborgen: document.querySelectorAll('[role=tabpanel][hidden]').length }`);
   pruefe(aufgebaut.zonen === 10 && aufgebaut.karten === 12 && aufgebaut.verborgen === 6, `alle Module in verborgenen Reitern aufgebaut ${JSON.stringify(aufgebaut)}`);
 
   // ---- Anker beim Laden (D3) und beim Wechsel ----
@@ -275,6 +275,8 @@ try {
   // ---- Oeffnen und Reiterwechsel schreiben nichts (D9, N5): der Zaehler liegt schon vor dem Laden der Seite an (zweite Erweiterungsseite) ----
   await setze({ einstellungen: { schwelle: 0.17, preset: 'blur', strict: true } });
   const horcher = await oeffne('hilfe.html');
+  // Der neue Tab kann noch about:blank sein: erst wenn die Hilfeseite geladen ist, wird der Horcher gesetzt (sonst ueberschreibt das Laden ihn, `liesHorcher` gibt null).
+  await bis('Hilfeseite geladen', async () => (await driver.executeScript(`return location.protocol === 'moz-extension:' && document.readyState === 'complete'`).catch(() => false)) === true);
   await driver.executeScript(HORCHER_START);
   // Abhilfe RM1 (a): vor dem Zaehlen alle anderen Erweiterungs-Tabs schliessen (auch die Einstellungsseite aus den frueheren Teilen) und auf Ruhe
   // warten (1 s ohne Ereignis, nachlaufende Schreibvorgaenge des Hintergrunds nach den Schaltungen davor); erst dann wird der Zaehler genullt.
@@ -343,13 +345,13 @@ try {
   }
 
   // ---- jede Einstellung genau einmal (D2, N2): alle Bedienelemente der Panels gegen die Soll-Liste aus HEAD (tests/gemeinsam/einstellungen-soll.mjs) ----
-  const pruefeSoll = async (zustand) => {
+  const pruefeSoll = async (zustand, eintraege = {}, erwachsenFrei = false) => {
     const ist = await driver.executeScript(SAMMLE_SKRIPT);
-    const fehler = vergleicheBedienelemente(ist);
+    const fehler = vergleicheBedienelemente(ist, eintraege, { erwachsenFrei });
     pruefe(fehler.length === 0, `Bedienelemente ${zustand} gegen die Soll-Liste ${JSON.stringify(fehler)}`);
     const doppelt = await driver.executeScript(`const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return [...new Set(ids.filter((i, n) => ids.indexOf(i) !== n))];`);
     pruefe(doppelt.length === 0, `keine doppelte id ${zustand} ${JSON.stringify(doppelt)}`);
-    const ausserhalb = await driver.executeScript(`return [...document.querySelectorAll('main :is(input, select, textarea, button, [role=switch], [role=radio], [role=slider], [contenteditable])')].filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung')).map((e) => e.id || e.tagName)`);
+    const ausserhalb = await driver.executeScript(`return [...document.querySelectorAll('main :is(input, select, textarea, button, summary, a[role=button], [role=switch], [role=radio], [role=slider], [role=checkbox], [contenteditable])')].filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung')).map((e) => e.id || e.tagName)`);
     pruefe(ausserhalb.length === 0, `Bedienelemente ausserhalb der Panels ${zustand} ${JSON.stringify(ausserhalb)}`);
   };
   await driver.navigate().refresh();
@@ -357,7 +359,21 @@ try {
   await pruefeSoll('ohne Pack');
   await setze({ pack: packMit(['stil:mia-patch', 'erwachsen:vorschau', 'zensur:sticker', 'kontrolle:blitz', 'ton']) });
   await bis('Pack gelesen', async () => (await driver.executeScript(`return document.getElementById('erwachsen').dataset.zu`)) === '0');
-  await pruefeSoll('mit Pack');
+  // G1: ein Pack ohne `erwachsen:vorschau` zeigt die Gruppe in der Form ohne Freischaltung (mit der Karte On)
+  await setze({ pack: packMit(['stil:mia-patch', 'erwachsen:quiz']) });
+  await bis('Pack gelesen (ohne Vorschau)', async () => (await driver.executeScript(`return document.getElementById('erwachsen').dataset.zu`)) === '0');
+  await pruefeSoll('mit Pack ohne erwachsen:vorschau', {}, false);
+  await setze({ pack: packMit(['stil:mia-patch', 'erwachsen:vorschau', 'zensur:sticker', 'kontrolle:blitz', 'ton']) });
+  await bis('Gruppe mit Freischaltung', async () => (await driver.executeScript(`return document.querySelectorAll('#erw-stufe-wahl [role=radio]').length`)) === 4);
+  await pruefeSoll('mit Pack', {}, true);
+  // Nachtrag RN3 (E4d2): mit je einem gespeicherten Eintrag in den Listen (Ausnahmen, eigene Seiten, strenge Zeiten) steht ein Bedienelement je Zeile da
+  const einstellungenDavor = await speicher('einstellungen');
+  await setze({ einstellungen: { ausnahmen: ['kurz.de'], erwachsen: { eigeneSeiten: ['adult.example'] }, kontrolle: { zeiten: [{ tage: [1, 2, 3], von: 60, bis: 120 }] } } });
+  await bis('Listen gezeichnet', async () => (await driver.executeScript(`return document.querySelectorAll('#ausnahmen-liste button, #seiten-liste button, #kon-zeiten .zeit-weg').length`)) === 3);
+  await pruefeSoll('mit Pack und je einem Eintrag in den Listen', { '#ausnahmen-liste': 1, '#seiten-liste': 1, '#kon-zeiten': 1 }, true);
+  // zurueck auf den Stand davor (kein gespeicherter Stand: entfernen)
+  if (einstellungenDavor === null) await imSeitenkontext(`await api.storage.local.remove('einstellungen');`);
+  else await setze({ einstellungen: einstellungenDavor });
 
   // ---- ohne Pack die drei zugeklappten Teile (D6) ----
   await imSeitenkontext(`await api.storage.local.remove('pack');`);
