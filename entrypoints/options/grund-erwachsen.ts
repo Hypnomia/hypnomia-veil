@@ -6,6 +6,7 @@ import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKur
 import { baueHinweis, baueWahlkarten, type WahlkartenHandle } from '../../src/oberflaeche/bausteine/bausteine';
 import { erwachsenGesperrt, erwachsenKarte, erwachsenKarten, erwachsenNachWahl } from '../../src/oberflaeche/bausteine/erwachsen-wahl';
 import { ERWACHSEN_TEXTE, ERWACHSEN_VERWORFEN } from './bedienung-texte';
+import { gesperrtText, waehleErwachsenHinweis } from '../../src/oberflaeche/hinweise';
 import { speichere } from './grund-speichern';
 
 function el<T extends HTMLElement>(id: string): T {
@@ -21,6 +22,7 @@ const inhalt = el<HTMLInputElement>('erw-inhalt');
 // `erwachsen:vorschau` bleibt `an` an UND aus schaltbar wie bei HEAD (Karten Off und On), die Stufe gesperrt mit dem Hinweis von heute.
 let wahl: WahlkartenHandle | null = null;
 let stufeFrei = false;
+let packDa: PackKurz | null = null;
 let letzteEinstellung: Einstellungen | null = null;
 
 // Die Gruppe hat zwei Formen (G1): mit Freischaltung Off, Tease, Hot, Explicit; ohne sie Off und On (waehlbar) und die drei Stufen gesperrt und nie markiert.
@@ -50,11 +52,17 @@ function zeichneStufe(): void {
   // Erst sperren, dann markieren: die Markierung legt den Tab-Halt auf die gewaehlte, sonst auf die erste waehlbare Karte.
   wahl.setzeGesperrt(erwachsenGesperrt(stufeFrei));
   wahl.setze(erwachsenKarte(e.erwachsen, stufeFrei));
-  wahl.setzeHinweis(stufeFrei ? null : ERWACHSEN_TEXTE.gesperrt);
+  zeichneHinweis();
   if (fokusNachWechsel) {
     fokusNachWechsel = false;
     wahl.setzeFokus();
   }
+}
+
+// E4t W5: hoechstens ein gewoehnlicher Hinweis; der Satz zu einer verworfenen Wahl verdraengt fuer seine Dauer den Satz der gesperrten Stufen (reine Funktion waehleErwachsenHinweis).
+function zeichneHinweis(): void {
+  const art = waehleErwachsenHinweis({ verworfen: !verworfenHinweis.hidden, pack: packDa, mitPackHinweis: false });
+  wahl?.setzeHinweis(art === 'gesperrt' ? gesperrtText(packDa) : null);
 }
 
 // K2: der Hinweis zu einer verworfenen Wahl (anfangs verborgen), bis zur naechsten Handlung.
@@ -70,6 +78,7 @@ function waehleStufe(id: string): void {
   // geaendert), wird nichts geschrieben (`null`, nicht einmal der unveraenderte Stand), die Anzeige zeigt den gespeicherten
   // Stand und ein kurzer Hinweis steht da, bis zur naechsten Handlung (K2, wie bei der verworfenen Zonen-Handlung).
   verworfenHinweis.hidden = true;
+  zeichneHinweis();
   let gilt = true;
   void speichere(
     (alt) => {
@@ -80,10 +89,12 @@ function waehleStufe(id: string): void {
     zeichne,
   ).then(() => {
     if (!gilt) verworfenHinweis.hidden = false;
+    zeichneHinweis();
   });
 }
 
 function zeichnePack(pack: PackKurz | null): void {
+  packDa = pack;
   stufeFrei = istFreigeschaltet(pack, 'erwachsen:vorschau');
   zeichneStufe();
 }

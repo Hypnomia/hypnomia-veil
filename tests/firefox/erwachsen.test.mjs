@@ -175,6 +175,15 @@ const stand = (ids) =>
   );
 const istPackBild = (e) => e.veil === 'zensiert' && (e.src.startsWith('data:image/jpeg') || e.hg.includes('data:image/jpeg'));
 const warteAufTausch = (ids, frist = 30_000) => bis(`Tausch ${ids.join(',')}`, async () => (await stand(ids)).every(istPackBild), frist);
+// Nach dem Pack-Import schreibt der Hintergrund einmal `gesichterStand`; die Seite bewertet dann neu und setzt die Kacheln 6 bis 8 ms auf das Original
+// (Deckkraft 0) zurueck (MESSUNG-PHASE-11-E4T-ERWACHSEN.md). Gezaehlt wird darum erst, wenn "alle Pack-Bilder" in `anzahl` Lesungen im Abstand von 100 ms galt.
+const warteAufRuhigenTausch = async (ids, frist = 30_000, anzahl = 5) => {
+  let reihe = 0;
+  return bis(`Ruhiger Tausch ${ids.join(',')}`, async () => {
+    reihe = (await stand(ids)).every(istPackBild) ? reihe + 1 : 0;
+    return reihe >= anzahl;
+  }, frist);
+};
 const warteAufUrteile = (ids, frist = 30_000) => bis(`Urteile ${ids.join(',')}`, async () => (await stand(ids)).every((e) => e.veil !== null), frist);
 const erwachsenStand = () =>
   driver.executeScript(() => JSON.parse(document.documentElement.getAttribute('data-veil-erwachsen') ?? 'null'));
@@ -184,7 +193,7 @@ const vorschauIds = (n) => Array.from({ length: n }, (_, i) => `v${i + 1}`);
 async function wirdOrtGetauscht(ort) {
   await driver.get(seite(ort.name, ort.datei));
   const ids = vorschauIds(ort.karten);
-  await warteAufTausch(ids);
+  await warteAufRuhigenTausch(ids);
   const ersetzt = (await stand(ids)).filter(istPackBild).length;
   console.log(`firefox E ${ort.name}: ${ersetzt} von ${ids.length} Vorschaubildern ersetzt`);
   pruefe(ersetzt === ids.length, `${ort.name}: alle Vorschaubilder ersetzt`);
@@ -296,7 +305,7 @@ try {
     const ids12 = vorschauIds(12);
     const bildVon = (e) => (e.src.startsWith('data:') ? e.src : e.hg);
     await driver.get(seite('xvideos', `optik-kacheln.html?v=${v}`));
-    await warteAufTausch(ids12);
+    await warteAufRuhigenTausch(ids12);
     const k1 = (await stand(ids12)).map(bildVon);
     const verschieden = new Set(k1).size;
     console.log(`firefox O3${v}: ${verschieden} verschiedene Ersatzbilder bei 12 Kacheln, Pool ${voll.vorschau}`);
@@ -306,7 +315,7 @@ try {
     pruefe(Math.max(...z.values()) <= Math.ceil(12 / voll.vorschau), `O3${v}: kein Bild haeufiger als noetig`);
     if (v === 'e') pruefe([0, 2, 4, 6, 8, 10].every((i) => k1[i] !== k1[i + 1]), 'O3e: zwei Kacheln desselben Videos zeigen verschiedene Bilder');
     await driver.navigate().refresh();
-    await warteAufTausch(ids12);
+    await warteAufRuhigenTausch(ids12);
     pruefe(JSON.stringify((await stand(ids12)).map(bildVon)) === JSON.stringify(k1), `O3${v}: nach Neuladen dieselbe Zuordnung`);
   }
 

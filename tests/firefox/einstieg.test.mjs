@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TEXT } from '../../src/einstieg/texte.ts';
 import { STANDARD } from '../../src/einstellungen.ts';
-import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
+import { FEHLER_SPEICHERN, HINWEIS_PACK_OHNE_STICKER, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
@@ -232,7 +232,10 @@ try {
   await bis('Mia-Karte frei', async () => (await eigenschaft('#iv-preset-mia-wort', 'disabled')) === false);
   await klick('#iv-preset-mia-wort');
   await bis('Face an', async () => (await einst()).zonen?.face?.an === true && (await einst()).preset === 'mia-wort');
-  await bis('Face-Hinweis', () => sichtbar('#iv-stil-face'));
+  // E4t X7: der Test kennt den Zustand (Mia-Stil, Face gerade eingeschaltet, Pack mit Patch aber ohne Sticker). Nach F2 geht die Sperre des Packs allen anderen Hinweisen vor:
+  // genau ein gewoehnlicher Hinweis, der Satz zur Sperre; "Face ist eingeschaltet" steht dann nicht.
+  await bis('Hinweis zur Sperre', async () => (await sichtbar('#iv-stil-sperre')) && (await text('#iv-stil-sperre')) === HINWEIS_PACK_OHNE_STICKER);
+  pruefe(!(await sichtbar('#iv-stil-face')), 'X7/W5: "Face ist eingeschaltet" steht nicht neben dem Hinweis zur Sperre');
   pruefe(true, 'Mia-Preset schaltet Face ein, mit Hinweis');
   await imSeitenkontext(`await api.storage.local.remove('pack'); const a = (await api.storage.local.get('einstellungen')).einstellungen; await api.storage.local.set({ einstellungen: { ...a, preset: 'blur' } });`);
   await bis('wieder blur', async () => (await einst()).preset === 'blur');

@@ -8,6 +8,7 @@ import { speichere } from './grund-speichern';
 
 export interface StufenAnschluss {
   titel: string;
+  beschriftetDurch?: string; // E4t W8: Id der Ueberschrift mit demselben Namen ueber dem Element
   erklaerung?: ErklaerungEingabe;
   liste: StufenListe;
   exakt: { titel: string; formatiere: (wert: number) => string; reglerLabel: string };
@@ -35,6 +36,7 @@ export function haengeStufenwahl(ort: HTMLElement, kennung: string, a: StufenAns
       if (!el.handle) {
         const h = baueStufenwahl({
           titel: a.titel,
+          beschriftetDurch: a.beschriftetDurch,
           erklaerung: a.erklaerung,
           liste: a.liste,
           wert,

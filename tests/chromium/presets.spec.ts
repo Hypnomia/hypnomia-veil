@@ -248,7 +248,7 @@ test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, 
     // E4d1: Strict steht im Reiter What I cover, Eye bar im Reiter Style: je Reiter messen.
     await reiter(seite, 'What I cover');
     const hStrict = (await seite.locator('label.schalter:has(#strict)').boundingBox())!.height;
-    await reiter(seite, 'Style');
+    await reiter(seite, 'Cover style');
     console.log(`chromium: Hoehe Schalter Eye bar im Desktop-Fenster ${hDesktop.toFixed(1)} px, Strict ${hStrict.toFixed(1)} px`);
     expect(await seite.locator('#augenbalken-zeile').evaluate((e) => getComputedStyle(e).minHeight)).toBe(await seite.locator('label.schalter:has(#strict)').evaluate((e) => getComputedStyle(e).minHeight));
     await seite.setViewportSize({ width: 360, height: 800 });
@@ -331,6 +331,31 @@ test('Migration: ein gespeicherter alter `stil` zeigt das richtige Preset, mia-p
   }
 });
 
+// E4t X8: Messung "Change cover style" bei 360 px mit Pack und dem laengsten Stilnamen mit Pack (nur gemessen und gemeldet, nicht bewertet)
+test('X8 Messung: "Change cover style" bei 360 px mit Pack', async () => {
+  const seite = mitReitern(await context.newPage());
+  try {
+    await seite.setViewportSize({ width: 360, height: 800 });
+    await seite.goto(popupUrl());
+    await seite.evaluate(() => (globalThis as any).chrome.storage.local.set({ pack: { id: 't', version: '1.0.0', titel: 'T', freischaltungen: ['stil:mia-patch', 'zensur:sticker'], bilder: 3, sticker: 3, groesse: 1, importiert: 1 } }));
+    for (const p of ['mia-mosaik-wort', 'mia-wort', 'mia-sticker', 'person-mosaik']) {
+      await setzeEinst(seite, { preset: p });
+      await seite.waitForTimeout(300);
+      const m = await seite.evaluate(() => {
+        const b = document.getElementById('preset-aendern')!;
+        const r = document.createRange();
+        r.selectNodeContents(b);
+        return { zeilen: r.getClientRects().length, rechts: Math.round(b.getBoundingClientRect().right), name: document.getElementById('preset-name')!.textContent };
+      });
+      console.log(`chromium: X8 Messung mit Pack, Stil "${m.name}": ${m.zeilen} Zeile, Knopf rechts ${m.rechts} px bei 360 px Fensterbreite`);
+    }
+    await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
+    await setzeEinst(seite, { preset: 'mosaik' });
+  } finally {
+    await seite.close();
+  }
+});
+
 test('Popup ohne Pack: Zeile mit Vorschau, Name und Change style (zur Einstellungsseite, Cover style), unter 600 px Hoehe, 360 px ohne Seitwaertsscrollen', async () => {
   const seite = mitReitern(await context.newPage());
   try {
@@ -338,6 +363,20 @@ test('Popup ohne Pack: Zeile mit Vorschau, Name und Change style (zur Einstellun
     await seite.goto(popupUrl());
     await expect(seite.locator('#status')).not.toBeEmpty();
     await expect(seite.locator('#preset-name')).toHaveText(PRESETS.mosaik.name);
+    // E4t W9: "Change cover style" passt bei 360 px in eine Zeile, auch neben dem laengsten Stilnamen ohne Pack.
+    for (const p of ['mosaik', 'person-mosaik', 'mosaik-wort']) {
+      await setzeEinst(seite, { preset: p });
+      const m = await seite.evaluate(() => {
+        const b = document.getElementById('preset-aendern')!;
+        const r = document.createRange();
+        r.selectNodeContents(b);
+        return { zeilen: r.getClientRects().length, rechts: Math.round(b.getBoundingClientRect().right), text: b.textContent };
+      });
+      console.log(`chromium: W9 Messung ${p}: ${m.zeilen} Zeile, rechts ${m.rechts} px bei 360 px Fensterbreite`);
+      expect(m, p).toMatchObject({ text: 'Change cover style', zeilen: 1 });
+      expect(m.rechts, p).toBeLessThanOrEqual(360);
+    }
+    await setzeEinst(seite, { preset: 'mosaik' });
     await expect(seite.locator('#preset-bild svg')).toHaveCount(1);
     await expect(seite.locator('input[name="stil"]')).toHaveCount(0); // keine vierzehn Knoepfe im Popup
     await setzeEinst(seite, { preset: 'zensurbalken' });
@@ -401,8 +440,8 @@ test('Altbestand: ein gespeichertes Mia-Preset (alter stil mia-patch) mit Face a
   } finally {
     await imp.close();
   }
-  expect(meldung).toContain('Face is off under What I cover');
-  expect(meldung).not.toContain('Face is on under What I cover');
+  expect(meldung).toContain('Face is off under Zones');
+  expect(meldung).not.toContain('Face is on under Zones');
   const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
@@ -425,7 +464,7 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
   const meldung = await importiere(bytes, 'dummy-ohne-gesicht.miapack');
   // Der Import sagt, dass Face an ist (Teil A) und dass man es abschalten kann
   expect(meldung).toContain('Your cover style is now “My face, black, words”');
-  expect(meldung).toContain('Face is on under What I cover');
+  expect(meldung).toContain('Face is on under Zones');
   const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(optionsUrl());
@@ -492,7 +531,9 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
     expect((await speicher(seiteA, 'einstellungen')).zonen.face.an).toBe(false); // ein klassisches Preset schaltet nichts
     await seiteA.locator('label:has(#preset-mia-mosaik)').click();
     await expect.poll(async () => (await speicher(seiteA, 'einstellungen')).zonen.face.an).toBe(true);
-    await expect(seiteA.locator('#preset-face-hinweis')).toHaveText(HINWEIS_FACE_EIN);
+    // E4t W5: ein gewoehnlicher Hinweis je Element. In diesem Pack ist in keinem Patch ein Gesicht brauchbar: "kein Gesicht" geht vor "Face eingeschaltet".
+    await expect(seiteA.locator('#preset-kein-gesicht')).toHaveText(HINWEIS_KEIN_GESICHT);
+    await expect(seiteA.locator('#preset-face-hinweis')).toBeHidden();
     await expect(await zonenChip(seiteA, 'face')).toHaveAttribute('aria-pressed', 'true');
     await seiteA.locator('label:has(#preset-mia-wort)').click(); // Mia zu Mia: Hinweis weg
     await expect(seiteA.locator('#preset-face-hinweis')).toBeHidden();
@@ -899,10 +940,14 @@ test('Ohne Pack: Wort-Presets sagen, dass ihr Wort MIA ist (statt der Chips)', a
     }));
     expect(keys).toEqual([]);
     await seite.locator('label:has(#preset-mosaik-wort)').click();
+    // E4t W21: kein Pack und ein Stil mit Woertern: "my word is MIA" geht vor dem allgemeinen Satz zum fehlenden Pack (ein Hinweis je Element, der allgemeine ist verborgen).
     await expect(seite.locator('#wort-ohne-pack')).toHaveText(HINWEIS_WORT_OHNE_PACK);
+    await expect(seite.locator('#preset-pack-hinweis')).toBeHidden();
     await expect(seite.locator('#wort-themen')).toBeHidden();
     await seite.locator('label:has(#preset-mosaik)').click();
     await expect(seite.locator('#wort-ohne-pack')).toBeHidden();
+    // ein Stil ohne Woerter ohne Pack: weiter der allgemeine Satz zum fehlenden Pack
+    await expect(seite.locator('#preset-pack-hinweis')).toHaveText(HINWEIS_MIA_PACK_FEHLT);
   } finally {
     await seite.close();
   }

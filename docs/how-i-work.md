@@ -13,9 +13,9 @@ Keep my icon where you can see it. My popup holds **Pause Mia**, and I want that
 
 ## Cover styles
 
-Your cover style is how I cover what I find. Pick it under **Cover style** in **All settings**; **Change style** in my popup takes you straight there. The styles come in four groups, and each card shows a little figure with what I do to it.
+Your cover style is how I cover what I find. Pick it under **Cover style** in **All settings**; **Change cover style** in my popup takes you straight there. The styles come in four groups, and each card shows a little figure with what I do to it.
 
-**With my face** needs the Mia Pack. When you pick one, I switch **Face** on under **What I cover**, and every face I find becomes mine, cut to fit and tilted with the head when I can tell. Switch Face off again and I leave it off. While Face is on, **Eyes** and **Mouth** add nothing on top. **Head**, if you switched it on, still gets the same cover as everything else, with my face over the middle. Everything else you switched on gets the rest of the name:
+**With my face** needs the Mia Pack. When you pick one, I switch **Face** on under **Zones**, and every face I find becomes mine, cut to fit and tilted with the head when I can tell. Switch Face off again and I leave it off. While Face is on, **Eyes** and **Mouth** add nothing on top. **Head**, if you switched it on, still gets the same cover as everything else, with my face over the middle. Everything else you switched on gets the rest of the name:
 
 - **My face, black, words:** black, with one of my words in pink. My favorite.
 - **My face, mosaic**, **My face, mosaic, words**, **My face, blur:** mosaic, mosaic with a word, or blur.
@@ -29,7 +29,7 @@ With **Face** off, faces stay as they are, and Eyes and Mouth get the same as ev
 - **Mosaic**, **Mosaic and words**, **Blur:** everything you switched on gets that. Without the pack, my word is MIA.
 - **Censor bars:** a black bar over the eyes of every face I find, always, and black over everything else you switched on.
 
-Under the cards sits the **Eye bar** switch: a black bar over the eyes of every face I find, on top of any style, whatever your switches under **What I cover** say. Where I draw my own face over a face, my face goes over the bar, so the eyes are gone either way. Where I find no face, the switch adds nothing.
+Under the cards sits the **Eye bar** switch: a black bar over the eyes of every face I find, on top of any style, whatever your switches under **Zones** say. Where I draw my own face over a face, my face goes over the bar, so the eyes are gone either way. Where I find no face, the switch adds nothing.
 
 **Whole person** works without the pack too. When I find something you switched on, I cover the whole person with one mosaic or one blur, not just that spot. I work out the person from the parts I recognize, so the edges can be off. When I’m unsure, I cover more rather than less.
 
@@ -50,9 +50,9 @@ Changed your mind about a site? Under **My ads** in the settings, **Sites withou
 
 ## Adult sites
 
-Switch on **Adult-site mode** under **Adult sites**, in my popup or in **All settings**. On the adult sites I know, I swap the thumbnails for pictures of me.
+Switch on **Adult sites** in my popup, or pick any card but **Off** under **How hot I get** in **All settings**. On the adult sites I know, I swap the thumbnails for pictures of me.
 
-- **How hot do I get?** **Tease** only hints, **Hot** shows more, **Explicit** holds nothing back. It unlocks with the Mia Pack.
+- **How hot I get:** **Tease** only hints, **Hot** shows more, **Explicit** holds nothing back. It unlocks with the Mia Pack.
 - **Your own sites:** on a site I don’t know yet, type its address under **Your own sites** in the settings and click **Treat as adult site**.
 - **Spot adult pages by content:** I also recognize adult pages by what’s on them. Those only get my quiz and **Reveal**, never thumbnail swaps and never my gallery.
 
@@ -70,7 +70,7 @@ On adult sites I put my quiz in front of videos. A covered picture can carry a *
 
 It’s one question at a time, sometimes a little task: count, type, hold still. Answer right and you go on. Answer wrong and the next question comes straight away.
 
-Sometimes I say no to a right answer anyway, never twice in a row. **How often I refuse a right answer** under **Adult sites**, **Quiz**, sets how often.
+Sometimes I say no to a right answer anyway, never twice in a row. **How often I refuse** under **Adult sites**, **Quiz**, sets how often.
 
 **Pause Mia** sits at the top right of every quiz, and it’s always free.
 
@@ -84,15 +84,15 @@ With the Mia Pack in, my grip tightens by itself. My popup shows it under **Adul
 
 Each level covers more. Level 1 adds breasts, bottoms and genitals even when clothed, level 2 faces, eyes and mouths, level 3 belly, feet and armpits, clothed too. Level 4 covers every picture and video where I spot a woman, completely. My grip only adds, it never switches off what you switched on. The **Eye bar** switch takes part in every level: the bar stays, and the level adds on top.
 
-## Strict times
+## Tight hours
 
-Hours you pick for me to be stricter. Set them under **All settings**, **Mia’s control**, **Strict times**, with **Add a strict time**. They need the Mia Pack. During these hours:
+Hours you pick for me to be stricter. Set them under **All settings**, **Mia’s control**, **Tight hours**, with **Add tight hours**. They need the Mia Pack. During these hours:
 
 - my grip is one level tighter, up to level 4
 - flash words come more often, and **Off** stays off
-- a quiz waits before videos on every site, if **Adult-site mode** is on
+- a quiz waits before videos on every site, unless **Adult sites** is **Off**
 
-My popup tells you while a strict time runs. [Pause](pause.md) works as always and lets go of everything, strict time or not.
+My popup tells you while tight hours run. [Pause](pause.md) works as always and lets go of everything, tight hours or not.
 
 ## My little notes
 

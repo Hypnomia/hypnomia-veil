@@ -1,5 +1,5 @@
 // Chromium: strenge Zeiten (Auftrag Z1, Phase 5 Session 10, Entscheidung 116). In einem eingestellten Fenster ist die Steigerung eine Stufe hoeher
-// (der gespeicherte Stand bleibt), das Popup zeigt die Stufe und "Strict time until HH:MM", und auf jeder Seite gilt der Quiz-Riegel vor Videos.
+// (der gespeicherte Stand bleibt), das Popup zeigt die Stufe und "Tight hours until HH:MM", und auf jeder Seite gilt der Quiz-Riegel vor Videos.
 // Alles nur mit Freischaltung `kontrolle:zeitplan`; Pause gibt frei. Das Fenster setzen die Tests selbst (heutiger Wochentag, ganzer Tag), die
 // Neubewertung kommt durch die Einstellungsaenderung. Einzig der Player-Zeitgeber auf den Fensterbeginn laeuft von selbst (ein Fall, bis 90 s).
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
@@ -107,7 +107,7 @@ async function popupText(mitStufe = true): Promise<{ stufe: string; streng: stri
   }
 }
 
-test('Popup: Stufe 0 wird 1 in einer strengen Zeit mit Zeile "Strict time until", unveraendert ohne Freischaltung, ohne Fenster und in der Pause', async () => {
+test('Popup: Stufe 0 wird 1 in einer strengen Zeit mit Zeile "Tight hours until", unveraendert ohne Freischaltung, ohne Fenster und in der Pause', async () => {
   await setzeEinstellungen(EINST);
   await schreibe({ pack: kurz(['zensur:steigerung', 'kontrolle:zeitplan']), steigerung: stand({ stufe: 0 }) });
   // Fenster von vor 10 Minuten bis in 60 Minuten (ueber Mitternacht erlaubt): die Zeile nennt das Ende.
@@ -120,7 +120,7 @@ test('Popup: Stufe 0 wird 1 in einer strengen Zeit mit Zeile "Strict time until"
   let p = await popupText();
   expect(p.stufe).toContain('Level 1 of 4');
   expect(p.strengSichtbar).toBe(true);
-  expect(p.streng).toMatch(new RegExp(`^Strict time until .*[:.]${String(bis % 60).padStart(2, '0')}`)); // Uhrzeit im Format des Gebietsschemas
+  expect(p.streng).toMatch(new RegExp(`^Tight hours until .*[:.]${String(bis % 60).padStart(2, '0')}`)); // Uhrzeit im Format des Gebietsschemas
   expect(p.zeit).toBe('One level up for these hours.');
   expect(p.kommentar.length).toBeGreaterThan(10);
   expect(p.streng).not.toMatch(/[–—]/);
@@ -136,7 +136,7 @@ test('Popup: Stufe 0 wird 1 in einer strengen Zeit mit Zeile "Strict time until"
   p = await popupText();
   expect(p.stufe).toContain('Level 1 of 4');
   expect(p.strengSichtbar).toBe(true);
-  expect(p.streng).toBe('Strict time, around the clock');
+  expect(p.streng).toBe('Tight hours, around the clock');
   // ohne Freischaltung kontrolle:zeitplan
   await schreibe({ pack: kurz(['zensur:steigerung']) });
   p = await popupText();

@@ -1,10 +1,11 @@
 // Einstellungsseite, Block "Set me up" in der Pack-Karte (Session 17, Paket C, UX-Pruefung Phase 9 Funde 7 und 12): nach dem Import einmal
-// die Fragen, die erst mit dem Pack wirken. Zuerst "Show my ads?" (werbung-frage.ts), dann Adult-site mode, Intensitaet, Blitzwoerter und
+// die Fragen, die erst mit dem Pack wirken. Zuerst "Show my ads?" (werbung-frage.ts), dann der Schalter Adult sites, Intensitaet, Blitzwoerter und
 // Leerlauf-Spirale mit der Anfallswarnung. Antworten speichern sofort. "Done" und "Later" schliessen den Block fuer dieses Pack; "Later"
 // laesst die Standards stehen, nur die Werbe-Frage bleibt offen, bis sie beantwortet ist (Opt-in).
 import { BLITZ_HAEUFIGKEITEN, STUFEN_WAHL, beiEinstellungsAenderung, ladeEinstellungen, type BlitzHaeufigkeit, type Einstellungen, type StufeWahl } from '../../src/einstellungen';
 import { QUIZ_WARNUNG_SCHLUESSEL, WARNUNG_SPIRALE_SCHLUESSEL } from '../../src/kontrolle/grenzen';
 import { hatErwachsenFunktionen } from '../../src/oberflaeche/erwachsen';
+import { NAME_ERWACHSEN, NAME_HITZE } from '../../src/oberflaeche/gemeinsam';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { speichere, zeigeSpeicherFehler } from './grund-speichern';
 import { baueWerbungFrage, frischeWerbungFrageAuf, werbungFrageOffen } from './werbung-frage';
@@ -177,7 +178,7 @@ export function baueEinrichten(): HTMLElement {
   text.className = 'hinweis';
   text.textContent = TEXT_EINRICHTEN_TEXT;
 
-  const e1 = schalter('einrichten-erw-an', 'Adult-site mode', 'on the sites I know, I swap the thumbnails for mine');
+  const e1 = schalter('einrichten-erw-an', NAME_ERWACHSEN, 'on the sites I know, I swap the thumbnails for mine');
   erwZeile = e1.zeile;
   erwAn = e1.feld;
   erwAn.addEventListener('change', () => {
@@ -189,7 +190,7 @@ export function baueEinrichten(): HTMLElement {
   stufeZeile.id = 'einrichten-stufe-zeile';
   const stufeTitel = document.createElement('h4');
   stufeTitel.id = 'einrichten-stufe-titel';
-  stufeTitel.textContent = 'How hot do I get?';
+  stufeTitel.textContent = NAME_HITZE;
   const wahl = document.createElement('div');
   wahl.className = 'wahl stufen';
   wahl.setAttribute('role', 'radiogroup');

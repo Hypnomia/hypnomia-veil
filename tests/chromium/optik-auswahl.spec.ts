@@ -141,7 +141,7 @@ for (const breite of [1280, 360]) {
       await o.goto(url('options.html'));
       await expect(o.locator('#pack-status')).not.toHaveText('');
       await oeffneZugeklapptes(o);
-      await reiter(o, 'Mia’s extras');
+      await reiter(o, 'Mia’s control');
       await expect(o.locator('#kon-blitz')).toBeVisible();
       const einstellungen = await messeAuswahl(o);
       pruefeGleich(einstellungen, breite, ['kon-blitz', 'kon-cursor']);

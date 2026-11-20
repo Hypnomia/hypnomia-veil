@@ -8,7 +8,7 @@ import {
   HINWEIS_MIA_PACK_FEHLT,
   HINWEIS_ZONEN_MIA,
   HINWEIS_ZONEN_ZENSURBALKEN,
-} from './gemeinsam';
+} from './gemeinsam.ts';
 
 // Satz zum gewaehlten (wirksamen) Preset: sein Satz, bei Mia-Presets mit Pack die Zahl der Bilder, bei "Ganze Person" die Grenze.
 // `gesichtBilder`: Zahl der Patch-Bilder mit gefundenem Gesicht (nach fertigem Scan), null solange sie unbekannt ist oder ohne Pack.
@@ -31,10 +31,17 @@ export function packHinweis(mitPatch: boolean, pack: PackKurz | null | undefined
   return [mitPatch ? '' : HINWEIS_PACK_OHNE_PATCH, mitSticker ? '' : HINWEIS_PACK_OHNE_STICKER].filter((t) => t !== '').join(' ');
 }
 
-// Hinweis bei "What I cover" je Preset; '' wenn die Schalter ganz normal gelten.
-export function zonenHinweis(gilt: Preset): string {
+// Hinweise bei den Zonen je Preset, getrennt nach Gewicht (E4t W5): `nie` sagt, dass etwas NICHT verdeckt wird (Mias Gesicht: Eyes und Mouth legen nichts
+// dazu), und wird nie verdraengt; `gewoehnlich` ist der gewoehnliche Hinweis (Censor bars). '' wenn die Schalter ganz normal gelten.
+export function zonenHinweisTeile(gilt: Preset): { nie: string; gewoehnlich: string } {
   const d = presetDefFuerKennung(gilt);
-  if (d.augen === 'balken-immer') return HINWEIS_ZONEN_ZENSURBALKEN;
-  if (d.gesicht === 'mia-gesicht') return HINWEIS_ZONEN_MIA;
-  return '';
+  if (d.augen === 'balken-immer') return { nie: '', gewoehnlich: HINWEIS_ZONEN_ZENSURBALKEN };
+  if (d.gesicht === 'mia-gesicht') return { nie: HINWEIS_ZONEN_MIA, gewoehnlich: '' };
+  return { nie: '', gewoehnlich: '' };
+}
+
+// Hinweis bei den Zonen je Preset (der eine, der gilt); '' wenn die Schalter ganz normal gelten.
+export function zonenHinweis(gilt: Preset): string {
+  const t = zonenHinweisTeile(gilt);
+  return t.nie || t.gewoehnlich;
 }

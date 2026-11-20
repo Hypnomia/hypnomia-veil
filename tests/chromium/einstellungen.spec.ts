@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { ERWACHSEN_TEXTE } from '../../src/oberflaeche/bedienung-texte';
 import { oeffneZugeklapptes, mitReitern, reiter, reiterFuer, REITER_NAMEN, stufenKnopf, oeffneAuf, zonenChip, markiert } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -83,7 +84,7 @@ test('Aufbau: Titel, Status, Sprungleiste und alle Abschnitte in der Reihenfolge
     const reihenfolge = await seite.evaluate(() =>
       [...document.querySelectorAll('main [role=tabpanel] > section, main [role=tabpanel] > .gruppe')].map((s) => s.id),
     );
-    // Phase 9 (Fund 4): Calm mode wohnt in Mia’s extras, das Interview in About. Ohne Pack steht die Pack-Karte im Reiter Pack and sound vor Sound.
+    // Phase 9 (Fund 4): Calm mode wohnt in Mia’s control, das Interview in About. Ohne Pack steht die Pack-Karte im Reiter Pack and sound vor Sound.
     const soll = ['abschnitt-stil', 'covering', 'erwachsen', 'kontrolle', 'stand', 'ton', 'ledger', 'ueber'];
     expect(reihenfolge).toEqual(soll);
     // Der Stil wohnt im eigenen Reiter Style (D2): "What I cover" fasst Stimmung, Zonen mit Strict und Ausnahmen.
@@ -294,7 +295,7 @@ test('Adult sites: Gruppe auch ohne Pack einstellbar (Off und On), mit Pack Off,
     expect(await markiert(seite, 'erw-stufe-wahl')).toContain('On');
     for (const n of ['Tease', 'Hot', 'Explicit']) await expect(stufenKnopf(seite, 'erw-stufe-wahl', n)).toBeDisabled();
     for (const n of ['Off', 'On']) await expect(stufenKnopf(seite, 'erw-stufe-wahl', n)).toBeEnabled();
-    await expect(seite.locator('#erw-stufe-wahl .v-hinweis')).toContainText('unlocks with the Mia Pack');
+    await expect(seite.locator('#erw-stufe-wahl .v-hinweis')).toHaveText(ERWACHSEN_TEXTE.gesperrt);
     await expect(seite.locator('#erw-ersatz')).not.toBeChecked();
     await expect(seite.locator('#erw-inhalt')).toBeChecked();
     await expect(seite.locator('#erw-ersatz')).toBeEnabled();

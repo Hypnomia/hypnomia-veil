@@ -69,7 +69,7 @@ test('Aufbau: tablist mit sieben tab, jedes tab steuert ein tabpanel, genau eine
   const seite = await frischeSeite();
   try {
     await expect(seite.locator('[role=tablist] [role=tab]')).toHaveText(REITER);
-    expect(await gewaehlt(seite)).toEqual(['Style']);
+    expect(await gewaehlt(seite)).toEqual(['Cover style']);
     const bau = await seite.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>('[role=tab]')].map((t) => {
         const p = document.getElementById(t.getAttribute('aria-controls')!)!;
@@ -155,7 +155,7 @@ test('D3: auch bei einem Wechsel des Ankers auf der offenen Seite (Popup setzt n
     expect(await gewaehlt(seite)).toEqual(['About']);
     await seite.evaluate(() => history.pushState(null, '', location.pathname));
     await seite.evaluate(() => dispatchEvent(new HashChangeEvent('hashchange')));
-    await expect.poll(() => gewaehlt(seite)).toEqual(['Style']);
+    await expect.poll(() => gewaehlt(seite)).toEqual(['Cover style']);
   } finally {
     await seite.close();
   }
@@ -192,7 +192,7 @@ test('N3 und Q4: unbekannte Anker oeffnen beim Laden Style, lassen beim Wechsel 
       await seite.goto(optionsUrl(`#${anker}`));
       await seite.reload();
       await seite.waitForFunction(() => document.body.getAttribute('data-veil-ordnung') === 'bereit');
-      expect(await gewaehlt(seite), `beim Laden #${anker}`).toEqual(['Style']);
+      expect(await gewaehlt(seite), `beim Laden #${anker}`).toEqual(['Cover style']);
     }
     await seite.goto(optionsUrl('#ledger'));
     await seite.reload();
@@ -237,7 +237,7 @@ test('D4: Tastatur: Pfeile, Pos1 und Ende bewegen nur den Fokus, Eingabe und Lee
     await tabs.nth(0).focus();
     await seite.keyboard.press('ArrowDown');
     await expect(tabs.nth(1)).toBeFocused();
-    expect(await gewaehlt(seite), 'ein Pfeil waehlt nicht').toEqual(['Style']);
+    expect(await gewaehlt(seite), 'ein Pfeil waehlt nicht').toEqual(['Cover style']);
     await seite.keyboard.press('ArrowRight');
     await expect(tabs.nth(2)).toBeFocused();
     await seite.keyboard.press('ArrowUp');
@@ -250,7 +250,7 @@ test('D4: Tastatur: Pfeile, Pos1 und Ende bewegen nur den Fokus, Eingabe und Lee
     await expect(tabs.nth(6)).toBeFocused();
     await seite.keyboard.press('Home');
     await expect(tabs.nth(0)).toBeFocused();
-    expect(await gewaehlt(seite)).toEqual(['Style']);
+    expect(await gewaehlt(seite)).toEqual(['Cover style']);
     await seite.keyboard.press('ArrowDown');
     await seite.keyboard.press('Enter');
     expect(await gewaehlt(seite)).toEqual(['What I cover']);
@@ -416,14 +416,14 @@ test('Jede Einstellung genau einmal: alle Bedienelemente der Panels gegen die So
   }
 });
 
-test('D6: ohne Pack sind Adult sites, Mia’s extras (Calm mode bleibt offen) und Sound zugeklappt, die Reiter selbst waehlbar', async () => {
+test('D6: ohne Pack sind Adult sites, Mia’s control (Calm mode bleibt offen) und Sound zugeklappt, die Reiter selbst waehlbar', async () => {
   const seite = await frischeSeite();
   try {
     await seite.locator('[role=tab]', { hasText: 'Adult sites' }).click();
     await expect(seite.locator('#erwachsen-zu-knopf')).toBeVisible();
     await expect(seite.locator('#erwachsen-zu-knopf')).toHaveText('Set them now');
     await expect(seite.locator('#erwachsen-block')).toBeHidden();
-    await seite.locator('[role=tab]', { hasText: 'Mia’s extras' }).click();
+    await seite.locator('[role=tab]', { hasText: 'Mia’s control' }).click();
     await expect(seite.locator('#kontrolle-zu-knopf')).toBeVisible();
     await expect(seite.locator('#kontrolle-block')).toBeHidden();
     await expect(seite.locator('#ruhig')).toBeVisible();
@@ -442,7 +442,7 @@ test('D6: ohne Pack sind Adult sites, Mia’s extras (Calm mode bleibt offen) un
     expect(await seite.evaluate(() => [...document.querySelectorAll('#panel-pack > section')].map((s) => s.id))).toEqual(['stand', 'ton']);
     await seite.locator('#kontrolle-zu-knopf').count();
     // Der Knopf klappt auf (nichts wird geschrieben).
-    await seite.locator('[role=tab]', { hasText: 'Mia’s extras' }).click();
+    await seite.locator('[role=tab]', { hasText: 'Mia’s control' }).click();
     await seite.locator('#kontrolle-zu-knopf').click();
     await expect(seite.locator('#kontrolle-block')).toBeVisible();
   } finally {
@@ -547,7 +547,7 @@ test('D7: der Platz der Vorschau zeigt in jedem Reiter den gespeicherten Stil un
       await expect(etikett, name).toHaveText('Mosaic');
     }
     // Wechsel des Stils ueber die Karte.
-    await seite.locator('[role=tab]', { hasText: 'Style' }).click();
+    await seite.locator('[role=tab]', { hasText: 'Cover style' }).click();
     await seite.locator('#preset-karten label.preset-karte').filter({ has: seite.locator('strong', { hasText: /^Blur$/ }) }).click();
     await expect(etikett).toHaveText('Blur');
     expect(await bild()).not.toBe(mosaik);

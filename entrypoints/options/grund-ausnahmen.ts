@@ -52,7 +52,7 @@ const alsAdresse = (muster: string): URL => new URL(`https://${muster.includes('
 
 // Gezaehlt werden verschiedene Seiten (Hosts), nicht Muster: Pfadmuster wie amazon.de/gp/buy gehoeren zur selben Seite.
 const standardSeiten = new Set(standardMuster.map((m) => zerlegeMuster(m)?.host ?? m)).size;
-standardZahl.textContent = `My never-touch list keeps ${standardSeiten} sites safe from me, like banks and mail. That list is fixed.`;
+standardZahl.textContent = `My fixed never-touch list keeps ${standardSeiten} sites safe from me, like banks and mail.`;
 
 let gezeichnet = '';
 let aktuellListe: string[] = [];
@@ -114,7 +114,7 @@ form.addEventListener('submit', (ereignis) => {
   if (!('muster' in ergebnis)) {
     meldung.textContent =
       ergebnis.grund === 'endung'
-        ? 'That ending is shared by a whole crowd of unrelated sites, and I’d leave every one of them alone. Add the exact address instead.'
+        ? 'That ending matches a whole crowd of unrelated sites, and I’d leave them all alone. Add the exact address.'
         : 'That doesn’t look like a site address. Try something like example.com.';
     return;
   }

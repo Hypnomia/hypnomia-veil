@@ -1,4 +1,4 @@
-// Firefox-Test Auftrag Z1 (Session 10): strenge Zeiten. Popup (Stufe plus eins, Zeile "Strict time until"), Steigerung im Content-Script (YuNet
+// Firefox-Test Auftrag Z1 (Session 10): strenge Zeiten. Popup (Stufe plus eins, Zeile "Tight hours until"), Steigerung im Content-Script (YuNet
 // laeuft bei Stufe 1 plus eins), Player-Riegel auf einer normalen Seite (localhost) in einem Fenster. Gleiche Faelle wie tests/chromium/streng.spec.ts.
 import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
@@ -250,7 +250,7 @@ try {
     await zeitenSetzen([{ tage: [heute, (heute + 6) % 7], von, bis: bis_ }]);
     let p = await popupText();
     pruefe(p.stufe.includes('Level 1 of 4'), `Stufe 1 im Fenster (${p.stufe})`);
-    pruefe(p.sichtbar && new RegExp(`^Strict time until .*[:.]${String(bis_ % 60).padStart(2, '0')}`).test(p.streng), `Zeile mit Ende (${p.streng})`);
+    pruefe(p.sichtbar && new RegExp(`^Tight hours until .*[:.]${String(bis_ % 60).padStart(2, '0')}`).test(p.streng), `Zeile mit Ende (${p.streng})`);
     pruefe((await lies('steigerung')).stufe === 0, 'gespeicherter Stand bleibt 0');
     await speichere({ steigerung: stand({ stufe: 3 }) });
     pruefe((await popupText()).stufe.includes('Level 4 of 4'), 'Stufe 3 wird 4');

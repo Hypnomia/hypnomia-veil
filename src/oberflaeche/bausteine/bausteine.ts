@@ -239,6 +239,8 @@ export function baueWahlkarten(e: WahlkartenEingabe): WahlkartenHandle {
 export interface StufenwahlEingabe {
   titel: string;
   erklaerung?: ErklaerungEingabe;
+  // E4t W8: Id einer Ueberschrift mit demselben Namen ueber dem Baustein: der Baustein zeigt dann keinen Titel, seine Gruppe ist mit dieser Ueberschrift verbunden.
+  beschriftetDurch?: string;
   liste: StufenListe; // Stufen mit Namen und Werten (STUFENLISTEN oder eine Kopie mit anderen Namen)
   wert: number; // gespeicherter Wert im Speichermass der Einstellung
   exakt: { titel: string; formatiere: (wert: number) => string; reglerLabel: string }; // Aufklapper "Exact value"
@@ -257,10 +259,10 @@ export interface StufenwahlHandle {
 
 export function baueStufenwahl(e: StufenwahlEingabe): StufenwahlHandle {
   const w = wurzel('stufenwahl');
-  const titel = baueTitel({ titel: e.titel, erklaerung: e.erklaerung });
+  const titel = baueTitel({ titel: e.titel, erklaerung: e.erklaerung, unsichtbar: !!e.beschriftetDurch });
   const gruppe = el('div', 'v-stufen');
   gruppe.setAttribute('role', 'radiogroup');
-  gruppe.setAttribute('aria-labelledby', titel.titel.id);
+  gruppe.setAttribute('aria-labelledby', e.beschriftetDurch ?? titel.titel.id);
   const knoepfe = e.liste.stufen.map((s) => {
     const b = knopf('v-stufe', s.name);
     b.setAttribute('role', 'radio');
@@ -396,6 +398,7 @@ export interface ZonenwahlEingabe {
   titel: string;
   erklaerung?: ErklaerungEingabe;
   hinweis?: string;
+  beschriftetDurch?: string; // E4t W8, wie bei der Stufenwahl
   karten: Record<ZonenWahl, { titel: string; satz?: string }>; // drei Karten: Body, Body and face, Everything
   einzeln: {
     titel: string; // Aufklapper "Pick zones one by one"
@@ -418,13 +421,13 @@ export interface ZonenwahlHandle {
 // Die Logik (welche Zonen eine Wahl einschaltet) liegt in src/einstieg/zonen.ts; hier steht nur die Darstellung.
 export function baueZonenwahl(e: ZonenwahlEingabe): ZonenwahlHandle {
   const w = wurzel('zonenwahl');
-  const titel = baueTitel({ titel: e.titel, erklaerung: e.erklaerung });
+  const titel = baueTitel({ titel: e.titel, erklaerung: e.erklaerung, unsichtbar: !!e.beschriftetDurch });
   const karten: Wahlkarte[] = ZONEN_WAHLEN.map((id) => ({ id, ...e.karten[id] }));
   const aendere = (neu: ZonenStand) => {
     zeige(neu);
     e.beiAenderung?.(neu);
   };
-  const g = baueKartenGruppe(karten, zonenWahl(e.zonen()), 3, titel.titel.id, (id) => aendere(setzeZonenWahl(e.zonen(), id as ZonenWahl)));
+  const g = baueKartenGruppe(karten, zonenWahl(e.zonen()), 3, e.beschriftetDurch ?? titel.titel.id, (id) => aendere(setzeZonenWahl(e.zonen(), id as ZonenWahl)));
   const chipsGruppe = el('div', 'v-chips');
   chipsGruppe.setAttribute('role', 'group');
   chipsGruppe.setAttribute('aria-label', e.einzeln.gruppenLabel);

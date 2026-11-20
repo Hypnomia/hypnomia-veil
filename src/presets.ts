@@ -55,11 +55,11 @@ export interface PresetDef {
 }
 
 export const PRESETS: Readonly<Record<Preset, PresetDef>> = {
-  'mia-wort': { id: 'mia-wort', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'schwarz-wort', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: true, name: 'My face, black, words', satz: 'With Face on, every face becomes mine. Everything else I cover turns black, with a word of mine in pink.' },
-  'mia-mosaik': { id: 'mia-mosaik', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'mosaik', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: false, name: 'My face, mosaic', satz: 'With Face on, every face becomes mine. Everything else I cover gets mosaic.' },
-  'mia-mosaik-wort': { id: 'mia-mosaik-wort', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'mosaik-wort', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: true, name: 'My face, mosaic, words', satz: 'With Face on, every face becomes mine. Everything else I cover gets mosaic, with a word of mine on top.' },
-  'mia-blur': { id: 'mia-blur', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'blur', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: false, name: 'My face, blur', satz: 'With Face on, every face becomes mine. Everything else I cover gets blurred.' },
-  'mia-sticker': { id: 'mia-sticker', gruppe: 'sticker', gesicht: 'mia-gesicht', koerper: 'sticker', augen: 'wie-koerper', person: false, braucht: 'sticker', woerter: false, name: 'My face, stickers', satz: 'With Face on, every face becomes mine. Everything else I cover gets a pastel patch with a little me on top.' },
+  'mia-wort': { id: 'mia-wort', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'schwarz-wort', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: true, name: 'My face, black, words', satz: 'With Face on, every face becomes mine. The rest turns black, with a pink word of mine.' },
+  'mia-mosaik': { id: 'mia-mosaik', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'mosaik', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: false, name: 'My face, mosaic', satz: 'With Face on, every face becomes mine. The rest gets mosaic.' },
+  'mia-mosaik-wort': { id: 'mia-mosaik-wort', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'mosaik-wort', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: true, name: 'My face, mosaic, words', satz: 'With Face on, every face becomes mine. The rest gets mosaic, with a word of mine on top.' },
+  'mia-blur': { id: 'mia-blur', gruppe: 'mia', gesicht: 'mia-gesicht', koerper: 'blur', augen: 'wie-koerper', person: false, braucht: 'pack', woerter: false, name: 'My face, blur', satz: 'With Face on, every face becomes mine. The rest gets blurred.' },
+  'mia-sticker': { id: 'mia-sticker', gruppe: 'sticker', gesicht: 'mia-gesicht', koerper: 'sticker', augen: 'wie-koerper', person: false, braucht: 'sticker', woerter: false, name: 'My face, stickers', satz: 'With Face on, every face becomes mine. The rest gets a pastel patch and a little me.' },
   sticker: { id: 'sticker', gruppe: 'sticker', gesicht: 'sticker', koerper: 'sticker', augen: 'wie-koerper', person: false, braucht: 'sticker', woerter: false, name: 'Stickers', satz: 'A pastel patch over everything I cover, with a little me on top.' },
   mosaik: { id: 'mosaik', gruppe: 'klassisch', gesicht: 'mosaik', koerper: 'mosaik', augen: 'wie-koerper', person: false, braucht: null, woerter: false, name: 'Mosaic', satz: 'Pixels over everything I cover.' },
   'mosaik-wort': { id: 'mosaik-wort', gruppe: 'klassisch', gesicht: 'mosaik-wort', koerper: 'mosaik-wort', augen: 'wie-koerper', person: false, braucht: null, woerter: true, name: 'Mosaic and words', satz: 'Pixels over everything I cover, with a word of mine on top.' },
@@ -77,7 +77,7 @@ export const PACK_PRESET: Preset = 'mia-wort';
 // Preset, auf das Mia-Presets ohne Pack zurueckfallen.
 export const OHNE_PACK_PRESET: Preset = 'mosaik';
 // Hinweis, der die Grenze der Ganze-Person-Presets ehrlich nennt (Plan, Abschnitt "Ganze Person").
-export const PERSON_GRENZE = 'I work out the person from the parts I recognize, so the edges can be off. When I’m unsure, I cover more rather than less.';
+export const PERSON_GRENZE = 'I build the person from parts I spot, so edges can be off. I add a margin around them.';
 
 export function istPreset(x: unknown): x is Preset {
   return typeof x === 'string' && (PRESET_IDS as readonly string[]).includes(x);

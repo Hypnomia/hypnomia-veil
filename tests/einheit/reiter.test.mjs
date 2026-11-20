@@ -26,7 +26,7 @@ function idsJePanel() {
 test('D1: sieben Reiter in der Reihenfolge des Entwurfs, Namen an einer Stelle', () => {
   assert.deepEqual(
     REITER.map((r) => r.name),
-    ['Style', 'What I cover', 'Adult sites', 'Mia’s extras', 'Pack and sound', 'Ledger', 'About'],
+    ['Cover style', 'What I cover', 'Adult sites', 'Mia’s control', 'Pack and sound', 'Ledger', 'About'],
   );
   assert.equal(new Set(REITER.map((r) => r.id)).size, 7);
   assert.equal(new Set(REITER.map((r) => r.anker)).size, 7);

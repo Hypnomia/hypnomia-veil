@@ -9,7 +9,7 @@ export const HILFE_ANKER = {
   ads: 'how-i-work/my-ads',
   adult: 'how-i-work/adult-sites',
   'full-replacement': 'how-i-work/full-replacement',
-  'strict-times': 'how-i-work/strict-times',
+  'strict-times': 'how-i-work/tight-hours',
   grip: 'how-i-work/my-grip',
   quiz: 'how-i-work/the-quiz',
   calm: 'safety/calm-mode',

@@ -184,6 +184,15 @@ try {
   await imSeitenkontext(`await api.storage.local.remove('pack');`);
   await bis('wieder Mosaik', async () => (await text('#preset-name')) === 'Mosaic');
   await setzePreset('mosaik');
+  // E4t W9: "Change cover style" passt bei der Breite des Popups (hoechstens 360 px) in eine Zeile, auch neben dem laengsten Stilnamen ohne Pack.
+  for (const p of ['mosaik', 'person-mosaik', 'mosaik-wort']) {
+    await setzePreset(p);
+    await warte(200);
+    const m = await driver.executeScript(`const b = document.getElementById('preset-aendern'); const r = document.createRange(); r.selectNodeContents(b); return { zeilen: r.getClientRects().length, rechts: Math.round(b.getBoundingClientRect().right), text: b.textContent, breit: Math.round(document.body.getBoundingClientRect().width) };`);
+    pruefe(m.text === 'Change cover style' && m.zeilen === 1 && m.rechts <= 360, `W9 (${p}): "${m.text}" in ${m.zeilen} Zeile, rechter Rand ${m.rechts} px, Popup ${m.breit} px breit`);
+    console.log(`firefox: W9 Messung ${p}: ${m.zeilen} Zeile, rechts ${m.rechts} px, Popup ${m.breit} px`);
+  }
+  await setzePreset('mosaik');
 
   // Auftrag U, Session 12: UX-Funde im echten Firefox (Popup als Tab, Fenster 1280 px breit)
   pruefe((await text('#pack-hinweis')).length > 0, 'U Vorbereitung');
@@ -195,7 +204,7 @@ try {
   pruefe(mass.breite <= 360 && mass.klein >= 12.5, `Fund 27: Breite ${mass.breite} px, kleinste Schrift ${mass.klein} px`);
   // Fund 12: sechs Kaestchen mit Zonennamen
   const namen = await driver.executeScript(`return [...document.querySelectorAll('#zonen input[data-bedeckt]')].map((e) => e.getAttribute('aria-label'))`);
-  pruefe(namen.length === 6 && namen.every((n) => /^[A-Z][a-z]+: even when clothed$/.test(n)) && new Set(namen).size === 6, `Fund 12: ${namen.length} Namen (${namen[0]})`);
+  pruefe(namen.length === 6 && namen.every((n) => /^[A-Z][a-z]+: under clothes too$/.test(n)) && new Set(namen).size === 6, `Fund 12: ${namen.length} Namen (${namen[0]})`);
   // Fund 9 und 10: Kontraste (WCAG)
   const kontraste = await driver.executeScript(`const l = (c) => { const m = c.match(/[\\d.]+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
     const k = (a, b) => { const x = l(a), y = l(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
@@ -359,6 +368,42 @@ try {
   await bis('#stand im Blick', async () => imBlick('stand'));
   pruefe(true, 'Fund 7: Abschnitt #stand liegt im Blick');
   await driver.switchTo().window(popup3).catch(() => {});
+  await imSeitenkontext(`await api.storage.local.remove('pack');`).catch(() => {});
+
+  // E4t X2 und X5: die Kurzzeile "I cover: ..." je Zustand und die Pause vor "ohne Pack" (Popup 3, ohne Pack; das Popup folgt dem Speicher)
+  await oeffne('popup.html');
+  await bis('Popup X gezeichnet', async () => (await text('#status')).length > 0);
+  const kurz = () => driver.executeScript(`const e = document.getElementById('abdeckung-kurz'); return e.hidden ? null : e.textContent;`);
+  const setzeE = (teil) => imSeitenkontext(`const zonen = Object.fromEntries(['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'].map((z) => [z, { an: false, bedeckt: false }])); await api.storage.local.set({ einstellungen: { version: 1, preset: 'mosaik', augenbalken: false, zonen, ...args[0] } });`, teil);
+  const GANZER_TAG = [{ tage: [0, 1, 2, 3, 4, 5, 6], von: 0, bis: 0 }];
+  const packSetzen = (f) => imSeitenkontext(`await api.storage.local.set({ pack: { id: 'test', version: '1.0.0', titel: 'Test', freischaltungen: args[0], bilder: 3, groesse: 100, importiert: 1 } });`, f);
+  await setzeE({});
+  await bis('Kurzzeile nothing', async () => (await kurz()) === T.ABDECKUNG_KURZ([], false, 'nein'));
+  pruefe(/nothing right now/.test(await kurz()), 'X5: keine Zone, kein Balken, kein Griff: "nothing right now"');
+  await setzeE({ augenbalken: true });
+  await bis('Kurzzeile Balken', async () => (await kurz()) === T.ABDECKUNG_AUGENBALKEN);
+  pruefe(true, 'X5: Zonen aus und Eye bar an zeigt C7');
+  await setzeE({ pause: true });
+  await bis('Pause geht vor ohne Pack', async () => (await text('#erwachsen-hinweis')) === T.ERW_HINWEIS_PAUSE);
+  pruefe(true, 'X2: ohne Pack in der Pause steht der Satz der Pause');
+  await setzeE({ pause: false });
+  await bis('ohne Pack', async () => (await text('#erwachsen-hinweis')) === T.ERW_HINWEIS_OHNE_PACK);
+  pruefe(true, 'X2: ohne Pack ausserhalb der Pause steht der Satz ohne Pack');
+  await packSetzen(['zensur:steigerung', 'kontrolle:zeitplan']);
+  await setzeE({ kontrolle: { zeiten: GANZER_TAG } });
+  await bis('Kurzzeile Griff', async () => (await kurz()) === T.ABDECKUNG_NUR_GRIFF);
+  pruefe(true, 'X5: strenge Zeit mit Steigerung zeigt C45, nicht "nothing"');
+  await packSetzen(['kontrolle:zeitplan']);
+  await bis('Kurzzeile leer ohne Steigerung', async () => (await kurz()) === null);
+  pruefe(true, 'X4: strenge Zeit ohne Steigerung: Zeile leer und verborgen (weder "nothing" noch C45)');
+  // E4t X8: Messung "Change cover style" auch mit Pack und dem laengsten Stilnamen mit Pack (nur gemessen und berichtet, nicht bewertet)
+  await packSetzen(['stil:mia-patch', 'zensur:sticker']);
+  for (const p of ['mia-mosaik-wort', 'mia-wort', 'mia-sticker', 'person-mosaik']) {
+    await setzePreset(p);
+    await warte(300);
+    const m = await driver.executeScript(`const b = document.getElementById('preset-aendern'); const r = document.createRange(); r.selectNodeContents(b); return { zeilen: r.getClientRects().length, rechts: Math.round(b.getBoundingClientRect().right), name: document.getElementById('preset-name').textContent, breit: Math.round(document.body.getBoundingClientRect().width) };`);
+    console.log(`firefox: X8 Messung mit Pack, Stil "${m.name}": ${m.zeilen} Zeile, Knopf rechts ${m.rechts} px, Popup ${m.breit} px breit`);
+  }
   await imSeitenkontext(`await api.storage.local.remove('pack');`).catch(() => {});
 } catch (fehler) {
   console.error('firefox: FEHLER', fehler);

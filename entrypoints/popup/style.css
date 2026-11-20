@@ -321,7 +321,7 @@ output {
   background: #f3e8f0;
 }
 
-/* Cover style: eine Zeile mit der Vorschau des Presets (klein, damit das Popup unter 600 px bleibt), dem Namen und "Change style". */
+/* Cover style: eine Zeile mit der Vorschau des Presets (klein, damit das Popup unter 600 px bleibt), dem Namen und "Change cover style". */
 .preset-zeile { grid-template-columns: 40px 1fr auto; gap: 10px; }
 .preset-zeile .preset-bild svg { width: 40px; height: 48px; }
 

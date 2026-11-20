@@ -77,7 +77,10 @@ if (abschnitt) {
     const mit = istFreigeschaltet(pack, 'ton');
     // Fund 24: in der Pause bleibt die Probe frei, ihr Klick sagt, warum es still bleibt (TON_TEXTE.probePause).
     probe.disabled = !mit;
-    hinweis.textContent = mit ? TON_TEXTE.hinweisMitTon : pack ? TON_TEXTE.hinweisAltesPack : TON_TEXTE.hinweisOhnePack;
+    // E4t K8: ein Hinweis je Abschnitt: mit Ton im Pack steht der Satz der Regel (Ton nur fuer Quiz und Blitzwoerter), sonst der Hinweis zum Pack.
+    hinweis.textContent = mit ? '' : pack ? TON_TEXTE.hinweisAltesPack : TON_TEXTE.hinweisOhnePack;
+    hinweis.hidden = mit;
+    regel.hidden = !mit;
     if (!mit) probeMeldung.textContent = '';
   }
 

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { STIMMUNG_STUFEN_INTERVIEW, TEXT } from '../../src/einstieg/texte';
 import { STIMMUNG_STUFEN } from '../../entrypoints/options/bedienung-texte';
 import { STANDARD } from '../../src/einstellungen';
-import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { FEHLER_SPEICHERN, HINWEIS_FACE_AUS, HINWEIS_PACK_OHNE_STICKER, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -256,7 +256,12 @@ test('I5a: mit Freischaltung Off, Tease, Hot, Explicit (Off laesst die Stufe ste
         await expect(karte(w, 'iv-erw-wahl', g), `${name}: ${g} nie markiert`).toHaveAttribute('aria-checked', 'false');
       }
       await expect(karte(w, 'iv-erw-wahl', 'off')).toHaveAttribute('aria-checked', 'true');
-      await expect(w.locator('#iv-erw-wahl .v-hinweis')).toHaveText(TEXT.erwachsenGesperrt);
+      // E4t W5, K10: ein Hinweis je Element. Ohne Pack steht der Satz "Set these now" mit dem Link und der Sperrsatz weicht; mit einem Pack ohne die Freischaltung steht der Sperrsatz (zweiter Wortlaut).
+      if (pack) await expect(w.locator('#iv-erw-wahl .v-hinweis')).toHaveText(TEXT.erwachsenGesperrtAltesPack);
+      else {
+        await expect(w.locator('#iv-erw-wahl .v-hinweis')).toHaveCount(0);
+        await expect(w.locator('#iv-ohne-pack')).toBeVisible();
+      }
       // Klick, Eingabe und Leertaste auf einer gesperrten Stufe schreiben nichts
       const vorher = JSON.stringify(await einst());
       const n0 = await aufrufe(w);
@@ -278,8 +283,17 @@ test('I5a: mit Freischaltung Off, Tease, Hot, Explicit (Off laesst die Stufe ste
     // Komplett-Ersatz wird nicht gefragt, sein Warnsatz bleibt aber sichtbar, solange er gespeichert an ist (I8 (5))
     w = await oeffne(v, { version: 1, erwachsen: { an: true, stufe: 'hot', komplettErsatz: true } }, PACK_VOLL);
     await bisSeite(w, 5);
-    await expect(w.locator('#iv-ersatz-an')).toHaveText(TEXT.ersatzAn);
+    // E4t W4: der Warnsatz steht nur, wenn der Ersatz wirken wuerde (gespeichert an UND Adult sites an UND Pack mit erwachsen:ersatz); PACK_VOLL hat die Freischaltung nicht.
+    await expect(w.locator('#iv-ersatz-an')).toBeHidden();
     expect((await einst()).erwachsen.komplettErsatz).toBe(true);
+    await w.close();
+    w = await oeffne(v, { version: 1, erwachsen: { an: true, stufe: 'hot', komplettErsatz: true } }, { ...PACK_VOLL, freischaltungen: [...PACK_VOLL.freischaltungen, 'erwachsen:ersatz'] });
+    await bisSeite(w, 5);
+    await expect(w.locator('#iv-ersatz-an')).toHaveText(TEXT.ersatzAn);
+    await w.close();
+    w = await oeffne(v, { version: 1, erwachsen: { an: false, stufe: 'hot', komplettErsatz: true } }, { ...PACK_VOLL, freischaltungen: [...PACK_VOLL.freischaltungen, 'erwachsen:ersatz'] });
+    await bisSeite(w, 5);
+    await expect(w.locator('#iv-ersatz-an')).toBeHidden();
     await w.close();
   } finally {
     await v.close();
@@ -685,3 +699,18 @@ for (const [seite, gruppe, name] of [[2, 'iv-kleidung-frage', 'Kleidungsfrage'],
     }
   });
 }
+
+// ---------- E4t X1: ein Satz, der sagt, dass etwas NICHT verdeckt wird, steht neben dem gewoehnlichen Hinweis ----------
+test('X1: Seite Cover style, Mia-Stil mit Face aus und ein Pack ohne Sticker: der Satz "Face aus" steht UND daneben der gewoehnliche Hinweis der Sperre', async () => {
+  const v = await verwaltung();
+  try {
+    const PACK_NUR_PATCH = { ...PACK_OHNE, freischaltungen: ['stil:mia-patch'] };
+    const w = await oeffne(v, { version: 1, preset: 'mia-wort', zonen: alleZonen(false, false) }, PACK_NUR_PATCH);
+    await bisSeite(w, 3);
+    await expect(w.locator('#iv-stil-face')).toHaveText(HINWEIS_FACE_AUS);
+    await expect(w.locator('#iv-stil-sperre')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});

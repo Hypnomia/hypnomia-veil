@@ -42,7 +42,7 @@
         <label class="schalter" id="augenbalken-zeile">
           <input id="augenbalken" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Eye bar</strong><small>a black bar over the eyes of every face I find, on top of any style</small></span>
+          <span class="text"><strong>Eye bar</strong><small>a black bar over the eyes of every face I find; where my face goes, it covers the bar</small></span>
         </label>
         <p id="stil-hinweis" class="hinweis"></p>
         <p id="preset-face-hinweis" class="hinweis" role="status" hidden></p>
@@ -58,7 +58,7 @@
         <label class="schalter">
           <input id="video-zonen" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Only the naughty bits in videos</strong><small>On: I watch along and cover only what you shouldn’t see, in your cover style (a little more battery). Off: the whole video.</small></span>
+          <span class="text"><strong>Only the naughty bits in videos</strong><small>On: just the naughty bits, in your cover style (a bit more battery). Off: the whole video.</small></span>
         </label>
       </section>
       </div>
@@ -76,7 +76,7 @@
       </section>
 
       <section aria-labelledby="zonen-titel" id="abschnitt-zonen">
-        <h2 id="zonen-titel">What I cover</h2>
+        <h2 id="zonen-titel">Zones</h2>
         <!-- E4d2: Zonenwahl und Kleidungsfrage baut bedienung-zonen.ts hierhin (Bausteine, ein gemeinsamer gespeicherter Stand). -->
         <div id="zonen-ort" class="bedienung-ort"></div>
         <p id="zonen-hinweis" class="hinweis" hidden></p>
@@ -117,7 +117,7 @@
         <label class="schalter">
           <input id="erw-inhalt" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal. Pages I only spot by their content never get thumbnail swaps or my gallery.</small></span>
+          <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal; no thumbnail swaps or gallery on pages I spot this way</small></span>
         </label>
 
         <h3>Your own sites</h3>
@@ -145,7 +145,7 @@
         <label class="schalter" id="ruhig-zeile">
           <input id="ruhig" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Calm mode</strong><small>slower spiral, no moving or flashing words.</small></span>
+          <span class="text"><strong>Calm mode</strong><small>slower spiral, no moving or flashing words</small></span>
         </label>
         <p id="ruhig-system" class="hinweis" hidden>Your system asks for less motion, so Calm mode works either way, switch on or off.</p>
         <p id="kon-pack-hinweis" class="hinweis"></p>
@@ -202,14 +202,14 @@
         <label class="schalter" id="kon-besuche-zeile">
           <input id="kon-besuche" type="checkbox" role="switch" />
           <span class="regler" aria-hidden="true"></span>
-          <span class="text"><strong>Visits</strong><small>I open one of my pages in a new tab, at most every 2 hours. Never while you type or in full screen.</small></span>
+          <span class="text"><strong>Visits</strong><small>One of my pages in a new tab, at most every 2 hours. Never while you type or in full screen.</small></span>
         </label>
 
         <div id="kon-zeiten-block">
-          <h3 id="kon-zeiten-titel">Strict times</h3>
-          <p class="hinweis" id="kon-zeiten-hinweis">During these hours I’m stricter: my grip one level tighter, flash words more often, a quiz before videos on every site if adult-site mode is on.</p>
+          <h3 id="kon-zeiten-titel">Tight hours</h3>
+          <p class="hinweis" id="kon-zeiten-hinweis">Grip a level tighter, more flash words, a quiz before videos unless Adult sites is Off.</p>
           <div id="kon-zeiten" role="list" aria-labelledby="kon-zeiten-titel"></div>
-          <button id="kon-zeit-neu" class="klein" type="button">Add a strict time</button>
+          <button id="kon-zeit-neu" class="klein" type="button">Add tight hours</button>
         </div>
 
         <div id="kon-warnung" class="warnblock" hidden>

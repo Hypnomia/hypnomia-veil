@@ -5,13 +5,25 @@
 import { STANDARD, type Einstellungen } from '../../src/einstellungen';
 import { baueHinweis, baueKleidungsfrage, baueZonenwahl, zonenSchreibteil, type KleidungsfrageHandle, type ZonenwahlHandle } from '../../src/oberflaeche/bausteine/bausteine';
 import type { ZonenStand } from '../../src/einstieg/zonen';
-import { KLEIDUNG_TEXTE, ZONEN_NAMEN, ZONEN_TEXTE, ZONEN_VERWORFEN, kleidungHinweis } from './bedienung-texte';
+import { zonenUnterKleidung } from '../../src/oberflaeche/bausteine/bausteine';
+import { waehleKleidungHinweis } from '../../src/oberflaeche/hinweise';
+import { KLEIDUNG_TEXTE, ZONEN_NAMEN, ZONEN_TEXTE, ZONEN_VERWORFEN } from './bedienung-texte';
 import { speichere } from './grund-speichern';
 
 let stand: ZonenStand = STANDARD.zonen;
 let zonenwahl: ZonenwahlHandle | null = null;
 let kleidung: KleidungsfrageHandle | null = null;
 let verworfen: { setzeSichtbar(an: boolean): void } | null = null;
+// E4t W5: der Hinweis zu einer verworfenen Handlung verdraengt fuer seine Dauer die gewoehnlichen Hinweise des Elements (Kleidungshinweis, Absatz zu Censor bars).
+let verworfenSichtbar = false;
+let beiVerworfenWechsel: (() => void) | null = null;
+export const zonenVerworfenSichtbar = (): boolean => verworfenSichtbar;
+export function horcheAufVerworfen(f: () => void): void {
+  beiVerworfenWechsel = f;
+}
+function zeichneKleidungHinweis(): void {
+  kleidung?.setzeHinweis(waehleKleidungHinweis({ gemischt: kleidung.stand() === 'gemischt', namen: zonenUnterKleidung(stand).map((z) => ZONEN_NAMEN[z]), verworfen: verworfenSichtbar }));
+}
 
 function schreibe(neu: ZonenStand, zeichneAlles: (e: Einstellungen, erzwingen?: boolean) => void): void {
   verworfen?.setzeSichtbar(false); // der Hinweis zur letzten verworfenen Handlung gilt nur bis zur naechsten Handlung
@@ -37,6 +49,7 @@ export function zeichneZonenBedienung(e: Einstellungen, ortZonen: HTMLElement, o
   if (!zonenwahl) {
     zonenwahl = baueZonenwahl({
       titel: ZONEN_TEXTE.titel,
+      beschriftetDurch: 'zonen-titel', // W8: die Ueberschrift "Zones" steht schon darueber
       karten: ZONEN_TEXTE.karten,
       einzeln: { titel: ZONEN_TEXTE.einzeln.titel, stand: ZONEN_TEXTE.einzeln.stand, gruppenLabel: ZONEN_TEXTE.einzeln.gruppenLabel, namen: ZONEN_NAMEN },
       zonen: () => stand,
@@ -50,7 +63,14 @@ export function zeichneZonenBedienung(e: Einstellungen, ortZonen: HTMLElement, o
     hinweis.setAttribute('role', 'status');
     hinweis.hidden = true;
     ortZonen.append(hinweis);
-    verworfen = { setzeSichtbar: (an) => (hinweis.hidden = !an) };
+    verworfen = {
+      setzeSichtbar: (an) => {
+        hinweis.hidden = !an;
+        verworfenSichtbar = an;
+        zeichneKleidungHinweis();
+        beiVerworfenWechsel?.();
+      },
+    };
   }
   if (!kleidung) {
     kleidung = baueKleidungsfrage({
@@ -66,7 +86,7 @@ export function zeichneZonenBedienung(e: Einstellungen, ortZonen: HTMLElement, o
   zonenwahl.setze();
   kleidung.setze();
   // Der eine Hinweis der Frage: bei einem gemischten Stand (keine Antwort markiert) nennt er, was heute unter Kleidung gedeckt wird.
-  kleidung.setzeHinweis(kleidung.stand() === 'gemischt' ? kleidungHinweis(stand) : null);
+  zeichneKleidungHinweis();
 }
 
 export function zonenwahlHandle(): ZonenwahlHandle | null {

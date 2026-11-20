@@ -2,17 +2,18 @@
 // Dieselben Einstellungen wie im Popup, derselbe Speicher (src/einstellungen.ts); beide Seiten zeigen nach einer Aenderung denselben Stand.
 // Texte nur per textContent.
 import { STANDARD, beiEinstellungsAenderung, ladeEinstellungen, waehlePreset, type Einstellungen, type VideoModus } from '../../src/einstellungen';
-import { HINWEIS_FACE_AUS, HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_WORT_OHNE_PACK, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_WORT_OHNE_PACK, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { waehleStilHinweise, waehleZonenHinweis } from '../../src/oberflaeche/hinweise';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
 import { zeigeVorschau } from './vorschau-platz';
-import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
+import { presetSatz, zonenHinweisTeile } from '../../src/oberflaeche/preset-texte';
 import { presetDef } from '../../src/preset-def';
 import type { PresetDef } from '../../src/presets';
 import { ladeThemen } from '../../src/pack/woerter';
 import { speichere } from './grund-speichern';
 import { haengeStufenwahl } from './bedienung-stufen';
-import { zeichneZonenBedienung, zonenwahlHandle } from './bedienung-zonen';
+import { horcheAufVerworfen, zeichneZonenBedienung, zonenVerworfenSichtbar, zonenwahlHandle } from './bedienung-zonen';
 import { STIMMUNG_STUFEN, STIMMUNG_TEXTE } from './bedienung-texte';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, kurzAusRoh, type PackKurz } from '../../src/pack/vertrag';
 
@@ -75,6 +76,7 @@ function zeigeStimmung(schwelle: number): void {
 // F3: Stimmung als Stufen mit Namen, der Regler steht im Aufklapper "Exact value"; das Wort im Kopf der Seite bleibt.
 const stimmungWahl = haengeStufenwahl(el('stimmung-ort'), 'stimmung-wahl', {
   titel: STIMMUNG_TEXTE.titel,
+  beschriftetDurch: 'stimmung-titel', // W8: die Ueberschrift "Mia’s mood" steht schon darueber
   erklaerung: STIMMUNG_TEXTE.erklaerung,
   liste: STIMMUNG_STUFEN,
   exakt: STIMMUNG_TEXTE.exakt,
@@ -113,30 +115,48 @@ function zeichnePreset(e: Einstellungen): void {
   // Platz der festen Vorschau (E4d1): derselbe Stil, der wirklich gilt, nur gelesen.
   zeigeVorschau(gilt, def.name);
   stilHinweis.textContent = presetSatz(gilt, frei, gesichter?.fertig ? gesichter.mit : null);
-  // Mia-Preset: gerade eingeschaltet (kurz), oder Face steht aus (bewusst oder Altbestand): sagen, was dann gilt
-  const mia = def.gesicht === 'mia-gesicht';
-  const ft = !mia ? '' : faceHinweisAn && e.zonen.face.an ? HINWEIS_FACE_EIN : e.zonen.face.an ? '' : HINWEIS_FACE_AUS;
+  // E4t W5: ein gewoehnlicher Hinweis je Element (reine Funktion waehleStilHinweise), dazu nie verdraengt der Satz "Face aus, dann gilt mein Gesicht nicht".
+  const sh = waehleStilHinweise({
+    gilt: def,
+    frei,
+    mitSticker,
+    pack,
+    faceAn: e.zonen.face.an,
+    faceGeradeEingeschaltet: faceHinweisAn,
+    gesichter: gesichter,
+    woerterOhneThemen: def.woerter && themen.length === 0,
+  });
+  const art = sh.gewoehnlich?.art ?? null;
+  const ft = sh.nie || (art === 'face-ein' ? HINWEIS_FACE_EIN : '');
   faceHinweisZeile.hidden = ft === '';
   faceHinweisZeile.textContent = ft;
-  // Pack da, Scan fertig, aber in keinem Patch-Bild ein brauchbares Gesicht: ehrlich sagen
-  const keins = frei && def.gesicht === 'mia-gesicht' && gesichter?.fertig === true && gesichter.gesamt > 0 && gesichter.mit === 0;
-  keinGesichtZeile.hidden = !keins;
-  keinGesichtZeile.textContent = keins ? HINWEIS_KEIN_GESICHT : '';
-  const packText = packHinweis(frei, pack, mitSticker);
+  keinGesichtZeile.hidden = art !== 'kein-gesicht';
+  keinGesichtZeile.textContent = art === 'kein-gesicht' ? HINWEIS_KEIN_GESICHT : '';
+  const packText = art === 'pack' ? sh.gewoehnlich!.text : '';
   packHinweisZeile.textContent = packText;
   packHinweisZeile.hidden = packText === '';
-  const zh = zonenHinweis(gilt);
-  zonenHinweisZeile.hidden = zh === '';
-  zonenHinweisZeile.textContent = zh;
-  zeichneWoerter(e, def);
+  zeichneZonenHinweis();
+  zeichneWoerter(e, def, art === 'wort-ohne-pack');
 }
 
+// Absatz unter der Zonenwahl: der Hinweis zu Mias Gesicht sagt, dass etwas NICHT dazukommt, und weicht nie; der zu Censor bars weicht dem Hinweis zu einer verworfenen Handlung.
+function zeichneZonenHinweis(): void {
+  if (!aktuell) return;
+  const t = zonenHinweisTeile(presetDef(aktuell, pack).gilt.id);
+  const wahl = waehleZonenHinweis({ verworfen: zonenVerworfenSichtbar(), wahlKeine: false, zensurbalken: t.gewoehnlich !== '' });
+  const zh = t.nie || (wahl === 'zensurbalken' ? t.gewoehnlich : '');
+  zonenHinweisZeile.hidden = zh === '';
+  zonenHinweisZeile.textContent = zh;
+}
+horcheAufVerworfen(zeichneZonenHinweis);
+
+
 // Wort-Themen als Chips: nur mit einem Preset mit Woertern und einem Pack mit Wort-Themen. null in den Einstellungen heisst alle Themen.
-function zeichneWoerter(e: Einstellungen, def: PresetDef): void {
+function zeichneWoerter(e: Einstellungen, def: PresetDef, ohnePackHinweis: boolean): void {
   const zeigen = def.woerter && themen.length > 0;
   // Ohne Pack (oder ohne Wort-Themen) schreibt ein Wort-Preset immer MIA: die Zeile sagt es, wo sonst die Chips stuenden
-  wortOhnePackZeile.hidden = !(def.woerter && themen.length === 0);
-  wortOhnePackZeile.textContent = wortOhnePackZeile.hidden ? '' : HINWEIS_WORT_OHNE_PACK;
+  wortOhnePackZeile.hidden = !ohnePackHinweis;
+  wortOhnePackZeile.textContent = ohnePackHinweis ? HINWEIS_WORT_OHNE_PACK : '';
   wortBereich.hidden = !zeigen;
   if (!zeigen) return;
   const an = (id: string): boolean => e.woerterThemen === null || e.woerterThemen.includes(id);

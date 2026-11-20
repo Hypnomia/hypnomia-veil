@@ -159,9 +159,15 @@ const erwachsenStand = (s: Page): Promise<any> =>
 
 const istPackBild = (e: ElementStand) => e.veil === 'zensiert' && (e.src.startsWith('data:image/jpeg') || e.hg.includes('data:image/jpeg'));
 
+// Nach dem Pack-Import schreibt der Hintergrund einmal `gesichterStand`; die Seite bewertet dann neu und setzt die Kacheln 6 bis 8 ms auf das Original
+// (Deckkraft 0) zurueck (MESSUNG-PHASE-11-E4T-ERWACHSEN.md). Darum gilt der Tausch erst, wenn "alle Pack-Bilder" in 5 Lesungen im Abstand von 100 ms galt.
 async function warteAufTausch(s: Page, ids: string[], timeout = 30_000) {
+  let reihe = 0;
   try {
-    await expect.poll(async () => (await stand(s, ids)).every(istPackBild), { timeout, intervals: [100] }).toBe(true);
+    await expect.poll(async () => {
+      reihe = (await stand(s, ids)).every(istPackBild) ? reihe + 1 : 0;
+      return reihe >= 5;
+    }, { timeout, intervals: [100] }).toBe(true);
   } catch (e) {
     console.log(`DIAG ${JSON.stringify((await stand(s, ids)).map((e) => `${e.id}:${e.veil}:${e.src.slice(0, 22)}`))} ${await s.evaluate(() => document.documentElement.getAttribute('data-veil-erwachsen'))}`);
     throw e;

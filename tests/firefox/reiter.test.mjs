@@ -161,7 +161,7 @@ try {
   // ---- Aufbau (D1, D4) ----
   const tabs = await driver.executeScript(`return [...document.querySelectorAll('[role=tablist] [role=tab]')].map((t) => t.textContent)`);
   pruefe(JSON.stringify(tabs) === JSON.stringify(REITER), `sieben Reiter ${JSON.stringify(tabs)}`);
-  pruefe(JSON.stringify(await gewaehlt()) === '["Style"]', 'ohne Anker ist Style gewaehlt');
+  pruefe(JSON.stringify(await gewaehlt()) === '["Cover style"]', 'ohne Anker ist Style gewaehlt');
   const bau = await driver.executeScript(`return [...document.querySelectorAll('[role=tab]')].map((t) => { const p = document.getElementById(t.getAttribute('aria-controls')); return { rolle: p.getAttribute('role'), benannt: p.getAttribute('aria-labelledby') === t.id, offen: !p.hidden, tabindex: t.tabIndex }; })`);
   pruefe(bau.every((b) => b.rolle === 'tabpanel' && b.benannt) && bau.filter((b) => b.offen).length === 1, 'tabpanel je Reiter, genau eines offen');
   pruefe(JSON.stringify(bau.map((b) => b.tabindex)) === '[0,-1,-1,-1,-1,-1,-1]', 'Tab-Halt nur am gewaehlten Reiter');
@@ -203,7 +203,7 @@ try {
   await tab0.click();
   await tab0.sendKeys(Key.ARROW_DOWN);
   pruefe((await driver.executeScript(`return document.activeElement.id`)) === 'reiter-zonen', 'Pfeil runter bewegt den Fokus');
-  pruefe(JSON.stringify(await gewaehlt()) === '["Style"]', 'ein Pfeil waehlt nicht');
+  pruefe(JSON.stringify(await gewaehlt()) === '["Cover style"]', 'ein Pfeil waehlt nicht');
   await driver.actions().sendKeys(Key.END).perform();
   pruefe((await driver.executeScript(`return document.activeElement.id`)) === 'reiter-ueber', 'Ende geht zum letzten Reiter');
   await driver.actions().sendKeys(Key.HOME).perform();
@@ -320,7 +320,7 @@ try {
     await driver.get(`moz-extension://${uuid}/options.html#${anker}`);
     await driver.navigate().refresh();
     await warteBereit();
-    pruefe(JSON.stringify(await gewaehlt()) === '["Style"]', `#${anker} beim Laden: Style`);
+    pruefe(JSON.stringify(await gewaehlt()) === '["Cover style"]', `#${anker} beim Laden: Style`);
   }
   await driver.get(`moz-extension://${uuid}/options.html#ledger`);
   await driver.navigate().refresh();
@@ -379,19 +379,19 @@ try {
   await imSeitenkontext(`await api.storage.local.remove('pack');`);
   await driver.get(`moz-extension://${uuid}/options.html`);
   await warteBereit();
-  for (const [name, karte] of [['Adult sites', 'erwachsen'], ['Mia’s extras', 'kontrolle'], ['Pack and sound', 'ton']]) {
+  for (const [name, karte] of [['Adult sites', 'erwachsen'], ['Mia’s control', 'kontrolle'], ['Pack and sound', 'ton']]) {
     await tabKlick(name);
     pruefe(await sichtbar(`#${karte}-zu-knopf`), `${name}: Set them now steht da`);
     pruefe(!(await sichtbar(`#${karte}-block`)), `${name}: Inhalt zugeklappt`);
     pruefe((await text(`#${karte}-zu-knopf`)) === 'Set them now', `${name}: Knopftext`);
   }
-  await tabKlick('Mia’s extras');
+  await tabKlick('Mia’s control');
   pruefe(await sichtbar('#ruhig'), 'Calm mode bleibt offen');
   const stand = await driver.executeScript(`return [...document.querySelectorAll('#panel-pack > section')].map((s) => s.id)`);
   pruefe(JSON.stringify(stand) === '["stand","ton"]', `ohne Pack steht die Pack-Karte vor Sound ${JSON.stringify(stand)}`);
 
   // ---- Vorschau folgt dem Stil (D7) ----
-  await tabKlick('Style');
+  await tabKlick('Cover style');
   pruefe((await text('#vorschau-spalte .v-vorschau-etikett')) === 'Mosaic', 'Platz der Vorschau zeigt Mosaic');
   const mosaik = await driver.executeScript(`return document.querySelector('#vorschau-spalte .v-vorschau-flaeche').innerHTML`);
   await wdKlick(By.xpath(`//div[@id='preset-karten']//label[.//strong[normalize-space(.)='Blur']]`));

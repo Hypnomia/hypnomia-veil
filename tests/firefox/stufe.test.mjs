@@ -1,6 +1,7 @@
-// Firefox-Test Phase 7, Auftrag I1 und I2: Regler "How hot do I get?" (nur mit Pack, speichert, 44 px bei 360 px) und Wahl der Vorschau-Bilder nach Stufe
+// Firefox-Test Phase 7, Auftrag I1 und I2: Regler "How hot I get" (nur mit Pack, speichert, 44 px bei 360 px) und Wahl der Vorschau-Bilder nach Stufe
 // und Seitenverhaeltnis (Nachricht an den Erkenner, Kacheln einer Nachbau-Seite, Stufenwechsel ohne Neuladen, Galerie). Dummy-Pack mit Stufen-Satz
 // (vorschauSatz 'stufen'), nur synthetische Bilder. Die Nachbau-Seiten laufen auf pornhub.veil-erwachsen.test (nur im Testbau).
+import { ERWACHSEN_TEXTE } from '../../src/oberflaeche/bedienung-texte.ts';
 import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { Command } from 'selenium-webdriver/lib/command.js';
@@ -214,14 +215,14 @@ try {
   pruefe(!(await sichtbar('#erw-stufe-wahl .v-hinweis')), 'mit Pack: kein Sperr-Satz');
   pruefe((await markierteKarte(driver, 'erw-stufe-wahl')).includes('Hot'), 'Standard Hot ist markiert');
   pruefe(
-    JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-satz')].map((s) => s.textContent)`)) === '["No picture swaps on adult sites.","I only hint.","I show more.","Nothing held back."]',
+    JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-satz')].map((s) => s.textContent)`)) === JSON.stringify([ERWACHSEN_TEXTE.karten.off.satz, ERWACHSEN_TEXTE.karten.tease.satz, ERWACHSEN_TEXTE.karten.hot.satz, ERWACHSEN_TEXTE.karten.explicit.satz]),
     'jede Karte traegt ihre Zeile in Mias Stimme',
   );
   pruefe(
     JSON.stringify(await driver.executeScript(`return [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-titel')].map((s) => s.textContent)`)) === '["Off","Tease","Hot","Explicit"]',
     'vier Karten Off, Tease, Hot, Explicit',
   );
-  pruefe((await driver.executeScript(`const g = document.querySelector('#erw-stufe-wahl [role=radiogroup]'); return document.getElementById(g.getAttribute('aria-labelledby')).textContent`)) === 'My pictures on adult sites', 'Radiogruppe heisst "My pictures on adult sites"');
+  pruefe((await driver.executeScript(`const g = document.querySelector('#erw-stufe-wahl [role=radiogroup]'); return document.getElementById(g.getAttribute('aria-labelledby')).textContent`)) === 'How hot I get', 'Radiogruppe heisst "How hot I get"');
   await stufeKlick(driver, 'erw-stufe-wahl', 'Tease');
   await bis('Tease gespeichert', async () => (await imSeitenkontext(`return (await api.storage.local.get('einstellungen')).einstellungen?.erwachsen?.stufe ?? null`)) === 'tease');
   await stufeKlick(driver, 'erw-stufe-wahl', 'Explicit');

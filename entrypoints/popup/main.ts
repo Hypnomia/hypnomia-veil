@@ -17,12 +17,13 @@ import {
   type StufeWahl,
   type Zone,
 } from '../../src/einstellungen';
-import { hebeStufe, istStrengeZeit, naechsterWechselMs } from '../../src/kontrolle/streng';
-import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type SteigerungStand, type SteigerungStufe } from '../../src/steigerung';
+import { naechsterWechselMs } from '../../src/kontrolle/streng';
+import { STEIGERUNG_SCHLUESSEL, anzeigeStufe, vervollstaendigeStand, type SteigerungStand } from '../../src/steigerung';
 import { STUFEN_TEXT, formatiereRest, hatErwachsenFunktionen, posePopup, waehleSatz } from '../../src/oberflaeche/erwachsen';
 import { zeigeChibi } from '../../src/oberflaeche/chibi-platz';
 import * as T from './texte';
-import { EYE_BAR_SATZ, FEHLER_SPEICHERN, STUFE_TEXT, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { FEHLER_SPEICHERN, NAME_STRENG, STUFE_TEXT, ZONEN_NAMEN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { abdeckungStand, popupStufe } from '../../src/oberflaeche/abdeckung';
 import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 import { packGenuegt } from '../../src/presets';
@@ -41,19 +42,6 @@ import { hilfeAdresse } from '../../src/hilfe/anker';
 import { belebeRegler } from '../../src/oberflaeche/design/regler';
 
 belebeRegler(); // Phase 8b: gemeinsamer Regler, Fuellung bis zum Wert auch in Chromium
-
-const ZONEN_NAMEN: Record<Zone, string> = {
-  eyes: 'Eyes',
-  mouth: 'Mouth',
-  face: 'Face',
-  head: 'Head',
-  breast: 'Breasts',
-  genitals: 'Genitals',
-  buttocks: 'Buttocks',
-  belly: 'Belly',
-  feet: 'Feet',
-  armpits: 'Armpits',
-};
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -114,9 +102,13 @@ const stufeText = el<HTMLParagraphElement>('stufe-text');
 const strengZeile = el<HTMLParagraphElement>('streng-zeile');
 const strengText = el<HTMLParagraphElement>('streng-text');
 // Mias Kommentar in der strengen Zeit (Entwuerfe, TEXTE-PHASE-5-SESSION-10.md E3), einer je Oeffnen des Popups.
-const STRENG_SAETZE = ['I’m stricter right now. You set these hours, I keep them.', 'Strict time right now. Be good for me, pet.', 'I’m stricter right now, pet.'];
+const STRENG_SAETZE = ['I’m stricter right now. You set these hours, I keep them.', `${NAME_STRENG} right now. Be good for me, pet.`, 'I’m stricter right now, pet.'];
 
 let stand: SteigerungStand = vervollstaendigeStand(undefined);
+// Ist der Stand der Steigerung wirklich gelesen? Sonst sagt die Kurzzeile nie "nothing" (E4t W6).
+let standBekannt = false;
+// Ist das Pack wirklich gelesen (X3)? Sonst weiss die Kurzzeile nicht, ob eine Steigerung gilt, und sagt nie "nothing".
+let packBekannt = false;
 let texte: Texte | null = null;
 const zufall = Math.random(); // ein Satz je Oeffnen des Popups, kein Flackern bei jeder Aenderung
 let chibiPose = '';
@@ -170,10 +162,17 @@ function zeichne(e: Einstellungen): void {
     }
   }
 
-  // Kurzzeile folgt dem Schalter Eye bar: die Zonen wie eingestellt (auch Eyes: seit R11 nimmt der Schalter keiner Zone etwas weg), der Balken kommt dazu.
-  abdeckungKurz.textContent = T.ABDECKUNG_KURZ(ZONEN.filter((z) => e.zonen[z].an).map((z) => ZONEN_NAMEN[z].toLowerCase()), e.augenbalken);
+  zeichneKurz(e);
   zeichneDieseSeite(e, seite);
   zeichneErwachsen(e);
+}
+
+// Kurzzeile (E4t W6, W13): dieselbe Rechnung wie der Schleier (src/oberflaeche/abdeckung.ts). Ohne lesbaren Stand der Steigerung bleibt sie leer statt "nothing" zu sagen.
+function zeichneKurz(e: Einstellungen): void {
+  const a = abdeckungStand(e, pack, stand, standBekannt, new Date(), packBekannt);
+  const text = T.ABDECKUNG_KURZ(a.zonen.map((z) => ZONEN_NAMEN[z].toLowerCase()), a.balken, a.griff);
+  abdeckungKurz.textContent = text ?? '';
+  abdeckungKurz.hidden = text === null;
 }
 
 // Stand der Gesichtssuche (Zahl der Patch-Bilder mit Gesicht im Satz)
@@ -203,8 +202,6 @@ function zeichnePreset(e: Einstellungen): void {
   packHinweis_.textContent = gesperrt ? packHinweis(frei, pack, mitSticker, def.gewaehlt.braucht) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
   // Mia-Preset gilt, aber Face steht aus: sagen, was dann gilt (der Satz der Karte klaenge sonst nach mehr)
   if (!gesperrt && def.gilt.gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
-  // Der Satz folgt dem Schalter Eye bar (E4c): ist er an, steht der Balken als eigener Satz dabei, in jedem Stil.
-  if (e.augenbalken) packHinweis_.textContent += ` ${EYE_BAR_SATZ}`;
   const zh = zonenHinweis(gilt);
   zonenHinweisZeile.hidden = zh === '';
   zonenHinweisZeile.textContent = zh;
@@ -235,13 +232,7 @@ function zeichneErwachsen(e: Einstellungen): void {
   erwAn.closest('label')!.hidden = !istFreigeschaltet(pack, 'erwachsen:vorschau');
   erwErsatzZeile.hidden = !istFreigeschaltet(pack, 'erwachsen:ersatz');
   steigerungBlock.hidden = !mitSteigerung;
-  if (ohnePack) {
-    erwHinweis.textContent = 'These sites need the Mia Pack. Get it and I’ll look after them properly.';
-  } else if (e.pause) {
-    erwHinweis.textContent = "Paused, so I’m keeping my hands off these sites too.";
-  } else {
-    erwHinweis.textContent = e.erwachsen.an ? "I know the usual places. Nothing there gets by me." : T.ERW_HINWEIS_AUS;
-  }
+  erwHinweis.textContent = T.erwachsenHinweis({ ohnePack, pause: e.pause, an: e.erwachsen.an });
   zeichneStufe(e);
 }
 
@@ -249,11 +240,11 @@ function zeichneStufe(e: Einstellungen): void {
   const hat = istFreigeschaltet(pack, 'zensur:steigerung');
   const a = anzeigeStufe(stand, Date.now());
   // Strenge Zeit (Auftrag Z1): Freischaltung `kontrolle:zeitplan`, ein Fenster passt jetzt, keine Pause. Die Stufe steigt dann um eins,
-  // der gespeicherte Stand bleibt unveraendert.
+  // der gespeicherte Stand bleibt unveraendert. Dieselbe Rechnung wie die Kurzzeile und der Schleier (popupStufe).
   const jetzt = new Date();
   const zeiten = e.kontrolle.zeiten;
-  const streng = !e.pause && istFreigeschaltet(pack, 'kontrolle:zeitplan') && istStrengeZeit(zeiten, jetzt);
-  const stufe = hebeStufe(a.stufe, streng && hat) as SteigerungStufe;
+  const { stufe, streng } = popupStufe(e, pack, stand, jetzt);
+  zeichneKurz(e);
   const pose = posePopup(e.pause, hat ? stufe : 0);
   if (pose !== chibiPose) {
     chibiPose = pose;
@@ -272,7 +263,7 @@ function zeichneStufe(e: Einstellungen): void {
   if (streng) {
     const ms = naechsterWechselMs(zeiten, jetzt);
     const ende = ms === null ? null : new Date(jetzt.getTime() + ms);
-    strengZeile.textContent = ende ? `Strict time until ${ende.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Strict time, around the clock';
+    strengZeile.textContent = ende ? `${NAME_STRENG} until ${ende.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : `${NAME_STRENG}, around the clock`;
     strengText.textContent = STRENG_SAETZE[Math.min(STRENG_SAETZE.length - 1, Math.floor(zufall * STRENG_SAETZE.length))]!;
   } else {
     strengZeile.textContent = '';
@@ -341,6 +332,7 @@ for (const f of heissFelder) {
 async function ladeStand(): Promise<void> {
   const a = await browser.storage.local.get(STEIGERUNG_SCHLUESSEL);
   stand = vervollstaendigeStand(a[STEIGERUNG_SCHLUESSEL]);
+  standBekannt = true;
 }
 
 async function ladeTexte(): Promise<void> {
@@ -382,13 +374,13 @@ for (const zone of ZONEN) {
   if (BEDECKBARE_ZONEN.has(zone)) {
     const auch = document.createElement('label');
     auch.className = 'auch';
-    auch.title = 'Also cover this when it is under clothing';
+    auch.title = 'Also cover this zone under clothes';
     const bedeckt = document.createElement('input');
     bedeckt.type = 'checkbox';
     bedeckt.dataset.bedeckt = zone;
     // UX-Fund 12: der Bildschirmleser nennt die Zone mit (wie auf der Einstellungsseite).
-    bedeckt.setAttribute('aria-label', `${ZONEN_NAMEN[zone]}: even when clothed`);
-    auch.append(bedeckt, document.createTextNode('even when clothed'));
+    bedeckt.setAttribute('aria-label', `${ZONEN_NAMEN[zone]}: under clothes too`);
+    auch.append(bedeckt, document.createTextNode('under clothes too'));
     zeile.append(auch);
   }
   zonenListe.append(zeile);
@@ -579,11 +571,13 @@ const abmelden = beiEinstellungsAenderung((e) => {
 const packHorcher = (aenderungen: Record<string, { newValue?: unknown }>, bereich: string): void => {
   if (bereich === 'local' && STEIGERUNG_SCHLUESSEL in aenderungen) {
     stand = vervollstaendigeStand(aenderungen[STEIGERUNG_SCHLUESSEL]?.newValue);
+    standBekannt = true;
     if (aktuell) zeichneStufe(aktuell);
   }
   if (bereich !== 'local' || !(PACK_SPEICHER_SCHLUESSEL in aenderungen)) return;
   const neu = aenderungen[PACK_SPEICHER_SCHLUESSEL]?.newValue as PackKurz | undefined;
   pack = neu && typeof neu === 'object' && typeof neu.id === 'string' ? neu : null;
+  packBekannt = true;
   chibiPose = '';
   texte = null;
   void ladeTexte().then(() => aktuell && zeichneStufe(aktuell));
@@ -602,7 +596,7 @@ window.addEventListener(
 
 void (async () => {
   seite = await leseSeite();
-  pack = await ladePackKurz().catch(() => null);
+  pack = await ladePackKurz().then((p) => ((packBekannt = true), p), () => null);
   await ladeStand().catch(() => undefined);
   zeichne(await ladeEinstellungen());
   if (istFreigeschaltet(pack, 'stil:mia-patch')) beobachteNeu();

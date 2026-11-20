@@ -8,7 +8,7 @@ The questions I hear most, with the quickest way out.
 That’s often me doing my job: I cover more than I need to. To let more through:
 
 - Move **Mia’s mood** in my popup toward **Relaxed**. Borderline pictures get through then.
-- Switch off zones you don’t care about under **What I cover**.
+- Switch off zones you don’t care about under **Zones**.
 - Some sites refuse when I load a picture a second time to check it. Those pictures stay covered, on purpose. In Firefox, some streamed videos stay blurred for the same reason.
 - **Strict** hides the whole page until I’ve checked it. Switch it off if pages feel slow.
 

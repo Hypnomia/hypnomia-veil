@@ -1,5 +1,36 @@
 // Gemeinsame Bausteine fuer Popup, Einstellungsseite und Willkommensseite (Session 12, Vertragsschritt, PHASE-6-AUFTRAEGE-SESSION-12.md).
 // Vom Orchestrator geschrieben, Bauer lesen nur. Texte sind Entwuerfe, der Texter liest gegen; Tests pruefen gegen diese Konstanten.
+import type { Zone } from '../einstellungen.ts';
+
+
+// Woerterbuch der Bedienung (Phase 11 E4t, Festlegung W1): ein Ding, ein Name auf Einstellungsseite, Interview und Popup. Die Namen stehen nur hier; die Inhaberin
+// kann sie aendern. Kennungen im DOM, Anker und Speicherschluessel bleiben (der Schluessel `strict-times` heisst weiter so).
+export const NAME_STIL = 'Cover style';
+export const NAME_ABDECKUNG = 'What I cover'; // Reiter (traegt Stimmung, Zonen, Kleidung, Strict und Ausnahmen)
+export const NAME_ZONEN = 'Zones';
+export const NAME_KLEIDUNG = 'Under clothes';
+export const NAME_STIMMUNG = 'Mia’s mood';
+export const NAME_ERWACHSEN = 'Adult sites';
+export const NAME_HITZE = 'How hot I get';
+export const NAME_KONTROLLE = 'Mia’s control';
+export const NAME_PACK_TON = 'Pack and sound';
+export const NAME_VERWEIGERN = 'How often I refuse';
+export const NAME_FREILEGEN = 'How long I reveal';
+export const NAME_STRENG = 'Tight hours';
+
+// Die zehn Zonen mit ihren Namen: die eine Quelle fuer Einstellungsseite, Interview und Popup (E4t W7). Nur ein Typ-Import, damit Node-Tests die Datei laden.
+export const ZONEN_NAMEN: Record<Zone, string> = {
+  eyes: 'Eyes',
+  mouth: 'Mouth',
+  face: 'Face',
+  head: 'Head',
+  breast: 'Breasts',
+  genitals: 'Genitals',
+  buttocks: 'Buttocks',
+  belly: 'Belly',
+  feet: 'Feet',
+  armpits: 'Armpits',
+};
 
 // UX-Fund 6: die rohe Schwelle (0.10 bis 0.25) sagt der Person nichts. Ein Wort je Bereich, gleich in allen drei Oberflaechen,
 // auch als `aria-valuetext` des Reglers. Grenzen in Hundertsteln, damit Gleitkomma-Reste (0.13000001) nicht kippen.
@@ -13,25 +44,24 @@ export function stimmungsWort(schwelle: number): string {
 }
 
 // UX-Fund 26: ueberall derselbe Satz, wenn das Speichern scheitert (Schalter und Regler springen dann auf den gespeicherten Stand zurueck).
-export const HINWEIS_PACK_OHNE_PATCH = 'This Mia Pack has no pictures of my face to use, so the styles with my face stay locked. Classic and Whole person still work.';
+export const HINWEIS_PACK_OHNE_PATCH = 'No usable face of mine here, so my face styles stay locked. Classic and Whole person work.';
 // Zensur-Presets (ZENSUR-PRESETS-BAUPLAN, Texte vom Texter freigegeben): Hinweise bei den Zonen und zum Pack. Namen und Saetze der Karten
 // stehen in src/presets.ts. In der Oberflaeche heisst es "style", "preset" bleibt intern.
 // Schalter "Eye bar" (Phase 11 E4c, ersetzt den Stil Eye bar; Texter liest in Schritt (e) gegen): Name, Unterzeile an den Schaltern, ein Satz fuer das Popup.
 export const EYE_BAR_TITEL = 'Eye bar';
-export const EYE_BAR_TEXT = 'a black bar over the eyes of every face I find, on top of any style';
-export const EYE_BAR_SATZ = 'On top of that, a black bar goes over the eyes of every face I find.';
+export const EYE_BAR_TEXT = 'a black bar over the eyes of every face I find; where my face goes, it covers the bar';
 export const HINWEIS_ZONEN_ZENSURBALKEN = 'Censor bars always black out the eyes. Your zones decide what else turns black.';
 export const HINWEIS_ZONEN_MIA = 'My face only goes where Face is on. While it is, Eyes and Mouth add nothing on top.';
-export const HINWEIS_MIA_PACK_FEHLT = 'The styles with my face and my stickers need the Mia Pack. Once it’s in, everything I cover can carry a bit of me.';
+export const HINWEIS_MIA_PACK_FEHLT = 'Styles with my face or stickers need the Mia Pack. Then all I cover can carry a bit of me.';
 // Sticker-Zensur (STICKER-BAUPLAN, Text aus STICKER-TEXTE.md): Pack ohne Sticker, die Sticker-Karten bleiben gesperrt.
-export const HINWEIS_PACK_OHNE_STICKER = 'This Mia Pack has no stickers of me yet, so the styles with my stickers stay locked. The newest pack has them.';
+export const HINWEIS_PACK_OHNE_STICKER = 'This pack has no stickers of me yet, so sticker styles stay locked. The newest has them.';
 export const HINWEIS_KEINE_WOERTER = 'No topic picked, so I just write MIA.';
-export const HINWEIS_KEIN_GESICHT = 'None of the pictures in this pack shows my face clearly enough, so faces get the same cover as everything else.';
+export const HINWEIS_KEIN_GESICHT = 'My face isn’t clear enough in this pack, so faces get the same cover as the rest.';
 export const HINWEIS_WORT_OHNE_PACK = 'Without the Mia Pack, my word is MIA.';
 // Wer ein Mia-Preset waehlt (und beim ersten Pack-Import), bekommt die Zone Face eingeschaltet; Abschalten bleibt moeglich.
-export const HINWEIS_FACE_EIN = 'I switched Face on under What I cover, so every face becomes mine. You can switch it off again.';
+export const HINWEIS_FACE_EIN = `I switched Face on under ${NAME_ZONEN}, so every face I find becomes mine. You can switch it off.`;
 // Mia-Preset gewaehlt, Face steht aus (bewusst abgeschaltet oder aus dem Altbestand): kurzer Hinweis auf Einstellungsseite, Popup und Einstieg.
-export const HINWEIS_FACE_AUS = 'My face only goes on faces. Switch Face on under What I cover and every face becomes mine.';
+export const HINWEIS_FACE_AUS = `My face only goes on faces. Switch Face on under ${NAME_ZONEN} and every face I find becomes mine.`;
 export const FEHLER_SPEICHERN = 'I couldn’t save that, so nothing changed. Try again in a moment.';
 
 // UX-Fund 28: Daten ueberall amerikanisch mit ausgeschriebenem Monat ("Nov 5, 2026"), mit Uhrzeit "Nov 5, 2026, 2:03 PM".

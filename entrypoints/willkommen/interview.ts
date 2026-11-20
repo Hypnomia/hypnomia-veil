@@ -11,10 +11,11 @@ import {
 } from '../../src/einstellungen';
 import { istFreigeschaltet, type PackKurz } from '../../src/pack/vertrag';
 import { baueKarten, presetVorschau } from '../../src/oberflaeche/presets-ansicht';
-import { EYE_BAR_TEXT, EYE_BAR_TITEL, HINWEIS_FACE_AUS, HINWEIS_FACE_EIN } from '../../src/oberflaeche/gemeinsam';
+import { EYE_BAR_TEXT, EYE_BAR_TITEL } from '../../src/oberflaeche/gemeinsam';
+import { ersatzWarnungGilt, gesperrtText, waehleErwachsenHinweis, waehleKleidungHinweis, waehleStilHinweise, waehleZonenHinweis } from '../../src/oberflaeche/hinweise';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { presetDef } from '../../src/preset-def';
-import { packHinweis as packHinweisText, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
+import { presetSatz, zonenHinweisTeile } from '../../src/oberflaeche/preset-texte';
 import {
   baueAuswahl,
   baueHinweis,
@@ -75,16 +76,15 @@ function packHinweis(k: Kontext, text: string): HTMLParagraphElement {
 
 // ---------- 1 Zones und 2 Clothes: beide lesen ueber dieselbe Funktion den Stand, `setze()` an beiden nach jedem Speichern, Speicherfehler und jeder Aenderung von aussen ----------
 
-// Der eine Hinweis der Kleidungsfrage bei einem gemischten Stand (keine Antwort markiert): nennt genau, was heute eingeschaltet UND unter Kleidung gedeckt ist.
-function kleidungHinweis(zonen: ZonenStand): string {
-  const liste = zonenUnterKleidung(zonen).map((z) => TEXT.zonenNamen[z]);
-  const heute = liste.length === 0 ? TEXT.kleidungHeuteNichts : TEXT.kleidungHeute(liste);
-  return `${heute} ${TEXT.kleidungAntwortGilt}`;
+// Der eine Hinweis der Kleidungsfrage bei einem gemischten Stand (keine Antwort markiert): nennt genau, was heute eingeschaltet UND unter Kleidung gedeckt ist
+// (reine Funktion waehleKleidungHinweis; der Satz zu einer verworfenen Handlung verdraengt den gewoehnlichen Teil).
+function kleidungHinweisText(zonen: ZonenStand, gemischt: boolean, verworfen: boolean): string | null {
+  return waehleKleidungHinweis({ gemischt, namen: zonenUnterKleidung(zonen).map((z) => TEXT.zonenNamen[z]), verworfen });
 }
 
 // Zonen und Kleidung teilen sich die Schreibregel: eine Handlung gilt nur fuer den Stand, den der Nutzer gesehen hat (G3). Hat er sich geaendert, wird nichts
 // geschrieben, es gibt KEINEN zweiten Versuch, die Seite zeigt den gespeicherten Stand und einen kurzen Hinweis, der bei der naechsten Handlung verschwindet.
-function zonenSchreiber(k: Kontext): { hinweis: HTMLElement; lies: () => ZonenStand; setzeStand: (z: ZonenStand) => void; schreibe: (neu: ZonenStand) => void } {
+function zonenSchreiber(k: Kontext, nachWechsel: () => void = () => undefined): { hinweis: HTMLElement; lies: () => ZonenStand; setzeStand: (z: ZonenStand) => void; schreibe: (neu: ZonenStand) => void } {
   let stand: ZonenStand = k.einst().zonen;
   const hinweis = baueHinweis(TEXT.zonenVerworfen);
   hinweis.id = 'iv-zonen-verworfen';
@@ -96,10 +96,14 @@ function zonenSchreiber(k: Kontext): { hinweis: HTMLElement; lies: () => ZonenSt
     setzeStand: (z) => (stand = z),
     schreibe: (neu) => {
       hinweis.hidden = true;
+      nachWechsel();
       const vorher = stand; // der Stand, auf dem der Baustein gerade gerechnet hat
       stand = neu; // folgt eine zweite Handlung vor dem Speichern, rechnet sie auf diesem Stand
       void k.speichere((alt) => zonenSchreibteil(alt.zonen, vorher, neu)).then((erg) => {
-        if (erg === 'verworfen') hinweis.hidden = false;
+        if (erg === 'verworfen') {
+          hinweis.hidden = false;
+          nachWechsel();
+        }
       });
     },
   };
@@ -108,7 +112,11 @@ function zonenSchreiber(k: Kontext): { hinweis: HTMLElement; lies: () => ZonenSt
 export function seiteZonen(k: Kontext): Seite {
   const wurzel = knoten('div');
   wurzel.append(knoten('p', undefined, TEXT.i1Text));
-  const z = zonenSchreiber(k);
+  const zeichneHinweis = (): void => {
+    const art = waehleZonenHinweis({ verworfen: !z.hinweis.hidden, wahlKeine: zonenWahl(z.lies()) === null, zensurbalken: false });
+    wahl.setzeHinweis(art === 'wahl-keine' ? TEXT.wahlKeine : null);
+  };
+  const z = zonenSchreiber(k, () => zeichneHinweis());
   const wahl = baueZonenwahl({
     titel: TEXT.zonenTitel,
     karten: TEXT.zonenKarten,
@@ -123,7 +131,7 @@ export function seiteZonen(k: Kontext): Seite {
     aktualisiere: (e) => {
       z.setzeStand(e.zonen);
       wahl.setze();
-      wahl.setzeHinweis(zonenWahl(e.zonen) === null ? TEXT.wahlKeine : null);
+      zeichneHinweis();
     },
   };
 }
@@ -131,7 +139,8 @@ export function seiteZonen(k: Kontext): Seite {
 export function seiteKleidung(k: Kontext): Seite {
   const wurzel = knoten('div');
   wurzel.append(knoten('p', undefined, TEXT.i2Text));
-  const z = zonenSchreiber(k);
+  const zeichneHinweis = (): void => frage.setzeHinweis(kleidungHinweisText(z.lies(), frage.stand() === 'gemischt', !z.hinweis.hidden));
+  const z = zonenSchreiber(k, () => zeichneHinweis());
   const frage = baueKleidungsfrage({
     titel: TEXT.kleidungTitel,
     erklaerung: TEXT.kleidungErklaerung,
@@ -147,7 +156,7 @@ export function seiteKleidung(k: Kontext): Seite {
       z.setzeStand(e.zonen);
       frage.setze();
       // Bei einem gemischten Stand (keine Antwort markiert) sagt der eine Hinweis, was heute unter Kleidung gedeckt wird.
-      frage.setzeHinweis(frage.stand() === 'gemischt' ? kleidungHinweis(e.zonen) : null);
+      zeichneHinweis();
     },
   };
 }
@@ -227,15 +236,18 @@ export function seiteStil(k: Kontext, seiten: number): Seite {
       });
     }
     satz.textContent = presetSatz(wirksam, patchFrei, patchFrei && gesichter?.fertig ? gesichter.mit : null);
-    const sperreText = packHinweisText(patchFrei, p, stickerFrei);
+    // E4t W5: ein gewoehnlicher Hinweis (Sperre des Packs, Gesicht nicht klar genug, Face gerade eingeschaltet, Censor bars), dazu nie verdraengt der Satz zu Mias Gesicht
+    // und der Satz "Face aus". "Wort ohne Pack" gilt hier nur ohne Pack (dann gibt es keine Themen, W21); mit Pack kennt die Seite die Themen nicht.
+    const sh = waehleStilHinweise({ gilt: def, frei: patchFrei, mitSticker: stickerFrei, pack: p, faceAn: e.zonen.face.an, faceGeradeEingeschaltet: faceHinweisAn, gesichter, woerterOhneThemen: !p });
+    const art = sh.gewoehnlich?.art ?? null;
+    const zt = zonenHinweisTeile(wirksam);
+    const sperreText = art === 'pack' || art === 'kein-gesicht' || art === 'wort-ohne-pack' ? sh.gewoehnlich!.text : '';
     sperre.textContent = sperreText;
     sperre.hidden = sperreText === '';
-    // Hinweise der Zonen (Balken-Presets) und zu Face: gerade eingeschaltet (kurz), oder spaeter wieder aus (dann sagt es der Hinweis)
-    const zh = zonenHinweis(wirksam);
+    const zh = zt.nie || (art === null ? zt.gewoehnlich : '');
     zonenText.textContent = zh;
     zonenText.hidden = zh === '';
-    const mia = def.gesicht === 'mia-gesicht';
-    const ft = mia ? (faceHinweisAn && e.zonen.face.an ? HINWEIS_FACE_EIN : e.zonen.face.an ? '' : HINWEIS_FACE_AUS) : '';
+    const ft = sh.nie || (art === 'face-ein' ? sh.gewoehnlich!.text : '');
     faceText.textContent = ft;
     faceText.hidden = ft === '';
   };
@@ -303,7 +315,7 @@ export function seiteErwachsen(k: Kontext): Seite {
   const wurzel = knoten('div');
   wurzel.append(knoten('p', undefined, TEXT.i5Text));
   const hinweis = packHinweis(k, TEXT.ohnePack5);
-  const ersatz = baueHinweis(TEXT.ersatzAn);
+  const ersatz = baueHinweis(TEXT.ersatzAn); // Warnsatz (W4): steht nur, wenn der Ersatz auf Erwachsenenseiten wirken wuerde; weicht keinem anderen Hinweis
   ersatz.id = 'iv-ersatz-an';
   ersatz.hidden = true;
   // K2: Hinweis zu einer verworfenen Wahl (die Form der Gruppe hat sich zwischen Klick und Speichern geaendert), bis zur naechsten Handlung
@@ -320,6 +332,7 @@ export function seiteErwachsen(k: Kontext): Seite {
   // Eine Wahl rechnet auf dem frisch gelesenen Stand (erwachsen-wahl.ts); eine unzulaessige Wahl (gesperrte Stufe) schreibt nichts (null, I8a).
   const waehle = (id: string): void => {
     verworfen.hidden = true;
+    zeichneHinweis();
     void k
       .speichere((alt) => {
         const neu = erwachsenNachWahl(alt.erwachsen, id, stufeFrei);
@@ -327,9 +340,18 @@ export function seiteErwachsen(k: Kontext): Seite {
       })
       .then((erg) => {
         if (erg === 'verworfen') verworfen.hidden = false;
+        zeichneHinweis();
       });
   };
+  // E4t W5: ein gewoehnlicher Hinweis, Vorrang: verworfene Wahl, "Set these now" mit Link (ohne Pack), gesperrte Stufen.
+  let packJetzt: PackKurz | null = null;
+  const zeichneHinweis = (): void => {
+    const art = waehleErwachsenHinweis({ verworfen: !verworfen.hidden, pack: packJetzt, mitPackHinweis: true });
+    hinweis.hidden = art !== 'ohne-pack';
+    wahl?.setzeHinweis(art === 'gesperrt' ? gesperrtText(packJetzt) : null);
+  };
   const zeichne = (e: Einstellungen, p: PackKurz | null): void => {
+    packJetzt = p;
     stufeFrei = istFreigeschaltet(p, 'erwachsen:vorschau');
     // Die Gruppe hat zwei Formen (G1): mit Freischaltung Off, Tease, Hot, Explicit; ohne sie Off und On (waehlbar) und die drei Stufen gesperrt und nie markiert.
     // Wechselt die Form (Pack kommt oder geht bei offener Seite), wird der Baustein neu gebaut und gezeichnet, nie geschrieben.
@@ -352,14 +374,13 @@ export function seiteErwachsen(k: Kontext): Seite {
     // Erst sperren (I5b: nur ueber setzeGesperrt, nie `disabled` von aussen), dann markieren: die Markierung legt den Tab-Halt auf die gewaehlte, sonst auf die erste waehlbare Karte.
     wahl.setzeGesperrt(erwachsenGesperrt(stufeFrei));
     wahl.setze(erwachsenKarte(e.erwachsen, stufeFrei));
-    wahl.setzeHinweis(stufeFrei ? null : TEXT.erwachsenGesperrt);
     // K4i: stand der Fokus in der alten Gruppe, liegt er auf der markierten Karte der neuen Form (sonst der ersten waehlbaren), nie auf body
     if (fokusNachWechsel) {
       fokusNachWechsel = false;
       wahl.setzeFokus();
     }
-    hinweis.hidden = p !== null;
-    ersatz.hidden = !e.erwachsen.komplettErsatz;
+    zeichneHinweis();
+    ersatz.hidden = !ersatzWarnungGilt(e.erwachsen, p);
   };
   return { knoten: wurzel, aktualisiere: (e, p) => zeichne(e, p) };
 }

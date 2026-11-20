@@ -176,8 +176,8 @@ async function zeichneBegruessung(pack: PackKurz | null): Promise<void> {
   erwPackHinweis.textContent = hatErwachsenFunktionen(pack)
     ? 'Everything here is yours to set.'
     : pack
-      ? 'These settings need a newer Mia Pack than yours. Set them now and they’ll be ready.'
-      : 'These settings only work with the Mia Pack. Set them now and they’ll be ready.';
+      ? 'Some of these need a newer Mia Pack than yours. Set them now and they’ll be ready.'
+      : 'Swaps, my gallery and my quiz need the Mia Pack. Set them now and they’ll be ready.';
   begruessung.hidden = !mitPack;
   if (!pack || !mitPack) {
     begruessungFuer = '';

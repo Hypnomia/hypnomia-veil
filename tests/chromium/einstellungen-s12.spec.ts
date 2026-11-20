@@ -209,7 +209,7 @@ test('Fund 9 und 10: Kontraste aus getComputedStyle (Knopftext 4,5:1, Schalterba
       await reiter(seite, name);
       knoepfeKr.push(...(await seite.locator('button.klein').evaluateAll((l) => l.filter((e) => e.getClientRects().length > 0).map((e) => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor]))));
     }
-    await reiter(seite, 'Style');
+    await reiter(seite, 'Cover style');
     const kmin = Math.min(...(await Promise.all(knoepfeKr.map(([f, g]) => kontrastIn(seite, f!, g!)))));
     console.log(`einstellungen-s12: ${knoepfeKr.length} sichtbare button.klein, kleinster Textkontrast ${kmin.toFixed(2)}`);
     expect(knoepfeKr.length).toBeGreaterThan(2);
@@ -575,7 +575,7 @@ test('Fund 12: "I understand" der Warnung scheitert nicht still', async () => {
       sl.set = () => Promise.reject(new Error('Test'));
     });
     await seite.locator('#kon-warnung-ok').scrollIntoViewIfNeeded();
-    await reiter(seite, 'Mia’s extras');
+    await reiter(seite, 'Mia’s control');
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await seite.locator('#kon-warnung-ok').click();
     await expect(seite.locator('#speicher-meldung')).toHaveText(FEHLER_SPEICHERN);
@@ -721,7 +721,7 @@ test('Runde 3 (zweite UX-Lesung N3 bis N12): Fokus, Escape, Leiste, Ablage-Satz,
     const blass = await seite.locator('#erw-stufe-wahl [role=radio]:disabled').first().evaluate((e) => Number(getComputedStyle(e).opacity));
     expect(blass).toBeLessThan(0.7);
     // N3: "I understand" der Warnkarte gibt den Fokus an die Blitzwort-Auswahl.
-    await reiter(seite, 'Mia’s extras');
+    await reiter(seite, 'Mia’s control');
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove(['quizWarnungGesehen', 'spiraleWarnungGesehen']));
     await expect(seite.locator('#kon-warnung')).toBeVisible();
     await seite.locator('#kon-warnung-ok').click();

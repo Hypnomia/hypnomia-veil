@@ -17,7 +17,7 @@ import { wirksameZonen } from '../../src/steigerung.ts';
 import { berechneAugenbalken, berechneBildFlaechen, berechneFlaechen, gesichtsZonen } from '../../src/erkenner/zonen.ts';
 import { presetFuerPackKurz } from '../../src/pack/vertrag.ts';
 import { ABDECKUNG_KURZ } from '../../entrypoints/popup/texte.ts';
-import { EYE_BAR_SATZ, EYE_BAR_TEXT, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam.ts';
+import { EYE_BAR_TEXT, HINWEIS_ZONEN_MIA, HINWEIS_ZONEN_ZENSURBALKEN } from '../../src/oberflaeche/gemeinsam.ts';
 
 const HIER = dirname(fileURLToPath(import.meta.url));
 const ALT = JSON.parse(readFileSync(join(HIER, 'daten', 'augenbalken-alt-soll.json'), 'utf8'));
@@ -391,9 +391,9 @@ test('Texte: Kurzzeile und Hinweis sagen bei Schalter an und allen Zonen aus nic
   assert.match(ABDECKUNG_KURZ([], false), /nothing/, 'ohne Schalter bleibt der Satz wie er war');
   assert.doesNotMatch(ABDECKUNG_KURZ([], true), /nothing|nichts/i);
   assert.match(ABDECKUNG_KURZ([], true), /eyes/);
-  assert.match(ABDECKUNG_KURZ(['eyes', 'breasts'], true), /eyes, breasts, plus the eyes with a black bar/);
+  assert.match(ABDECKUNG_KURZ(['eyes', 'breasts'], true), /eyes, breasts, plus a black bar over the eyes/);
   // Die Hinweise zu den Zonen (zonenHinweis in src/oberflaeche/preset-texte.ts liefert nur diese beiden) und die Saetze des Schalters sagen nicht, dass nichts gedeckt wird.
   // ("add nothing on top" im Mia-Hinweis meint die Zonen Eyes und Mouth bei Face an, nicht die Deckung.)
-  for (const t of [HINWEIS_ZONEN_ZENSURBALKEN, EYE_BAR_TEXT, EYE_BAR_SATZ]) assert.doesNotMatch(t, /nothing|nichts/i);
+  for (const t of [HINWEIS_ZONEN_ZENSURBALKEN, EYE_BAR_TEXT]) assert.doesNotMatch(t, /nothing|nichts/i);
   assert.doesNotMatch(HINWEIS_ZONEN_MIA, /nothing (is )?(covered|hidden|veiled)|nothing right now/i);
 });

@@ -8,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { ABDECKUNG_AUGENBALKEN, ABDECKUNG_KURZ, GRIP_SATZ } from '../../entrypoints/popup/texte';
-import { EYE_BAR_SATZ } from '../../src/oberflaeche/gemeinsam';
 import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -442,11 +441,12 @@ test('Popup: Kurzzeile und Satz folgen dem Schalter Eye bar; "My grip" ruht nich
     await expect(seite.locator('#steigerung')).toBeVisible();
     await expect(seite.locator('#grip-satz')).toHaveText(GRIP_SATZ);
     await setze({ preset: 'mosaik', augenbalken: false, zonen: zonenNur(['breast']) });
-    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_KURZ(['breasts']));
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_KURZ(['breasts'])!);
     await setze({ augenbalken: true });
     await expect(seite.locator('#grip-satz')).toHaveText(GRIP_SATZ);
-    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_KURZ(['breasts'], true));
-    await expect(seite.locator('#pack-hinweis')).toContainText(EYE_BAR_SATZ);
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_KURZ(['breasts'], true)!);
+    // E4t W6, K3: der Satz zum Balken steht nicht mehr unter dem Stil; die Kurzzeile nennt den Balken.
+    await expect(seite.locator('#pack-hinweis')).not.toContainText('black bar');
     await setze({ zonen: zonenNur([]) });
     await expect(seite.locator('#abdeckung-kurz')).toHaveText(ABDECKUNG_AUGENBALKEN);
     await setze({ preset: 'mosaik', augenbalken: false });

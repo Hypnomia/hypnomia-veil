@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { REITER as REITERDATEN } from '../../entrypoints/options/reiter-daten.ts';
 import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 import { STANDARD } from '../../src/einstellungen.ts';
+import { KLEIDUNG_ANTWORT_GILT, KLEIDUNG_HEUTE_NICHTS } from '../../src/oberflaeche/bedienung-texte.ts';
 import { mitReitern, oeffneAuf, stufeKlick, chipKlick, markierteKarte, reglerCss } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
@@ -442,6 +443,21 @@ try {
   await chipKlick(driver, 'mouth');
   await bis('Hinweis weg', async () => !(await sichtbar('#zonen-verworfen')));
   pruefe(true, 'G3: die naechste Handlung nimmt den Hinweis weg');
+
+  // ---- E4t X1: "Right now I cover nothing under clothes" bleibt neben dem Hinweis zur verworfenen Handlung stehen, der gewoehnliche Teil weicht ----
+  await seite(null);
+  await oeffneAuf(driver, 'zonen-wahl');
+  await driver.executeScript(
+    `const b = window.wrappedJSObject && window.wrappedJSObject.browser || window.browser;
+     b.storage.local.set({ einstellungen: arguments[0] });
+     document.querySelector('#zonen-wahl .v-chip[data-zone=eyes]').click();`,
+    { version: 1, zonen: { ...alleZonen(false, false), breast: { an: false, bedeckt: true } } },
+  );
+  await bis('Hinweis verworfen', () => sichtbar('#zonen-verworfen'));
+  pruefe((await text('#kleidung-frage .v-hinweis')) === KLEIDUNG_HEUTE_NICHTS, 'X1: der Satz "nothing under clothes" steht allein neben dem Hinweis zur verworfenen Handlung');
+  await chipKlick(driver, 'mouth');
+  await bis('Hinweis weg (X1)', async () => !(await sichtbar('#zonen-verworfen')));
+  pruefe((await text('#kleidung-frage .v-hinweis')).includes(KLEIDUNG_ANTWORT_GILT), 'X1: nach der naechsten Handlung steht der Satz vollstaendig');
 
   // ---- NN1: Tab-Halt ----
   await seite(null, true);

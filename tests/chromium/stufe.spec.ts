@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { oeffneZugeklapptes, mitReitern, reiterFuer, stufenKnopf, markiert } from './einstellungen-ordnung';
+import { ERWACHSEN_TEXTE } from '../../src/oberflaeche/bedienung-texte';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const wurzel = path.resolve(hier, '../..');
@@ -184,10 +185,10 @@ test('mit Pack: Gruppe waehlbar, Standard Hot, Wahl speichert, Zeile in Mias Sti
   await reiterFuer(s, '#erw-stufe-wahl');
   await expect(s.locator('#erw-stufe-wahl')).toBeVisible();
   await expect(s.locator('#erw-stufe-wahl .v-hinweis')).toHaveCount(0);
-  await expect(s.getByRole('radiogroup', { name: 'My pictures on adult sites' }).first()).toBeVisible();
+  await expect(s.getByRole('radiogroup', { name: 'How hot I get' }).first()).toBeVisible();
   await expect.poll(() => markiert(s, 'erw-stufe-wahl')).toContain('Hot');
   // Jede Karte traegt ihre eigene Zeile in Mias Stimme
-  expect(await s.locator('#erw-stufe-wahl .v-wahl-satz').allTextContents()).toEqual(['No picture swaps on adult sites.', 'I only hint.', 'I show more.', 'Nothing held back.']);
+  expect(await s.locator('#erw-stufe-wahl .v-wahl-satz').allTextContents()).toEqual([ERWACHSEN_TEXTE.karten.off.satz, ERWACHSEN_TEXTE.karten.tease.satz, ERWACHSEN_TEXTE.karten.hot.satz, ERWACHSEN_TEXTE.karten.explicit.satz]);
   const masse = await s.evaluate(() => ({
     hoehen: [...document.querySelectorAll('#erw-stufe-wahl [role=radio]')].map((i) => i.getBoundingClientRect().height),
     namen: [...document.querySelectorAll('#erw-stufe-wahl .v-wahl-titel')].map((e) => e.textContent),

@@ -35,7 +35,7 @@ Everything I stored inside your browser goes with me:
 
 - your settings and your answers from the welcome interview
 - the imported Mia Pack
-- your list of sites I leave alone and your strict times
+- your list of sites I leave alone and your tight hours
 - Mia’s Ledger, my little counter
 
 ## What stays

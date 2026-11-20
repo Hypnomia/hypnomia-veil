@@ -70,6 +70,8 @@ export interface TitelHandle {
 export interface TitelEingabe {
   titel: string;
   erklaerung?: ErklaerungEingabe;
+  // E4t W8: steht ueber dem Baustein schon eine Ueberschrift mit demselben Namen, zeigt der Baustein den Titel nicht (ohne "?" auch nicht die Zeile).
+  unsichtbar?: boolean;
 }
 
 // Titelzeile mit optionaler Erklaerung per "?". Auch einzeln als Baustein benutzbar.
@@ -89,6 +91,10 @@ export function baueTitel(eingabe: TitelEingabe): TitelHandle {
   }
   huelle.append(zeile);
   if (f) huelle.append(f);
+  if (eingabe.unsichtbar) {
+    text.hidden = true;
+    if (!k) huelle.hidden = true;
+  }
   return { element: huelle, titel: text, knopf: k, feld: f, setzeTitel: (t) => (text.textContent = t) };
 }
 

@@ -1,4 +1,4 @@
-// Hilfe fuer die Tests der Einstellungsseite (Phase 9, Paket B; Phase 11 E4d1: Reiter). Ohne Pack sind Adult sites, Mia’s extras (bis auf Calm mode)
+// Hilfe fuer die Tests der Einstellungsseite (Phase 9, Paket B; Phase 11 E4d1: Reiter). Ohne Pack sind Adult sites, Mia’s control (bis auf Calm mode)
 // und Sound zugeklappt. Wer dort etwas bedient, klappt sie zuerst auf, so wie die Person es mit "Set them now" tut. Seit E4d1 steht jeder Teil in
 // einem Reiter und nur der gewaehlte Reiter ist sichtbar: wer ein Element bedient oder prueft, oeffnet zuerst seinen Reiter wie die Person, mit
 // einem Klick auf den Reiter (`reiter` mit dem Namen, `reiterFuer` mit dem Selektor des Elements).
@@ -36,7 +36,7 @@ export async function oeffneZugeklapptes(seite: Page): Promise<void> {
     await reiter(seite, name);
     for (let i = 0; i < 5 && (await seite.locator('.zu-knopf:visible').count()) > 0; i++) await seite.locator('.zu-knopf:visible').first().click();
   }
-  await reiter(seite, 'Style');
+  await reiter(seite, 'Cover style');
   // Das Aufklappen scrollt; die Tests starten wieder oben (der grosse Pause-Knopf im Bild, die kleine Pause in der Leiste verborgen).
   await seite.evaluate(() => window.scrollTo(0, 0));
 }

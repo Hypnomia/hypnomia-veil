@@ -67,7 +67,7 @@ test('Fund 4 und E4d1: sieben Reiter, Help in der Leiste oeffnet die Hilfe in ne
     await expect(seite.locator('header .unter a')).toHaveCount(0);
     // Calm mode hat weder Karte noch Reiter; "Mia’s mood" bis "Sites I leave alone" stehen in der Gruppe Covering (der Stil wohnt im Reiter Style, D2).
     await expect(seite.locator('#abschnitt-ruhig')).toHaveCount(0);
-    expect(await seite.locator('#covering h2').allTextContents()).toEqual(['Mia’s mood', 'What I cover', 'Sites I leave alone']);
+    expect(await seite.locator('#covering h2').allTextContents()).toEqual(['Mia’s mood', 'Zones', 'Sites I leave alone']);
     // Der Reiter oeffnet sein Panel und setzt seinen Anker in die Adresse; Pause bleibt in jedem Reiter erreichbar.
     await seite.locator('#sprung [role=tab]', { hasText: 'Ledger' }).click();
     await expect(seite).toHaveURL(/#ledger$/);
@@ -94,7 +94,7 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
       await expect(seite.locator(k.drin)).toBeHidden();
     }
     // Calm mode bleibt offen und wirkt ohne Aufklappen.
-    await reiter(seite, 'Mia’s extras');
+    await reiter(seite, 'Mia’s control');
     await expect(seite.locator('#ruhig')).toBeVisible();
     await seite.locator('#ruhig-zeile').click();
     await expect.poll(async () => (await einst(seite)).ruhig).toBe(true);
@@ -154,7 +154,7 @@ test('Fund 4: ohne Pack sind Adult sites, Mia’s control und Sound zugeklappt (
     await seite.evaluate(() => (globalThis as any).chrome.storage.local.remove('pack'));
     await expect(seite.locator('#ton-zu-knopf')).toBeVisible();
     await expect(seite.locator('#ton')).toHaveAttribute('data-zu', '1');
-    await reiter(seite, 'Mia’s extras');
+    await reiter(seite, 'Mia’s control');
     await expect(seite.locator('#kon-blitz')).toBeVisible();
   } finally {
     await zuruecksetzen(seite).catch(() => undefined);
@@ -195,7 +195,7 @@ async function hoeheJeReiter(seite: Page): Promise<Record<string, number>> {
     await reiter(seite, name);
     aus[name] = await seite.evaluate(() => document.documentElement.scrollHeight);
   }
-  await reiter(seite, 'Style');
+  await reiter(seite, 'Cover style');
   return aus;
 }
 const hoechste = (h: Record<string, number>): number => Math.max(...Object.values(h));
@@ -256,7 +256,7 @@ test('Fund 8 und 10: Calm mode ist der erste Schalter in Mia’s control, bei "w
     expect(ordnung.titel).toBeLessThan(ordnung.calm);
     expect(ordnung.calm).toBeLessThan(ordnung.hinweis);
     expect(ordnung.calm).toBeLessThan(ordnung.werbung);
-    await reiter(seite, 'Mia’s extras');
+    await reiter(seite, 'Mia’s control');
     await expect(seite.locator('#ruhig-zeile strong')).toHaveText('Calm mode');
     await expect(seite.locator('#ruhig-system')).toBeHidden();
     await seite.emulateMedia({ reducedMotion: 'reduce' });
@@ -331,14 +331,14 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
     await oeffneZugeklapptes(seite);
     const soll: Record<string, string> = {
       'Help: Adult sites': 'adult',
-      'Help: My pictures on adult sites': 'adult',
+      'Help: How hot I get': 'adult',
       'Help: Full replacement': 'full-replacement',
       'Help: Spot adult pages by content': 'adult',
       'Help: Quiz': 'quiz',
       'Help: Cover style': 'styles',
       'Help: Calm mode': 'calm',
       'Help: My ads': 'ads',
-      'Help: Strict times': 'strict-times',
+      'Help: Tight hours': 'strict-times',
     };
     // E4d1: je Reiter die sichtbaren Hilfe-Knoepfe sammeln (verborgene Reiter haben kein Mass).
     const sammle = async (breiteMin = false) => {
@@ -365,10 +365,10 @@ test('Fund 14: runde Hilfe-Knoepfe an den schwierigen Stellen, 24 px am Desktop,
       expect(Math.round(k.h)).toBe(24);
     }
     // Der Knopf steht rechts neben dem Titel, der Titel bleibt als Ueberschrift lesbar.
-    await reiter(seite, 'Mia’s extras');
-    await expect(seite.getByRole('heading', { name: 'Strict times' })).toBeVisible();
+    await reiter(seite, 'Mia’s control');
+    await expect(seite.getByRole('heading', { name: 'Tight hours' })).toBeVisible();
     const neu = context.waitForEvent('page');
-    await seite.locator('a.hilfe-rund[aria-label="Help: Strict times"]').click();
+    await seite.locator('a.hilfe-rund[aria-label="Help: Tight hours"]').click();
     const hilfe = await neu;
     await expect(hilfe).toHaveURL(new RegExp(`chrome-extension://${id}/hilfe\\.html#strict-times$`));
     await hilfe.close();

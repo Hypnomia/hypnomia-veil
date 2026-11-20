@@ -8,10 +8,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STANDARD } from '../../src/einstellungen';
-import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { FEHLER_SPEICHERN, HINWEIS_FACE_AUS, HINWEIS_PACK_OHNE_STICKER, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { REITER as REITERDATEN } from '../../entrypoints/options/reiter-daten';
 import { ERWACHSEN_VERWORFEN, ZONEN_VERWORFEN } from '../../entrypoints/options/bedienung-texte';
 import { kleidungHinweis } from '../../entrypoints/options/bedienung-texte';
+import { KLEIDUNG_ANTWORT_GILT, KLEIDUNG_HEUTE_NICHTS } from '../../src/oberflaeche/bedienung-texte';
 import { markiert, mitReitern, oeffneZugeklapptes, reiter, reiterFuer, stufenKnopf, zonenChip } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -849,6 +850,68 @@ test('L2: zwei Tasten am Regler und sofort Tab (Speichern verzoegert): die Anzei
     await expect(regler).toHaveValue('0.17');
     expect(await seite.evaluate(() => (globalThis as any).__gesehen), 'kein ueberholter Zwischenstand').toEqual(['0.15', '0.17']);
     await seite.evaluate(() => clearInterval((globalThis as any).__takt));
+  } finally {
+    await seite.close();
+  }
+});
+
+// E4t W8: steht ueber einem Baustein eine Ueberschrift mit demselben Namen (Zones, Mia’s mood), zeigt der Baustein keinen sichtbaren Titel; seine Gruppe ist ueber
+// aria-labelledby mit der Ueberschrift verbunden; das "?" der Stimmung bleibt.
+test('W8: kein doppelter sichtbarer Titel bei Zones und Mia’s mood, aria-labelledby zeigt auf die Ueberschrift', async () => {
+  const seite = await seiteMit({});
+  try {
+    await reiter(seite, 'What I cover');
+    for (const [ueberschrift, baustein] of [['zonen-titel', '#zonen-wahl'], ['stimmung-titel', '#stimmung-wahl']] as const) {
+      const h = seite.locator(`#${ueberschrift}`);
+      await expect(h).toBeVisible();
+      const sichtbar = await seite
+        .locator(`${baustein} .v-titeltext`)
+        .evaluateAll((e) => e.filter((x) => !(x as HTMLElement).hidden && x.getClientRects().length > 0).map((x) => x.textContent));
+      expect(sichtbar, `${baustein}: kein sichtbarer Titel`).toEqual([]);
+      await expect(seite.locator(`${baustein} [role=radiogroup]`).first()).toHaveAttribute('aria-labelledby', ueberschrift);
+      // der Bildschirmleser findet die Gruppe unter dem Namen der Ueberschrift
+      await expect(seite.getByRole('radiogroup', { name: (await h.textContent())!.trim() }).first()).toBeVisible();
+    }
+    await expect(seite.locator('#stimmung-wahl').getByRole('button', { name: 'What does this do?' })).toBeVisible();
+  } finally {
+    await seite.close();
+  }
+});
+
+// E4t X1: Verdrahtung der nie verdraengten Saetze auf der Einstellungsseite.
+test('X1: Cover style, Mia-Stil mit Face aus und Pack ohne Sticker: der Satz "Face aus" steht UND daneben der Hinweis der Sperre', async () => {
+  // Die Seite setzt ein Mia-Preset ohne Pack beim Laden auf Mosaik zurueck: Pack zuerst, dann der Stil (Face aus).
+  const seite = await seiteMit({ pack: packMit(['stil:mia-patch']) });
+  try {
+    await schreibe(seite, { einstellungen: { version: 1, preset: 'mia-wort', zonen: alleZonen(false, false) } });
+    await reiter(seite, 'Cover style');
+    await expect(seite.locator('#preset-face-hinweis')).toHaveText(HINWEIS_FACE_AUS);
+    await expect(seite.locator('#preset-pack-hinweis')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+    await expect(seite.locator('#preset-face-hinweis')).toBeVisible();
+    await expect(seite.locator('#preset-pack-hinweis')).toBeVisible();
+  } finally {
+    await seite.close();
+  }
+});
+
+test('X1: "Right now I cover nothing under clothes" bleibt neben dem Hinweis zur verworfenen Handlung stehen, der gewoehnliche Teil weicht', async () => {
+  const seite = await seiteMit({}, 1280, true);
+  try {
+    await zonenChip(seite, 'eyes');
+    const aussen = alleZonen(false, false) as Record<string, any>;
+    aussen.breast = { an: false, bedeckt: true }; // alle Zonen aus, nur eine gespeicherte bedeckt: gemischt, und nichts davon ist eingeschaltet
+    await seite.evaluate((neu) => {
+      const sl = (globalThis as any).chrome.storage.local;
+      void sl.__echtSet({ einstellungen: neu });
+      (document.querySelector('#zonen-wahl .v-chip[data-zone=eyes]') as HTMLElement).click();
+    }, { version: 1, zonen: aussen });
+    await expect(seite.locator('#zonen-verworfen')).toBeVisible();
+    await expect(seite.locator('#kleidung-frage .v-hinweis')).toHaveText(KLEIDUNG_HEUTE_NICHTS);
+    await expect(seite.locator('#kleidung-frage .v-hinweis')).not.toContainText(KLEIDUNG_ANTWORT_GILT);
+    // die naechste Handlung nimmt den Hinweis zur verworfenen Handlung weg: der Satz der Kleidung ist wieder vollstaendig
+    await (await zonenChip(seite, 'mouth')).click();
+    await expect(seite.locator('#zonen-verworfen')).toBeHidden();
+    await expect(seite.locator('#kleidung-frage .v-hinweis')).toContainText(KLEIDUNG_ANTWORT_GILT);
   } finally {
     await seite.close();
   }

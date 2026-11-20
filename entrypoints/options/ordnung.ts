@@ -3,6 +3,7 @@
 // (main.ts importiert dieses Modul zuletzt). Alle Texte nur per textContent.
 import { hilfeAdresse, type HilfeAnker } from '../../src/hilfe/anker';
 import { TESTHAKEN } from '../../src/schleier/konstanten';
+import { NAME_HITZE, NAME_STIL, NAME_STRENG } from '../../src/oberflaeche/gemeinsam';
 import { ZU_TEXTE } from './ordnung-texte';
 import { PACK_SPEICHER_SCHLUESSEL, kurzAusRoh, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
 
@@ -163,14 +164,14 @@ browser.storage.onChanged.addListener((aenderungen: Record<string, { newValue?: 
 // Runder "?"-Knopf neben dem Element, oeffnet die Hilfe am Anker in neuem Tab. Das Element und der Knopf stehen in einer Zeile.
 const HILFEN: readonly { wo: string; kurz: HilfeAnker; name: string; label?: boolean }[] = [
   { wo: '#erw-titel', kurz: 'adult', name: 'Adult sites' },
-  { wo: '#erw-stufe-ort', kurz: 'adult', name: 'My pictures on adult sites' },
+  { wo: '#erw-stufe-ort', kurz: 'adult', name: NAME_HITZE },
   { wo: '#erw-ersatz-zeile', kurz: 'full-replacement', name: 'Full replacement' },
   { wo: '#erw-inhalt', kurz: 'adult', name: 'Spot adult pages by content', label: true },
   { wo: '#quiz-titel', kurz: 'quiz', name: 'Quiz' },
-  { wo: '#stil-titel', kurz: 'styles', name: 'Cover style' },
+  { wo: '#stil-titel', kurz: 'styles', name: NAME_STIL },
   { wo: '#ruhig-zeile', kurz: 'calm', name: 'Calm mode' },
   { wo: '#kon-werbung-zeile', kurz: 'ads', name: 'My ads' },
-  { wo: '#kon-zeiten-titel', kurz: 'strict-times', name: 'Strict times' },
+  { wo: '#kon-zeiten-titel', kurz: 'strict-times', name: NAME_STRENG },
 ];
 
 export function hilfeKnopf(kurz: HilfeAnker, name: string): HTMLAnchorElement {

@@ -20,7 +20,7 @@ No Safari. Apple only allows extensions through the App Store.
 ## Living with me
 
 - [The Mia Pack](mia-pack.md): buying it, importing it, the license
-- [How I work](how-i-work.md): pinning me, my ads, adult sites, the quiz, my grip, strict times
+- [How I work](how-i-work.md): pinning me, my ads, adult sites, the quiz, my grip, tight hours
 - [Updates](updates.md): new versions of me and of the pack
 - [Pause](pause.md): always allowed, always free
 - [Uninstall](uninstall.md): the normal way, any time

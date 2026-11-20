@@ -27,10 +27,10 @@ export function formatiereRest(ms: number): string {
 // Eingebaute Kommentare je Stufe (0 bis 4), wenn das Pack keine Gruppe `stufeN` mitbringt.
 export const STUFEN_TEXT: Record<0 | 1 | 2 | 3 | 4, string> = {
   0: "Nothing extra yet. Behave and it stays that way.",
-  1: "A little more covered now. I'm only warming up.",
+  1: 'A little more covered now. I’m only warming up.',
   2: 'Faces, eyes and mouths are covered too. I do enjoy this level.',
   3: "Belly, feet and armpits as well. Hardly anything gets past me now.",
-  4: "Every picture where I spot a woman is covered. Time away from adult sites brings the level down.",
+  4: 'I cover every picture where I spot a woman. Twelve hours away from adult sites, with little to cover, lower it.',
 };
 
 // Wahl eines Satzes aus der Pack-Gruppe, sonst der eingebaute Text. `zufall` 0 bis unter 1 (injizierbar).

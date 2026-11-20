@@ -286,7 +286,7 @@ try {
   await imSeitenkontext(`await api.storage.local.set({ einstellungen: { version: 1, stil: 'mia-patch' } });`);
   await driver.findElement(By.css('#annehmen')).click();
   await bis('Pack da (Altbestand)', async () => (await text('#pack-titel')).includes('Dummy pack'));
-  pruefe((await text('#meldung')).includes('Face is off under What I cover') && !(await text('#meldung')).includes('Face is on under'), 'Altbestand: Meldung sagt, dass Face aus ist');
+  pruefe((await text('#meldung')).includes('Face is off under Zones') && !(await text('#meldung')).includes('Face is on under'), 'Altbestand: Meldung sagt, dass Face aus ist');
   pruefe((await speicher('einstellungen'))?.zonen?.face?.an === false && (await speicher('einstellungen'))?.preset === 'mia-wort', 'Altbestand: Face bleibt aus, Preset mia-wort');
   await bis('Hinweis Face aus', async () => (await text('#preset-face-hinweis')).includes('Switch Face on'));
   await driver.findElement(By.css('#entfernen')).click();
@@ -303,7 +303,7 @@ try {
   pruefe((await speicher('einstellungen'))?.preset === 'mia-wort', 'erstes Pack: Preset mia-wort');
   // Teil A: das erste Pack hat Face eingeschaltet; Abschalten wird respektiert, Wechsel auf ein Mia-Preset schaltet wieder ein
   pruefe((await speicher('einstellungen'))?.zonen?.face?.an === true, 'erstes Pack: Face ist an');
-  pruefe((await text('#meldung')).includes('Face is on under What I cover'), 'Import-Meldung nennt Face');
+  pruefe((await text('#meldung')).includes('Face is on under Zones'), 'Import-Meldung nennt Face');
   await chipKlick(driver, 'face');
   await bis('Face aus', async () => (await speicher('einstellungen'))?.zonen?.face?.an === false);
   await driver.navigate().refresh();
@@ -512,6 +512,11 @@ try {
   pruefe((await driver.findElement(By.css('#preset-sticker')).getAttribute('disabled')) === 'true' && (await driver.findElement(By.css('#preset-mia-sticker')).getAttribute('disabled')) === 'true', 'Pack ohne Sticker: die Sticker-Karten sind gesperrt');
   pruefe((await driver.findElement(By.css('#preset-mia-wort')).getAttribute('disabled')) !== 'true', 'Pack ohne Sticker: die Mia-Karten sind frei');
   pruefe(await sichtbar('#preset-pack-hinweis') && (await text('#preset-pack-hinweis')).includes('no stickers of me yet'), 'Pack ohne Sticker: eigener Hinweis');
+  // E4t X1: Mia-Stil mit Face aus und Pack ohne Sticker: der Satz "Face aus" (sagt, dass nichts dazukommt) steht UND daneben der gewoehnliche Hinweis der Sperre
+  await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen ?? {}; await api.storage.local.set({ einstellungen: { ...a, preset: 'mia-wort', zonen: { ...(a.zonen ?? {}), face: { an: false } } } });`);
+  await driver.navigate().refresh();
+  await bis('Face aus und Sperre nebeneinander', async () => (await sichtbar('#preset-face-hinweis')) && (await sichtbar('#preset-pack-hinweis')));
+  pruefe((await text('#preset-face-hinweis')).includes('Switch Face on') && (await text('#preset-pack-hinweis')).includes('no stickers of me yet'), 'X1: Satz "Face aus" UND Hinweis zur Sperre stehen nebeneinander');
   await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen; await api.storage.local.set({ einstellungen: { ...a, preset: 'sticker' } });`);
   await driver.navigate().refresh();
   await bis('Mosaik gilt', async () => (await driver.findElement(By.css('#preset-mosaik')).isSelected()));

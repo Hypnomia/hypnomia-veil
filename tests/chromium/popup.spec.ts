@@ -178,14 +178,14 @@ test('Fund 12: die sechs "even when clothed"-Kaestchen tragen den Zonennamen', a
     await expect(seite.locator('#status')).not.toBeEmpty();
     await oeffneGruppe(seite);
     await expect(seite.locator('#zonen input[data-bedeckt]')).toHaveCount(BEDECKBAR.length);
-    for (const name of BEDECKBAR) await expect(seite.getByLabel(`${name}: even when clothed`)).toHaveCount(1);
+    for (const name of BEDECKBAR) await expect(seite.getByLabel(`${name}: under clothes too`)).toHaveCount(1);
     // Echter Klick ueber den Namen: Genitals an, dann "even when clothed" frei und gespeichert
     const anVorher = (await einst(seite)).zonen?.genitals?.an ?? (await seite.locator('input[data-zone="genitals"]').isChecked());
     await seite.locator('#zonen label.schalter').filter({ hasText: 'Genitals' }).click();
     await expect.poll(async () => (await einst(seite)).zonen?.genitals?.an).toBe(!anVorher);
     if (anVorher) await seite.locator('#zonen label.schalter').filter({ hasText: 'Genitals' }).click();
     await expect.poll(async () => (await einst(seite)).zonen?.genitals?.an).toBe(true);
-    const bedeckt = seite.getByLabel('Genitals: even when clothed');
+    const bedeckt = seite.getByLabel('Genitals: under clothes too');
     const bVorher = await bedeckt.isChecked();
     await bedeckt.click();
     await expect.poll(async () => (await einst(seite)).zonen?.genitals?.bedeckt).toBe(!bVorher);
@@ -551,7 +551,7 @@ test('Fund 2: Reihenfolge, "This site" mit Name direkt unter der Pause, Zonen hi
     const namen = (await einst(seite)).zonen ?? null;
     const sollNamen = await seite.evaluate(() => [...document.querySelectorAll<HTMLInputElement>('input[data-zone]')].filter((i) => i.checked).map((i) => i.closest('label')!.textContent!.trim().toLowerCase()));
     void namen;
-    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_KURZ(sollNamen));
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_KURZ(sollNamen)!);
     // Ziel: ohne Aufklappen hoechstens 600 px, ohne Pack und mit Pack, ruhig und pausiert
     const ohnePack = await hoehe(seite);
     expect(ohnePack, 'ohne Pack').toBeLessThanOrEqual(600);
@@ -624,7 +624,7 @@ test('Fund 1 (Popup): ohne Pack heissen beide Knoepfe "Get the Mia Pack", mit Pa
   }
 });
 
-test('Fund 10 (Popup): "How hot do I get?" als Dreier-Wahl oben in Adult sites, "My grip" mit "?" zur Hilfe und einem Satz', async () => {
+test('Fund 10 (Popup): "How hot I get" als Dreier-Wahl oben in Adult sites, "My grip" mit "?" zur Hilfe und einem Satz', async () => {
   const seite = mitReitern(await context.newPage());
   try {
     await seite.goto(popupUrl());
@@ -636,7 +636,7 @@ test('Fund 10 (Popup): "How hot do I get?" als Dreier-Wahl oben in Adult sites, 
     // oben: vor dem Adult-site-Schalter
     const lage = await seite.evaluate(() => [document.getElementById('heiss')!.getBoundingClientRect().top, document.getElementById('erw-an')!.closest('label')!.getBoundingClientRect().top]);
     expect(lage[0]!).toBeLessThan(lage[1]!);
-    await expect(seite.locator('#heiss-titel')).toHaveText('How hot do I get?');
+    await expect(seite.locator('#heiss-titel')).toHaveText('How hot I get');
     for (const wert of ['tease', 'explicit', 'hot']) {
       await seite.locator(`#heiss label:has(input[value="${wert}"])`).click();
       await expect.poll(async () => (await einst(seite)).erwachsen?.stufe).toBe(wert);
@@ -795,6 +795,51 @@ test('Fund 27: der Update-Hinweis hat den Link "What’s new" auf den Hilfe-Anke
     await expect.poll(() => ziel.url()).toContain('/hilfe.html#updates');
     await ziel.close();
   } finally {
+    await seite.close();
+  }
+});
+
+// E4t X2 und X5: die Kurzzeile "I cover: ..." im Popup mit echtem Speicher (Zonen aus: Balken, strenge Zeit mit Steigerung, strenge Zeit ohne Steigerung, nichts) und die Pause
+// vor "ohne Pack" bei den Erwachsenenseiten.
+test('X2 und X5: Kurzzeile je Zustand (C7, C45 in strenger Zeit, nothing, leer ohne Steigerung) und Pause geht vor "ohne Pack"', async () => {
+  const seite = mitReitern(await context.newPage());
+  const ZONEN_AUS = Object.fromEntries(['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'].map((z) => [z, { an: false, bedeckt: false }]));
+  const GANZER_TAG = [{ tage: [0, 1, 2, 3, 4, 5, 6], von: 0, bis: 0 }];
+  const setze = async (teil: Record<string, unknown>) => {
+    await schreibe(seite, { einstellungen: { version: 1, preset: 'mosaik', augenbalken: false, zonen: ZONEN_AUS, ...teil } });
+  };
+  try {
+    await seite.goto(popupUrl());
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    // nichts gewaehlt, kein Balken, kein Griff: "nothing"
+    await zuruecksetzen(seite);
+    await setze({});
+    await seite.reload();
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_KURZ([], false, 'nein')!);
+    expect(T.ABDECKUNG_KURZ([], false, 'nein')).toMatch(/nothing right now/);
+    // Eye bar an: C7
+    await setze({ augenbalken: true });
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_AUGENBALKEN);
+    // X2: ohne Pack, Pause an: der Satz der Pause geht vor "ohne Pack"
+    await setze({ pause: true });
+    await expect(seite.locator('#erwachsen-hinweis')).toHaveText(T.ERW_HINWEIS_PAUSE);
+    await setze({ pause: false });
+    await expect(seite.locator('#erwachsen-hinweis')).toHaveText(T.ERW_HINWEIS_OHNE_PACK);
+    // Pack mit Steigerung und Zeitplan, strenge Zeit jetzt (jeder Tag, ganzer Tag): C45 und nicht "nothing"
+    await schreibe(seite, { pack: packMit(['zensur:steigerung', 'kontrolle:zeitplan']) });
+    await setze({ kontrolle: { zeiten: GANZER_TAG } });
+    await seite.reload();
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_NUR_GRIFF);
+    // X4: strenge Zeit ohne die Freischaltung der Steigerung: weder "nothing" noch C45, die Zeile bleibt leer und verborgen
+    await schreibe(seite, { pack: packMit(['kontrolle:zeitplan']) });
+    await seite.reload();
+    await expect(seite.locator('#abdeckung-kurz')).toBeHidden();
+    await expect(seite.locator('#abdeckung-kurz')).not.toContainText('nothing');
+    // Zonen an: die gewohnte Zeile, auch ohne Steigerung in der strengen Zeit
+    await setze({ kontrolle: { zeiten: GANZER_TAG }, zonen: { ...ZONEN_AUS, feet: { an: true, bedeckt: false } } });
+    await expect(seite.locator('#abdeckung-kurz')).toHaveText(T.ABDECKUNG_KURZ(['feet'])!);
+  } finally {
+    await zuruecksetzen(seite);
     await seite.close();
   }
 });

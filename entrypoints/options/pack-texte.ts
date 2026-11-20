@@ -2,6 +2,7 @@
 // Konstanten. Jeder Satz sagt, was passiert ist, ob etwas gespeichert wurde und was jetzt zu tun ist.
 import { PackFehler, type PackFehlerCode } from '../../src/pack/format.ts';
 import type { PackVergleich } from '../../src/pack/ersetzen.ts';
+import { NAME_ZONEN } from '../../src/oberflaeche/gemeinsam.ts';
 
 export const NICHTS_GESPEICHERT = ' Nothing was stored.';
 
@@ -21,8 +22,8 @@ export const KNOPF_LIZENZ_ZU = 'Hide the license';
 
 export const TEXT_FERTIG = 'There it is. The pack is in, and it never left your browser.';
 // Der Import hat Face eingeschaltet (nur dann steht das da) bzw. Face stand schon aus (Altbestand: Mia-Preset gewaehlt, Face bewusst aus).
-export const TEXT_FERTIG_STIL = 'Your cover style is now “My face, black, words”. Face is on under What I cover, so every face becomes mine. You can switch it off again.';
-export const TEXT_FERTIG_STIL_FACE_AUS = 'Your cover style is now “My face, black, words”. Face is off under What I cover, so faces stay as they are. Switch it on and every face becomes mine.';
+export const TEXT_FERTIG_STIL = `Your cover style is now “My face, black, words”. Face is on under ${NAME_ZONEN}, so every face I find becomes mine. You can switch it off again.`;
+export const TEXT_FERTIG_STIL_FACE_AUS = `Your cover style is now “My face, black, words”. Face is off under ${NAME_ZONEN}, so faces stay as they are. Switch it on and every face I find becomes mine.`;
 export const TEXT_FERTIG_STIL_FEHLT = 'I couldn’t switch the cover style for you, so pick a style with my face under Cover style.';
 export const TEXT_FERTIG_ERSETZT = 'The old pack is gone. Your settings stayed exactly as they were.';
 

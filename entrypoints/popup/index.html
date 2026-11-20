@@ -59,7 +59,7 @@
         <div class="preset-zeile">
           <span id="preset-bild" class="preset-bild" aria-hidden="true"></span>
           <strong id="preset-name" class="preset-name"></strong>
-          <button id="preset-aendern" class="klein" type="button">Change style</button>
+          <button id="preset-aendern" class="klein" type="button">Change cover style</button>
         </div>
         <p id="pack-hinweis" class="hinweis"></p>
         <!-- Fund 2: Kurzfassung statt zehn Kacheln; "Change" klappt Mood, Zonen und Strict auf (Zustand in localStorage). -->
@@ -75,7 +75,7 @@
           <label class="schalter">
             <input id="video-zonen" type="checkbox" role="switch" />
             <span class="regler" aria-hidden="true"></span>
-            <span class="text"><strong>Only the naughty bits in videos</strong><small>On: I watch along and cover only what you shouldn’t see, in your cover style (a little more battery). Off: the whole video.</small></span>
+            <span class="text"><strong>Only the naughty bits in videos</strong><small>On: just the naughty bits, in your cover style (a bit more battery). Off: the whole video.</small></span>
           </label>
 
         </section>
@@ -91,9 +91,9 @@
         </section>
 
         <section aria-labelledby="zonen-titel">
-          <h2 id="zonen-titel">What I cover</h2>
+          <h2 id="zonen-titel">Zones</h2>
           <ul id="zonen" class="zonen" aria-describedby="zonen-hinweis"></ul>
-          <p class="hinweis">Check “even when clothed” and I cover it under clothing too.</p>
+          <p class="hinweis">Tick “under clothes too” and I cover that zone even when it’s dressed.</p>
           <p id="zonen-hinweis" class="hinweis" hidden></p>
         </section>
 
@@ -125,9 +125,9 @@
           <p id="erwachsen-hinweis" class="hinweis"></p>
         </div>
         <div id="erwachsen-schalter">
-          <!-- Fund 10: "How hot do I get?" oben, als Dreier-Wahl wie Cover style (nur mit erwachsen:vorschau). -->
+          <!-- Fund 10: "How hot I get" oben, als Dreier-Wahl wie Cover style (nur mit erwachsen:vorschau). -->
           <div id="heiss" hidden>
-            <h3 id="heiss-titel">How hot do I get?</h3>
+            <h3 id="heiss-titel">How hot I get</h3>
             <div class="wahl" role="radiogroup" aria-labelledby="heiss-titel">
               <label><input type="radio" name="stufe" value="tease" /><span>Tease</span></label>
               <label><input type="radio" name="stufe" value="hot" /><span>Hot</span></label>
@@ -137,12 +137,12 @@
           <label class="schalter">
             <input id="erw-an" type="checkbox" role="switch" />
             <span class="regler" aria-hidden="true"></span>
-            <span class="text"><strong>Adult-site mode</strong><small>on the sites I know, I swap the thumbnails for mine</small></span>
+            <span class="text"><strong>Adult sites</strong><small>on the sites I know, I swap the thumbnails for mine</small></span>
           </label>
           <label class="schalter">
             <input id="erw-inhalt" type="checkbox" role="switch" />
             <span class="regler" aria-hidden="true"></span>
-            <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal. Pages I only spot by their content never get thumbnail swaps or my gallery.</small></span>
+            <span class="text"><strong>Spot adult pages by content</strong><small>only for quiz and reveal; no thumbnail swaps or gallery on pages I spot this way</small></span>
           </label>
         </div>
         <div id="steigerung" hidden>

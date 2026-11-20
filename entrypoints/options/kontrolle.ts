@@ -1,6 +1,7 @@
 // Einstellungsseite, Abschnitt "Mia’s control" (Phase 5, Vertrag Session 9, Orchestrator). Schalter fuer Werbe-Tausch, Blitzwoerter und
 // Leerlauf-Spirale; wie der Abschnitt "Adult sites" auch ohne Pack einstellbar (wirkt erst mit Pack und Freischaltung). Die Warnung vor
 // Fotosensibilitaet erscheint, solange sie weder im Quiz noch auf der Spirale noch hier bestaetigt wurde.
+import { NAME_PACK_TON } from '../../src/oberflaeche/gemeinsam';
 import { speichere, zeigeSpeicherFehler } from './grund-speichern';
 import {
   BLITZ_HAEUFIGKEITEN,
@@ -88,7 +89,7 @@ function zeichneZeiten(zeiten: readonly StrengeZeit[]): void {
     const tage = document.createElement('fieldset');
     tage.className = 'zeit-tage';
     const legende = document.createElement('legend');
-    legende.textContent = `Days of strict time ${nr}`;
+    legende.textContent = `Days of tight hours ${nr}`;
     tage.append(legende);
     for (const t of TAGE) {
       const lab = document.createElement('label');
@@ -103,12 +104,12 @@ function zeichneZeiten(zeiten: readonly StrengeZeit[]): void {
     von.type = 'time';
     von.className = 'zeit-von';
     von.value = textAusMinuten(z.von);
-    von.setAttribute('aria-label', `Strict time ${nr} from`);
+    von.setAttribute('aria-label', `Tight hours ${nr} from`);
     const bis = document.createElement('input');
     bis.type = 'time';
     bis.className = 'zeit-bis';
     bis.value = textAusMinuten(z.bis);
-    bis.setAttribute('aria-label', `Strict time ${nr} until`);
+    bis.setAttribute('aria-label', `Tight hours ${nr} until`);
     const zwischen = document.createElement('span');
     zwischen.textContent = 'to';
     // Gleiche Zeiten heissen ganzer Tag, ein Ende vor dem Beginn reicht in den naechsten Tag (Pruefer-Fund 9; Entwurf, Texter liest gegen).
@@ -119,7 +120,7 @@ function zeichneZeiten(zeiten: readonly StrengeZeit[]): void {
     weg.type = 'button';
     weg.className = 'klein zeit-weg';
     weg.textContent = 'Remove';
-    weg.setAttribute('aria-label', `Remove strict time ${nr}`);
+    weg.setAttribute('aria-label', `Remove tight hours ${nr}`);
     weg.addEventListener('click', () => {
       void speichere(
         (alt) =>
@@ -129,7 +130,7 @@ function zeichneZeiten(zeiten: readonly StrengeZeit[]): void {
         sp,
       ).then((neu) => {
         if (!neu) return;
-        // Fokus nicht auf body fallen lassen (Pruefer-Fund 4): auf "Remove" der Zeile, die nachrueckt, sonst auf "Add strict time".
+        // Fokus nicht auf body fallen lassen (Pruefer-Fund 4): auf "Remove" der Zeile, die nachrueckt, sonst auf "Add tight hours".
         const naechste = zeitenListe.querySelectorAll<HTMLButtonElement>('.zeit-weg')[Math.min(i, neu.kontrolle.zeiten.length - 1)];
         (naechste ?? zeitNeu).focus();
       });
@@ -158,11 +159,11 @@ function zeichnePack(pack: PackKurz | null): void {
     (f) => !istFreigeschaltet(pack, f),
   );
   hinweis.textContent = teilweise
-    ? 'Some of this needs a newer Mia Pack. Add it in the Mia Pack section to unlock the rest. Pause Mia stops it all.'
+    ? `Some of this needs a newer Mia Pack: add it under ${NAME_PACK_TON}. Pause Mia stops it all.`
     : mit
     ? 'I run all of this. You pick how much, and Pause Mia stops it all.'
     : pack
-      ? 'This part needs a newer Mia Pack than yours. Add the newer one in the Mia Pack section to unlock it.'
+      ? `This part needs a newer Mia Pack than yours. Add it under ${NAME_PACK_TON} to unlock it.`
       : 'Everything below Calm mode needs the Mia Pack. Set it now and it’ll be ready.';
 }
 

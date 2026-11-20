@@ -220,7 +220,9 @@ test('Pack importieren, Hinweis wechselt, Probe frei', async () => {
   await importierePack(packPfad);
   const s = await extSeite();
   try {
-    await expect(s.locator('#ton-pack-hinweis')).toHaveText(TON_TEXTE.hinweisMitTon);
+    // E4t K8: mit Ton im Pack steht kein Hinweis zum Pack mehr, der Satz der Regel (Ton nur fuer Quiz und Blitzwoerter) tritt an seine Stelle.
+    await expect(s.locator('#ton-pack-hinweis')).toBeHidden();
+    await expect(s.locator('#ton-regel')).toBeVisible();
     expect(vorher).toBe(TON_TEXTE.hinweisOhnePack);
     await expect(s.locator('#ton-probe')).toBeEnabled();
     expect((await liesSpeicher('pack')).freischaltungen).toContain('ton');

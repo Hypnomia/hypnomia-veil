@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TEXT } from '../../src/einstieg/texte.ts';
 import { STANDARD } from '../../src/einstellungen.ts';
-import { FEHLER_SPEICHERN, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
+import { FEHLER_SPEICHERN, HINWEIS_FACE_AUS, HINWEIS_PACK_OHNE_STICKER, stimmungsWort } from '../../src/oberflaeche/gemeinsam.ts';
 import { mitReitern, oeffneReiter, oeffneReiterFuer } from './reiter-hilfe.mjs';
 
 setTimeout(() => {
@@ -363,7 +363,22 @@ try {
     }
     h = await interview(v, { version: 1, erwachsen: { an: true, stufe: 'hot', komplettErsatz: true } }, PACK_VOLL);
     await bisSeite(5);
-    pruefe((await text('#iv-ersatz-an')) === TEXT.ersatzAn, 'I8 (5): der Warnsatz zu Komplett-Ersatz bleibt sichtbar, solange er gespeichert an ist');
+    // E4t W4: der Warnsatz steht nur, wenn der Ersatz wirken wuerde (gespeichert an UND Adult sites an UND Pack mit erwachsen:ersatz).
+    pruefe(!(await sichtbar('#iv-ersatz-an')), 'W4: ohne die Freischaltung erwachsen:ersatz kein Warnsatz');
+    await schliesseAlleAusser(v);
+    // E4t X1: Seite Cover style, Mia-Stil mit Face aus und Pack ohne Sticker: der Satz "Face aus" steht UND daneben der Hinweis der Sperre
+    h = await interview(v, { version: 1, preset: 'mia-wort', zonen: zonenSet(false, false) }, { ...PACK_OHNE, freischaltungen: ['stil:mia-patch'] });
+    await bisSeite(3);
+    pruefe((await text('#iv-stil-face')) === HINWEIS_FACE_AUS && (await text('#iv-stil-sperre')) === HINWEIS_PACK_OHNE_STICKER, 'X1: Face-aus-Satz und Hinweis zur Sperre nebeneinander');
+    await schliesseAlleAusser(v);
+    const PACK_ERSATZ = { ...PACK_VOLL, freischaltungen: [...PACK_VOLL.freischaltungen, 'erwachsen:ersatz'] };
+    h = await interview(v, { version: 1, erwachsen: { an: true, stufe: 'hot', komplettErsatz: true } }, PACK_ERSATZ);
+    await bisSeite(5);
+    pruefe((await text('#iv-ersatz-an')) === TEXT.ersatzAn, 'W4: der Warnsatz zu Komplett-Ersatz steht, wenn der Ersatz wirken wuerde');
+    await schliesseAlleAusser(v);
+    h = await interview(v, { version: 1, erwachsen: { an: false, stufe: 'hot', komplettErsatz: true } }, PACK_ERSATZ);
+    await bisSeite(5);
+    pruefe(!(await sichtbar('#iv-ersatz-an')), 'W4: Adult sites aus: kein Warnsatz');
     await schliesseAlleAusser(v);
     void h;
     messzahl += 20;

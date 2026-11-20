@@ -1,6 +1,7 @@
 // Einstieg (Auftrag E): eingebaute Texte, Entwuerfe fuer den Texter. Amerikanisches Englisch in Mias Stimme, typografisches Apostroph,
 // keine Gedankenstriche. Sicherheitshinweise mit sachlichem Kern. Tests pruefen gegen diese Konstanten, nicht gegen den Wortlaut.
-import { stimmungsWort } from '../oberflaeche/gemeinsam.ts';
+import { NAME_ERWACHSEN, NAME_HITZE, NAME_KONTROLLE, NAME_KLEIDUNG, NAME_STIL, NAME_STIMMUNG, NAME_ZONEN, ZONEN_NAMEN } from '../oberflaeche/gemeinsam.ts';
+import { ERWACHSEN_TEXTE, ERWACHSEN_VERWORFEN, STIMMUNG_HINWEIS, KLEIDUNG_ANTWORT_GILT, KLEIDUNG_HEUTE, KLEIDUNG_HEUTE_NICHTS, KLEIDUNG_TEXTE, ZONEN_TEXTE, ZONEN_VERWORFEN } from '../oberflaeche/bedienung-texte.ts';
 import { STUFENLISTEN } from '../oberflaeche/bausteine/stufen-daten.ts';
 import type { StufenListe } from '../oberflaeche/bausteine/stufen.ts';
 
@@ -52,11 +53,11 @@ export const TEXT = {
   zurueck: 'Back',
   fertig: 'Finish',
   ueberspringen: 'Skip the rest',
-  ueberspringenHinweis: 'Skipping keeps everything on the next pages as it is. On a fresh install, that’s exactly how I like it.',
+  ueberspringenHinweis: 'Skipping keeps the next pages as they are. On a fresh install, that’s how I like it.',
 
   // ---------- Interview (Phase 11 E4e, Regeln I1 bis I11; Texte vorlaeufig, die Texterin legt sie in Schritt (e) fest) ----------
   // Namen der Schritte links (mit Pack alle sechs, ohne Pack die ersten vier).
-  schritteNamen: ['Zones', 'Clothes', 'Style', 'Mood', 'Adult sites', 'Extras'],
+  schritteNamen: [NAME_ZONEN, NAME_KLEIDUNG, NAME_STIL, NAME_STIMMUNG, NAME_ERWACHSEN, NAME_KONTROLLE],
   schritteAria: 'Questions',
   vorschauKopf: 'Preview',
   vorschauLabel: 'Preview of your cover style',
@@ -69,20 +70,20 @@ export const TEXT = {
   i2Text: 'One answer for every part I can cover under clothes.',
   // 3 Style
   i3Titel: 'How do I cover it?',
-  i3Text: 'Classic and Whole person work right away. The styles with my face need the Mia Pack.',
+  i3Text: 'Pick how I hide what I find. The preview shows you right away.',
   // Fund 8: Calm mode steht ohne Pack auf der Stil-Seite (er wirkt dort auf bewegte Stile).
   ruhigTitel: 'Calm mode',
   ruhigText: 'slower spiral, no moving or flashing words',
   // 4 Mood
   i4Titel: 'How suspicious am I?',
-  i4Text: 'When I’m suspicious, I cover more. When I’m relaxed, borderline pictures get through.',
+  i4Text: STIMMUNG_HINWEIS,
   strictTitel: 'Strict',
   strictText: 'hide each page until I’ve checked it (a little slower)',
   // 5 Adult sites (nur mit Pack beim Einstieg)
   i5Titel: 'Adult sites',
-  i5Text: 'On the adult sites I know, I swap the thumbnails for mine. The quiz, full replacement and your own sites wait in the settings.',
+  i5Text: 'On the adult sites I know, I swap the thumbnails for mine. My quiz, Full replacement and your own sites wait in the settings.',
   // Nur wenn Komplett-Ersatz gespeichert an ist: der Warnsatz bleibt sichtbar, auch wenn das Interview den Schalter nicht mehr fragt (Regel I8 (5)).
-  ersatzAn: 'Full replacement is on, set in the settings: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.',
+  ersatzAn: 'Full replacement is on: listed and your own sites show my gallery instead. Pause me, or put a site on my list of sites I leave alone, to see the real one.',
   // 6 Extras (nur mit Pack beim Einstieg)
   i6Titel: 'Calm or playful?',
   i6Text: 'The bits where I take a little more of the wheel. All of it stops the moment you pause me.',
@@ -91,60 +92,34 @@ export const TEXT = {
   blitzSelten: 'Now and then',
   blitzOft: 'Often',
   // Fund 4: je Seite ein Satz, was das Pack hier zeigt, und ein Link zum Pack-Abschnitt der Einstellungen.
-  ohnePack5: 'Set these now. Once the Mia Pack is in, my own pictures replace the thumbnails and my quiz gets its questions.',
-  ohnePack6: 'Set these now. Once the Mia Pack is in, my flash words get their words, my spiral and my pointer show up, and my sounds can play.',
+  ohnePack5: 'Set these now. The Mia Pack brings my thumbnail swaps and my quiz questions.',
+  ohnePack6: 'Calm mode works right away. My flash words get their words once the Mia Pack is in.',
   packLink: 'Get the Mia Pack',
 
-  // Bausteine (Zonenwahl, Kleidungsfrage, Stufenwahl, Gruppe der Erwachsenenseiten): dieselben Namen wie auf der Einstellungsseite.
-  zonenTitel: 'Zones',
-  zonenKarten: {
-    koerper: { titel: 'Body', satz: 'Breasts, genitals and buttocks.' },
-    'koerper-gesicht': { titel: 'Body and face', satz: 'The body, and faces as well.' },
-    alles: { titel: 'Everything', satz: 'All ten zones.' },
-  },
-  zonenEinzeln: { titel: 'Pick zones one by one', stand: (an: number, gesamt: number): string => `${an} of ${gesamt} on`, gruppenLabel: 'Zones, one by one' },
-  zonenNamen: {
-    eyes: 'Eyes',
-    mouth: 'Mouth',
-    face: 'Face',
-    head: 'Head',
-    breast: 'Breasts',
-    genitals: 'Genitals',
-    buttocks: 'Buttocks',
-    belly: 'Belly',
-    feet: 'Feet',
-    armpits: 'Armpits',
-  },
+  // Bausteine (Zonenwahl, Kleidungsfrage, Stufenwahl, Gruppe der Erwachsenenseiten): dieselben Texte wie auf der Einstellungsseite, aus einer Quelle
+  // (src/oberflaeche/bedienung-texte.ts, Namen aus dem Woerterbuch in gemeinsam.ts).
+  zonenTitel: ZONEN_TEXTE.titel,
+  zonenKarten: ZONEN_TEXTE.karten,
+  zonenEinzeln: ZONEN_TEXTE.einzeln,
+  zonenNamen: ZONEN_NAMEN,
   wahlKeine: 'Your zones match none of these, so nothing is picked. Choose one to reset them.',
   // Eine Zonen-Handlung, die verworfen wurde, weil sich der gespeicherte Stand zwischen Anzeige und Klick geaendert hat.
-  zonenVerworfen: 'The zones changed somewhere else while you were choosing, so I kept the saved ones. Choose again if you still want it.',
-  // K2: vorlaeufig, derselbe Satz wie auf der Einstellungsseite (Texterin in Schritt (e))
-  erwachsenVerworfen: 'The adult sites choices changed while you were choosing, so I kept the saved one. Choose again if you still want it.',
-  kleidungTitel: 'Under clothes',
-  kleidungErklaerung: {
-    knopfLabel: 'What does this do?',
-    text: 'One answer for every zone that can be covered under clothes. “Under clothes too” covers it even when it is dressed. “Bare skin only” leaves clothed parts alone.',
-  },
-  kleidungAntworten: {
-    haut: { titel: 'Bare skin only', satz: 'I cover only what is bare.' },
-    'auch-bedeckt': { titel: 'Under clothes too', satz: 'I cover these parts even when they are clothed.' },
-  },
-  // Der eine Hinweis der Frage bei einem gemischten Stand (keine Antwort markiert): nennt genau, was heute unter Kleidung gedeckt wird.
-  kleidungHeuteNichts: 'Right now I cover nothing under clothes.',
-  kleidungHeute: (namen: readonly string[]) => `Right now I also cover under clothes: ${namen.join(', ')}.`,
-  kleidungAntwortGilt: 'Pick an answer and it counts for every zone.',
-  stimmungTitel: 'Mood',
+  zonenVerworfen: ZONEN_VERWORFEN,
+  erwachsenVerworfen: ERWACHSEN_VERWORFEN,
+  kleidungTitel: KLEIDUNG_TEXTE.titel,
+  kleidungErklaerung: KLEIDUNG_TEXTE.erklaerung,
+  kleidungAntworten: KLEIDUNG_TEXTE.antworten,
+  // Die Teile des einen Hinweises der Frage bei einem gemischten Stand (keine Antwort markiert): nennt genau, was heute unter Kleidung gedeckt wird.
+  kleidungHeuteNichts: KLEIDUNG_HEUTE_NICHTS,
+  kleidungHeute: KLEIDUNG_HEUTE,
+  kleidungAntwortGilt: KLEIDUNG_ANTWORT_GILT,
+  stimmungTitel: NAME_STIMMUNG,
   stimmungExakt: { titel: 'Exact value', reglerLabel: 'Exact mood value' },
-  erwachsenTitel: 'My pictures on adult sites',
-  erwachsenKarten: {
-    off: { titel: 'Off', satz: 'No picture swaps on adult sites.' },
-    on: { titel: 'On', satz: 'I treat adult sites as adult sites.' },
-    tease: { titel: 'Tease', satz: 'I only hint.' },
-    hot: { titel: 'Hot', satz: 'I show more.' },
-    explicit: { titel: 'Explicit', satz: 'Nothing held back.' },
-  },
-  // Ohne die Freischaltung `erwachsen:vorschau` bleiben die drei Stufen gesperrt.
-  erwachsenGesperrt: 'My pictures decide how hot I get, so this unlocks with the Mia Pack.',
+  erwachsenTitel: NAME_HITZE,
+  erwachsenKarten: ERWACHSEN_TEXTE.karten,
+  // Ohne die Freischaltung `erwachsen:vorschau` bleiben die drei Stufen gesperrt (K10: ohne Pack und mit einem Pack ohne die Freischaltung zwei Wortlaute).
+  erwachsenGesperrt: ERWACHSEN_TEXTE.gesperrt,
+  erwachsenGesperrtAltesPack: ERWACHSEN_TEXTE.gesperrtAltesPack,
   // Fund 3: was ab Werk schon an ist und nicht abgefragt wird.
   // Fund 3: nennt nur, was gerade wirklich an ist.
   auchAnNamen: { werbung: 'my ads', tabtitel: 'my tab titles', meldungen: 'my little notes' },
@@ -179,11 +154,5 @@ export function zahlGenau(wert: number): string {
   return String(Number(wert.toPrecision(12)));
 }
 
-// Namen der Stimmung wie auf der Einstellungsseite: die Woerter, die `stimmungsWort` fuer die drei Stufenwerte liefert (ein Wortschatz mit Kopf und Popup),
-// wenn das drei verschiedene sind, sonst die Platzhalter aus STUFENLISTEN. Ein Test in Chromium vergleicht sie mit den Stufen der Einstellungsseite.
-export const STIMMUNG_STUFEN_INTERVIEW: StufenListe = (() => {
-  const basis = STUFENLISTEN.stimmung;
-  const woerter = basis.stufen.map((st) => stimmungsWort(st.wert));
-  if (new Set(woerter).size !== basis.stufen.length) return basis;
-  return { ...basis, stufen: basis.stufen.map((st, i) => ({ name: woerter[i] as string, wert: st.wert })) };
-})();
+// Namen der Stimmung: dieselbe Liste wie auf der Einstellungsseite (eine Quelle, stufen-daten.ts; ihre Namen sind die Woerter von `stimmungsWort`).
+export const STIMMUNG_STUFEN_INTERVIEW: StufenListe = STUFENLISTEN.stimmung;

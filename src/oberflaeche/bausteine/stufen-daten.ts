@@ -1,6 +1,6 @@
 // Stufenlisten der vier Regler (Phase 11 E4c0, Regel B5) als Daten. Die Werte liegen innerhalb der heutigen Grenzen aus src/einstellungen.ts
-// und der heutige Standard ist jeweils eine Stufe. Die Namen sind Platzhalter aus dem Entwurf: die Texterin entscheidet in Schritt (e),
-// die Oberflaeche bekommt ihre Namen als Eingabe und darf eine Kopie der Liste mit anderen Namen uebergeben.
+// und der heutige Standard ist jeweils eine Stufe. Die Namen sind seit E4t (W7, K9) die freigegebenen; die Stimmung traegt dieselben Woerter wie
+// `stimmungsWort` (Bausteine importieren keine Oberflaechentexte; tests/einheit/hinweise.test.mjs prueft, dass die Namen zu den Stufenwerten passen).
 import { FREILEGEN_MAX_MS, FREILEGEN_MIN_MS, SCHWELLE_MAX, SCHWELLE_MIN, STANDARD, TON_LAUTSTAERKE_STANDARD, VERWEIGERN_MAX, VERWEIGERN_MIN } from '../../einstellungen.ts';
 import type { StufenListe } from './stufen.ts';
 
@@ -13,8 +13,8 @@ export const STUFENLISTEN = {
     schritt: 0.01,
     standard: STANDARD.schwelle,
     stufen: [
-      { name: 'Careful', wert: 0.1 },
-      { name: 'Normal', wert: 0.15 },
+      { name: 'Very suspicious', wert: 0.1 },
+      { name: 'Suspicious', wert: 0.15 },
       { name: 'Relaxed', wert: 0.22 },
     ],
   },
