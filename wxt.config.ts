@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'wxt';
 import { manifestMuster, musterAusListe } from './scripts/ausnahmen-muster.mjs';
 import { baudatumAusUmgebung, geckoEinstellungen, kanalAusUmgebung } from './scripts/release/kanal.mjs';
+import { pruefeBeispielSatz } from './scripts/beispiel-pruefung.mjs';
 import { pruefeWebpDateien } from './scripts/webp-pruefung.mjs';
 
 const paket = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
@@ -76,12 +77,36 @@ function kernBilder(): { absoluteSrc: string; relativeDest: string }[] {
   return namen.map((d) => ({ absoluteSrc: `${ordner}${d}`, relativeDest: `kern/${d}` }));
 }
 
+// Beispielbilder der Live-Vorschau (Phase 11 Etappe 5, src/beispiel.ts): `../02 Assets Mia/beispielfrau/vorschau/<datei>.webp` (Dateinamen und SHA-256 stehen in
+// `data/beispiel-treffer.json`) kommen beim Bau nach `beispiel/<kennung>.webp`, nie ins Repo. V5: die Daten passen zum Bild. Eine abweichende Pruefsumme oder ein
+// unvollstaendiger Satz (ein bis drei der vier Bilder) bricht den Bau ab. Fehlt der Ordner ganz, warnt der Bau und die Vorschau zeigt die Strichzeichnung.
+// `VEIL_BEISPIEL=<ordner>` waehlt einen anderen Quellordner (das Quellcode-Paket bringt seine Bilder als extern/beispiel mit); ein ausdruecklich gesetzter,
+// fehlender Ordner ist ein Fehler, ein vorhandener leerer Ordner heisst "ohne Beispielbilder" (Testbau ohne Bilder).
+function beispielBilder(): { absoluteSrc: string; relativeDest: string }[] {
+  const gesetzt = !!process.env.VEIL_BEISPIEL;
+  const ordner = gesetzt
+    ? `${path.resolve(process.env.VEIL_BEISPIEL!)}/`
+    : fileURLToPath(new URL('../02 Assets Mia/beispielfrau/vorschau/', import.meta.url));
+  if (!existsSync(ordner)) {
+    if (gesetzt) throw new Error('Beispielbilder: VEIL_BEISPIEL zeigt auf einen Ordner, den es nicht gibt');
+    console.warn('Beispielbilder: Ordner 02 Assets Mia/beispielfrau/vorschau fehlt, die Vorschau zeigt die Strichzeichnung.');
+    return [];
+  }
+  const daten = JSON.parse(readFileSync(new URL('./data/beispiel-treffer.json', import.meta.url), 'utf8'));
+  const satz = pruefeBeispielSatz(daten, (datei) => (existsSync(`${ordner}${datei}`) ? readFileSync(`${ordner}${datei}`) : null));
+  if (satz.art === 'keine') {
+    console.warn('Beispielbilder: keins der Bilder im Ordner, die Vorschau zeigt die Strichzeichnung.');
+    return [];
+  }
+  return satz.bilder.map((b) => ({ absoluteSrc: `${ordner}${b.datei}`, relativeDest: `beispiel/${b.kennung}.webp` }));
+}
+
 export default defineConfig({
   // VEIL_AUSGABE erlaubt einen zweiten Ausgabeordner (z. B. waehrend eine Messung auf .output laeuft).
   outDir: process.env.VEIL_AUSGABE ?? '.output',
   hooks: {
     'build:publicAssets': (_wxt, dateien) => {
-      const kopiert = [...demoChibis(), ...kernBilder()];
+      const kopiert = [...demoChibis(), ...kernBilder(), ...beispielBilder()];
       // Regel 1: keine EXIF- oder XMP-Chunks in kopierten Bildern, sonst bricht der Bau ab.
       pruefeWebpDateien(kopiert.map((d) => [d.relativeDest, readFileSync(d.absoluteSrc)] as [string, Uint8Array]));
       dateien.push(...kopiert);

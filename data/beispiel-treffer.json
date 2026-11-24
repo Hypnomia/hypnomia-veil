@@ -1,0 +1,699 @@
+{
+ "version": 1,
+ "schwelle": 0.1,
+ "rand": 0.15,
+ "modelle": {
+  "320n": {
+   "datei": "320n.onnx",
+   "sha256": "c15d8273adad2d0a92f014cc69ab2d6c311a06777a55545f2c4eb46f51911f0f"
+  },
+  "yunet": {
+   "datei": "yunet-2023mar.onnx",
+   "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+  }
+ },
+ "gitCommit": "7d98719412bd548c47dc00bd0e70c92b043f95e9",
+ "browser": "chromium 156.0.8078.4",
+ "bilder": [
+  {
+   "kennung": "vorn",
+   "datei": "a-ganzkoerper-vorn-2.webp",
+   "sha256": "df0fbb1c2b343595c8adb9ba48c3c8ba5f38d7d099f6d8a8713ce25f91395f35",
+   "breite": 640,
+   "hoehe": 960,
+   "trefferMitGesicht": [
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.862,
+     "box": [
+      242,
+      226,
+      82,
+      91
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.824,
+     "box": [
+      319,
+      225,
+      79,
+      89
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "belly",
+     "bedeckt": false,
+     "score": 0.81,
+     "box": [
+      269,
+      316,
+      98,
+      110
+     ]
+    },
+    {
+     "zone": "genitals",
+     "bedeckt": true,
+     "score": 0.68,
+     "box": [
+      285,
+      445,
+      62,
+      64
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "feet",
+     "bedeckt": false,
+     "score": 0.609,
+     "box": [
+      398,
+      858,
+      69,
+      99
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": false,
+     "score": 0.538,
+     "box": [
+      274,
+      844,
+      68,
+      113
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.101,
+     "box": [
+      382,
+      211,
+      25,
+      40
+     ]
+    },
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.918,
+     "box": [
+      281,
+      77,
+      75,
+      97
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "head",
+     "bedeckt": false,
+     "score": 0.918,
+     "box": [
+      254,
+      15,
+      128,
+      188
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.918,
+     "box": [
+      278,
+      104,
+      78,
+      26
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "mouth",
+     "bedeckt": false,
+     "score": 0.918,
+     "box": [
+      289,
+      135,
+      59,
+      30
+     ],
+     "quelle": "yunet"
+    }
+   ],
+   "trefferOhneGesicht": [
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.862,
+     "box": [
+      242,
+      226,
+      82,
+      91
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.824,
+     "box": [
+      319,
+      225,
+      79,
+      89
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "belly",
+     "bedeckt": false,
+     "score": 0.81,
+     "box": [
+      269,
+      316,
+      98,
+      110
+     ]
+    },
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.759,
+     "box": [
+      280,
+      100,
+      73,
+      74
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "genitals",
+     "bedeckt": true,
+     "score": 0.68,
+     "box": [
+      285,
+      445,
+      62,
+      64
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "feet",
+     "bedeckt": false,
+     "score": 0.609,
+     "box": [
+      398,
+      858,
+      69,
+      99
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": false,
+     "score": 0.538,
+     "box": [
+      274,
+      844,
+      68,
+      113
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.101,
+     "box": [
+      382,
+      211,
+      25,
+      40
+     ]
+    }
+   ]
+  },
+  {
+   "kennung": "rueck",
+   "datei": "a-rueckansicht-1.webp",
+   "sha256": "25e860a5047f2c9b673231adad0b710227206be9335ec700e46713ec494d9e13",
+   "breite": 640,
+   "hoehe": 960,
+   "trefferMitGesicht": [
+    {
+     "zone": "buttocks",
+     "bedeckt": true,
+     "score": 0.809,
+     "box": [
+      227,
+      412,
+      183,
+      145
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.708,
+     "box": [
+      368,
+      236,
+      42,
+      59
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": true,
+     "score": 0.689,
+     "box": [
+      227,
+      864,
+      84,
+      95
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": true,
+     "score": 0.678,
+     "box": [
+      328,
+      867,
+      83,
+      92
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.637,
+     "box": [
+      222,
+      237,
+      42,
+      59
+     ]
+    }
+   ],
+   "trefferOhneGesicht": [
+    {
+     "zone": "buttocks",
+     "bedeckt": true,
+     "score": 0.809,
+     "box": [
+      227,
+      412,
+      183,
+      145
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.708,
+     "box": [
+      368,
+      236,
+      42,
+      59
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": true,
+     "score": 0.689,
+     "box": [
+      227,
+      864,
+      84,
+      95
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": true,
+     "score": 0.678,
+     "box": [
+      328,
+      867,
+      83,
+      92
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.637,
+     "box": [
+      222,
+      237,
+      42,
+      59
+     ]
+    }
+   ]
+  },
+  {
+   "kennung": "sitz",
+   "datei": "a-sitzend-sohlen-4.webp",
+   "sha256": "c8a85d7aff0272ef73c691e02a5e7474bfe9139b29fcd011f68224c5daba882b",
+   "breite": 640,
+   "hoehe": 960,
+   "trefferMitGesicht": [
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.796,
+     "box": [
+      374,
+      333,
+      125,
+      116
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.706,
+     "box": [
+      265,
+      337,
+      114,
+      104
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "belly",
+     "bedeckt": true,
+     "score": 0.575,
+     "box": [
+      293,
+      449,
+      165,
+      121
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": false,
+     "score": 0.24,
+     "box": [
+      19,
+      682,
+      183,
+      256
+     ]
+    },
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.923,
+     "box": [
+      317,
+      107,
+      118,
+      147
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "head",
+     "bedeckt": false,
+     "score": 0.923,
+     "box": [
+      276,
+      13,
+      200,
+      285
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.923,
+     "box": [
+      312,
+      147,
+      119,
+      39
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "mouth",
+     "bedeckt": false,
+     "score": 0.923,
+     "box": [
+      333,
+      194,
+      89,
+      45
+     ],
+     "quelle": "yunet"
+    }
+   ],
+   "trefferOhneGesicht": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.826,
+     "box": [
+      320,
+      138,
+      117,
+      113
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.796,
+     "box": [
+      374,
+      333,
+      125,
+      116
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.706,
+     "box": [
+      265,
+      337,
+      114,
+      104
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "belly",
+     "bedeckt": true,
+     "score": 0.575,
+     "box": [
+      293,
+      449,
+      165,
+      121
+     ]
+    },
+    {
+     "zone": "feet",
+     "bedeckt": false,
+     "score": 0.24,
+     "box": [
+      19,
+      682,
+      183,
+      256
+     ]
+    }
+   ]
+  },
+  {
+   "kennung": "portraet",
+   "datei": "a-portraet-10.webp",
+   "sha256": "4644250dd110f1dbb700a21502fcdf7450cedb1d85c711065aa065100e638134",
+   "breite": 720,
+   "hoehe": 960,
+   "trefferMitGesicht": [
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.805,
+     "box": [
+      369,
+      800,
+      272,
+      159
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.784,
+     "box": [
+      108,
+      811,
+      253,
+      148
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.633,
+     "box": [
+      609,
+      802,
+      76,
+      139
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.571,
+     "box": [
+      64,
+      818,
+      72,
+      124
+     ]
+    },
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.931,
+     "box": [
+      224,
+      195,
+      299,
+      387
+     ],
+     "quelle": "yunet",
+     "winkel": -0.08868662119426365
+    },
+    {
+     "zone": "head",
+     "bedeckt": false,
+     "score": 0.931,
+     "box": [
+      120,
+      0,
+      507,
+      698
+     ],
+     "quelle": "yunet"
+    },
+    {
+     "zone": "eyes",
+     "bedeckt": false,
+     "score": 0.931,
+     "box": [
+      211,
+      305,
+      308,
+      101
+     ],
+     "quelle": "yunet",
+     "winkel": -0.08868662119426365
+    },
+    {
+     "zone": "mouth",
+     "bedeckt": false,
+     "score": 0.931,
+     "box": [
+      268,
+      436,
+      217,
+      108
+     ],
+     "quelle": "yunet"
+    }
+   ],
+   "trefferOhneGesicht": [
+    {
+     "zone": "face",
+     "bedeckt": false,
+     "score": 0.856,
+     "box": [
+      224,
+      275,
+      291,
+      317
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.805,
+     "box": [
+      369,
+      800,
+      272,
+      159
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "breast",
+     "bedeckt": true,
+     "score": 0.784,
+     "box": [
+      108,
+      811,
+      253,
+      148
+     ],
+     "weiblich": true
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.633,
+     "box": [
+      609,
+      802,
+      76,
+      139
+     ]
+    },
+    {
+     "zone": "armpits",
+     "bedeckt": false,
+     "score": 0.571,
+     "box": [
+      64,
+      818,
+      72,
+      124
+     ]
+    }
+   ]
+  }
+ ]
+}

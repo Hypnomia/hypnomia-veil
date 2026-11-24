@@ -10,11 +10,12 @@ import {
   type Einstellungen,
 } from '../../src/einstellungen';
 import { istFreigeschaltet, type PackKurz } from '../../src/pack/vertrag';
-import { baueKarten, presetVorschau } from '../../src/oberflaeche/presets-ansicht';
+import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
 import { EYE_BAR_TEXT, EYE_BAR_TITEL } from '../../src/oberflaeche/gemeinsam';
 import { ersatzWarnungGilt, gesperrtText, waehleErwachsenHinweis, waehleKleidungHinweis, waehleStilHinweise, waehleZonenHinweis } from '../../src/oberflaeche/hinweise';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { presetDef } from '../../src/preset-def';
+import { baueLiveVorschau } from '../../src/oberflaeche/vorschau/ansicht';
 import { presetSatz, zonenHinweisTeile } from '../../src/oberflaeche/preset-texte';
 import {
   baueAuswahl,
@@ -22,7 +23,6 @@ import {
   baueKleidungsfrage,
   baueSchalter,
   baueStufenwahl,
-  baueVorschauPlatz,
   baueWahlkarten,
   baueZonenwahl,
   zonenSchreibteil,
@@ -443,23 +443,17 @@ export function baueSchritteListe(nr: number, seiten: number): HTMLElement {
   return nav;
 }
 
-// Der Platz zeigt die heutige Stilvorschau des gespeicherten Stils (wie auf der Einstellungsseite seit E4d1), nur gelesen. Kein neues Bild, keine eigene Kopie der Einstellungen.
+// Der Platz zeigt ein Beispielbild, verdeckt wie die Erweiterung es verdecken wuerde (E5, src/oberflaeche/vorschau/), oder ohne Beispielbilder im Bau die Stilvorschau, nur
+// gelesen. Keine eigene Kopie der Einstellungen: jede Seite ruft `zeichne` mit dem Stand, der gilt.
 export function baueVorschau(): { element: HTMLElement; zeichne: (e: Einstellungen, p: PackKurz | null) => void } {
   const aside = knoten('aside', 'iv-vorschau');
   const kopf = knoten('p', 'iv-vorschau-kopf', TEXT.vorschauKopf);
-  const platz = baueVorschauPlatz({ label: TEXT.vorschauLabel });
-  aside.append(kopf, platz.element);
-  let gezeigt = '';
+  // Der Praefix `vorschau` haelt die Filter-Kennungen der Strichzeichnung getrennt von denen der Stilkarten (keine doppelte id im Dokument).
+  const live = baueLiveVorschau({ label: TEXT.vorschauLabel, praefix: 'vorschau' });
+  aside.append(kopf, live.element);
   return {
     element: aside,
-    zeichne: (e, p) => {
-      const def = presetDef(e, p).gilt;
-      if (def.id === gezeigt) return;
-      gezeigt = def.id;
-      // Der Praefix `vorschau` haelt die Filter-Kennungen des Bildes getrennt von denen der Stilkarten (keine doppelte id im Dokument).
-      platz.flaeche.innerHTML = presetVorschau(def.id as never, 'vorschau');
-      platz.setzeEtikett(def.name);
-    },
+    zeichne: (e, p) => live.aktualisiere({ einstellungen: e, pack: p }),
   };
 }
 

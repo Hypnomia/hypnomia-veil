@@ -5,24 +5,23 @@
 import * as ort from 'onnxruntime-web/wasm';
 import { vervollstaendige, type Einstellungen } from '../einstellungen';
 import { presetDef } from '../preset-def.ts';
-import { ganzesBildBehandlung, hatWort, nutztMiasGesicht, nutztSticker, waehleWort, zonenFuerSuche } from '../presets.ts';
-import { holeJeFlaeche, stickerPasst } from '../sticker.ts';
+import { ganzesBildBehandlung, nutztMiasGesicht, nutztSticker } from '../presets.ts';
 import type {
   AntwortErkennerStatus,
   AntwortPruefe,
-  Flaeche,
   NachrichtErkennerPruefe,
   Treffer,
   ZeitenPruefung,
 } from '../nachrichten';
-import { gesichtsStatistik, hashe, scanneGesichter, setzeGesichtsSucher, starteGesichtsScan, starteGesichtsUeberwachung, waehleGesichtsPatch, type GesichtsBox } from '../pack/patches';
+import { gesichtsStatistik, hashe, scanneGesichter, setzeGesichtsSucher, starteGesichtsScan, starteGesichtsUeberwachung, type GesichtsBox } from '../pack/patches';
 import { geometrieFuer, MODELL_GROESSE, nachverarbeite } from './modell';
 import { blobAusDataUrl, ladeNach, type RefererSetzer } from './nachladen';
 import { dekodiereBild, ersatzBildFuerBewegtesSvg, svgMitBewegung } from './dekodiere';
 import { Schranke } from './schranke';
-import { WORT_FAMILIE, hatTransparenz, kannAlpha, rendereZensur, type GesichtsBild } from './stile';
-import { ladeWoerter } from '../pack/woerter';
-import { waehleSticker } from '../pack/sticker';
+import { hatTransparenz, kannAlpha, rendereZensur } from './stile';
+import { ladeWortSchrift } from './wort-schrift';
+import { brauchtGesichtssuche } from './gesichtssuche';
+import { gesichterFuer, stickerFuer, woerterFuer } from './auswahl';
 import {
   ladeYunetSitzung,
   yunetLauf,
@@ -48,85 +47,6 @@ function bildKennung(n: NachrichtErkennerPruefe): string {
   return `daten:${d.length}:${hashe(d)}`;
 }
 
-// Zu jeder Flaeche mit Mias Gesicht ein Gesichts-Patch aus dem Pack (Auswahl stabil je Bild und Flaeche), dazu die Rueckgabe der geliehenen
-// Bilder (nach dem Rendern aufrufen). `null` an einer Stelle: dort ist keiner zu haben (kein Pack, kein Gesicht in den Patches), die
-// Flaeche faellt auf ihren Ersatz zurueck. `packStand`: das Pack, das der Aufrufer kennt.
-async function gesichterFuer(
-  kennung: string,
-  flaechen: readonly Flaeche[],
-  packStand: number | undefined,
-): Promise<{ bilder: (GesichtsBild | null)[]; freigeben: () => void }> {
-  const bilder: (GesichtsBild | null)[] = [];
-  const frei: (() => void)[] = [];
-  for (const f of flaechen) {
-    if (f.behandlung !== 'mia-gesicht') {
-      bilder.push(null);
-      continue;
-    }
-    const wahl = await waehleGesichtsPatch(`${kennung}|${f.zone}|${f.box.join(',')}`, packStand);
-    bilder.push(wahl ? { bild: wahl.bild, ausschnitt: wahl.ausschnitt } : null);
-    if (wahl) frei.push(wahl.freigeben);
-  }
-  return { bilder, freigeben: () => frei.forEach((x) => x()) };
-}
-
-// Zu jeder Flaeche, die mit Sticker enden kann (Behandlung `sticker`, oder Mias Gesicht mit Ersatz `sticker`), ein Sticker aus dem Pack (Wahl
-// stabil je Bild und Flaeche, derselbe Schluessel wie beim Gesicht) und der Schluessel fuer die Pastellfarbe. Flaechen, die zu klein fuer einen Sticker
-// sind (src/sticker.ts stickerPasst), laden keinen. `null` an einer Stelle: dort ist keiner zu haben (kein Pack, ohne `zensur:sticker`, nicht
-// dekodierbar): die Flaeche steht ohne Sticker, sie wird trotzdem gemalt (Hide-first). Dazu die Rueckgabe der geliehenen Bilder (nach dem Rendern aufrufen).
-async function stickerFuer(
-  kennung: string,
-  flaechen: readonly Flaeche[],
-  packStand: number | undefined,
-  anzeigeSkala: number,
-): Promise<{ bilder: (CanvasImageSource | null)[]; schluessel: string[]; freigeben: () => void }> {
-  const frei: (() => void)[] = [];
-  const schluessel = flaechen.map((f) => `${kennung}|${f.zone}|${f.box.join(',')}`);
-  const kannSticker = (f: Flaeche): boolean => f.behandlung === 'sticker' || (f.behandlung === 'mia-gesicht' && f.ersatz === 'sticker');
-  // Nach dem ersten Lesefehler oder der ersten Zeitueberschreitung der Pack-Datenbank wird fuer diese Pruefung nichts weiter angefordert (holeJeFlaeche).
-  const bilder = await holeJeFlaeche<CanvasImageSource>(
-    flaechen.length,
-    (i) => kannSticker(flaechen[i]!) && stickerPasst(flaechen[i]!.wortBox === undefined ? flaechen[i]!.box : (flaechen[i]!.wortBox ?? [0, 0, 0, 0]), anzeigeSkala),
-    async (i) => {
-      try {
-        const r = await waehleSticker(schluessel[i]!, packStand);
-        if (r.wahl) frei.push(r.wahl.freigeben);
-        return { wert: r.wahl ? r.wahl.bild : null, fehler: r.fehler };
-      } catch {
-        return { wert: null, fehler: true }; // nie ein Fehler fuer die Pruefung: die Flaeche steht ohne Sticker
-      }
-    },
-  );
-  return { bilder, schluessel, freigeben: () => frei.forEach((x) => x()) };
-}
-
-// Wort-Schrift (public/schrift/rounded-800.woff2) einmal je Dokument registrieren. `wortSchriftFertig` wird erst nach dem Laden gesetzt. Scheitert das
-// Laden (auch synchron), gilt die Systemschrift und es wird fruehestens nach WORT_SCHRIFT_PAUSE_MS wieder versucht (nie bei jedem Wort neu).
-const WORT_SCHRIFT_PAUSE_MS = 30_000;
-let wortSchriftFertig = false;
-let wortSchriftLaeuft: Promise<void> | null = null;
-let wortSchriftFehlerBis = 0;
-function ladeWortSchrift(): Promise<void> {
-  if (wortSchriftFertig) return Promise.resolve();
-  if (wortSchriftLaeuft) return wortSchriftLaeuft;
-  if (jetzt() < wortSchriftFehlerBis) return Promise.resolve();
-  const lauf = (async () => {
-    try {
-      if (typeof FontFace !== 'function' || typeof document === 'undefined') return; // kein Dokument: Systemschrift, nichts zu versuchen
-      const ff = new FontFace(WORT_FAMILIE, `url(${(browser.runtime.getURL as (p: string) => string)('/schrift/rounded-800.woff2')})`, { weight: '800' });
-      await ff.load();
-      document.fonts.add(ff);
-      wortSchriftFertig = true;
-    } catch {
-      wortSchriftFehlerBis = jetzt() + WORT_SCHRIFT_PAUSE_MS;
-    } finally {
-      wortSchriftLaeuft = null;
-    }
-  })();
-  wortSchriftLaeuft = lauf;
-  return lauf;
-}
-
 // Arbeit im Hintergrund nach dem Start: Modell geladen, dann die Wort-Schrift und der Gesichts-Scan der Patch-Bilder (nie innerhalb einer Pruefung).
 export function starteHintergrundArbeit(): void {
   starteGesichtsUeberwachung();
@@ -141,22 +61,6 @@ export function starteHintergrundArbeit(): void {
       // ohne Modell gibt es nichts zu tun, die naechste Pruefung versucht es selbst
     }
   })();
-}
-
-// Je Flaeche das Wort fuer die Behandlungen mit Wort (stabil je Bild und Flaeche), sonst ''.
-async function woerterFuer(
-  kennung: string,
-  flaechen: readonly Flaeche[],
-  themen: string[] | null,
-  packStand: number | undefined,
-  preset: Einstellungen['preset'],
-): Promise<string[]> {
-  const standard = ganzesBildBehandlung(preset);
-  const braucht = (f: Flaeche): boolean => hatWort(f.behandlung ?? standard) || (f.behandlung === 'mia-gesicht' && !!f.ersatz && hatWort(f.ersatz));
-  if (!flaechen.some(braucht)) return flaechen.map(() => '');
-  const datei = await ladeWoerter(packStand).catch(() => null);
-  await ladeWortSchrift();
-  return flaechen.map((f) => (braucht(f) ? waehleWort(`${kennung}|${f.zone}|${f.box.join(',')}`, datei, themen) : ''));
 }
 
 const jetzt = (): number => performance.now();
@@ -212,11 +116,6 @@ function ladeGesicht(): Promise<YunetSitzung | null> {
       });
   }
   return gesichtLadeVersprechen;
-}
-
-// Mindestens eine Gesichtszone an: dann braucht die Pruefung YuNet.
-function brauchtGesicht(zonen: Einstellungen['zonen']): boolean {
-  return zonen.eyes.an || zonen.mouth.an || zonen.face.an || zonen.head.an;
 }
 
 // Modell und Session aufbauen und mit einem Leerbild warmlaufen lassen. Mehrfachaufrufe teilen sich den Lauf.
@@ -361,12 +260,12 @@ async function nacheinander(tensor: ort.Tensor): Promise<{ warteMs: number; infM
 // Gesichter mit YuNet, wenn eine Gesichtszone an ist. `gesichter` ist null, wenn das Modell fehlt oder der Lauf scheitert
 // (dann gelten allein die Baender). Die Wartezeit auf das Laden zaehlt auch dann, wenn das Laden scheitert.
 async function sucheGesichter(
-  zonen: Einstellungen['zonen'],
+  e: Einstellungen,
   quelle: CanvasImageSource,
   breite: number,
   hoehe: number,
 ): Promise<{ gesichter: YunetGesicht[] | null; ms: number; warteMs: number } | null> {
-  if (!brauchtGesicht(zonen)) return null;
+  if (!brauchtGesichtssuche(e)) return null;
   // Ist YuNet noch im Laden, wartet die Pruefung darauf; diese Zeit gehoert zur Wartezeit.
   const tLade = jetzt();
   const sitzung = await ladeGesicht();
@@ -470,9 +369,8 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     // Zensurbalken und der Schalter Eye bar (E4c): Augen immer dazu. Also laeuft YuNet dann auch bei ausgeschalteten Augen. Den Schalter traegt die
     // aufgeloeste Definition (`presetDef`), nicht diese Stelle.
     const def = presetDef(e).gewaehlt;
-    const zonenGilt = zonenFuerSuche(def, e.zonen);
     const ganz = ganzesBildBehandlung(e.preset);
-    const gesicht = await sucheGesichter(zonenGilt, arbeit.quelle, arbeit.breite, arbeit.hoehe);
+    const gesicht = await sucheGesichter(e, arbeit.quelle, arbeit.breite, arbeit.hoehe);
     const tNachStart = jetzt();
     const alle = gesicht?.gesichter ? kombiniereGesichter(rohTreffer, gesicht.gesichter, arbeit.breite, arbeit.hoehe) : rohTreffer;
     // Steigerung Stufe 4: ein Treffer einer Frau verdeckt das ganze Bild (eine Flaeche ueber alles), sonst die Zonen wie eingestellt; mit dem Schalter Eye bar

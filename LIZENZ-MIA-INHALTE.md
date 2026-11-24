@@ -16,6 +16,9 @@ If you break these terms, your permission to use the content ends.
 
 The Mia Pack is distributed separately via Patreon and SubscribeStar and is not part of the free extension or its source code.
 
+The four sample pictures of the settings preview are AI-generated drawings of an invented adult person. They are not part of the repository and are not
+covered by the license of the code. The build copies them into the extension from a folder outside the repository.
+
 Contact for permissions: https://lnk.bio/Hypnomia
 
 ---
@@ -36,5 +39,8 @@ werden. Weitergabe, Verkauf, Bearbeitung, Verwendung in anderen Produkten oder z
 nicht gestattet. Wer gegen diese Bedingungen verstoesst, verliert das Recht zur Nutzung der Inhalte.
 
 Das Mia Pack wird gesondert ueber Patreon und SubscribeStar abgegeben und ist nicht Teil dieses Repos.
+
+Die vier Beispielbilder der Vorschau auf der Einstellungsseite sind KI-erzeugte Zeichnungen einer erfundenen erwachsenen Person. Sie liegen nicht im Repo
+und fallen nicht unter die Lizenz des Codes. Der Bau kopiert sie aus einem Ordner ausserhalb des Repos in die Erweiterung.
 
 Kontakt fuer Erlaubnisse: https://lnk.bio/Hypnomia

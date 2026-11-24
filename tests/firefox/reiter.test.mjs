@@ -351,7 +351,7 @@ try {
     pruefe(fehler.length === 0, `Bedienelemente ${zustand} gegen die Soll-Liste ${JSON.stringify(fehler)}`);
     const doppelt = await driver.executeScript(`const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return [...new Set(ids.filter((i, n) => ids.indexOf(i) !== n))];`);
     pruefe(doppelt.length === 0, `keine doppelte id ${zustand} ${JSON.stringify(doppelt)}`);
-    const ausserhalb = await driver.executeScript(`return [...document.querySelectorAll('main :is(input, select, textarea, button, summary, a[role=button], [role=switch], [role=radio], [role=slider], [role=checkbox], [contenteditable])')].filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung')).map((e) => e.id || e.tagName)`);
+    const ausserhalb = await driver.executeScript(`return [...document.querySelectorAll('main :is(input, select, textarea, button, summary, a[role=button], [role=switch], [role=radio], [role=slider], [role=checkbox], [contenteditable])')].filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung') && !e.closest('[data-v-baustein="vorschau-platz"]')).map((e) => e.id || e.tagName)`); // E5: nur der Baustein der Live-Vorschau (data-v-baustein=vorschau-platz) ist ein eigenes Bedienteil, geprueft in tests/firefox/vorschau.test.mjs
     pruefe(ausserhalb.length === 0, `Bedienelemente ausserhalb der Panels ${zustand} ${JSON.stringify(ausserhalb)}`);
   };
   await driver.navigate().refresh();

@@ -219,6 +219,8 @@ try {
   pruefe((await driver.findElements(By.css('#iv-preset-karten input[name="iv-preset"]'))).length === 12, 'Seite 3 zeigt zwoelf Preset-Karten');
   await klick('#iv-preset-blur');
   await bis('preset blur', async () => (await einst()).preset === 'blur');
+  // E5: die Vorschau zeichnet entprellt (rund 100 ms) und setzt das Etikett mit dem fertigen Bild, darum warten statt sofort lesen.
+  await bis('Etikett Blur', async () => (await text('.iv-vorschau .v-vorschau-etikett')) === 'Blur').catch(() => {});
   pruefe((await text('.iv-vorschau .v-vorschau-etikett')) === 'Blur', 'E4e I9: der Platz der Vorschau zeigt den gespeicherten Stil');
   // Eye bar (E4c): ein Schalter unter dem Raster, aendert nur sich selbst
   await klick('#iv-augenbalken');

@@ -43,6 +43,16 @@ export function stimmungsWort(schwelle: number): string {
   return STIMMUNG_WOERTER[3];
 }
 
+// Live-Vorschau mit Beispielbildern (Phase 11 E5, V13): ein Hinweis unter der Vorschau, Namen der Punkte, der Kachel und das Alt der Bilder.
+export const VORSCHAU_HINWEIS = 'Videos get a frame and can look a little different.';
+export const VORSCHAU_PUNKTE_LABEL = 'Sample picture';
+export const VORSCHAU_PUNKT_NAMEN: readonly string[] = ['Sample 1 of 4: front', '2 of 4: back', '3 of 4: sitting', '4 of 4: portrait'];
+export const VORSCHAU_KACHEL = 'Enlarge preview';
+export const VORSCHAU_SCHLIESSEN = 'Close';
+export const VORSCHAU_NICHTS = 'Nothing to cover in this picture with your settings.';
+export const VORSCHAU_ALT_OFFEN = 'Sample picture, nothing covered';
+export const vorschauAlt = (stilName: string): string => `Sample picture, covered in style ${stilName}`;
+
 // UX-Fund 26: ueberall derselbe Satz, wenn das Speichern scheitert (Schalter und Regler springen dann auf den gespeicherten Stand zurueck).
 export const HINWEIS_PACK_OHNE_PATCH = 'No usable face of mine here, so my face styles stay locked. Classic and Whole person work.';
 // Zensur-Presets (ZENSUR-PRESETS-BAUPLAN, Texte vom Texter freigegeben): Hinweise bei den Zonen und zum Pack. Namen und Saetze der Karten

@@ -123,6 +123,11 @@
     width: 84px;
     flex: none;
   }
+  /* E5: im Streifen gibt es die Punkte und den Hinweis nur im Dialog (die Kachel oeffnet ihn). */
+  .vorschau-spalte .v-vorschau-punkte,
+  .vorschau-spalte .v-vorschau-hinweis {
+    display: none;
+  }
 }
 
 /* Schmal: eine Spalte, Reiter als schiebbare Zeile (klebt unter der Leiste), danach der Streifen. */

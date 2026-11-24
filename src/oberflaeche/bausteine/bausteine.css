@@ -88,6 +88,22 @@
 .v-vorschau-flaeche > * { display: block; width: 100%; height: 100%; }
 .v-vorschau-etikett { align-self: flex-start; margin-top: var(--v-a-2); padding: var(--v-a-1) var(--v-a-2); border-radius: var(--v-r-voll); background: var(--v-glas-stark); color: var(--v-rosa-800); font: 800 12px/1.2 var(--v-schrift-text); box-shadow: var(--v-schatten-klein); }
 .v-vorschau-etikett[hidden] { display: none; }
+/* Live-Vorschau (E5): Kachel als Knopf, Bild im Rahmen 3 zu 4 ohne Beschnitt, vier Punkte (Trefferflaeche 44 px), Hinweis, grosses Bild im Dialog. Keine Bewegung. */
+.v-vorschau-kachel { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.v-vorschau-kachel:focus-visible { outline: var(--v-a-1) solid var(--v-rosa-700); outline-offset: calc(-1 * var(--v-a-1)); }
+.v-vorschau-kachel img, .v-vorschau-gross { display: block; width: 100%; height: 100%; object-fit: contain; }
+.v-vorschau-skizze { width: 100%; height: 100%; }
+.v-vorschau-punkte, .v-vorschau-dialog-punkte { display: flex; justify-content: center; gap: 0; margin-top: var(--v-a-1); }
+.v-vorschau-punkte[hidden], .v-vorschau-hinweis[hidden], .v-vorschau-dialog-hinweis[hidden] { display: none; }
+.v-vorschau-punkt { display: inline-flex; align-items: center; justify-content: center; width: var(--v-fingerziel); height: var(--v-fingerziel); padding: 0; border: 0; background: transparent; cursor: pointer; }
+.v-vorschau-punkt-marke { width: var(--v-a-3); height: var(--v-a-3); border-radius: var(--v-r-voll); border: 0.125rem solid var(--v-rosa-700); background: var(--v-weiss); box-sizing: border-box; }
+.v-vorschau-punkt[aria-current='true'] .v-vorschau-punkt-marke { background: var(--v-rosa-700); }
+.v-vorschau-punkt:focus-visible { outline: var(--v-a-1) solid var(--v-rosa-700); outline-offset: calc(-1 * var(--v-a-1)); border-radius: var(--v-r-m); }
+.v-vorschau-hinweis, .v-vorschau-dialog-hinweis { margin: var(--v-a-1) 0 0; font: 600 0.75rem/1.35 var(--v-schrift-text); color: var(--v-rosa-800); }
+.v-vorschau-dialog { width: min(92vw, 30rem); max-height: 92vh; padding: var(--v-a-3); border: 1px solid var(--v-weiss); border-radius: var(--v-r-l); background: var(--v-weiss); color: var(--v-text); box-shadow: var(--v-schatten); overflow: auto; }
+.v-vorschau-dialog:not([open]) { display: none; }
+.v-vorschau-gross { height: auto; max-height: 68vh; border-radius: var(--v-r-m); }
+.v-vorschau-zu { display: block; min-height: var(--v-fingerziel); margin: var(--v-a-2) auto 0; padding: 0 var(--v-a-5); border: 0.09rem solid var(--v-rosa-700); border-radius: var(--v-r-voll); background: var(--v-weiss); color: var(--v-rosa-800); font: 800 0.875rem/1 var(--v-schrift-text); cursor: pointer; }
 
 @media (max-width: 480px) {
   .v-wahl { grid-template-columns: repeat(var(--v-spalten-schmal, 1), minmax(0, 1fr)); }

@@ -83,7 +83,14 @@ for (const schritt of NUR_RELEASE ? [] : ['build', 'build:firefox', 'zip:firefox
 
 // Testbau ohne Kern-Bilder (Phase 7, Auftrag I3): VEIL_KERN zeigt auf einen Ordner, den es nicht gibt, der Bau warnt und kopiert nichts. Die Kern-Tests
 // pruefen damit den Fall "kein Rahmen ohne Bild", auch wenn `../02 Assets Mia/kern/` im Standardbau da ist.
-const OHNEKERN = { WXT_TESTHAKEN: '1', VEIL_AUSGABE: process.env.VEIL_AUSGABE_OHNE_KERN ?? '.output-test-ohnekern', VEIL_KERN: '/nonexistent-kern-ordner' };
+// Derselbe Bau laeuft auch ohne Beispielbilder der Vorschau (Phase 11 E5): VEIL_BEISPIEL zeigt auf einen leeren Ordner ausserhalb des Repos (ein nicht vorhandener
+// Ordner waere bei einer ausdruecklich gesetzten Variable ein Baufehler). Kein dritter Bau.
+const OHNEKERN = {
+  WXT_TESTHAKEN: '1',
+  VEIL_AUSGABE: process.env.VEIL_AUSGABE_OHNE_KERN ?? '.output-test-ohnekern',
+  VEIL_KERN: '/nonexistent-kern-ordner',
+  VEIL_BEISPIEL: mkdtempSync(path.join(tmpdir(), 'veil-ohne-beispiel-')),
+};
 for (const schritt of NUR_RELEASE ? [] : ['build', 'build:firefox', 'zip:firefox']) {
   console.log(`\n== ${schritt} (ohne Kern-Bilder, ${OHNEKERN.VEIL_AUSGABE}) ==`);
   const { code } = await lauf(schritt, OHNEKERN);

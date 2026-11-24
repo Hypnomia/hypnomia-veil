@@ -113,7 +113,7 @@ function zeichnePreset(e: Einstellungen): void {
   const gilt = def.id;
   karten.aktualisiere(e.preset, frei, mitSticker);
   // Platz der festen Vorschau (E4d1): derselbe Stil, der wirklich gilt, nur gelesen.
-  zeigeVorschau(gilt, def.name);
+  zeigeVorschau({ einstellungen: e, pack, gesichter });
   stilHinweis.textContent = presetSatz(gilt, frei, gesichter?.fertig ? gesichter.mit : null);
   // E4t W5: ein gewoehnlicher Hinweis je Element (reine Funktion waehleStilHinweise), dazu nie verdraengt der Satz "Face aus, dann gilt mein Gesicht nicht".
   const sh = waehleStilHinweise({

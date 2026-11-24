@@ -95,9 +95,12 @@ function waehle(id: ReiterId): void {
     if (location.hash !== neu) history.pushState(null, '', neu);
     zeige(id);
   }
-  // Steht die Seite unterhalb des Anfangs der Reiter, geht sie an den Anfang des Inhalts, damit er nicht von oben abgeschnitten steht.
+  // Steht die Seite unterhalb des Anfangs der Reiter, geht sie an den Anfang des Inhalts, damit er nicht von oben abgeschnitten steht. "Unterhalb" heisst: weniger Platz
+  // als die klebende Karte braucht (`--polster-oben`, grund.ts), nicht erst ueber dem Fensterrand: nach dem Wechsel auf einen kuerzeren Reiter klemmt der Browser die
+  // Scrollstelle, und der Inhalt kann dann mit der Ueberschrift unter der Karte stehen (E5: die hoehere Vorschau macht die Seite hoeher und den Fall haeufiger).
   const mitte = document.querySelector<HTMLElement>('.reiter-mitte');
-  if (mitte && mitte.getBoundingClientRect().top < 0) mitte.scrollIntoView({ block: 'start' });
+  const polster = parseFloat(document.documentElement.style.getPropertyValue('--polster-oben')) || 0;
+  if (mitte && mitte.getBoundingClientRect().top < polster) mitte.scrollIntoView({ block: 'start' });
 }
 
 for (const [id, tab] of tabs) tab.addEventListener('click', () => waehle(id));

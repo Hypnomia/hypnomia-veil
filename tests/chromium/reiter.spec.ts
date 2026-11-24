@@ -384,7 +384,8 @@ test('Jede Einstellung genau einmal: alle Bedienelemente der Panels gegen die So
       // Kein Bedienelement liegt ausserhalb der Panels (ausser #pause im Kopf und #pause-leiste in der Leiste).
       const ausserhalb = await seite.evaluate(() =>
         [...document.querySelectorAll('main :is(input, select, textarea, button, summary, a[role=button], [role=switch], [role=radio], [role=slider], [role=checkbox], [contenteditable])')]
-          .filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung'))
+          // E5: nur der Baustein der Live-Vorschau selbst (Kachel, Punkte, Dialog) ist ein eigenes Bedienteil ausserhalb der Panels, nicht die ganze Spalte; seine Bedienung prueft tests/chromium/vorschau.spec.ts.
+          .filter((e) => !e.closest('[role=tabpanel]') && !e.closest('header') && !e.closest('#leiste') && !e.closest('#sprung') && !e.closest('[data-v-baustein="vorschau-platz"]'))
           .map((e) => e.id || e.tagName),
       );
       expect(ausserhalb, `ausserhalb der Panels ${zustand}`).toEqual([]);
@@ -538,7 +539,8 @@ test('D7: der Platz der Vorschau zeigt in jedem Reiter den gespeicherten Stil un
     const bild = () => seite.evaluate(() => document.querySelector('#vorschau-spalte .v-vorschau-flaeche')!.innerHTML);
     await expect(etikett).toHaveText('Mosaic');
     const mosaik = await bild();
-    expect(mosaik).toContain('<svg');
+    // E5: mit Beispielbildern im Bau steht ein Bild (Data-Adresse) im Platz, ohne sie wie bisher die Strichzeichnung (und bis das erste Bild fertig ist, die Strichzeichnung).
+    expect(mosaik).toMatch(/<svg|<img[^>]+src="data:image\//);
     // Der Platz sitzt ausserhalb der Panels und ist in jedem Reiter sichtbar.
     expect(await seite.evaluate(() => !!document.querySelector('#vorschau-spalte')!.closest('[role=tabpanel]'))).toBe(false);
     for (const name of REITER) {

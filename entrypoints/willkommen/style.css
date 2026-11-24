@@ -733,6 +733,11 @@ section#schritt[data-schritt^='interview'] {
   flex: none;
   width: 84px;
 }
+/* E5: im Streifen (unter 900 px) gibt es die Punkte und den Hinweis nur im Dialog, die Kachel oeffnet ihn. */
+.iv-vorschau .v-vorschau-punkte,
+.iv-vorschau .v-vorschau-hinweis {
+  display: none;
+}
 
 @media (min-width: 900px) {
   .iv-raster {
@@ -762,6 +767,12 @@ section#schritt[data-schritt^='interview'] {
   }
   .iv-vorschau .v-vorschau-platz {
     width: auto;
+  }
+  .iv-vorschau .v-vorschau-punkte:not([hidden]) {
+    display: flex;
+  }
+  .iv-vorschau .v-vorschau-hinweis:not([hidden]) {
+    display: block;
   }
   .iv-karte {
     padding: 28px 28px 22px;

@@ -336,7 +336,8 @@ function seiteInterview(s: Schritt, titel: HTMLElement, fehler: HTMLElement): HT
     }, 16);
   });
   karte.append(titel, alles, fehler);
-  return [baueSchritteListe(nr, seiten), karte, vorschau.element];
+  // Die Vorschau steht im DOM vor der Frage, wie auf der Einstellungsseite: schmal liegt sie ueber der Frage (der Reihenfolge der Tasten folgt das Bild), breit setzt `order` sie nach rechts.
+  return [baueSchritteListe(nr, seiten), vorschau.element, karte];
 }
 
 // ---------- Abschluss ----------

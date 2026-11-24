@@ -2,7 +2,7 @@
 //   node scripts/release/firefox.mjs --kanal unlisted|amo [--nachbau] [--signieren]
 //   node scripts/release/firefox.mjs --updates <xpi-adresse>          (allein: nur updates.json aus der signierten XPI schreiben)
 // Baut ohne Testhaken nach .output-release-<kanal>, sucht Testhaken-Spuren, laesst web-ext lint laufen, packt das Quellcode-Paket fuer Mozilla
-// (WXT-Quellzip plus BUILD.md plus extern/kern und extern/chibi) und baut es mit --nachbau in einem Wegwerf-Ordner nach (SHA-256 je Datei).
+// (WXT-Quellzip plus BUILD.md plus extern/kern, extern/chibi und extern/beispiel) und baut es mit --nachbau in einem Wegwerf-Ordner nach (SHA-256 je Datei).
 // --signieren (nur unlisted) und --updates bleiben Handarbeit des Orchestrators. Keine neuen Abhaengigkeiten; web-ext kommt aus dem PATH.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -40,11 +40,11 @@ export function leseArgumente(argv) {
 
 // Der Befehl, der im Quellcode-Paket (BUILD.md) und beim Nachbau steht; alles in einer Zeile mit den Umgebungsvariablen.
 export function bauBefehl({ kanal, baudatum }) {
-  return `VEIL_KANAL=${kanal} VEIL_BAUDATUM=${baudatum} VEIL_KERN=extern/kern VEIL_CHIBI=extern/chibi npm run build:firefox`;
+  return `VEIL_KANAL=${kanal} VEIL_BAUDATUM=${baudatum} VEIL_KERN=extern/kern VEIL_CHIBI=extern/chibi VEIL_BEISPIEL=extern/beispiel npm run build:firefox`;
 }
 
 // BUILD.md fuer Mozilla (englisch, sachlich). Alle Angaben kommen aus den uebergebenen Messwerten.
-export function baueBuildMd({ version, kanal, baudatum, system, node, npm, ort, modelle, kern, chibi }) {
+export function baueBuildMd({ version, kanal, baudatum, system, node, npm, ort, modelle, kern, chibi, beispiel = [] }) {
   const liste = (namen) => (namen.length ? namen.map((n) => `- \`${n}\``).join('\n') : '- (none)');
   return `# Build instructions for HYPNOMIA VEIL ${version} (Firefox, channel "${kanal}")
 
@@ -75,7 +75,7 @@ Other Node.js and npm versions were not tested.
        ${bauBefehl({ kanal, baudatum })}
 
    The variables mean: \`VEIL_KANAL\` is the release channel (\`unlisted\` keeps \`update_url\` in the manifest, \`amo\` leaves it out),
-   \`VEIL_BAUDATUM\` is the build date shown on the settings page, \`VEIL_KERN\` and \`VEIL_CHIBI\` are the folders with the bundled images
+   \`VEIL_BAUDATUM\` is the build date shown on the settings page, \`VEIL_KERN\`, \`VEIL_CHIBI\` and \`VEIL_BEISPIEL\` are the folders with the bundled images
    (see below). \`npm run build:firefox\` first runs \`scripts/kopiere-laufzeit.mjs\` (copies the WebAssembly runtime, see below).
 4. The finished extension is in \`.output/firefox-mv3/\`. \`npm run zip:firefox\` additionally writes the zip file to \`.output/\`
    (the zip container carries file timestamps, so compare the files inside, not the zip itself).
@@ -107,6 +107,12 @@ ${liste(kern)}
 \`extern/chibi/\`:
 
 ${liste(chibi)}
+
+\`extern/beispiel/\` holds the four sample pictures of the settings preview. The build copies them unchanged to \`beispiel/vorn.webp\`, \`beispiel/rueck.webp\`,
+\`beispiel/sitz.webp\` and \`beispiel/portraet.webp\` of the extension (the source names are listed in \`data/beispiel-treffer.json\`) and stops if the SHA-256 of a file differs from that data file. The data file also holds the
+detections that were measured once for each picture, so the extension does not run its detector for the preview:
+
+${liste(beispiel)}
 
 All other images (the extension icons in \`public/icons/\`) are in the source tree.
 
@@ -238,7 +244,8 @@ function grepTreffer(args, eingabe, cwd) {
 }
 
 // Prueft ein entpacktes Quellcode-Paket: Benutzername und Heimatordner, Leck-Muster (Fund nur als "Datei X", nie das Muster), Rasterbilder nur unter
-// public/icons/, extern/kern/, extern/chibi/, keine .miapack.
+// public/icons/, extern/kern/, extern/chibi/, extern/beispiel/, keine .miapack.
+export const RASTER_ORTE_ERLAUBT = /^(public\/icons|extern\/kern|extern\/chibi|extern\/beispiel)\//;
 export function pruefeQuellpaket(ordner) {
   const suchen = [os.userInfo().username, os.homedir()].filter((t) => t && t.length >= 3);
   const musterDatei = leckMusterDatei();
@@ -255,7 +262,7 @@ export function pruefeQuellpaket(ordner) {
     if (suchen.some((t) => d.includes(t))) funde.push(`Fund im Dateinamen: ${d}`);
     if (/\.miapack$/i.test(d)) funde.push(`Pack-Datei im Paket: ${d}`);
     const raster = /\.(png|jpe?g|webp|gif|avif|heic)$/i.test(d);
-    if (raster && !/^(public\/icons|extern\/kern|extern\/chibi)\//.test(d)) funde.push(`Rasterbild am falschen Ort: ${d}`);
+    if (raster && !RASTER_ORTE_ERLAUBT.test(d)) funde.push(`Rasterbild am falschen Ort: ${d}`);
     if (/\.(onnx|wasm|png|jpe?g|webp|gif|avif|heic|miapack)$/i.test(d)) continue;
     const text = readFileSync(path.join(ordner, d), 'utf8');
     if (suchen.some((t) => text.includes(t))) funde.push(`Fund in Datei ${d}`);
@@ -271,7 +278,7 @@ function systemText() {
 
 const nummerAus = (befehl, args) => spawnSync(befehl, args, { cwd: wurzel, encoding: 'utf8' }).stdout.trim();
 
-// Quellcode-Paket: WXT-Quellzip plus BUILD.md plus extern/kern und extern/chibi (die Bilder, die der Bau kopiert hat).
+// Quellcode-Paket: WXT-Quellzip plus BUILD.md plus extern/kern, extern/chibi und extern/beispiel (die Bilder, die der Bau kopiert hat).
 function baueQuellpaket({ ausgabe, kanal, version, baudatum }) {
   const wxtZip = path.join(ausgabe, `hypnomia-veil-${version}-sources.zip`);
   if (!existsSync(wxtZip)) fehlerExit(`${wxtZip} fehlt (wxt zip hat kein Quellzip geschrieben)`);
@@ -284,8 +291,18 @@ function baueQuellpaket({ ausgabe, kanal, version, baudatum }) {
     const chibi = existsSync(path.join(bauOrdner, 'chibi')) ? readdirSync(path.join(bauOrdner, 'chibi')).sort() : [];
     mkdirSync(path.join(stage, 'extern/kern'), { recursive: true });
     mkdirSync(path.join(stage, 'extern/chibi'), { recursive: true });
+    mkdirSync(path.join(stage, 'extern/beispiel'), { recursive: true });
     for (const n of kern) cpSync(path.join(bauOrdner, 'kern', n), path.join(stage, 'extern/kern', n));
     for (const n of chibi) cpSync(path.join(bauOrdner, 'chibi', n), path.join(stage, 'extern/chibi', n));
+    // Beispielbilder der Vorschau: im Bau heissen sie beispiel/<kennung>.webp, im Paket wieder so wie in data/beispiel-treffer.json (`datei`), damit VEIL_BEISPIEL sie findet.
+    const beispielDaten = JSON.parse(readFileSync(path.join(wurzel, 'data/beispiel-treffer.json'), 'utf8'));
+    const beispiel = [];
+    for (const b of beispielDaten.bilder) {
+      const quelle = path.join(bauOrdner, 'beispiel', `${b.kennung}.webp`);
+      if (!existsSync(quelle)) continue;
+      cpSync(quelle, path.join(stage, 'extern/beispiel', b.datei));
+      beispiel.push(b.datei);
+    }
     const lock = JSON.parse(readFileSync(path.join(wurzel, 'package-lock.json'), 'utf8'));
     const modelle = [
       ['320n.onnx', 'NudeNet 320n, object detector. Origin: file `320n.onnx` of the GitHub release `v3.4-weights` (30 June 2024) of https://github.com/notAI-tech/NudeNet. Licence: AGPL-3.0 (repository and model metadata). This extension is AGPL-3.0 as well (see `LICENSE`)'],
@@ -304,6 +321,7 @@ function baueQuellpaket({ ausgabe, kanal, version, baudatum }) {
         modelle,
         kern,
         chibi,
+        beispiel,
       }),
     );
     cpSync(wxtZip, ziel);
@@ -326,7 +344,7 @@ function baueQuellpaket({ ausgabe, kanal, version, baudatum }) {
     } finally {
       rmSync(pruef, { recursive: true, force: true });
     }
-    return { ziel, kern: kern.length, chibi: chibi.length };
+    return { ziel, kern: kern.length, chibi: chibi.length, beispiel: beispiel.length };
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }
@@ -342,11 +360,11 @@ async function nachbau({ quellzip, ausgabe, kanal, baudatum }) {
     if (u.status !== 0) fehlerExit(`unzip fehlgeschlagen: ${u.stderr}`);
     // Saubere Umgebung: keine Schalter des Entwicklers, nur die aus BUILD.md.
     const env = { ...process.env };
-    for (const k of ['VEIL_AUSGABE', 'WXT_TESTHAKEN', 'VEIL_KERN', 'VEIL_CHIBI', 'VEIL_KANAL', 'VEIL_BAUDATUM']) delete env[k];
+    for (const k of ['VEIL_AUSGABE', 'WXT_TESTHAKEN', 'VEIL_KERN', 'VEIL_CHIBI', 'VEIL_BEISPIEL', 'VEIL_KANAL', 'VEIL_BAUDATUM']) delete env[k];
     const schritte = [
       ['npm', ['ci', '--ignore-scripts'], env],
       ['npx', ['wxt', 'prepare'], env],
-      ['npm', ['run', 'build:firefox'], { ...env, VEIL_KANAL: kanal, VEIL_BAUDATUM: baudatum, VEIL_KERN: 'extern/kern', VEIL_CHIBI: 'extern/chibi' }],
+      ['npm', ['run', 'build:firefox'], { ...env, VEIL_KANAL: kanal, VEIL_BAUDATUM: baudatum, VEIL_KERN: 'extern/kern', VEIL_CHIBI: 'extern/chibi', VEIL_BEISPIEL: 'extern/beispiel' }],
     ];
     for (const [befehl, args, e] of schritte) {
       console.log(`\n$ ${befehl} ${args.join(' ')}`);
@@ -427,7 +445,7 @@ async function haupt() {
 
   console.log('\n== Quellcode-Paket ==');
   const q = baueQuellpaket({ ausgabe, kanal: a.kanal, version, baudatum });
-  console.log(`Quellcode-Paket: ${path.relative(wurzel, q.ziel)} (${groesse(q.ziel)}), extern/kern ${q.kern} Bilder, extern/chibi ${q.chibi} Bilder, keine persoenlichen Pfade`);
+  console.log(`Quellcode-Paket: ${path.relative(wurzel, q.ziel)} (${groesse(q.ziel)}), extern/kern ${q.kern} Bilder, extern/chibi ${q.chibi} Bilder, extern/beispiel ${q.beispiel} Bilder, keine persoenlichen Pfade`);
 
   let nb = null;
   if (a.nachbau) nb = await nachbau({ quellzip: q.ziel, ausgabe, kanal: a.kanal, baudatum });
