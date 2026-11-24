@@ -1,0 +1,18 @@
+export const BREITEN: [number, number][];
+export const GRENZE_ERSTE_BEDIENUNG: Record<string, Record<number, number>>;
+export const GRENZE_FREI: number;
+export const MAUS_MIN_HOEHE: number;
+export const FINGERZIEL: number;
+export const AUSNAHMEN_H_B: { sel: string; flaeche: string; grund: string }[];
+export const MESS_SKRIPT: string;
+export const FOKUS_SKRIPT: string;
+export function wertungFokus(schritte: any[], vorwaerts: boolean): string[];
+export function wertungMessung(m: any, o: { flaeche: string; zeiger: string; breite: number; hoehe: number; erste?: boolean; reiter?: string | null }): Record<'H-a' | 'H-b' | 'H-c' | 'H-d' | 'H-g', string[]>;
+export const GRENZE_REITERFLAECHE: Record<number, number>;
+export const AUSNAHMEN_H_G: { reiter: string; grund: string }[];
+export const AUFLAGEN_H_C: [string, string][];
+export const FEHLER_SKRIPT: string;
+export function wertungFehler(p: any, oben: boolean): string[];
+export function wertungStelle(p: any): string | null;
+export function wertungFehlerHG(p: any, breite: number): string[];
+export function wertungSprung(p: any, ref: any): string[];

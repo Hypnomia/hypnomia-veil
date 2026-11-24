@@ -34,7 +34,6 @@ main {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 640px;
   margin: 0 auto;
   padding: 28px 20px 24px;
 }
@@ -314,27 +313,37 @@ input[type='range'] {
   margin-top: 12px;
 }
 
+.schalter {
+  position: relative;
+}
+
+/* E4f (H-f): die unsichtbare Eingabe liegt ueber der ganzen Zeile, damit die Seite beim Tab-Halt die Zeile ins Bild holt und nicht nur einen Punkt am oberen Rand. */
 .schalter input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
+  cursor: pointer;
 }
 
 .regler {
   position: relative;
   flex: none;
-  width: 38px;
-  height: 22px;
-  border-radius: 11px;
+  width: var(--v-spur-b);
+  height: var(--v-spur-h);
+  border-radius: var(--v-r-voll);
   background: var(--bahn-aus);
 }
 
 .regler::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
+  top: var(--v-spur-rand);
+  left: var(--v-spur-rand);
+  width: var(--v-spur-knopf);
+  height: var(--v-spur-knopf);
   border-radius: 50%;
   background: #fff;
 }
@@ -344,7 +353,7 @@ input[type='range'] {
 }
 
 .schalter input:checked + .regler::after {
-  transform: translateX(16px);
+  transform: translateX(calc(var(--v-spur-b) - var(--v-spur-knopf) - 2 * var(--v-spur-rand)));
 }
 
 .schalter input:focus-visible + .regler {
@@ -435,22 +444,21 @@ header .gross {
   margin-top: 6px;
 }
 
-/* Fund 5 und 29: die Leiste klebt oben (Sprungleiste, Pause-Knopf, Fehlersatz). */
+/* Fund 5 und 29: die Leiste klebt oben (Pause-Knopf, Fehlersatz). E4f (F1): sie hat keine Hoehe im Fluss, die Karte darin (.leiste-karte) liegt darueber
+   und ist nur da, wenn Pause oder ein Fehlersatz da ist (sonst waere sie eine leere Karte); der Inhalt springt darum nie, wenn sie erscheint. */
 #leiste {
-  position: sticky;
+  position: fixed;
   top: 0;
+  right: 0;
+  left: 0;
   z-index: 10;
-  margin: 0 -20px;
-  padding: 8px 20px;
-  background: var(--grund);
-  border-bottom: 1px solid var(--linie);
+  height: 0;
 }
 
-.leiste-zeile {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+#leiste:not(:has(#pause-leiste:not([hidden]), #speicher-meldung:not([hidden]))) .leiste-karte {
+  display: none;
 }
+
 
 #pause-leiste {
   flex: none;
@@ -591,10 +599,6 @@ section:empty {
     padding: 20px 12px 20px;
   }
   /* Fund 5: bei schmalen Fenstern eine waagrecht scrollbare Zeile. */
-  #leiste {
-    margin: 0 -12px;
-    padding: 6px 12px;
-  }
   /* Fund 11: Finger-Ziele mindestens 44 px hoch. */
   button.klein,
   button.gross,
@@ -705,7 +709,6 @@ body {
 
 main {
   gap: 18px;
-  max-width: 720px;
   padding-top: 32px;
 }
 
@@ -941,9 +944,16 @@ input:focus-visible {
 }
 
 /* Klebende Leiste als Glas */
-#leiste {
-  margin: 0 -8px;
-  padding: 8px 12px;
+/* Die Leiste ist fest am oberen Fensterrand und nimmt keinen Platz im Fluss: so rechnet kein Werkzeug und kein Sprung sie an eine Stelle im Fluss zurueck
+   (ein klebendes Element mit der Hoehe null wurde von Playwright und geckodriver aus dem Bild gescrollt). */
+.leiste-karte {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  width: min(calc(100% - 2 * var(--v-a-5)), 1160px);
+  margin-inline: auto;
+  padding: var(--v-a-2) var(--v-a-3);
   background: rgba(255, 246, 250, 0.82);
   border: 1px solid var(--v-glas-kante);
   border-radius: var(--v-r-m);
@@ -951,38 +961,25 @@ input:focus-visible {
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #leiste {
+  .leiste-karte {
     -webkit-backdrop-filter: var(--v-glas-unschaerfe);
     backdrop-filter: var(--v-glas-unschaerfe);
   }
 }
 
-/* Schalter: Bahn aus hell mit sichtbarem Rand (3:1), an im Akzent-Verlauf */
+/* Schalter: Bahn aus --bahn-aus (= --v-rand, 3,6:1 gegen den Grund, ohne eigenen Rand), an im Akzent-Verlauf */
 .regler {
-  width: 46px;
-  height: 28px;
-  border-radius: var(--v-r-voll);
   background: var(--bahn-aus);
-  border: 1.5px solid var(--v-rand);
   transition: background var(--v-dauer-kurz) ease, border-color var(--v-dauer-kurz) ease;
 }
 
 .regler::after {
-  top: 2px;
-  left: 2px;
-  width: 21px;
-  height: 21px;
   box-shadow: 0 2px 6px rgba(67, 40, 60, 0.3);
   transition: transform var(--v-dauer-kurz) ease;
 }
 
 .schalter input:checked + .regler {
   background: var(--v-verlauf-akzent);
-  border-color: transparent;
-}
-
-.schalter input:checked + .regler::after {
-  transform: translateX(18px);
 }
 
 .schalter strong {
@@ -1089,9 +1086,8 @@ footer {
     padding: 16px;
     border-radius: var(--v-r-m);
   }
-  #leiste {
-    margin: 0 -4px;
-    padding: 6px 8px;
+  .leiste-karte {
+    padding: 6px var(--v-a-2);
   }
   .unter {
     font-size: 22px;
@@ -1135,9 +1131,14 @@ input[type='checkbox'] {
   background: var(--v-weiss);
 }
 
-/* Session 17: Weg zur Hilfe-Seite neben "Settings" im Kopf. */
+/* Session 17: Weg zur Hilfe-Seite; E4f (F1): rechts in der Zeile der Marke, Fingerziel 44 x 44. */
 .hilfe-link {
-  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--v-fingerziel);
+  min-height: var(--v-fingerziel);
+  margin: 0;
   color: var(--v-rosa-800);
   font-weight: 700;
   text-underline-offset: 3px;
@@ -1317,15 +1318,172 @@ main {
   max-width: 1200px;
 }
 
-/* Die Leiste traegt nur noch Hilfe-Weg und kleine Pause: Hilfe links, Pause rechts. */
+/* Die Leiste traegt nur noch die kleine Pause (und den Fehlersatz), rechts. */
 .leiste-zeile {
-  justify-content: space-between;
-  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: var(--v-fingerziel);
 }
 
-#leiste .hilfe-link {
-  margin-left: 0;
+/* E4f: Zeile der Marke im Kopf, "Help" rechts. */
+.marke-zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--v-a-3);
+  min-width: 0;
+}
+
+.marke-zeile h1 {
+  min-width: 0;
+}
+
+/* ========== Phase 11 E4f: Handy (Regeln H-a bis H-g) ========== */
+/* Links im Fliesstext mit Trefferflaeche 44 x 44 (H-b). */
+#pack-hilfe {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-width: var(--v-fingerziel);
+  min-height: var(--v-fingerziel);
+}
+
+/* Schmal: Kopf, Reiterzeile und Vorschau nehmen wenig Platz, damit die erste Bedienung jedes Reiters im ersten Bildschirm liegt (H-g). */
+@media (max-width: 600px) {
+  main {
+    gap: var(--v-a-2);
+    padding: var(--v-a-2) var(--v-a-3) var(--v-a-4);
+  }
+  header {
+    padding: 6px var(--v-a-4) var(--v-a-2);
+  }
+  header p {
+    margin-bottom: var(--v-a-1);
+  }
+  h1 .v-augenpaar svg {
+    width: 26px;
+    height: 26px;
+  }
+  .unter {
+    margin-top: 0;
+    font-size: 20px;
+  }
+  #pause {
+    min-height: var(--v-fingerziel);
+    margin-top: var(--v-a-2);
+  }
+}
+
+/* Beschriftung des Zahlenfelds: die ganze Zeile ist Trefferflaeche (H-b). */
+#kon-minuten-zeile label {
+  display: flex;
+  align-items: center;
+  min-height: var(--v-fingerziel);
+}
+
+/* E4f (F4): "?" vor einer hohen Gruppe, im Bild darueber. */
+.mit-hilfe.mit-hilfe-oben {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.mit-hilfe.mit-hilfe-oben > :first-child {
+  flex: none;
+}
+
+.mit-hilfe.mit-hilfe-oben > :last-child {
+  align-self: stretch;
+}
+
+/* Schmal: der Kopf als zwei Zeilen: Marke und Help, darunter "Settings" mit dem Pause-Knopf rechts (DOM und Bild gleich: Help, Pause). */
+@media (max-width: 600px) {
+  .leiste-karte {
+    width: calc(100% - 2 * var(--v-a-3));
+  }
+  header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--v-a-3);
+    align-items: center;
+  }
+  header > * {
+    grid-column: 1 / -1;
+  }
+  header > .unter {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  header > #pause {
+    grid-column: 2;
+    grid-row: 2;
+    width: auto;
+    margin-top: 0;
+    padding: 0 var(--v-a-4) 0 var(--v-a-3);
+  }
+  header > #status {
+    grid-row: 3;
+  }
+  header > #status-ausnahmen {
+    grid-row: 4;
+  }
+  header p {
+    margin-bottom: 0;
+  }
+  section {
+    padding-top: var(--v-a-3);
+    padding-bottom: var(--v-a-3);
+  }
+  h2 {
+    margin-bottom: var(--v-a-1);
+  }
+  section .hinweis {
+    margin-bottom: var(--v-a-1);
+  }
+  main #ueber .ue-links {
+    margin-top: 0;
+  }
+  main #ueber .ue-stand {
+    margin-bottom: var(--v-a-1);
+  }
+}
+
+/* E4f (F4, H-f): Abstand nach oben fuer Sprung und Fokus (grund.ts setzt --polster-oben aus der Hoehe der klebenden Karte und der Reiterzeile); die klebenden Elemente selbst
+   bleiben ausgenommen. */
+* {
+  scroll-margin-top: var(--polster-oben, 0px);
+}
+
+#leiste *,
+#sprung * {
+  scroll-margin-top: 0;
+}
+
+/* G3: ab 340 px steht die Marke in einer Zeile neben "Help" (kleinere Schrift, engere Abstaende), darunter darf sie umbrechen. */
+@media (min-width: 340px) and (max-width: 600px) {
+  h1 {
+    gap: var(--v-a-2);
+    font-size: 15px;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+  h1 .v-augenpaar svg {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* J1: die Karte ist nur so hoch wie ihr Inhalt (ohne sichtbare kleine Pause entfaellt die Zeile), und steht ein Fehlersatz, bekommt die Seite oben so viel Platz, wie die Karte
+   hoch ist (grund.ts setzt --karte-platz), damit die Karte weder die Marke mit "Help" noch den grossen Pause-Knopf verdeckt. */
+.leiste-zeile:has(#pause-leiste[hidden]) {
+  display: none;
+}
+
+.leiste-zeile:has(#pause-leiste[hidden]) + #speicher-meldung {
+  margin-top: 0;
+}
+
+html {
+  padding-top: var(--karte-platz, 0px);
 }

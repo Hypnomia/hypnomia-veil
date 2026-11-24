@@ -3,7 +3,9 @@
    Leiste, darunter der Streifen und der Inhalt; die Seite selbst scrollt nie waagrecht. Jeder Reiter ist mindestens 44 px hoch. */
 
 :root {
-  --leiste-hoehe: 56px;
+  /* Hoehe der klebenden Leistenkarte mit dem Pause-Knopf (Fingerziel, Polster, Rand); die Reiterzeile klebt immer darunter, auch solange die Karte noch nicht da ist, damit sie
+     nie von der erscheinenden Karte verdeckt wird. grund.ts setzt einen hoeheren Wert, wenn die Karte mit Fehlersatz hoeher ist. */
+  --leiste-hoehe: calc(var(--v-fingerziel) + var(--v-a-4) + 2px);
 }
 
 /* Kopf und Leiste bleiben so schmal wie bisher lesbar. */
@@ -172,6 +174,34 @@
   }
   .reiter-mitte {
     order: 3;
+  }
+  /* E4f (H-g): der Inhalt beginnt weit oben. Reiterzeile enger, Platz der Vorschau als flacher Streifen (F2): Kachel 64 px, Name daneben, nie darueber. */
+  .reiter-raster {
+    gap: var(--v-a-1);
+  }
+  .reiter-nav {
+    padding: 0;
+  }
+  #reiter-liste {
+    padding: var(--v-a-1);
+  }
+  .vorschau-spalte {
+    padding: 0 var(--v-a-3);
+    border-radius: var(--v-r-m);
+  }
+  .vorschau-spalte .v-vorschau-platz {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--v-a-3);
+    width: auto;
+  }
+  .vorschau-spalte .v-vorschau-rahmen {
+    flex: none;
+    height: 64px;
+  }
+  .vorschau-spalte .v-vorschau-etikett {
+    align-self: center;
+    margin: 0;
   }
 }
 

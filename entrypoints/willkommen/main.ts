@@ -306,20 +306,35 @@ function seiteInterview(s: Schritt, titel: HTMLElement, fehler: HTMLElement): HT
   }
   aktualisiere(einst, pack);
   const alles = knoten('div');
-  alles.append(s1.knoten, navigation(s));
+  const nav = navigation(s);
+  alles.append(s1.knoten, nav);
   // Auf der letzten Seite tut "Skip the rest" dasselbe wie "Finish", dort fehlt der Block (Fund 20).
+  // E4f (F3): "Skip the rest" steht in der Zeile mit Back und Next (DOM und Bild gleich: Back, Skip, Next), die schmal am unteren Rand klebt; der Satz dazu bleibt darunter.
   if (naechster(s, seiten) !== 'ende') {
+    const skip = knopf('iv-ueberspringen', TEXT.ueberspringen, 'textlink', () => {
+      // Nur der Stand des Einstiegs aendert sich, nie ein Wert der Einstellungen.
+      void aendereEinstieg((alt) => ({ interview: alt.interview === 'fertig' ? 'fertig' : 'uebersprungen' })).then(() => zeige('ende'), zeigeFehler);
+    });
+    skip.setAttribute('aria-describedby', 'iv-ueberspringen-hinweis');
+    nav.insertBefore(skip, nav.querySelector('#iv-weiter'));
     const ueber = knoten('div', 'ueberspringen');
-    ueber.append(
-      knopf('iv-ueberspringen', TEXT.ueberspringen, 'textlink', () => {
-        // Nur der Stand des Einstiegs aendert sich, nie ein Wert der Einstellungen.
-        void aendereEinstieg((alt) => ({ interview: alt.interview === 'fertig' ? 'fertig' : 'uebersprungen' })).then(() => zeige('ende'), zeigeFehler);
-      }),
-      knoten('p', 'hinweis', TEXT.ueberspringenHinweis),
-    );
+    ueber.append(knoten('p', 'hinweis', TEXT.ueberspringenHinweis, 'iv-ueberspringen-hinweis'));
     alles.append(ueber);
   }
   const karte = knoten('div', 'iv-karte');
+  // E4f (F3): schmal klebt die Zeile mit Back, Skip und Next am unteren Rand. `scroll-padding-bottom` haelt den Fokus frei; Firefox gilt aber ein Element, das noch im
+  // Fenster liegt, als sichtbar und scrollt nicht, auch wenn die Zeile darauf liegt. Darum schiebt die Seite einen so verdeckten Fokus selbst nach oben.
+  karte.addEventListener('focusin', (e) => {
+    const ziel = e.target as HTMLElement;
+    // Erst nach dem Scrollen des Browsers messen.
+    setTimeout(() => {
+      const zeile = karte.querySelector<HTMLElement>('.knoepfe');
+      if (ziel !== document.activeElement || !zeile || zeile.contains(ziel) || getComputedStyle(zeile).position !== 'sticky') return;
+      const z = ziel.getBoundingClientRect();
+      const l = zeile.getBoundingClientRect();
+      if (z.bottom > l.top && z.top < l.bottom) window.scrollBy(0, z.bottom - l.top + 8);
+    }, 16);
+  });
   karte.append(titel, alles, fehler);
   return [baueSchritteListe(nr, seiten), karte, vorschau.element];
 }

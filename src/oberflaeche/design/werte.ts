@@ -78,6 +78,13 @@ export const WERTE: Record<string, string> = {
   'zyklus-funkel': '6s',
   'zyklus-spirale': '14s',
   fingerziel: '44px',
+  // Gemeinsames Mass (Regel H-e, E4f): die Spur des Schalters (Bahn und Daumen) ist auf Einstellungsseite, Willkommensseite und Popup dieselbe;
+  // die "?"-Hilfe ist das Fingerziel, die Auswahlkachel das Fingerziel plus 20 px.
+  'spur-b': '48px',
+  'spur-h': '28px',
+  'spur-knopf': '22px',
+  'spur-rand': '3px',
+  'kachel-h': '64px',
   // Ikone fuer den Pause-Knopf der Erweiterungsseiten (weiss, auf dem Akzent-Verlauf): zwei Balken, im Pausen-Zustand ein Abspiel-Dreieck.
   'ikon-pause': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3Crect x='13.5' y='6.5' width='3' height='11' rx='1.2' fill='white'/%3E%3C/svg%3E")`,
   // Pfeil der Auswahlfelder (Regel O6, Phase 11 E4a): Strich in rosa-800, 12 x 8.

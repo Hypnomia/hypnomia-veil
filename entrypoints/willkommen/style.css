@@ -773,3 +773,88 @@ section#schritt[data-schritt^='interview'] {
     padding: 18px 14px 16px;
   }
 }
+
+/* ---------- Phase 11 E4f: Handy (Regeln H-a bis H-g) ---------- */
+/* Links im Text mit Trefferflaeche 44 x 44 (H-b): die Links des Abschlusses und der Seite 6 stehen in einer eigenen Zeile. */
+#ende-hilfe,
+#ende-pin-link,
+#iv-auch-an-link {
+  display: inline-flex;
+  align-items: center;
+  min-width: var(--v-fingerziel);
+  min-height: var(--v-fingerziel);
+}
+
+#ende-pin-link,
+#iv-auch-an-link {
+  display: flex;
+  width: fit-content;
+}
+
+button.textlink {
+  min-width: var(--v-fingerziel);
+  min-height: var(--v-fingerziel);
+}
+
+/* Schmal (alles untereinander): flacher Streifen fuer die Vorschau (F2, Kachel 64 px, der Name daneben, nie darueber), engere Abstaende und die Zeile
+   mit Back, Skip the rest und Next klebt am unteren Rand (F3, hoechstens 72 px, heller Grund); die Seite hat unten Platz, `scroll-padding-bottom`
+   haelt den Fokus frei. */
+@media (max-width: 899px) {
+  html {
+    scroll-padding-bottom: calc(72px + var(--v-a-3));
+  }
+  main:has(#schritt[data-schritt^='interview']) {
+    gap: var(--v-a-2);
+    padding-top: var(--v-a-3);
+  }
+  .iv-raster {
+    gap: var(--v-a-2);
+  }
+  .iv-schritte li {
+    padding: 2px var(--v-a-3);
+  }
+  .iv-vorschau {
+    padding: 0 var(--v-a-3);
+    border-radius: var(--v-r-m);
+  }
+  .iv-karte {
+    padding: var(--v-a-4);
+  }
+  .iv-vorschau .v-vorschau-platz {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--v-a-3);
+    width: auto;
+  }
+  .iv-vorschau .v-vorschau-rahmen {
+    flex: none;
+    height: 64px;
+  }
+  .iv-vorschau .v-vorschau-etikett {
+    align-self: center;
+    margin: 0;
+  }
+  .iv-karte .knoepfe {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--v-a-2);
+    max-height: 72px;
+    margin: var(--v-a-3) calc(-1 * var(--v-a-2)) 0;
+    padding: var(--v-a-2);
+    background: var(--v-rosa-50);
+    border: 1px solid var(--v-rosa-200);
+    border-radius: var(--v-r-m);
+    box-shadow: var(--v-schatten-klein);
+  }
+  .iv-karte .knoepfe .rechts {
+    margin-left: auto;
+  }
+  .iv-karte .ueberspringen {
+    margin-top: var(--v-a-2);
+    padding-top: 0;
+    border-top: 0;
+  }
+}

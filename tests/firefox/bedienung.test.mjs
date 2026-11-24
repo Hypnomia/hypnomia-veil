@@ -334,6 +334,8 @@ try {
 
   // ---- L1 (E4k Nachr.): kein Schreibversuch ohne Handlung am Regler, auch bei einem gespeicherten Zwischenwert ----
   const ZW_L1 = { version: 1, schwelle: 0.1051, quiz: { verweigern: 0.1051, freilegenMs: 10500 }, ton: { an: false, lautstaerke: 0.4051 } };
+  let l1PerTab = 0;
+  let l1PerSkript = 0;
   for (const [name, mitPackL1] of [['ohne Pack', false], ['mit Pack nach dem Laden', true]]) {
     await seite(ZW_L1, mitPackL1);
     await driver.executeScript(`
@@ -350,7 +352,13 @@ try {
       if (!(await driver.executeScript(`const r = document.querySelector(arguments[0]); return !!r && r.getClientRects().length > 0`, css))) continue; // ohne Pack sind drei der vier Abschnitte verborgen
       gemessenL1 += 1;
       const reg = await driver.findElement(By.css(css));
-      await driver.executeScript(`arguments[0].focus()`, reg);
+      // E4f A1: der Fokus kommt mit der Tab-Taste in den Regler (vom Kopf seines Aufklappers aus); nur wenn der Treiber das nicht hergibt, setzt ihn ein Skript.
+      await driver.executeScript(`const k = arguments[0].closest('.v-aufklapper').querySelector('.v-auf-kopf'); k.focus();`, reg);
+      await driver.actions({ async: true }).sendKeys(Key.TAB).perform();
+      if (!(await driver.executeScript(`return document.activeElement === arguments[0]`, reg))) {
+        l1PerSkript += 1;
+        await driver.executeScript(`arguments[0].focus()`, reg);
+      } else l1PerTab += 1;
       for (const t of [Key.SHIFT, Key.CONTROL, 'a', Key.ESCAPE]) await reg.sendKeys(t);
       const pos = await driver.executeScript(`const r = arguments[0]; const b = r.getBoundingClientRect(); const a = (Number(r.value) - Number(r.min)) / (Number(r.max) - Number(r.min)); return [b.left + 8 + (b.width - 16) * a, b.top + b.height / 2];`, reg);
       await driver.executeScript(`arguments[0].scrollIntoView({ block: 'center' })`, reg);
@@ -358,8 +366,8 @@ try {
       void pos;
       await driver.actions({ async: true }).move({ x: Math.round(pos2[0]), y: Math.round(pos2[1]) }).press().release().perform();
       await driver.actions({ async: true }).sendKeys(Key.TAB).perform();
-      await driver.executeScript(`arguments[0].focus()`, reg);
       await driver.actions({ async: true }).sendKeys(Key.chord(Key.SHIFT, Key.TAB)).perform();
+      if (!(await driver.executeScript(`return document.activeElement === arguments[0]`, reg))) await driver.executeScript(`arguments[0].focus()`, reg);
       await driver.executeScript(`arguments[0].blur()`, reg);
     }
     await warte(500);
@@ -367,6 +375,8 @@ try {
     pruefe((await driver.executeScript('return window.__k1')) === 0, `L1 ${name}: null Schreibaufrufe ohne Handlung (waren ${await driver.executeScript('return window.__k1')})`);
     pruefe(JSON.stringify(await einst()) === roh, `L1 ${name}: der gespeicherte Wert bleibt Bit fuer Bit`);
   }
+
+  console.log(`firefox: L1 Fokus im Regler: ${l1PerTab} mal mit der Tab-Taste, ${l1PerSkript} mal per Skript`);
 
   // ---- G1: ohne Freischaltung bleibt `an` an UND aus schaltbar ----
   const EXPLICIT = { version: 1, erwachsen: { ...STANDARD.erwachsen, stufe: 'explicit' } };

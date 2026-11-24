@@ -107,6 +107,23 @@ test('Fund 5 und 29: die Leiste klebt oben, nach dem Scrollen sichtbar, Pause da
     });
     console.log(`einstellungen-s12: Leiste nach Scroll ${Math.round(lage.scroll)} px: oben ${lage.oben}, Hoehe ${Math.round(lage.hoehe)}`);
     expect(Math.abs(lage.oben)).toBeLessThanOrEqual(1);
+    // J6: der grosse Knopf Pause ist aus dem Bild gescrollt: die kleine Pause steht sichtbar am oberen Rand und ist bedienbar (die Mitte trifft den Knopf);
+    // ganz oben (grosser Knopf im Bild, kein Fehlersatz) ist die Karte verborgen.
+    const kleinLage = () => seite.evaluate(() => {
+      const g = document.getElementById('pause')!.getBoundingClientRect();
+      const p = document.getElementById('pause-leiste')!.getBoundingClientRect();
+      const e = p.width > 0 ? document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2) : null;
+      return { grossAus: g.bottom <= 0 || g.top >= innerHeight, kleinBreit: p.width, kleinOben: p.top, trifft: e?.id === 'pause-leiste', karte: getComputedStyle(document.querySelector('.leiste-karte')!).display };
+    });
+    const unten = await kleinLage();
+    expect(unten.grossAus, 'grosser Knopf aus dem Bild').toBe(true);
+    expect(unten.kleinBreit, 'kleine Pause sichtbar').toBeGreaterThan(0);
+    expect(unten.kleinOben, 'kleine Pause am oberen Rand').toBeLessThan(80);
+    expect(unten.trifft, 'kleine Pause bedienbar (nichts liegt darueber)').toBe(true);
+    await seite.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(async () => (await kleinLage()).karte, 'ganz oben ist die Karte verborgen').toBe('none');
+    await seite.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(async () => (await kleinLage()).kleinBreit).toBeGreaterThan(0);
     await expect(seite.locator('#pause-leiste')).toBeInViewport();
     await expect(seite.locator('#sprung [role=tab]').first()).toBeInViewport();
     // Pause in der Leiste: gleicher Weg wie #pause, gleiche Woerter, aria-pressed

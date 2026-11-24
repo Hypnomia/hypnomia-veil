@@ -258,16 +258,40 @@ strict.addEventListener('change', () => {
 // ---------- Start ----------
 
 // Fund 4 und 6: die klebende Leiste (auch mit Fehlersatz oder auf zwei Zeilen) verdeckt nichts, was angesprungen oder fokussiert wird.
-const leiste = document.getElementById('leiste');
+// E4f (F1): die Leiste hat keine Hoehe im Fluss, die Hoehe der Karte darin (0, solange sie verborgen ist) ist die Hoehe der klebenden Leiste.
+// J10: der Beobachter des grossen Pause-Knopfs (unten) wird neu angelegt, wenn sich die stabile Hoehe der Karte aendert.
+let beobachtePause: (abzug: number) => void = () => {};
+const leiste = document.querySelector<HTMLElement>('#leiste .leiste-karte');
 if (leiste && typeof ResizeObserver !== 'undefined') {
   // E4d1: schmal klebt die Reiterzeile unter der Leiste; beide zusammen verdecken nichts, was angesprungen oder fokussiert wird.
   const reiterLeiste = document.getElementById('sprung');
+  // Die Karte erscheint erst, wenn die Seite gescrollt hat (Pause ausser Bild). Reiterzeile und Polster rechnen darum immer mit ihrer Hoehe: mindestens die
+  // Hoehe der Karte mit dem Pause-Knopf (Fingerziel, Polster, Rand, wie --leiste-hoehe in reiter.css), mehr, wenn sie mit Fehlersatz hoeher ist. So bewegt
+  // sich die Reiterzeile nicht, wenn die Karte erscheint, und ein Sprung zu einem Element scrollt nie so weit, dass die Karte danach etwas verdeckt.
+  const fingerziel = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--v-fingerziel')) || 44;
+  const karteGrund = fingerziel + 18;
   const setzePolster = (): void => {
-    const hoehe = Math.ceil(leiste.getBoundingClientRect().height);
-    document.documentElement.style.setProperty('--leiste-hoehe', `${hoehe}px`);
+    // J1: steht ein Fehlersatz, ist die Karte ohne die kleine Pause nur so hoch wie der Satz (die leere Zeile entfaellt), mit ihr eine Zeile (Fingerziel plus 8 px Abstand) hoeher.
+    // Gerechnet wird immer mit der hoeheren Karte: die kleine Pause erscheint beim Scrollen, und Sprung, Fokus und Polster duerfen sich dabei nicht verschieben.
+    const meldung = document.getElementById('speicher-meldung');
+    const meldungDa = !!meldung && !meldung.hidden;
+    const zeile = leiste.querySelector<HTMLElement>('.leiste-zeile');
+    const zeileHoehe = pauseLeiste.hidden || !zeile ? fingerziel : zeile.getBoundingClientRect().height;
+    const extra = zeileHoehe + 8;
+    const jetzt = Math.ceil(leiste.getBoundingClientRect().height);
+    const voll = jetzt + (meldungDa && pauseLeiste.hidden ? extra : 0);
+    const karteHoehe = Math.max(voll, karteGrund);
+    document.documentElement.style.setProperty('--leiste-hoehe', `${karteHoehe}px`);
+    // J11: oben haelt die Seite nur so viel Platz frei, wie die Karte dort (ohne kleine Pause) hoch ist; waechst die Karte beim Scrollen, liegt sie nur ueber dem Inhalt, nichts springt.
+    const oben = meldungDa ? Math.max(0, jetzt - (pauseLeiste.hidden ? 0 : extra)) : 0;
+    document.documentElement.style.setProperty('--karte-platz', `${oben}px`);
+    // Ohne Fehlersatz liegt die Karte nur da, wenn der kleine Knopf sichtbar ist: dann ist der grosse nicht ganz im Bild, es gibt nichts abzuziehen.
+    beobachtePause(meldungDa ? karteHoehe : 0);
     const reiterKlebt = !!reiterLeiste && getComputedStyle(reiterLeiste).position === 'sticky' && matchMedia('(max-width: 600px)').matches;
     const reiterHoehe = reiterKlebt ? Math.ceil(reiterLeiste.getBoundingClientRect().height) : 0;
-    document.documentElement.style.scrollPaddingTop = `${hoehe + reiterHoehe + 8}px`;
+    // E4f (F4, H-f): Sprungziele und Fokus rutschen nicht unter die klebenden Elemente. Als `scroll-margin-top` (style.css) statt als `scroll-padding-top` der Seite:
+    // Firefox gilt ein Element, das noch im Fenster liegt, sonst als sichtbar und scrollt nicht, auch wenn Karte oder Reiterzeile darauf liegt.
+    document.documentElement.style.setProperty('--polster-oben', `${karteHoehe + reiterHoehe + 8}px`);
   };
   const polsterBeobachter = new ResizeObserver(setzePolster);
   polsterBeobachter.observe(leiste);
@@ -280,14 +304,25 @@ if (leiste && typeof ResizeObserver !== 'undefined') {
 if (typeof IntersectionObserver !== "undefined") {
   // Lesung Runde 3, Nr. 2 und 6: verborgen nur, solange der grosse Knopf GANZ im Bild ist (sonst waere Pause in einem schmalen
   // Scrollbereich kaum erreichbar); hat der kleine Knopf den Fokus, wandert er auf den grossen.
-  new IntersectionObserver(
-    (e) => {
-      const ganz = (e[e.length - 1]?.intersectionRatio ?? 1) >= 0.99;
-      if (ganz && document.activeElement === pauseLeiste) pauseKnopf.focus();
-      pauseLeiste.hidden = ganz;
-    },
-    { threshold: [0, 0.5, 0.99, 1] },
-  ).observe(pauseKnopf);
+  // J10: bei stehendem Fehlersatz heisst "im Bild" ganz unterhalb der festen Karte (stabile Hoehe `--leiste-hoehe`), nicht nur im Fenster; sonst gaebe es einen Scrollweg, auf dem der grosse
+  // Knopf unter der Karte liegt und die kleine Pause verborgen ist.
+  let pauseBeobachter: IntersectionObserver | null = null;
+  let beobachtetHoehe = -1;
+  beobachtePause = (abzug: number): void => {
+    if (abzug === beobachtetHoehe) return;
+    beobachtetHoehe = abzug;
+    pauseBeobachter?.disconnect();
+    pauseBeobachter = new IntersectionObserver(
+      (e) => {
+        const ganz = (e[e.length - 1]?.intersectionRatio ?? 1) >= 0.99;
+        if (ganz && document.activeElement === pauseLeiste) pauseKnopf.focus();
+        pauseLeiste.hidden = ganz;
+      },
+      { threshold: [0, 0.5, 0.99, 1], rootMargin: `-${abzug}px 0px 0px 0px` },
+    );
+    pauseBeobachter.observe(pauseKnopf);
+  };
+  beobachtePause(0);
 }
 
 const abmelden = beiEinstellungsAenderung(zeichne);

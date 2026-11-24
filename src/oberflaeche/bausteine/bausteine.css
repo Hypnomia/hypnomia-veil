@@ -32,10 +32,10 @@
 /* ---------- Schalter ---------- */
 .v-schalter-zeile { display: flex; align-items: flex-start; gap: var(--v-a-4); min-height: var(--v-fingerziel); }
 .v-schalter-knopf { flex: none; display: flex; align-items: center; width: calc(var(--v-fingerziel) + var(--v-a-3)); height: var(--v-fingerziel); padding: 0; border: 0; background: transparent; cursor: pointer; }
-.v-bahn { position: relative; flex: none; width: 48px; height: 28px; border-radius: var(--v-r-voll); background: var(--v-rand); box-shadow: var(--v-schatten-klein); transition: background var(--v-dauer-kurz); }
-.v-bahn::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--v-weiss); transition: left var(--v-dauer-kurz); }
+.v-bahn { position: relative; flex: none; width: var(--v-spur-b); height: var(--v-spur-h); border-radius: var(--v-r-voll); background: var(--v-rand); box-shadow: var(--v-schatten-klein); transition: background var(--v-dauer-kurz); }
+.v-bahn::after { content: ''; position: absolute; top: var(--v-spur-rand); left: var(--v-spur-rand); width: var(--v-spur-knopf); height: var(--v-spur-knopf); border-radius: 50%; background: var(--v-weiss); transition: left var(--v-dauer-kurz); }
 .v-schalter-knopf[aria-checked='true'] .v-bahn { background: var(--v-verlauf-akzent); }
-.v-schalter-knopf[aria-checked='true'] .v-bahn::after { left: 23px; }
+.v-schalter-knopf[aria-checked='true'] .v-bahn::after { left: calc(var(--v-spur-rand) + calc(var(--v-spur-b) - var(--v-spur-knopf) - 2 * var(--v-spur-rand))); }
 .v-schalter-text { flex: 1; min-width: 0; padding-top: calc((var(--v-fingerziel) - 21px) / 2); }
 .v-schalter-text .v-titeltext { cursor: pointer; }
 .v-schalter-text .v-titel { gap: var(--v-a-1); }
@@ -86,7 +86,7 @@
 .v-vorschau-rahmen { position: relative; aspect-ratio: 3 / 4; border-radius: var(--v-r-m); overflow: hidden; border: 1px solid var(--v-weiss); box-shadow: var(--v-schatten-klein); background: var(--v-verlauf-zart); }
 .v-vorschau-flaeche { position: absolute; inset: 0; }
 .v-vorschau-flaeche > * { display: block; width: 100%; height: 100%; }
-.v-vorschau-etikett { position: absolute; left: var(--v-a-3); top: var(--v-a-3); padding: var(--v-a-1) var(--v-a-2); border-radius: var(--v-r-voll); background: var(--v-glas-stark); color: var(--v-rosa-800); font: 800 12px/1.2 var(--v-schrift-text); box-shadow: var(--v-schatten-klein); }
+.v-vorschau-etikett { align-self: flex-start; margin-top: var(--v-a-2); padding: var(--v-a-1) var(--v-a-2); border-radius: var(--v-r-voll); background: var(--v-glas-stark); color: var(--v-rosa-800); font: 800 12px/1.2 var(--v-schrift-text); box-shadow: var(--v-schatten-klein); }
 .v-vorschau-etikett[hidden] { display: none; }
 
 @media (max-width: 480px) {

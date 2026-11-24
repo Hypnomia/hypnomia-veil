@@ -671,8 +671,27 @@ test('K1: Einstellungsseite, Regler "Exact value": je Tastendruck und je Ziehen 
     await expect(regler).toHaveValue('0.14');
     expect(await versuche(seite), 'gelungen: ein Schreibversuch').toBe(n1 + 1);
     // Ziehen: genau ein Schreibversuch je Ziehen
-    const kasten = (await regler.boundingBox())!;
+    // Die Seite rutscht um die Hoehe der Karte, sobald der Fehlersatz weg ist (--karte-platz, einen Frame spaeter): die Lage des Reglers erst lesen, wenn der Satz weg ist
+    // und die Lage fuenf Frames in Folge gleich blieb, und vor jedem Ziehen frisch.
+    const ruhigerKasten = async () => {
+      await expect(seite.locator('#speicher-meldung')).toBeHidden();
+      await expect
+        .poll(() =>
+          regler.evaluate(async (e) => {
+            const lage = () => { const b = e.getBoundingClientRect(); return `${b.x},${b.y}`; };
+            const erst = lage();
+            for (let f = 0; f < 5; f++) {
+              await new Promise((r) => requestAnimationFrame(() => r(null)));
+              if (lage() !== erst) return false;
+            }
+            return true;
+          }),
+        )
+        .toBe(true);
+      return (await regler.boundingBox())!;
+    };
     for (let i = 1; i <= 2; i++) {
+      const kasten = await ruhigerKasten();
       const n = await versuche(seite);
       await seite.mouse.move(kasten.x + 10 * i, kasten.y + kasten.height / 2);
       await seite.mouse.down();

@@ -191,7 +191,11 @@ for (const h of HILFEN) {
   if (!ziel || !ziel.parentElement) continue;
   const zeile = neu('div', 'mit-hilfe');
   ziel.before(zeile);
-  zeile.append(ziel, hilfeKnopf(h.kurz, h.name));
+  // E4f (F4): vor einer hohen Gruppe (Stufenwahl) steht das "?" davor, im Bild darueber und im DOM zuerst; sonst stuende es neben der Mitte der Gruppe und die Tab-Folge spraenge nach oben.
+  if (ziel.classList.contains('bedienung-ort')) {
+    zeile.classList.add('mit-hilfe-oben');
+    zeile.append(hilfeKnopf(h.kurz, h.name), ziel);
+  } else zeile.append(ziel, hilfeKnopf(h.kurz, h.name));
 }
 
 // ---------- Weniger Bewegung (Fund 8) ----------

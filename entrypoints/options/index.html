@@ -9,24 +9,30 @@
   </head>
   <body>
     <main>
+      <!-- Session 12, Auftrag O (UX-Funde 5, 11, 26, 29): die Leiste klebt oben und traegt den kleinen Pause-Knopf (derselbe Weg wie #pause) und die
+           Statuszeile fuer Speicherfehler (grund-speichern.ts). Phase 11 E4f (F1): "Help" steht im Kopf; die Leiste ist fest am oberen Rand ohne Platz im Fluss (die Karte darin
+           liegt darueber) und zeigt sich nur, wenn Pause oder ein Fehlersatz da ist, sonst waere sie eine leere Karte. Die Reiterzeile klebt
+           darunter. -->
+      <div id="leiste">
+        <div class="leiste-karte">
+          <div class="leiste-zeile">
+            <button id="pause-leiste" class="klein ruhig" type="button"></button>
+          </div>
+          <p id="speicher-meldung" class="fehler" role="alert" hidden></p>
+        </div>
+      </div>
+
       <header>
-        <h1>HYPNOMIA VEIL</h1>
+        <!-- E4f (F1): "Help" steht in der Kopfkarte, rechts in der Zeile der Marke (die Leiste traegt es nicht mehr). -->
+        <div class="marke-zeile">
+          <h1>HYPNOMIA VEIL</h1>
+          <a id="hilfe-link" class="hilfe-link" href="hilfe.html" target="_blank" rel="noopener">Help</a>
+        </div>
         <p class="unter">Settings</p>
         <p id="status" role="status" aria-live="polite"></p>
         <p id="status-ausnahmen" class="hinweis"></p>
         <button id="pause" class="gross" type="button"></button>
       </header>
-
-      <!-- Session 12, Auftrag O (UX-Funde 5, 11, 26, 29): die Leiste klebt oben. Phase 11 E4d1: sie traegt nur noch den Weg zur Hilfe, den kleinen
-           Pause-Knopf (derselbe Weg wie #pause) und die Statuszeile fuer Speicherfehler (grund-speichern.ts). Die Sprungleiste ist jetzt die Reiterleiste. -->
-      <div id="leiste">
-        <div class="leiste-zeile">
-          <!-- Phase 9 (Fund 14): "Help" in der Leiste statt des Untertitel-Links, oeffnet die Hilfe-Seite in neuem Tab. -->
-          <a id="hilfe-link" class="hilfe-link" href="hilfe.html" target="_blank" rel="noopener">Help</a>
-          <button id="pause-leiste" class="klein ruhig" type="button"></button>
-        </div>
-        <p id="speicher-meldung" class="fehler" role="alert" hidden></p>
-      </div>
 
       <!-- Phase 11 E4d1 (Entscheidungen 245 und 279): sieben Reiter, ein Platz fuer die feste Vorschau. Reiter und Platz baut reiter.ts und
            vorschau-platz.ts; alle Abschnitte stehen beim Laden vollstaendig im Dokument, nicht gewaehlte Reiter sind nur mit hidden ausgeblendet. -->

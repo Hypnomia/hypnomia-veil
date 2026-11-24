@@ -523,8 +523,9 @@ export function baueVorschauPlatz(e: VorschauPlatzEingabe): VorschauPlatzHandle 
   const flaeche = el('div', 'v-vorschau-flaeche');
   const etikett = el('span', 'v-vorschau-etikett', e.etikett ?? '');
   etikett.hidden = !e.etikett;
-  rahmen.append(flaeche, etikett);
-  w.append(rahmen);
+  // E4f (F2): der Name des Stils steht neben oder unter dem Bild, nie darueber (H-c); darum nicht im Rahmen.
+  rahmen.append(flaeche);
+  w.append(rahmen, etikett);
   return {
     element: w,
     flaeche,

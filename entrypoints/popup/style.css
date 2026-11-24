@@ -376,16 +376,26 @@ output {
   cursor: pointer;
 }
 
+.schalter {
+  position: relative;
+}
+
+/* E4f (H-f): die unsichtbare Eingabe liegt ueber der ganzen Zeile (Tab-Halt holt die Zeile ins Bild). */
 .schalter input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
+  cursor: pointer;
 }
 
 .regler {
   position: relative;
   flex: none;
-  width: 36px;
-  height: 22px;
+  width: var(--v-spur-b);
+  height: var(--v-spur-h);
   border-radius: var(--v-r-voll);
   background: var(--v-rand);
   transition: background var(--v-dauer-kurz);
@@ -394,10 +404,10 @@ output {
 .regler::after {
   content: '';
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
+  top: var(--v-spur-rand);
+  left: var(--v-spur-rand);
+  width: var(--v-spur-knopf);
+  height: var(--v-spur-knopf);
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 3px rgba(67, 40, 60, 0.35);
@@ -410,7 +420,7 @@ output {
 }
 
 .schalter input:checked + .regler::after {
-  transform: translateX(14px);
+  transform: translateX(calc(var(--v-spur-b) - var(--v-spur-knopf) - 2 * var(--v-spur-rand)));
 }
 
 .schalter input:focus-visible + .regler {
@@ -428,23 +438,25 @@ output {
   font-size: 12.5px;
 }
 
-/* Zonen als Schalter-Kacheln, zwei Spalten */
+/* Zonen als Schalter-Zeilen, eine Spalte: der Schalter links, "under clothes too" rechts in derselben Zeile. So folgt die Tab-Reihenfolge (DOM) der
+   sichtbaren Reihenfolge von oben nach unten und in der Zeile von links nach rechts (E4f, H-f und F4). */
 .zonen {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 6px;
 }
 
 .zonen li {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  min-height: 44px;
-  padding: 4px 10px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 2px 10px;
   border-radius: var(--v-r-s);
   border: 1px solid var(--v-rosa-200);
   background: #fff;
@@ -463,26 +475,11 @@ output {
   min-height: 34px;
 }
 
-.zonen .regler {
-  width: 32px;
-  height: 20px;
-}
-
-.zonen .regler::after {
-  top: 2.5px;
-  left: 3px;
-  width: 15px;
-  height: 15px;
-}
-
-.zonen .schalter input:checked + .regler::after {
-  transform: translateX(11px);
-}
-
 .auch {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 24px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--v-leise);
@@ -652,13 +649,13 @@ html:has(#fehler:not([hidden])) {
     min-height: 44px;
   }
   .zonen li {
-    min-height: 56px;
+    min-height: var(--v-fingerziel);
   }
   .zonen .schalter {
     min-height: 44px;
   }
   .auch {
-    min-height: 44px;
+    min-height: var(--v-fingerziel);
     padding: 0 4px;
   }
   .schalter {
@@ -857,14 +854,17 @@ footer button.klein.textknopf {
 
 @media not ((pointer: fine) and (hover: hover)) {
   .hilfe-punkt {
-    width: 44px;
-    height: 44px;
+    width: var(--v-fingerziel);
+    height: var(--v-fingerziel);
   }
   footer a#version,
-  .textlink {
+  .textlink,
+  #deinstallieren {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
+    justify-content: center;
+    min-width: var(--v-fingerziel);
+    min-height: var(--v-fingerziel);
   }
   button.klein.textknopf {
     min-height: 44px;
@@ -889,4 +889,15 @@ footer button.klein.textknopf {
 footer #ledger-kurz {
   grid-column: 1 / -1;
   margin: 0;
+}
+
+/* E4f (H-b): auch mit Maus sind die Links im Fuss mindestens 24 px hoch (mit grobem Zeiger gelten die 44 x 44 oben). */
+@media (pointer: fine) and (hover: hover) {
+  footer a#version,
+  #deinstallieren {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    margin-block: -3px; /* die Trefferflaeche ist 24 px hoch, die Zeile bleibt so hoch wie vorher (Hoehe des Popups) */
+  }
 }

@@ -239,6 +239,16 @@ try {
   const lage = await driver.executeScript(`const r = document.getElementById('leiste').getBoundingClientRect(); return { oben: r.top, hoehe: r.height, scroll: window.scrollY };`);
   console.log(`firefox: Leiste nach Scroll ${Math.round(lage.scroll)} px: oben ${lage.oben}, Hoehe ${Math.round(lage.hoehe)}`);
   pruefe(Math.abs(lage.oben) <= 1, 'Fund 5: Leiste klebt oben nach dem Scrollen');
+  // J6: grosser Knopf Pause aus dem Bild: kleine Pause sichtbar am oberen Rand und bedienbar; ganz oben ist die Karte verborgen.
+  const kleinLageJ6 = () => driver.executeScript(`const g = document.getElementById('pause').getBoundingClientRect(); const p = document.getElementById('pause-leiste').getBoundingClientRect(); const e = p.width > 0 ? document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2) : null; return { grossAus: g.bottom <= 0 || g.top >= innerHeight, kleinBreit: p.width, kleinOben: p.top, trifft: !!e && e.id === 'pause-leiste', karte: getComputedStyle(document.querySelector('.leiste-karte')).display };`);
+  await bis('kleine Pause sichtbar', async () => (await kleinLageJ6()).kleinBreit > 0);
+  const unten = await kleinLageJ6();
+  pruefe(unten.grossAus && unten.kleinBreit > 0 && unten.kleinOben < 80 && unten.trifft, `J6: kleine Pause sichtbar, oben und bedienbar, wenn der grosse Knopf nicht im Bild ist ${JSON.stringify(unten)}`);
+  await driver.executeScript(`window.scrollTo(0, 0)`);
+  await bis('Karte ganz oben verborgen', async () => (await kleinLageJ6()).karte === 'none');
+  pruefe(true, 'J6: ganz oben ist die Karte verborgen');
+  await driver.executeScript(`window.scrollTo(0, document.documentElement.scrollHeight)`);
+  await bis('kleine Pause wieder da', async () => (await kleinLageJ6()).kleinBreit > 0);
   pruefe((await text('#pause-leiste')) === 'Pause Mia', 'Fund 29: Pause-Knopf in der Leiste "Pause Mia"');
   // Nr. 10: der Klick nimmt den Hintergrundweg (runtime.sendMessage typ "pause" mit Zielwert), nicht den Ersatzweg ueber den Speicher
   await driver.executeScript(`const rt = (window.wrappedJSObject && window.wrappedJSObject.browser || window.browser).runtime;

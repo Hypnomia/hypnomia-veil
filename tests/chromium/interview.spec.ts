@@ -10,6 +10,7 @@ import { STIMMUNG_STUFEN_INTERVIEW, TEXT } from '../../src/einstieg/texte';
 import { STIMMUNG_STUFEN } from '../../entrypoints/options/bedienung-texte';
 import { STANDARD } from '../../src/einstellungen';
 import { FEHLER_SPEICHERN, HINWEIS_FACE_AUS, HINWEIS_PACK_OHNE_STICKER, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
+import { KLEIDUNG_ANTWORT_GILT, KLEIDUNG_HEUTE_NICHTS } from '../../src/oberflaeche/bedienung-texte';
 import { mitReitern } from './einstellungen-ordnung';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
@@ -709,6 +710,33 @@ test('X1: Seite Cover style, Mia-Stil mit Face aus und ein Pack ohne Sticker: de
     await bisSeite(w, 3);
     await expect(w.locator('#iv-stil-face')).toHaveText(HINWEIS_FACE_AUS);
     await expect(w.locator('#iv-stil-sperre')).toHaveText(HINWEIS_PACK_OHNE_STICKER);
+    await w.close();
+  } finally {
+    await v.close();
+  }
+});
+
+// E4f F7 R2 (aus E4t X1): im Interview steht "Right now I cover nothing under clothes" neben dem Hinweis zur verworfenen Handlung, der gewoehnliche Teil weicht.
+test('R2: Seite 2, "Right now I cover nothing under clothes" bleibt neben dem Hinweis zur verworfenen Handlung stehen, der gewoehnliche Teil weicht', async () => {
+  const v = await verwaltung();
+  try {
+    const w = await oeffne(v, { version: 1, zonen: alleZonen(false, false) }, null);
+    await bisSeite(w, 2);
+    await expect(w.locator('#iv-zonen-verworfen')).toBeHidden();
+    // Von aussen: alle Zonen aus, nur eine gespeicherte bedeckt (gemischt, nichts davon eingeschaltet); im selben Augenblick klickt die Person auf eine Antwort
+    const aussen = alleZonen(false, false) as Record<string, any>;
+    aussen.breast = { an: false, bedeckt: true };
+    await w.evaluate((neu) => {
+      const sl = (globalThis as any).chrome.storage.local;
+      void sl.__echtSet({ einstellungen: neu });
+      (document.querySelector('#iv-kleidung-frage [data-id="haut"]') as HTMLElement).click();
+    }, { version: 1, zonen: aussen });
+    await expect(w.locator('#iv-zonen-verworfen')).toBeVisible();
+    await expect(w.locator('#iv-kleidung-frage .v-hinweis')).toHaveText(KLEIDUNG_HEUTE_NICHTS);
+    await expect(w.locator('#iv-kleidung-frage .v-hinweis')).not.toContainText(KLEIDUNG_ANTWORT_GILT);
+    // die naechste Handlung nimmt den Hinweis zur verworfenen Handlung weg: der Satz der Kleidung ist wieder vollstaendig
+    await karte(w, 'iv-kleidung-frage', 'auch-bedeckt').click();
+    await expect(w.locator('#iv-zonen-verworfen')).toBeHidden();
     await w.close();
   } finally {
     await v.close();
