@@ -169,6 +169,9 @@ export interface PruefEinstellungen {
   zonen: Einstellungen['zonen'];
   rand: number;
   preset: Einstellungen['preset'];
+  // Nur bei `preset: 'custom'` (E6a C7): die aufgeloeste Mischung (nach dem Pack ersetzt). Der Empfaenger prueft sie streng nach C4 (`presetDef`); fehlt sie oder ist
+  // auch nur ein Feld ungueltig, malt er Mosaik.
+  custom?: Einstellungen['custom'];
   // Schalter "Eye bar" (E4c): Balken ueber den Augen jedes erkannten Gesichts, in jedem Stil. Fehlt = aus (die Nachricht bleibt wie vorher).
   augenbalken?: boolean;
   // Wort-Themen (Kennungen), null = alle Themen des Packs, [] = keins (dann "MIA"). Nur fuer Presets mit Woertern.

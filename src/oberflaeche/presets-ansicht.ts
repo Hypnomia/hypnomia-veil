@@ -3,7 +3,8 @@
 // Die Vorschau ist eine stilisierte Figur (nichts Explizites): Kopf, Augenlinie, Oberkoerper, Unterkoerper mit der Behandlung des Presets.
 import { FARBEN } from './design/werte';
 import { presetDefFuerKennung, presetKatalog } from '../preset-def.ts';
-import { GRUPPEN, GRUPPEN_NAMEN, packGenuegt, presetFuerPack, type Behandlung, type Preset } from '../presets.ts';
+import { CUSTOM_ID, CUSTOM_NAME, CUSTOM_STANDARD, GRUPPEN, GRUPPEN_NAMEN, customKennung, packGenuegt, presetFuerPack, pruefeCustom, type AnyKennung, type Behandlung, type Preset, type PresetKennung } from '../presets.ts';
+import { BAUKASTEN_TEXTE, SCHAU_TEXTE } from './bedienung-texte.ts';
 
 const F = FARBEN;
 
@@ -92,19 +93,21 @@ function flaeche(b: Behandlung, r: Rechteck, id: string, ton = 0): string {
 }
 
 // SVG-Vorschau eines Presets. `id` macht die Filter-Kennung eindeutig (mehrere Vorschauen in einer Seite).
-export function presetVorschau(preset: Preset, id = 'p'): string {
+export function presetVorschau(preset: AnyKennung, id = 'p'): string {
   const d = presetDefFuerKennung(preset);
+  // Die Kennung einer Mischung (E6a) traegt Doppelpunkte: in den Filter-Kennungen nur Buchstaben, Ziffern und Striche.
+  const kenn = preset.replace(/[^A-Za-z0-9_-]/g, '-');
   const fig =
     `<rect x="14" y="30" width="32" height="38" rx="12" fill="${F['rosa-100']}" stroke="${F['rosa-300']}" stroke-width="1.2"/>` +
     `<circle cx="30" cy="15" r="11" fill="${F['rosa-200']}" stroke="${F['rosa-300']}" stroke-width="1.2"/>`;
   let ueber = '';
   if (d.person) {
-    ueber = flaeche(d.koerper!, PERSON, `${id}-f-${preset}`);
+    ueber = flaeche(d.koerper!, PERSON, `${id}-f-${kenn}`);
   } else {
     // Zensurbalken: der Kopf bleibt (Gesicht nur mit Face an), nur die Augen bekommen den Balken.
-    if (d.gesicht && d.augen !== 'balken-immer') ueber += flaeche(d.gesicht, KOPF, `${id}-f-${preset}-k`, 1);
+    if (d.gesicht && d.augen !== 'balken-immer') ueber += flaeche(d.gesicht, KOPF, `${id}-f-${kenn}-k`, 1);
     if (d.augen === 'balken-immer') ueber += schwarz(AUGEN);
-    if (d.koerper) ueber += flaeche(d.koerper, BRUST, `${id}-f-${preset}-b`, 0) + flaeche(d.koerper, UNTEN, `${id}-f-${preset}-u`, 2);
+    if (d.koerper) ueber += flaeche(d.koerper, BRUST, `${id}-f-${kenn}-b`, 0) + flaeche(d.koerper, UNTEN, `${id}-f-${kenn}-u`, 2);
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 72" width="60" height="72" aria-hidden="true" focusable="false">${fig}${ueber}</svg>`;
 }
@@ -117,12 +120,24 @@ export interface KartenOptionen {
   // Kennung der Ueberschrift der ganzen Wahl (Radiogruppe), z. B. `stil-titel`: die vier Gruppen darin sind nur Gruppen mit eigener Ueberschrift.
   labelId: string;
   beiWahl: (p: Preset) => void;
+  // Die Gruppe "Your own mix" mit der Karte "Custom" (E6b B1): nur die Einstellungsseite, das Interview bekommt sie nicht. Antippen ruft `beiCustom`.
+  mitCustom?: boolean;
+  beiCustom?: () => void;
+  // Eine gesperrte Karte (ohne Pack) hat ein eigenes Bedienelement fuer die Schau (E6b B8 e), nie das Radio selbst. `ausloeser` ist dieses Bedienelement.
+  beiSchau?: (preset: Preset, ausloeser: HTMLElement) => void;
+  // Jeder Tipp auf eine freie Karte, auch auf die schon gewaehlte (die loest kein `change` aus): beendet die Schau (B8 d).
+  beiTipp?: () => void;
 }
 
 export interface Karten {
   // Zeichnet die Auswahl: `aktuell` ist das gespeicherte Preset, `miaPack` ob die Mia-Presets frei sind, `mitSticker` ob das Pack Sticker mitbringt.
-  aktualisiere(aktuell: Preset, miaPack: boolean, mitSticker: boolean): void;
-  felder: ReadonlyMap<Preset, HTMLInputElement>;
+  // `custom`: die gespeicherte Mischung (das Kartenbild von Custom ist ihre Strichfigur und folgt jeder Aenderung).
+  aktualisiere(aktuell: PresetKennung, miaPack: boolean, mitSticker: boolean, custom?: unknown): void;
+  felder: ReadonlyMap<PresetKennung, HTMLInputElement>;
+  // Der Platz direkt unter der Karte Custom (nur mit `mitCustom`, ein Geschwister des Hosts, der Host muss im Dokument stehen): hier stehen die drei Zeilen des Baukastens.
+  customOrt: HTMLElement | null;
+  // Die Bedienelemente der Schau je gesperrter Karte (nur sichtbar, solange die Karte gesperrt ist).
+  schauKnoepfe: ReadonlyMap<Preset, HTMLButtonElement>;
 }
 
 function neu<K extends keyof HTMLElementTagNameMap>(tag: K, klasse?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -134,8 +149,9 @@ function neu<K extends keyof HTMLElementTagNameMap>(tag: K, klasse?: string, tex
 
 // Baut die Karten in vier Gruppen in `host`. Die Karten sind Radios (Tastatur, Screenreader); Mia-Presets sind ohne Pack gesperrt, Sticker-Presets ohne Sticker im Pack.
 export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
-  const felder = new Map<Preset, HTMLInputElement>();
+  const felder = new Map<PresetKennung, HTMLInputElement>();
   const karten = new Map<Preset, HTMLLabelElement>();
+  const schauKnoepfe = new Map<Preset, HTMLButtonElement>();
   host.classList.add('preset-wahl');
   // Eine einzige Radiogruppe (name gilt fuer alle zwoelf Karten), darin vier benannte Gruppen: so sagt der Screenreader "Auswahl 3 von 12".
   host.setAttribute('role', 'radiogroup');
@@ -150,7 +166,7 @@ export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
     gruppe.setAttribute('aria-labelledby', titelId);
     const liste = neu('div', 'preset-liste');
     for (const d of presetKatalog().filter((p) => p.gruppe === g)) {
-      const id = d.id;
+      const id = d.id as Preset; // der Katalog hat nur die zwoelf Presets (Custom steht nicht darin)
       const label = neu('label', 'preset-karte');
       const feld = neu('input');
       feld.type = 'radio';
@@ -165,25 +181,97 @@ export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
       const box = neu('span', 'preset-box');
       box.append(bild, text);
       label.append(feld, box);
+      feld.addEventListener('click', () => o.beiTipp?.());
       feld.addEventListener('change', () => {
         if (feld.checked) o.beiWahl(id);
       });
       felder.set(id, feld);
       karten.set(id, label);
-      liste.append(label);
+      // Gesperrt heisst: nicht waehlbar. Die Schau startet ein eigenes Bedienelement ueber der Karte (nicht im Label, nicht das Radio), mit klarem Namen.
+      const huelle = neu('div', 'preset-huelle');
+      huelle.append(label);
+      if (o.beiSchau) {
+        const schau = neu('button', 'preset-schau');
+        schau.type = 'button';
+        schau.hidden = true;
+        schau.setAttribute('aria-label', SCHAU_TEXTE.kartenName(d.name));
+        schau.addEventListener('click', () => o.beiSchau!(id, schau));
+        schauKnoepfe.set(id, schau);
+        huelle.append(schau);
+      }
+      liste.append(huelle);
     }
     gruppe.append(titel, liste);
     host.append(gruppe);
   }
+  // Gruppe "Your own mix" mit der Karte "Custom" (E6b B1), in derselben Radiogruppe: der Vorleser sagt "13 von 13".
+  let customOrt: HTMLElement | null = null;
+  let customFeld: HTMLInputElement | null = null;
+  let customBild: HTMLElement | null = null;
+  let customStand = '';
+  if (o.mitCustom) {
+    const gruppe = neu('div', 'preset-gruppe preset-gruppe-custom');
+    gruppe.setAttribute('role', 'group');
+    const titelId = `${o.praefix}-gruppe-custom`;
+    const titel = neu('h3', 'preset-gruppe-titel', BAUKASTEN_TEXTE.gruppe);
+    titel.id = titelId;
+    gruppe.setAttribute('aria-labelledby', titelId);
+    const liste = neu('div', 'preset-liste');
+    const label = neu('label', 'preset-karte');
+    const feld = neu('input');
+    feld.type = 'radio';
+    feld.name = o.name;
+    feld.value = CUSTOM_ID;
+    feld.id = `${o.praefix}-custom`;
+    const bild = neu('span', 'preset-bild');
+    const text = neu('span', 'preset-text');
+    text.append(neu('strong', undefined, CUSTOM_NAME));
+    const box = neu('span', 'preset-box');
+    box.append(bild, text);
+    label.append(feld, box);
+    feld.addEventListener('click', () => o.beiTipp?.());
+    feld.addEventListener('change', () => {
+      if (feld.checked) o.beiCustom?.();
+    });
+    const huelle = neu('div', 'preset-huelle');
+    huelle.append(label);
+    liste.append(huelle);
+    customOrt = neu('div', 'preset-custom-ort');
+    customOrt.id = `${o.praefix}-custom-ort`;
+    customOrt.hidden = true;
+    gruppe.append(titel, liste);
+    host.append(gruppe);
+    // Die Zeilen stehen direkt unter der Gruppe (die Custom-Gruppe ist die letzte), aber ausserhalb der Radiogruppe der Karten: sie sind eigene Radiogruppen.
+    host.after(customOrt);
+    felder.set(CUSTOM_ID, feld);
+    customFeld = feld;
+    customBild = bild;
+  }
   return {
     felder,
-    aktualisiere(aktuell, miaPack, mitSticker) {
+    customOrt,
+    schauKnoepfe,
+    aktualisiere(aktuell, miaPack, mitSticker, custom) {
       const gilt = presetFuerPack(aktuell, miaPack, mitSticker);
       for (const [id, feld] of felder) {
-        feld.checked = id === gilt;
+        if (id === CUSTOM_ID) continue;
+        // Custom (E6a) hat keine Karte unter diesen zwoelf: ist es gewaehlt, ist keine Karte angehakt (nie die von Mosaik).
+        feld.checked = aktuell !== CUSTOM_ID && id === gilt;
         const gesperrt = !packGenuegt(presetDefFuerKennung(id).braucht, miaPack, mitSticker);
         feld.disabled = gesperrt;
-        karten.get(id)!.classList.toggle('gesperrt', gesperrt);
+        karten.get(id as Preset)!.classList.toggle('gesperrt', gesperrt);
+        const schau = schauKnoepfe.get(id as Preset);
+        if (schau) schau.hidden = !gesperrt;
+      }
+      if (customFeld) {
+        customFeld.checked = aktuell === CUSTOM_ID;
+        if (customOrt) customOrt.hidden = aktuell !== CUSTOM_ID;
+        // Das Kartenbild ist die Strichfigur der gespeicherten Mischung und folgt jeder Aenderung.
+        const kennung = customKennung(pruefeCustom(custom) ?? CUSTOM_STANDARD);
+        if (customBild && customStand !== kennung) {
+          customStand = kennung;
+          customBild.innerHTML = presetVorschau(kennung, o.praefix);
+        }
       }
     },
   };

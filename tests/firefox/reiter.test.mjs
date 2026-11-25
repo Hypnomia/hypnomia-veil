@@ -166,7 +166,7 @@ try {
   pruefe(bau.every((b) => b.rolle === 'tabpanel' && b.benannt) && bau.filter((b) => b.offen).length === 1, 'tabpanel je Reiter, genau eines offen');
   pruefe(JSON.stringify(bau.map((b) => b.tabindex)) === '[0,-1,-1,-1,-1,-1,-1]', 'Tab-Halt nur am gewaehlten Reiter');
   const aufgebaut = await driver.executeScript(`return { zonen: document.querySelectorAll('#panel-zonen #zonen-wahl .v-chip').length, karten: document.querySelectorAll('#panel-stil #preset-karten label.preset-karte').length, verborgen: document.querySelectorAll('[role=tabpanel][hidden]').length }`);
-  pruefe(aufgebaut.zonen === 10 && aufgebaut.karten === 12 && aufgebaut.verborgen === 6, `alle Module in verborgenen Reitern aufgebaut ${JSON.stringify(aufgebaut)}`);
+  pruefe(aufgebaut.zonen === 10 && aufgebaut.karten === 13 && aufgebaut.verborgen === 6, `alle Module in verborgenen Reitern aufgebaut ${JSON.stringify(aufgebaut)}`);
 
   // ---- Anker beim Laden (D3) und beim Wechsel ----
   for (const [anker, reiter] of ANKER) {

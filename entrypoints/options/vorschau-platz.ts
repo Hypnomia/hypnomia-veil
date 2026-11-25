@@ -3,7 +3,7 @@
 // oder ohne Beispielbilder im Bau die Stilvorschau mit Etikett. Sie liest nur, sie schreibt nie und hat keine eigene Kopie der Einstellungen: grund.ts ruft
 // `zeigeVorschau` mit dem Stand, der wirklich gilt.
 import '../../src/oberflaeche/bausteine/bausteine.css';
-import { baueLiveVorschau, type VorschauStand } from '../../src/oberflaeche/vorschau/ansicht';
+import { baueLiveVorschau, type SchauWahl, type VorschauStand } from '../../src/oberflaeche/vorschau/ansicht';
 import { VORSCHAU_KOPF, VORSCHAU_LABEL } from './reiter-daten';
 
 const spalte = document.getElementById('vorschau-spalte');
@@ -16,4 +16,12 @@ spalte?.append(kopf, vorschau.element);
 
 export function zeigeVorschau(stand: VorschauStand): void {
   vorschau.aktualisiere(stand);
+}
+
+// Schau gesperrter Stile ohne Pack (E6b B8): nur ein Zustand dieser Vorschau, nichts wird gespeichert oder gesendet.
+export function starteSchau(wahl: SchauWahl, ausloeser: HTMLElement): void {
+  vorschau.zeigeSchau(wahl, ausloeser);
+}
+export function beendeSchau(): void {
+  vorschau.beendeSchau();
 }

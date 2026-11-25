@@ -10,10 +10,11 @@ import type { PackKurz } from '../../pack/vertrag';
 import { baueVorschauPlatz } from '../bausteine/bausteine';
 import { el, knopf, neueKennung } from '../bausteine/dom';
 import { beobachteGesichter, type GesichterStand } from '../gesichter-status';
+import { SCHAU_TEXTE } from '../bedienung-texte';
 import { VORSCHAU_ALT_OFFEN, VORSCHAU_HINWEIS, VORSCHAU_KACHEL, VORSCHAU_NICHTS, VORSCHAU_PUNKTE_LABEL, VORSCHAU_PUNKT_NAMEN, VORSCHAU_SCHLIESSEN, vorschauAlt } from '../gemeinsam';
 import { presetVorschau } from '../presets-ansicht';
 import { ATTR_VORSCHAU, ATTR_VORSCHAU_BREMSE, ATTR_VORSCHAU_KENNUNG, TESTHAKEN } from './haken';
-import { zeichenSchluessel, type VorschauEingabe } from './rechnung';
+import { SCHAU_PACK, schauEinstellungen, zeichenSchluessel, type VorschauEingabe } from './rechnung';
 import { zeichneBeispiel } from './zeichner';
 
 const ENTPRELL_MS = 100;
@@ -27,9 +28,20 @@ export interface VorschauStand {
   gesichter?: GesichterStand | null;
 }
 
+// Die Schau eines gesperrten Stils ohne Pack (E6b B8): der gedachte Teil der Einstellungen (so, wie die Wahl mit Pack gespeichert wuerde) und die Art, die den Satz bestimmt.
+export interface SchauWahl {
+  teil: Partial<Einstellungen>;
+  art: 'karte' | 'baustein';
+}
+
 export interface LiveVorschau {
   element: HTMLElement;
   aktualisiere(stand: VorschauStand): void;
+  // Schau: nur ein Zustand dieser Ansicht, sie schreibt nichts in den Speicher und schickt keine Nachricht. `ausloeser`: das Bedienelement, das sie gestartet hat (dorthin
+  // kehrt der Fokus nach "Back to yours" zurueck).
+  zeigeSchau(wahl: SchauWahl, ausloeser?: HTMLElement | null): void;
+  beendeSchau(): void;
+  laeuftSchau(): boolean;
 }
 
 export interface LiveVorschauOptionen {
@@ -63,6 +75,10 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
   let nochMal: ReturnType<typeof setTimeout> | null = null;
   let gezeigteBilder = 0;
   let aktuellesBild: BeispielKennung = 'vorn';
+  // Schau (E6b B8): `basis` ist die Unterschrift der Einstellungen und des Packs beim Start; jede Aenderung davon beendet sie.
+  let schau: { wahl: SchauWahl; basis: string; ausloeser: HTMLElement | null } | null = null;
+  let schauAngezeigt = false; // das gezeigte Bild ist ein Schau-Bild (Marke, Satz und Knopf folgen dem Bild, nicht der Anforderung)
+  const unterschrift = (v: VorschauStand): string => JSON.stringify([v.einstellungen, v.pack?.id ?? null, v.pack?.importiert ?? 0, v.pack?.freischaltungen ?? null, v.pack?.sticker ?? 0]);
 
   // ---------- Bausteine der Ansicht ----------
   const kachel = knopf('v-vorschau-kachel');
@@ -130,7 +146,42 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
   });
 
   const skizze = el('div', 'v-vorschau-skizze');
-  platz.element.append(punkte.gruppe, hinweis, offenHinweis, dialog);
+  // Schau: die Marke steht als Text im DOM an der Kachel (in jeder Groesse), der Satz im breiten Raster und im Fenster (ein Vorleser hoert ihn einmal: der Satz im Fenster
+  // ist nur bei geoeffnetem Fenster da), der Knopf beendet sie.
+  const marke = el('span', 'v-vorschau-marke', SCHAU_TEXTE.marke);
+  marke.hidden = true;
+  platz.flaeche.parentElement?.append(marke);
+  const schauSatz = el('p', 'v-vorschau-schau', '');
+  schauSatz.hidden = true;
+  schauSatz.setAttribute('role', 'status');
+  const dialogSchauSatz = el('p', 'v-vorschau-dialog-hinweis', '');
+  dialogSchauSatz.hidden = true;
+  const zurueck = knopf('v-vorschau-zurueck', SCHAU_TEXTE.zurueck);
+  zurueck.hidden = true;
+  zurueck.addEventListener('click', () => {
+    const ziel = schau?.ausloeser;
+    beende();
+    // Der Fokus bleibt auf einem sinnvollen Element: dem Bedienelement, das die Schau gestartet hat, sonst der Kachel.
+    if (ziel && ziel.isConnected && !ziel.hidden) ziel.focus();
+    else kachel.focus();
+  });
+  dialog.insertBefore(dialogSchauSatz, zu);
+  platz.element.append(punkte.gruppe, hinweis, offenHinweis, schauSatz, zurueck, dialog);
+  const zeigeSchauUi = (an: boolean): void => {
+    schauAngezeigt = an;
+    marke.hidden = !an;
+    schauSatz.hidden = !an;
+    dialogSchauSatz.hidden = !an;
+    zurueck.hidden = !an;
+    const satz = schau ? (schau.wahl.art === 'karte' ? SCHAU_TEXTE.satzKarte : SCHAU_TEXTE.satzBaustein) : schauSatz.textContent;
+    if (an && schauSatz.textContent !== satz) {
+      schauSatz.textContent = satz;
+      dialogSchauSatz.textContent = satz;
+    }
+    // die gezeigte Kachel traegt die Marke auch fuer Vorleser (der Name der Kachel sagt es)
+    if (an) kachel.setAttribute('data-veil-schau', '1');
+    else kachel.removeAttribute('data-veil-schau');
+  };
 
   // ---------- Anzeige ----------
   let zeigtBild = false;
@@ -181,15 +232,18 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
     if (!TESTHAKEN || !stand) return;
     platz.element.setAttribute(
       ATTR_VORSCHAU,
-      JSON.stringify({ angefordert: angeforderterSchluessel, gezeigt: gezeigterSchluessel, anzahl: gezeigteBilder, bild: aktuellesBild, offen: !offenHinweis.hidden, stil: presetDef(stand.einstellungen, stand.pack).gilt.id }),
+      JSON.stringify({ angefordert: angeforderterSchluessel, gezeigt: gezeigterSchluessel, anzahl: gezeigteBilder, bild: aktuellesBild, offen: !offenHinweis.hidden, stil: wirkDef(stand).gilt.id, schau: schauAngezeigt, schauAngefordert: schau !== null }),
     );
   };
 
   // ---------- Eingaben ----------
+  // Was die Vorschau zeigt: die Einstellungen des Nutzers, in der Schau die gedachten (der angetippte Stil mit dem gedachten Pack, in dem alles frei ist).
+  const wirkEinst = (v: VorschauStand): Einstellungen => (schau ? schauEinstellungen(v.einstellungen, schau.wahl.teil) : v.einstellungen);
+  const wirkDef = (v: VorschauStand): { gewaehlt: ReturnType<typeof presetDef>['gewaehlt']; gilt: ReturnType<typeof presetDef>['gilt'] } => presetDef(wirkEinst(v), schau ? SCHAU_PACK : v.pack);
   const gesichterJetzt = (): GesichterStand | null => (stand && stand.gesichter !== undefined ? stand.gesichter : eigeneGesichter);
   const bildJetzt = (): BeispielKennung => {
     if (gewaehlt) return gewaehlt;
-    const gilt = stand ? presetDef(stand.einstellungen, stand.pack).gilt : null;
+    const gilt = stand ? wirkDef(stand).gilt : null;
     return gilt && nutztMiasGesicht(gilt.id) ? 'portraet' : 'vorn';
   };
   const eingabeJetzt = (): VorschauEingabe | null => {
@@ -199,8 +253,9 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
     const g = gesichterJetzt();
     const test = TESTHAKEN ? document.documentElement.getAttribute(ATTR_VORSCHAU_KENNUNG) : null;
     return {
-      einstellungen: stand.einstellungen,
+      einstellungen: wirkEinst(stand),
       pack: stand.pack,
+      ...(schau ? { schau: true } : {}),
       gesichter: g ? { fertig: g.fertig, mit: g.mit } : null,
       bild,
       breite: b.breite,
@@ -210,7 +265,7 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
   };
 
   async function zeichne(mein: number, a: VorschauEingabe, schluessel: string, versuch: number): Promise<void> {
-    const gilt = presetDef(a.einstellungen, a.pack).gilt;
+    const gilt = presetDef(a.einstellungen, a.schau ? SCHAU_PACK : a.pack).gilt;
     try {
       if (TESTHAKEN) {
         const bremse = document.documentElement.getAttribute(ATTR_VORSCHAU_BREMSE);
@@ -223,6 +278,7 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
         bilderDa = false;
         gezeigterSchluessel = schluessel;
         zeigeSkizze(gilt.id, gilt.name, a.bild);
+        zeigeSchauUi(!!a.schau);
         schreibeHaken();
         return;
       }
@@ -231,6 +287,7 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
       if (mein !== seq) return; // ein neueres Bild wurde angefordert: dieses wird nie mehr gezeigt
       gezeigterSchluessel = schluessel;
       zeigeBild(r.bild, gilt.name, a.bild, r.offen); // bei null Flaechen das offene Bild mit Hinweis, sonst nie das unverdeckte Bild
+      zeigeSchauUi(!!a.schau);
       schreibeHaken();
       // Mias Gesicht noch nicht lesbar, obwohl die Suche fertig meldet (die Ablage wird kurz nach der Meldung geschrieben): ein paar Mal nachlesen.
       if (r.gesichtOffen && versuch < GESICHT_VERSUCHE && a.gesichter?.fertig && a.gesichter.mit > 0) {
@@ -247,6 +304,7 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
       // Bild nicht ladbar oder Fehler beim Malen: ehrlich zurueck auf die Strichzeichnung (nie das Rohbild).
       gezeigterSchluessel = schluessel;
       zeigeSkizze(gilt.id, gilt.name, a.bild);
+      zeigeSchauUi(!!a.schau);
       schreibeHaken();
     }
   }
@@ -267,6 +325,13 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
     };
     if (sofort) los();
     else zeitgeber = setTimeout(los, ENTPRELL_MS);
+  }
+
+  // Schau beenden: danach zeigt die Vorschau wieder, was gilt (V8: neu angefordert, das alte Bild bleibt bis das neue da ist).
+  function beende(): void {
+    if (!schau) return;
+    schau = null;
+    anfordern(true);
   }
 
   function waehle(bild: BeispielKennung): void {
@@ -309,11 +374,21 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
   // Vor dem ersten Ergebnis steht die Strichzeichnung; sie weicht dem Bild, sobald es fertig ist.
   return {
     element: platz.element,
+    zeigeSchau: (wahl, ausloeser = null) => {
+      if (!stand) return;
+      // Nur eine Schau auf einmal: eine neue ersetzt die alte. Nichts wird gespeichert oder gesendet, die Ansicht rechnet nur anders.
+      schau = { wahl, basis: unterschrift(stand), ausloeser };
+      anfordern(true);
+    },
+    beendeSchau: beende,
+    laeuftSchau: () => schau !== null,
     aktualisiere: (neu) => {
       const erstes = stand === null;
+      // Jede Aenderung einer Einstellung oder des Packs beendet die Schau (B8 d).
+      if (schau && unterschrift(neu) !== schau.basis) schau = null;
       stand = neu;
       pflegeBeobachter();
-      const gilt = presetDef(neu.einstellungen, neu.pack).gilt;
+      const gilt = wirkDef(neu).gilt;
       // Bis das erste Bild da ist (oder ohne Beispielbilder) zeigt der Platz den Stil als Strichzeichnung, sofort.
       if (!zeigtBild && (erstes || bilderDa === false)) zeigeSkizze(gilt.id, gilt.name);
       anfordern(erstes);

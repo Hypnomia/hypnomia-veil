@@ -14,7 +14,7 @@ import { hashe } from '../../src/pack/hash';
 import { rahmenBreite } from '../../src/erkenner/stile';
 import { stickerRechteck } from '../../src/sticker';
 import { presetDef } from '../../src/preset-def';
-import { PRESET_IDS } from '../../src/presets';
+import { PRESET_IDS, wahlAusDef } from '../../src/presets';
 import { mitReitern } from './einstellungen-ordnung';
 import { VORSCHAU_ALT_OFFEN, VORSCHAU_HINWEIS, VORSCHAU_KACHEL, VORSCHAU_NICHTS, VORSCHAU_PUNKTE_LABEL, VORSCHAU_PUNKT_NAMEN, vorschauAlt } from '../../src/oberflaeche/gemeinsam';
 
@@ -149,7 +149,7 @@ function echteNachricht(k: string, einstRoh: Record<string, unknown>, pack: { im
       schwelle: e.schwelle,
       zonen: e.zonen,
       rand: e.rand,
-      preset: gilt.id,
+      ...wahlAusDef(gilt), // bei Custom `preset: 'custom'` samt der ersetzten Mischung (E6a C7), sonst die Kennung
       ...(e.augenbalken ? { augenbalken: true } : {}),
       ...(e.woerterThemen === null ? {} : { woerterThemen: e.woerterThemen }),
       ...(nutztPack ? { packStand: pack?.importiert ?? 0 } : {}),
@@ -971,4 +971,58 @@ test('Rueckfall: ohne Beispielbilder im Bau zeigt der Platz wie bisher die Stric
     await ctx.close();
     await rm(profil2, { recursive: true, force: true });
   }
+});
+
+// ---------- Custom-Baukasten (Phase 11 E6a, T7) ----------
+
+const GESICHT_ZONEN = zonenNur(['face', ...BEDECKBAR.slice(0, 3)]);
+const MISCHUNGEN_OHNE_PACK = [
+  { gesicht: 'mosaik', flaeche: 'mosaik', woerter: false },
+  { gesicht: 'blur', flaeche: 'schwarz', woerter: true },
+  { gesicht: 'schwarz', flaeche: 'blur', woerter: false },
+  { gesicht: 'schwarz', flaeche: 'sticker', woerter: true }, // Sticker ohne Pack: Mosaik
+  { gesicht: 'mia', flaeche: 'schwarz', woerter: true }, // Mias Gesicht ohne Pack: Mosaik
+  { gesicht: 'sticker', flaeche: 'mosaik', woerter: false },
+];
+
+test('T7 Custom ohne Pack: sechs Mischungen mal vier Bilder, Gesichtszone an (Vorschau gleich Antwort von pruefe); eine Mischung mit Eye bar und eine mit allen Zonen', async () => {
+  test.setTimeout(900_000);
+  await entfernePack();
+  const alle: string[] = [];
+  let n = 0;
+  for (const custom of MISCHUNGEN_OHNE_PACK) {
+    alle.push(...(await vergleiche(`custom ${JSON.stringify(custom)}`, { preset: 'custom', custom, zonen: GESICHT_ZONEN }, null)));
+    n += BILDER.length;
+  }
+  alle.push(...(await vergleiche('custom Schwarz Weich Eye bar an', { preset: 'custom', custom: { gesicht: 'blur', flaeche: 'schwarz', woerter: true }, augenbalken: true, zonen: GESICHT_ZONEN }, null)));
+  alle.push(...(await vergleiche('custom Mosaik Blur alle Zonen', { preset: 'custom', custom: { gesicht: 'mosaik', flaeche: 'blur', woerter: false }, zonen: ZONEN_ALLE }, null)));
+  n += 2 * BILDER.length;
+  console.log(`chromium: T7 ohne Pack: ${n} Vergleiche (mit Bild ${mitBildZaehler}, ohne Flaeche ${ohneBildZaehler} seit Start), ${alle.length} Abweichungen${alle.length ? `\n${alle.join('\n')}` : ''}`);
+  expect(alle).toEqual([]);
+});
+
+test('T7 Custom mit Pack: zwei Mischungen mit Mias Gesicht und Sticker, vier Bilder, nach den Toleranzen von V2 mit Dummy-Pack', async () => {
+  test.setTimeout(900_000);
+  await entfernePack();
+  const portrait = readFileSync(path.join(erweiterung, 'beispiel', 'portraet.webp'));
+  const toene = [0, 60, 120, 180, 240, 300];
+  const extraPatches = [];
+  for (const hue of toene) {
+    const bild = await sharp(portrait).resize({ width: 800 }).modulate({ hue }).jpeg({ quality: 90 }).toBuffer();
+    extraPatches.push({ name: `patch/mit-gesicht-${hue}.jpg`, typ: 'image/jpeg', daten: new Uint8Array(bild) });
+  }
+  const { bytes } = await baueDummy({ extraPatches });
+  await importiere(bytes, 'dummy-custom.miapack');
+  const hilf = await context.newPage();
+  await hilf.goto(optionsUrl());
+  await expect.poll(async () => (await ausWorker({ ziel: 'erkenner', typ: 'gesichtsscan' }))?.fertig, { timeout: 60_000, intervals: [500] }).toBe(true);
+  const pack = (await leseSpeicher(hilf, 'pack')).pack as { importiert: number };
+  await hilf.close();
+  const alle: string[] = [];
+  const vorher = toleriert.length;
+  alle.push(...(await vergleiche('custom mia und sticker', { preset: 'custom', custom: { gesicht: 'mia', flaeche: 'sticker', woerter: false }, zonen: GESICHT_ZONEN }, pack)));
+  alle.push(...(await vergleiche('custom sticker und mosaik mit Woertern', { preset: 'custom', custom: { gesicht: 'sticker', flaeche: 'mosaik', woerter: true }, zonen: GESICHT_ZONEN }, pack)));
+  console.log(`chromium: T7 mit Pack: 8 Vergleiche, ${alle.length} Abweichungen, ${toleriert.length - vorher} nur innerhalb der Toleranz gleich${alle.length ? `\n${alle.join('\n')}` : ''}`);
+  expect(alle).toEqual([]);
+  await entfernePack();
 });

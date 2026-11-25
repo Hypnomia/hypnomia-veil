@@ -87,7 +87,7 @@ test('Aufbau: tablist mit sieben tab, jedes tab steuert ein tabpanel, genau eine
       ueber: !!document.querySelector('#panel-ueber #ueber h2'),
       verborgen: document.querySelectorAll('[role=tabpanel][hidden]').length,
     }));
-    expect(aufgebaut).toEqual({ zonen: 10, karten: 12, pack: true, ueber: true, verborgen: 6 });
+    expect(aufgebaut).toEqual({ zonen: 10, karten: 13, pack: true, ueber: true, verborgen: 6 });
   } finally {
     await seite.close();
   }

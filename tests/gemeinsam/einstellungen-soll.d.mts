@@ -4,6 +4,7 @@ export const SOLL_IDS: string[];
 export const SOLL_OHNE_ID: string[];
 export const BEHAELTER: string[];
 export const PRESET_IDS_SOLL: string[];
+export const SCHAU_KARTEN_SOLL: number;
 export const ZONEN_SOLL: string[];
 export const BAUSTEINE_SOLL: Record<string, string[] | { mit: string[]; ohne: string[] }>;
 export const LISTEN_ZEILE: Record<string, string>;

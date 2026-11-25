@@ -2135,3 +2135,95 @@ test('P13 Pack ohne Sticker: das Preset sticker gilt als Mosaik im Video, der Pa
   await m.s.close();
   await entfernePack();
 });
+
+// ---------- Custom-Baukasten (Phase 11 E6a, C11, T6) ----------
+// Die Zonen-Leinwand malt die Flaeche der Mischung (`preset: 'custom'` mit `custom: { gesicht, flaeche, woerter }`), ohne Pack; ein Baustein wird bei laufendem Video
+// gewechselt; und "ganz" (der Rueckfall auf das ganze Bild) folgt der Behandlung der Flaeche.
+const MISCHUNG_SCHWARZ = { gesicht: 'blur', flaeche: 'schwarz', woerter: true };
+
+test('P14 custom im Video (Gesicht weich, Flaeche schwarz mit Wort): die Koerper-Flaechen schwarz mit dem Wort MIA, kein Rahmen; ein Baustein im laufenden Video gewechselt: neu gemalt ohne Mischzustand', async () => {
+  test.setTimeout(420_000);
+  const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'custom', an: BEDECKBAR, art: (a) => a.includes('schwarz-wort'), extra: { custom: MISCHUNG_SCHWARZ, schwelle: 0.3 } });
+  expect(m.v.arten.every((a) => a === 'schwarz-wort' || a === 'schwarz'), `Zeichenarten ${JSON.stringify(m.v.arten)}`).toBe(true);
+  const f = groessteFrei(m.v, 'schwarz-wort')!;
+  const k = kenn(m.ref, m.aus, f, 6, m.v.flaechen);
+  console.log(`chromium: P14 custom schwarz-wort ${JSON.stringify(k)}`);
+  expect(k.dunkel, 'ueberwiegend schwarz').toBeGreaterThan(0.6);
+  expect(k.wort, 'pinkes Wort').toBeGreaterThan(80);
+  expect(k.rahmen, 'Schwarz mit Wort hat keinen Rahmen').toBeLessThan(10);
+  expect(ausserhalb(m.ref, m.aus, m.v.flaechen)).toBeLessThan(6);
+  // Wechsel der Flaeche auf Weichzeichner, Mosaik, Schwarz ohne Wort: die Leinwand zeichnet neu, nie alte und neue Zeichenarten zugleich
+  const wechsle = async (custom: Record<string, unknown>, art: string[]) => {
+    await setze({ custom });
+    const gesehen: string[][] = [];
+    await wartePoll(async () => {
+      const v = await lies(m.s);
+      if (v && v.arten.length) gesehen.push(v.arten);
+      return !!v && v.ansicht === 'zonen' && v.arten.length > 0 && v.arten.every((x) => art.includes(x)) && (await attr(m.s, 'v1', 'data-veil')) === 'zensiert';
+    }, 60_000);
+    const gemischt = gesehen.filter((a) => a.some((x) => !art.includes(x)) && a.some((x) => art.includes(x)));
+    expect(gemischt, `alte und neue Zeichenarten zugleich: ${JSON.stringify(gemischt)}`).toEqual([]);
+  };
+  await wechsle({ ...MISCHUNG_SCHWARZ, flaeche: 'blur' }, ['blur']);
+  const b = await augenblick(m.s, (a) => a.length > 0 && a.every((x) => x === 'blur'));
+  expect(kenn(m.ref, b.aus, b.v.flaechen[0]!, 3).rahmen, 'Blur ohne Rahmen').toBeLessThan(10);
+  await wechsle({ ...MISCHUNG_SCHWARZ, flaeche: 'mosaik', woerter: false }, ['mosaik']);
+  const mo = await augenblick(m.s, (a) => a.length > 0 && a.every((x) => x === 'mosaik'));
+  expect(kenn(m.ref, mo.aus, mo.v.flaechen[0]!, 0).rahmen, 'Mosaik mit Rahmen').toBeGreaterThan(Math.min(mo.v.flaechen[0]![2]!, mo.v.flaechen[0]![3]!) * 2);
+  await wechsle({ ...MISCHUNG_SCHWARZ, flaeche: 'schwarz', woerter: false }, ['schwarz']);
+  const sw = await augenblick(m.s, (a) => a.length > 0 && a.every((x) => x === 'schwarz'));
+  expect(kenn(m.ref, sw.aus, groesste(sw.v, 'schwarz')!, 6).dunkel, 'Schwarz deckt').toBeGreaterThan(0.95);
+  await m.s.close();
+});
+
+test('P14b custom im Video, ungueltige Mischung oder Mias Gesicht und Sticker ohne Pack: die Leinwand malt Mosaik', async () => {
+  test.setTimeout(300_000);
+  const faelle: Array<[string, unknown]> = [
+    ['Mischung ungueltig', { gesicht: 'schwarz', flaeche: 'regenbogen', woerter: true }],
+    ['Mias Gesicht und Sticker ohne Pack', { gesicht: 'mia', flaeche: 'sticker', woerter: false }],
+  ];
+  for (const [name, custom] of faelle) {
+    const m = await messePreset({ satz: 'nsfw', bild: KOERPER, preset: 'custom', an: BEDECKBAR, art: (a) => a.length > 0, extra: { custom } });
+    console.log(`chromium: P14b ${name}: Zeichenarten ${JSON.stringify(m.v.arten)}`);
+    expect(m.v.arten.every((a) => a === 'mosaik'), `${name}: Zeichenarten ${JSON.stringify(m.v.arten)}`).toBe(true);
+    const k = kenn(m.ref, m.aus, m.v.flaechen[0]!, 0);
+    expect(k.rahmen, `${name}: Mosaik mit Rahmen`).toBeGreaterThan(Math.min(m.v.flaechen[0]![2]!, m.v.flaechen[0]![3]!) * 2);
+    await m.s.close();
+  }
+});
+
+test('P15 "ganz" folgt der Flaeche der Mischung: mit Flaeche Schwarz ist das ganze Bild schwarz, mit Flaeche Weichzeichner nie schwarz und ohne Rahmen', async () => {
+  test.setTimeout(300_000);
+  for (const [flaeche, schwarz] of [['schwarz', true], ['blur', false]] as const) {
+    await setze({ preset: 'custom', custom: { gesicht: 'mosaik', flaeche, woerter: false }, zonen: zonenNur(['face']), rand: 0.15, schwelle: 0.1, pause: false });
+    const s = await oeffneBild('sfw', GESICHT, 'ohne=1&kurz=1');
+    await neuesVideo(s, { id: 'v1' });
+    let gesehen: { dunkel: number; rosa: number; arten: string[] } | null = null;
+    await wartePoll(async () => {
+      const v = await lies(s);
+      if (!v || v.ansicht !== 'ganz') return false;
+      const png = await pix(await s.screenshot({ type: 'png' }));
+      const nach = await lies(s);
+      if (!nach || nach.ansicht !== 'ganz') return false;
+      let dunkel = 0;
+      let rosa = 0;
+      let n = 0;
+      for (let y = 0; y < 360; y++) {
+        for (let x = 0; x < 640; x++) {
+          if (x < 100 && y > 315) continue;
+          const i = (y * png.b + x) * 3;
+          n++;
+          if (png.daten[i]! < 12 && png.daten[i + 1]! < 12 && png.daten[i + 2]! < 12) dunkel++;
+          if (png.daten[i]! > 240 && Math.abs(png.daten[i + 1]! - 79) < 14 && Math.abs(png.daten[i + 2]! - 163) < 14) rosa++;
+        }
+      }
+      gesehen = { dunkel: dunkel / n, rosa, arten: nach.arten };
+      return true;
+    }, 60_000);
+    console.log(`chromium: P15 ganzes Bild mit Flaeche ${flaeche}: ${JSON.stringify(gesehen)}`);
+    if (schwarz) expect(gesehen!.dunkel, 'das ganze Bild ist im Stil der Flaeche (Schwarz) gedeckt').toBeGreaterThan(0.85);
+    else expect(gesehen!.dunkel, 'Weichzeichner ist nicht schwarz').toBeLessThan(0.2);
+    expect(gesehen!.rosa, 'kein Rahmen im ganzen Bild').toBeLessThan(20);
+    await s.close();
+  }
+});

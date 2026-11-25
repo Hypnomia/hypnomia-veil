@@ -5,7 +5,7 @@
 
 import type { Zone } from '../einstellungen';
 import { presetDefFuerKennung } from '../preset-def.ts';
-import { BEHANDLUNGEN, behandlungFuerZone, ganzesBildBehandlung, hatWort, ohneWort, type Behandlung, type Preset } from '../presets.ts';
+import { BEHANDLUNGEN, behandlungFuerZone, ganzesBildBehandlung, hatWort, ohneWort, type AnyKennung, type Behandlung } from '../presets.ts';
 import type { GrauBild } from './daumen.ts';
 import { verfolgeBox, type BoxF, type VerfolgungsOptionen } from './verfolgung.ts';
 
@@ -158,24 +158,24 @@ export interface ZonenLage {
   wortPasst: boolean;
 }
 
-export function wirksameBehandlung(preset: Preset, zone: Zone, behandlung?: Behandlung): Behandlung {
+export function wirksameBehandlung(preset: AnyKennung, zone: Zone, behandlung?: Behandlung): Behandlung {
   return behandlung ?? behandlungFuerZone(preset, zone);
 }
 
 // Ersatz fuer Mias Gesicht: die Koerper-Behandlung (nie wieder Mias Gesicht).
-export function ersatzFuer(preset: Preset, ersatz?: Behandlung): Behandlung {
+export function ersatzFuer(preset: AnyKennung, ersatz?: Behandlung): Behandlung {
   if (ersatz && ersatz !== 'mia-gesicht') return ersatz;
   // Sticker-Zensur: ohne Angabe des Erkenners ist der Ersatz der Sticker (die Koerper-Behandlung des Presets), nicht das Mosaik des ganzen Bildes.
   return presetDefFuerKennung(preset).koerper === 'sticker' ? 'sticker' : ganzesBildBehandlung(preset);
 }
 
 // Braucht die Flaeche ein Wort (auch als Ersatz fuer ein fehlendes Mia-Gesicht)? Dann holt der Aufrufer es, sonst nicht.
-export function brauchtWort(preset: Preset, zone: Zone, behandlung?: Behandlung, ersatz?: Behandlung): boolean {
+export function brauchtWort(preset: AnyKennung, zone: Zone, behandlung?: Behandlung, ersatz?: Behandlung): boolean {
   const b = wirksameBehandlung(preset, zone, behandlung);
   return hatWort(b) || (b === 'mia-gesicht' && hatWort(ersatzFuer(preset, ersatz)));
 }
 
-export function stilFuerZone(preset: Preset, zone: Zone, l: ZonenLage): Zeichenart {
+export function stilFuerZone(preset: AnyKennung, zone: Zone, l: ZonenLage): Zeichenart {
   let b = wirksameBehandlung(preset, zone, l.behandlung);
   if (b === 'mia-gesicht') {
     if (l.gesichtPasst) return 'mia-gesicht';
@@ -209,7 +209,7 @@ export interface Spur {
 
 export interface SpurParameter {
   // Wirksames Preset: fehlt `behandlung` auf einer Seite, wird vor dem Vergleich die Behandlung der Tabelle nach der Zone eingesetzt (keine Doppelspuren).
-  preset?: Preset;
+  preset?: AnyKennung;
   zuordnungIou: number;
   halten: number;
 }

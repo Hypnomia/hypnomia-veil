@@ -369,7 +369,9 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
     // Zensurbalken und der Schalter Eye bar (E4c): Augen immer dazu. Also laeuft YuNet dann auch bei ausgeschalteten Augen. Den Schalter traegt die
     // aufgeloeste Definition (`presetDef`), nicht diese Stelle.
     const def = presetDef(e).gewaehlt;
-    const ganz = ganzesBildBehandlung(e.preset);
+    // Die Kennung der aufgeloesten Definition (bei Custom die der Mischung, E6a C4/C7): jede Stelle unten liest damit, nie `e.preset` (das nur `custom` hiesse).
+    const kennungStil = def.id;
+    const ganz = ganzesBildBehandlung(kennungStil);
     const gesicht = await sucheGesichter(e, arbeit.quelle, arbeit.breite, arbeit.hoehe);
     const tNachStart = jetzt();
     const alle = gesicht?.gesichter ? kombiniereGesichter(rohTreffer, gesicht.gesichter, arbeit.breite, arbeit.hoehe) : rohTreffer;
@@ -385,20 +387,20 @@ async function pruefeAufPlatz(n: NachrichtErkennerPruefe, schrankeMs: number, he
       const stand = n.einstellungen?.packStand;
       const packStand = typeof stand === 'number' ? stand : undefined;
       const kennung = bildKennung(n);
-      const gesichter = nutztMiasGesicht(e.preset) ? await gesichterFuer(kennung, flaechen, packStand) : null;
+      const gesichter = nutztMiasGesicht(kennungStil) ? await gesichterFuer(kennung, flaechen, packStand) : null;
       // Darstellungsgroesse zu Arbeitsbild (fuer Mindestgroessen); Balken-Presets: PNG, wenn die Quelle Durchsichtiges hat.
       const anzeigeSkala = n.breite > 0 && n.hoehe > 0 ? Math.min(n.breite / arbeit.breite, n.hoehe / arbeit.hoehe) : 1;
       let sticker: Awaited<ReturnType<typeof stickerFuer>> | null = null;
       try {
-        sticker = nutztSticker(e.preset) ? await stickerFuer(kennung, flaechen, packStand, anzeigeSkala) : null;
+        sticker = nutztSticker(kennungStil) ? await stickerFuer(kennung, flaechen, packStand, anzeigeSkala) : null;
       } catch {
         sticker = null;
       }
       try {
-        const woerter = await woerterFuer(kennung, flaechen, e.woerterThemen, packStand, e.preset);
+        const woerter = await woerterFuer(kennung, flaechen, e.woerterThemen, packStand, kennungStil);
         const nurSchwarz = def.augen !== 'wie-koerper';
         const png = nurSchwarz && !bewegtesSvg && kannAlpha(blob.type) && hatTransparenz(arbeit.quelle, arbeit.breite, arbeit.hoehe);
-        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, e.preset, { anzeigeSkala, png, gesichter: gesichter?.bilder, woerter, sticker: sticker?.bilder, stickerSchluessel: sticker?.schluessel });
+        bild = await rendereZensur(arbeit.quelle, arbeit.breite, arbeit.hoehe, flaechen, kennungStil, { anzeigeSkala, png, gesichter: gesichter?.bilder, woerter, sticker: sticker?.bilder, stickerSchluessel: sticker?.schluessel });
       } finally {
         gesichter?.freigeben();
         sticker?.freigeben();

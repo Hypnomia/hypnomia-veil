@@ -12,7 +12,7 @@
 import type { Zone } from '../einstellungen';
 import { patchPasst } from '../erkenner/stile';
 import { presetDefFuerKennung } from '../preset-def';
-import { ganzesBildBehandlung, hatWort, malLauf, personenGruppen, wortPasst, type Preset } from '../presets';
+import { ganzesBildBehandlung, hatWort, malLauf, personenGruppen, wortPasst, type AnyKennung } from '../presets';
 import { groesstesFreiesRechteck } from '../erkenner/verschmelzen';
 import {
   ATTR_LEINWAND,
@@ -128,7 +128,7 @@ export interface LeinwandHaken {
   lebt(): boolean;
   sichtbar(): boolean;
   // Wirksames Preset (Mia-Presets nur mit Pack, sonst schon Mosaik; src/pack/vertrag.ts presetFuerPackKurz).
-  preset(): Preset;
+  preset(): AnyKennung;
   // Zaehler der Spruenge des Schleiers (seeking, seeked ohne Schleifenumlauf).
   sprungZaehler(): number;
   // null = das Video ist (weiter) fuer die Leinwand geeignet.

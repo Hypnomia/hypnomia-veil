@@ -239,8 +239,10 @@ async function leereAblage(): Promise<void> {
 }
 
 // Preset von einem Pack-Preset (Mia oder Sticker) zurueck auf Mosaik, aber nur, wenn es auch so steht (jede Speicherung setzt alle Seiten neu).
+// Custom (E6a C5) bleibt, wie gespeichert: `gilt` ersetzt dort bausteinweise (Mias Gesicht, Sticker werden Mosaik), die Mischung geht nicht verloren.
 async function setzeStilZurueck(): Promise<void> {
-  if (presetDef(await ladeEinstellungen()).gewaehlt.braucht !== null) await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
+  const e = await ladeEinstellungen();
+  if (e.preset !== 'custom' && presetDef(e).gewaehlt.braucht !== null) await aendereEinstellungen({ preset: OHNE_PACK_PRESET });
 }
 
 // Entfernt das Pack: zuerst IndexedDB leeren, dann Kurzfassung weg, dann Stil zurueck auf Mosaik. Bleibt nach dem Leeren etwas

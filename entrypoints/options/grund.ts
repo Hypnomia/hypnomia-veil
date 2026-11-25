@@ -1,15 +1,17 @@
 // Einstellungsseite, Grundeinstellungen (Session 11, Auftrag S, Entscheidung 133): Status und Pause, Stimmung, Zonen, Stil und Strict.
 // Dieselben Einstellungen wie im Popup, derselbe Speicher (src/einstellungen.ts); beide Seiten zeigen nach einer Aenderung denselben Stand.
 // Texte nur per textContent.
-import { STANDARD, beiEinstellungsAenderung, ladeEinstellungen, waehlePreset, type Einstellungen, type VideoModus } from '../../src/einstellungen';
+import { STANDARD, beiEinstellungsAenderung, ladeEinstellungen, waehleCustom, waehlePreset, type Einstellungen, type VideoModus } from '../../src/einstellungen';
 import { HINWEIS_FACE_EIN, HINWEIS_KEIN_GESICHT, HINWEIS_KEINE_WOERTER, HINWEIS_WORT_OHNE_PACK, stimmungsWort } from '../../src/oberflaeche/gemeinsam';
 import { waehleStilHinweise, waehleZonenHinweis } from '../../src/oberflaeche/hinweise';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { baueKarten } from '../../src/oberflaeche/presets-ansicht';
-import { zeigeVorschau } from './vorschau-platz';
+import { baueBaukasten } from '../../src/oberflaeche/baukasten-ansicht';
+import { faceSchreibteil, flaecheSchreibteil, woerterSchreibteil } from '../../src/oberflaeche/baukasten';
+import { beendeSchau, starteSchau, zeigeVorschau } from './vorschau-platz';
 import { presetSatz, zonenHinweisTeile } from '../../src/oberflaeche/preset-texte';
 import { presetDef } from '../../src/preset-def';
-import type { PresetDef } from '../../src/presets';
+import { CUSTOM_STANDARD, pruefeCustom, type PresetDef } from '../../src/presets';
 import { ladeThemen } from '../../src/pack/woerter';
 import { speichere } from './grund-speichern';
 import { haengeStufenwahl } from './bedienung-stufen';
@@ -45,7 +47,27 @@ const karten = baueKarten(el<HTMLDivElement>('preset-karten'), {
   praefix: 'preset',
   labelId: 'stil-titel',
   // Wechsel auf ein Preset mit Mias Gesicht schaltet Face ein (waehlePreset); dann steht ein kurzer Hinweis da, bis ein anderes Preset gewaehlt wird.
+  mitCustom: true,
+  beiTipp: () => beendeSchau(),
+  // Die Wahl einer freien Karte beendet die Schau (B8 d). Gesperrte Karten sind nicht waehlbar: ihr eigenes Bedienelement startet die Schau, gespeichert wird nichts.
+  beiSchau: (preset, ausloeser) => {
+    if (aktuell) starteSchau({ teil: waehlePreset(aktuell, preset).teil, art: 'karte' }, ausloeser);
+  },
+  // Custom waehlen: der gespeicherte Stil wird Custom mit der vorhandenen Mischung (Mias Gesicht schaltet Face ein wie bei den Mia-Presets, C10).
+  beiCustom: () => {
+    beendeSchau();
+    let faceEin = false;
+    void aendere((alt) => {
+      const r = waehleCustom(alt, alt.custom);
+      faceEin = r.faceEingeschaltet;
+      return r.teil;
+    }).then((gespeichert) => {
+      faceHinweisAn = gespeichert && faceEin;
+      if (aktuell) zeichnePreset(aktuell);
+    });
+  },
   beiWahl: (preset) => {
+    beendeSchau();
     let faceEin = false;
     void aendere((alt) => {
       const r = waehlePreset(alt, preset);
@@ -61,6 +83,40 @@ const karten = baueKarten(el<HTMLDivElement>('preset-karten'), {
 
 let pack: PackKurz | null = null;
 let aktuell: Einstellungen | null = null;
+
+const ALLES_FREI = { mia: true, sticker: true };
+// Was das Pack jetzt freischaltet (die Schreibfunktionen des Baukastens speichern keinen gesperrten Baustein).
+const packFrei = (): { mia: boolean; sticker: boolean } => ({ mia: istFreigeschaltet(pack, 'stil:mia-patch'), sticker: istFreigeschaltet(pack, 'zensur:sticker') });
+// Die drei Zeilen des Baukastens unter der Karte Custom (E6b). Jede Wahl beendet die Schau und schreibt in einem Zug (die Rechnung steht in src/oberflaeche/baukasten.ts).
+const baukasten = baueBaukasten({
+  beiFace: (wahl) => {
+    beendeSchau();
+    let faceEin = false;
+    void aendere((alt) => {
+      const teil = faceSchreibteil(alt, wahl, packFrei());
+      faceEin = teil !== null && wahl === 'mia' && !alt.zonen.face.an; // Hinweis nur, wenn wirklich geschrieben wird
+      return teil ?? {};
+    }).then((gespeichert) => {
+      faceHinweisAn = gespeichert && faceEin;
+      if (aktuell) zeichnePreset(aktuell);
+    });
+  },
+  beiFlaeche: (wahl) => {
+    beendeSchau();
+    void aendere((alt) => flaecheSchreibteil(alt, wahl, packFrei()) ?? {});
+  },
+  beiWoerter: (an) => {
+    beendeSchau();
+    void aendere((alt) => woerterSchreibteil(alt, an) ?? {});
+  },
+  beiSchau: (zeile, wert, ausloeser) => {
+    if (!aktuell) return;
+    // die Schau rechnet den Baustein, wie er mit Pack gewaehlt waere: alles frei
+    const teil = zeile === 'face' ? faceSchreibteil(aktuell, wert, ALLES_FREI) : flaecheSchreibteil(aktuell, wert, ALLES_FREI);
+    if (teil) starteSchau({ teil, art: 'baustein' }, ausloeser);
+  },
+});
+karten.customOrt?.append(baukasten.element);
 
 // ---------- Anzeige ----------
 
@@ -111,7 +167,8 @@ function zeichnePreset(e: Einstellungen): void {
   const mitSticker = istFreigeschaltet(pack, 'zensur:sticker');
   const def = presetDef(e, pack).gilt;
   const gilt = def.id;
-  karten.aktualisiere(e.preset, frei, mitSticker);
+  karten.aktualisiere(e.preset, frei, mitSticker, e.custom);
+  baukasten.zeichne({ stand: e, frei: { mia: frei, sticker: mitSticker }, gilt: def.mischung ?? pruefeCustom(e.custom) ?? CUSTOM_STANDARD });
   // Platz der festen Vorschau (E4d1): derselbe Stil, der wirklich gilt, nur gelesen.
   zeigeVorschau({ einstellungen: e, pack, gesichter });
   stilHinweis.textContent = presetSatz(gilt, frei, gesichter?.fertig ? gesichter.mit : null);

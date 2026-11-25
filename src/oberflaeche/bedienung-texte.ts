@@ -57,3 +57,32 @@ export const ZONEN_VERWORFEN = 'Your zones changed elsewhere while you chose, so
 
 // Eine Wahl der Erwachsenenseiten, die verworfen wurde, weil sich die Form der Gruppe zwischen Klick und Speichern geaendert hat (Pack kam oder ging).
 export const ERWACHSEN_VERWORFEN = `${NAME_ERWACHSEN} changed elsewhere while you chose, so I kept the saved choice. Choose again if you still want it.`;
+
+// ---------- Custom-Baukasten (Phase 11 E6b, B11) ----------
+// Karte "Custom" in der Gruppe "Your own mix" und die drei Zeilen darunter (nur Einstellungsseite). Der Satz unter der Wahl steht an der Definition (CUSTOM_SATZ in src/presets.ts).
+export const BAUKASTEN_TEXTE = {
+  gruppe: 'Your own mix',
+  karte: 'Custom',
+  zeilen: { face: 'Face', flaeche: 'Everything else', woerter: 'Words' },
+  face: { nothing: 'Nothing', bar: 'Bar', mia: 'My face', sticker: 'Sticker', mosaik: 'Mosaic', blur: 'Blur', schwarz: 'Black' },
+  flaeche: { schwarz: 'Black', mosaik: 'Mosaic', blur: 'Blur', sticker: 'Stickers' },
+  hinweisNothing: 'Faces stay open. Face is off in your zones.',
+  hinweisBar: 'Just a black bar over the eyes. The rest of the face stays open.',
+  hinweisWortNein: 'Words need Black or Mosaic to sit on.',
+  // Ein Baustein ohne Freischaltung: Name fuer Vorleser (Antippen startet die Schau); steht er schon im Speicher, gilt der eine Satz (auch im Popup).
+  gesperrtName: (name: string): string => `${name}, comes with my Pack, preview`,
+  gespeichertGesperrt: 'Part of your mix needs my Pack. That part is Mosaic for now.',
+} as const;
+
+// Schau gesperrter Stile ohne Pack (E6b B8): die Marke an der Kachel, der Satz (Karte oder Baustein) und der Knopf zum Beenden. Die Schau schreibt nichts.
+export const SCHAU_TEXTE = {
+  marke: 'Pack',
+  satzKarte: 'With my Pack it looks like this. Right now I use Mosaic for you.',
+  satzBaustein: 'With my Pack it looks like this. Right now that part is Mosaic.',
+  zurueck: 'Back to yours',
+  // Name des Bedienelements einer gesperrten Karte fuer Vorleser
+  kartenName: (name: string): string => `${name}, comes with my Pack, preview`,
+} as const;
+
+// Interview (B9): Custom hat dort keine Karte; steht es im Speicher, sagt diese Zeile es.
+export const INTERVIEW_CUSTOM_ZEILE = 'Your own mix is on. You change it in the settings.';

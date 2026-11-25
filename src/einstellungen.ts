@@ -9,8 +9,8 @@ export const BEDECKBARE_ZONEN: ReadonlySet<Zone> = new Set<Zone>(['breast', 'gen
 
 // Zensur-Preset (ZENSUR-PRESETS-BAUPLAN, ersetzt die frueheree Stil-Wahl): Tabelle und Logik in src/presets.ts. Mia-Presets gelten nur mit
 // Pack (presetFuerPack), sonst zeichnet der Erkenner Mosaik. Alte gespeicherte `stil`-Werte werden beim Laden zu Presets (presetAusStil).
-import { nutztMiasGesicht, PACK_PRESET, STANDARD_PRESET, THEMA_ID_MUSTER, MAX_THEMEN, istPreset, presetAusStil, zonenFuerPreset as zonenFuerPresetAllgemein, type Preset, type PresetDef } from './presets.ts';
-export { PRESET_IDS, type Preset } from './presets.ts';
+import { CUSTOM_ID, CUSTOM_STANDARD, nutztMiasGesicht, PACK_PRESET, STANDARD_PRESET, THEMA_ID_MUSTER, MAX_THEMEN, istPresetKennung, presetAusStil, pruefeCustom, wirkKennungVon, zonenFuerPreset as zonenFuerPresetAllgemein, type AnyKennung, type CustomMischung, type Preset, type PresetDef, type PresetKennung } from './presets.ts';
+export { PRESET_IDS, type CustomMischung, type Preset, type PresetKennung } from './presets.ts';
 
 // Videos (Bauplan Video-Zonen): 'zonen' = laufende Videos werden nur an den erkannten Stellen verdeckt (Leinwand-Wiedergabe, Stil wie bei Bildern),
 // 'ganz' = das ganze Video unscharf wie bisher. Standard 'zonen'; ist ein Video nicht dafuer geeignet, gilt fuer dieses Video 'ganz'.
@@ -30,7 +30,11 @@ export interface Einstellungen {
   pause: boolean;
   strict: boolean;
   schwelle: number;
-  preset: Preset;
+  // Der gewaehlte Stil: eines der zwoelf Presets oder `custom` (Phase 11 E6a, der Baukasten); bei `custom` gilt die Mischung in `custom`.
+  preset: PresetKennung;
+  // Die Mischung des Stils Custom (E6a C1): im selben Speicherobjekt wie `preset`, damit es nie "Kennung da, Definition noch nicht geladen" gibt. Steht immer da (Standard
+  // alles Mosaik, ohne Woerter), wirkt aber nur bei `preset: 'custom'`. Ist sie ungueltig (auch nur ein Feld), setzt `vervollstaendige` den Standard, nie eine teilweise Reparatur.
+  custom: CustomMischung;
   // Schalter "Eye bar" (Phase 11 E4c): ein schwarzer Balken ueber den Augen jedes erkannten Gesichts, zusaetzlich zum gewaehlten Stil und unabhaengig von den
   // Zonen-Schaltern. Standard aus. Frueher war Eye bar ein eigener Stil (`preset: 'augenbalken'`); `vervollstaendige` wandert den alten Stand.
   augenbalken: boolean;
@@ -154,6 +158,7 @@ export const STANDARD: Einstellungen = {
   strict: false,
   schwelle: 0.1,
   preset: STANDARD_PRESET,
+  custom: { ...CUSTOM_STANDARD },
   augenbalken: false,
   hinweise: { augenbalken: 'keiner' },
   woerterThemen: null,
@@ -183,11 +188,24 @@ export const STANDARD: Einstellungen = {
 // (Entscheidung der Inhaberin), sonst saehe man kein einziges Gesicht von Mia. Gilt nur beim Wechsel (vorher kein Mia-Preset) und nur, wenn
 // Face aus war; spaeter abgeschaltet bleibt es aus, es wird nie bei jedem Laden neu eingeschaltet. `faceEingeschaltet` sagt der Oberflaeche,
 // ob sie den kurzen Hinweis zeigen soll.
-export function waehlePreset(alt: Pick<Einstellungen, 'preset' | 'zonen'>, neu: Preset): { teil: Partial<Einstellungen>; faceEingeschaltet: boolean } {
-  if (nutztMiasGesicht(neu) && !nutztMiasGesicht(alt.preset) && !alt.zonen.face.an) {
+export function waehlePreset(alt: Pick<Einstellungen, 'preset' | 'zonen'> & { custom?: unknown }, neu: Preset): { teil: Partial<Einstellungen>; faceEingeschaltet: boolean } {
+  if (nutztMiasGesicht(neu) && !nutztMiasGesicht(wirkKennungVon(alt)) && !alt.zonen.face.an) {
     return { teil: { preset: neu, zonen: { ...alt.zonen, face: { ...alt.zonen.face, an: true } } }, faceEingeschaltet: true };
   }
   return { teil: { preset: neu }, faceEingeschaltet: false };
+}
+
+// Custom waehlen oder eine Mischung aendern (E6a C10, fuer die Oberflaeche in E6b): dieselbe Regel wie `waehlePreset`. Wechselt der Nutzer auf eine Mischung mit Mias Gesicht
+// (`gesicht: 'mia'`), vorher war kein Mia-Gesicht im Spiel, und Face ist aus, geht Face an und `faceEingeschaltet` sagt es dem Aufrufer. Gilt nur beim Wechsel: wer in
+// Custom mit Mias Gesicht Face abgeschaltet hat und einen anderen Baustein aendert, bekommt Face nicht neu eingeschaltet. Der Teil enthaelt `preset: 'custom'`, die Mischung
+// und bei Face die Zonen. Eine ungueltige Mischung wird nie repariert, sondern durch den Standard (alles Mosaik) ersetzt. Rein.
+export function waehleCustom(alt: Pick<Einstellungen, 'preset' | 'zonen'> & { custom?: unknown }, neu: unknown): { teil: Partial<Einstellungen>; faceEingeschaltet: boolean } {
+  const mischung: CustomMischung = { ...(pruefeCustom(neu) ?? CUSTOM_STANDARD) };
+  const nutztMia = mischung.gesicht === 'mia';
+  if (nutztMia && !nutztMiasGesicht(wirkKennungVon(alt)) && !alt.zonen.face.an) {
+    return { teil: { preset: CUSTOM_ID, custom: mischung, zonen: { ...alt.zonen, face: { ...alt.zonen.face, an: true } } }, faceEingeschaltet: true };
+  }
+  return { teil: { preset: CUSTOM_ID, custom: mischung }, faceEingeschaltet: false };
 }
 
 // Das Preset, das beim ersten Pack gewaehlt wird (src/pack/speicher.ts): `mia-wort`, Face wird mit eingeschaltet (waehlePreset). Rein, damit der Verhaltens-
@@ -200,7 +218,7 @@ export function waehleBeimErstenPack(alt: Pick<Einstellungen, 'preset' | 'zonen'
 // Zonen, die eine Definition wirklich auswertet (src/presets.ts, zonenFuerPreset): bei `balken-immer` (Zensurbalken, Schalter Eye bar) die Schalter plus
 // Augen, sonst die Schalter unveraendert (dasselbe Objekt). Gegeben wird `presetDef(e).gewaehlt` (traegt den Schalter) oder eine Kennung (ohne Schalter).
 // Unabhaengig von der Steigerung.
-export function zonenFuerPreset(preset: Preset | PresetDef | undefined, zonen: Record<Zone, ZonenEinstellung>): Record<Zone, ZonenEinstellung> {
+export function zonenFuerPreset(preset: AnyKennung | PresetDef | undefined, zonen: Record<Zone, ZonenEinstellung>): Record<Zone, ZonenEinstellung> {
   return zonenFuerPresetAllgemein(preset, zonen) as Record<Zone, ZonenEinstellung>;
 }
 
@@ -236,7 +254,7 @@ export function vervollstaendige(roh: unknown): Einstellungen {
   // das Ergebnis enthaelt die Kennung nicht mehr und fasst beim naechsten Lesen nichts mehr an; es gibt keinen Versionszaehler, die Wanderung laeuft bei jedem Lesen
   // und geschrieben wird erst bei der naechsten Aenderung.
   const rohStil = (r as { stil?: unknown }).stil;
-  const wandert = (r as { preset?: unknown }).preset === 'augenbalken' || (!istPreset(r.preset) && rohStil === 'augenbalken');
+  const wandert = (r as { preset?: unknown }).preset === 'augenbalken' || (!istPresetKennung(r.preset) && rohStil === 'augenbalken');
   const rohHinweise = objekt((r as { hinweise?: unknown }).hinweise);
   // Der Merker wird nur beim ersten Mal gesetzt: steht schon ein gueltiger Wert (auch 'keiner'), bleibt er.
   const merker: HinweisMerker = (HINWEIS_MERKER as readonly unknown[]).includes(rohHinweise.augenbalken)
@@ -250,7 +268,9 @@ export function vervollstaendige(roh: unknown): Einstellungen {
     strict: typeof r.strict === 'boolean' ? r.strict : STANDARD.strict,
     schwelle: begrenze(r.schwelle, SCHWELLE_MIN, SCHWELLE_MAX, STANDARD.schwelle),
     // Altbestand: `stil` wird zum Preset (mia-patch zu mia-wort), `preset` gewinnt, wo beides steht.
-    preset: wandert ? STANDARD_PRESET : istPreset(r.preset) ? r.preset : presetAusStil(rohStil) ?? STANDARD_PRESET,
+    preset: wandert ? STANDARD_PRESET : istPresetKennung(r.preset) ? r.preset : presetAusStil(rohStil) ?? STANDARD_PRESET,
+    // E6a C4: gueltig (alle drei Felder) bleibt die Mischung, sonst der Standard; gilt unabhaengig davon, welches Preset gewaehlt ist (C14: wer nie Custom gewaehlt hat, bekommt nur den Standardwert dazu).
+    custom: { ...(pruefeCustom(r.custom) ?? CUSTOM_STANDARD) },
     augenbalken: wandert ? true : wahr((r as { augenbalken?: unknown }).augenbalken, STANDARD.augenbalken),
     hinweise: { augenbalken: merker },
     woerterThemen: Array.isArray(r.woerterThemen)

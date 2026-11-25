@@ -27,6 +27,33 @@ export const PRESET_IDS = [
 ] as const;
 export type Preset = (typeof PRESET_IDS)[number];
 
+// Custom-Baukasten (Phase 11 E6a): ein dreizehnter Stil daneben, den der Nutzer aus Bausteinen mischt. Er steht NICHT im Katalog der zwoelf Karten
+// (`PRESET_IDS`, `presetKatalog`), sondern ist eine eigene Kennung. Im Speicher steht `preset: 'custom'` plus `custom: { gesicht, flaeche, woerter }`.
+//   PresetKennung  was im Speicher stehen darf (`Einstellungen.preset`)
+//   CustomKennung  die abgeleitete Kennung EINER Mischung, `custom:<gesicht>:<flaeche>:<w|->`: jede der 40 Mischungen hat genau eine, so teilen zwei
+//                  Mischungen nie ein gemerktes Objekt (E6a C8). Sie lebt nur im Programm (Definition, Videospur, Schluessel), nie im Speicher.
+//   WirkKennung    die Kennung einer aufgeloesten Definition (`PresetDef.id`): ein Preset der Tabelle oder die Kennung einer Mischung
+export const CUSTOM_ID = 'custom' as const;
+export type PresetKennung = Preset | typeof CUSTOM_ID;
+export type CustomKennung = `custom:${string}`;
+export type WirkKennung = Preset | CustomKennung;
+export type AnyKennung = PresetKennung | CustomKennung;
+
+export const CUSTOM_GESICHT = ['mia', 'sticker', 'mosaik', 'blur', 'schwarz'] as const;
+export const CUSTOM_FLAECHE = ['schwarz', 'mosaik', 'blur', 'sticker'] as const;
+export type CustomGesicht = (typeof CUSTOM_GESICHT)[number];
+export type CustomFlaeche = (typeof CUSTOM_FLAECHE)[number];
+export interface CustomMischung {
+  gesicht: CustomGesicht;
+  flaeche: CustomFlaeche;
+  woerter: boolean;
+}
+// Standard und Rueckfall jeder ungueltigen Mischung: alles Mosaik, ohne Woerter.
+// Name und Satz des Stils Custom (E6b B10, B11): ueberall, wo der Name des Stils steht, stehen diese beiden.
+export const CUSTOM_NAME = 'Custom';
+export const CUSTOM_SATZ = 'You pick the face, the rest and the words. I do it your way.';
+export const CUSTOM_STANDARD: Readonly<CustomMischung> = Object.freeze({ gesicht: 'mosaik', flaeche: 'mosaik', woerter: false });
+
 export type PresetGruppe = 'mia' | 'sticker' | 'klassisch' | 'person';
 
 // Wie die Augen behandelt werden:
@@ -36,8 +63,8 @@ export type PresetGruppe = 'mia' | 'sticker' | 'klassisch' | 'person';
 export type AugenArt = 'wie-koerper' | 'balken-immer';
 
 export interface PresetDef {
-  id: Preset;
-  gruppe: PresetGruppe;
+  id: WirkKennung;
+  gruppe: PresetGruppe | 'custom';
   // Behandlung der Zone Face (nur wenn der Schalter an ist).
   gesicht: Behandlung | null;
   // Behandlung aller anderen Zonen (laut Schaltern).
@@ -52,6 +79,8 @@ export interface PresetDef {
   // Anzeige (Englisch, Mias Stimme; der Texter schaerft nach).
   name: string;
   satz: string;
+  // Nur bei Custom: die Mischung, aus der diese Definition entstand (eingefroren). Bei den zwoelf Presets fehlt sie.
+  mischung?: Readonly<CustomMischung>;
 }
 
 export const PRESETS: Readonly<Record<Preset, PresetDef>> = {
@@ -85,8 +114,113 @@ export function istPreset(x: unknown): x is Preset {
 
 // DIE Nachschlage-Funktion der Tabelle (Phase 11 E4b, Sicherheitsregel S3: im Zweifel Mosaik): eine fehlende oder unbekannte Kennung (auch
 // Prototyp-Namen wie `constructor`, `__proto__`, `toString`) liefert die Definition von Mosaik. Jede Stelle, die die Tabelle liest, geht hierueber.
+// Custom (E6a): die Kennung einer Mischung (`custom:...`, streng geprueft) liefert die Definition dieser Mischung; die blosse Kennung `custom` kennt keine
+// Mischung und gilt wie jede unbekannte als Mosaik (E6a C4, C7). Aus den Einstellungen macht `wirkKennungVon` die Kennung.
 export function presetOderMosaik(kennung: unknown): PresetDef {
-  return typeof kennung === 'string' && Object.hasOwn(PRESETS, kennung) ? PRESETS[kennung as Preset] : PRESETS[STANDARD_PRESET];
+  if (typeof kennung !== 'string') return PRESETS[STANDARD_PRESET];
+  if (Object.hasOwn(PRESETS, kennung)) return PRESETS[kennung as Preset];
+  const m = mischungAusKennung(kennung);
+  return m ? customDef(m) : PRESETS[STANDARD_PRESET];
+}
+
+// ---------- Custom-Baukasten (E6a) ----------
+// Die Behandlung eines Bausteins; `woerter` macht aus Mosaik und Schwarz die Variante mit Wort (alle anderen koennen kein Wort tragen).
+function behandlungFuerBaustein(b: CustomGesicht | CustomFlaeche, woerter: boolean): Behandlung {
+  switch (b) {
+    case 'mia':
+      return 'mia-gesicht';
+    case 'sticker':
+      return 'sticker';
+    case 'blur':
+      return 'blur';
+    case 'mosaik':
+      return woerter ? 'mosaik-wort' : 'mosaik';
+    case 'schwarz':
+      return woerter ? 'schwarz-wort' : 'schwarz';
+  }
+}
+
+const istObjektArt = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.toString.call(x) === '[object Object]';
+
+// Prueft eine rohe Mischung streng (E6a C4): ein einfaches Objekt mit den drei EIGENEN Feldern, `gesicht` und `flaeche` aus ihren Listen, `woerter` ein Boolean.
+// Ein einziges ungueltiges Feld macht die ganze Mischung ungueltig (null), es wird nie teilweise repariert. Fremde Zusatzfelder zaehlen nicht und werden nicht uebernommen.
+// Liefert eine neue, eingefrorene Kopie mit genau den drei Feldern.
+export function pruefeCustom(roh: unknown): Readonly<CustomMischung> | null {
+  if (!istObjektArt(roh)) return null;
+  if (!Object.hasOwn(roh, 'gesicht') || !Object.hasOwn(roh, 'flaeche') || !Object.hasOwn(roh, 'woerter')) return null;
+  const { gesicht, flaeche, woerter } = roh as { gesicht: unknown; flaeche: unknown; woerter: unknown };
+  if (typeof gesicht !== 'string' || !(CUSTOM_GESICHT as readonly string[]).includes(gesicht)) return null;
+  if (typeof flaeche !== 'string' || !(CUSTOM_FLAECHE as readonly string[]).includes(flaeche)) return null;
+  if (typeof woerter !== 'boolean') return null;
+  return Object.freeze({ gesicht: gesicht as CustomGesicht, flaeche: flaeche as CustomFlaeche, woerter });
+}
+
+// Die Kennung einer (gueltigen) Mischung.
+export const customKennung = (m: Readonly<CustomMischung>): CustomKennung => `custom:${m.gesicht}:${m.flaeche}:${m.woerter ? 'w' : '-'}`;
+
+// Die Mischung zu einer Kennung `custom:...`; alles andere (auch die blosse `custom`) null.
+export function mischungAusKennung(kennung: unknown): Readonly<CustomMischung> | null {
+  if (typeof kennung !== 'string') return null;
+  const t = /^custom:([a-z]+):([a-z]+):(w|-)$/.exec(kennung);
+  return t ? pruefeCustom({ gesicht: t[1], flaeche: t[2], woerter: t[3] === 'w' }) : null;
+}
+
+const CUSTOM_DEFS = new Map<string, PresetDef>();
+
+// Die Definition einer Mischung (E6a C2, C3): dasselbe eingefrorene Objekt bei jedem Aufruf, je Mischung genau eines. `gesicht` und `koerper` sind nie null (Regel S3):
+// jeder Baustein ist eine deckende Behandlung. `augen: 'wie-koerper'`, `person: false`. `braucht`: 'sticker', wenn ein Baustein Sticker nutzt, sonst 'pack', wenn Mias
+// Gesicht dabei ist, sonst null. Woerter wirken auf Gesicht und Flaeche gleich, wo die Behandlung ein Wort tragen kann.
+export function customDef(mischung: Readonly<CustomMischung>): PresetDef {
+  const m = pruefeCustom(mischung) ?? CUSTOM_STANDARD;
+  const id = customKennung(m);
+  let d = CUSTOM_DEFS.get(id);
+  if (!d) {
+    const gesicht = behandlungFuerBaustein(m.gesicht, m.woerter);
+    const koerper = behandlungFuerBaustein(m.flaeche, m.woerter);
+    d = Object.freeze({
+      id,
+      gruppe: 'custom' as const,
+      gesicht,
+      koerper,
+      augen: 'wie-koerper' as const,
+      person: false,
+      braucht: gesicht === 'sticker' || koerper === 'sticker' ? ('sticker' as const) : gesicht === 'mia-gesicht' ? ('pack' as const) : null,
+      woerter: hatWort(gesicht) || hatWort(koerper),
+      name: CUSTOM_NAME,
+      satz: CUSTOM_SATZ,
+      mischung: Object.freeze({ ...m }),
+    });
+    CUSTOM_DEFS.set(id, d);
+  }
+  return d;
+}
+
+// Die Mischung, die mit diesem Pack wirklich gilt (E6a C5), bausteinweise: Mias Gesicht ohne Freischaltung `stil:mia-patch` wird Mosaik, Sticker (am Gesicht oder an
+// der Flaeche) ohne `zensur:sticker` wird Mosaik; `woerter` bleibt, der ersetzte Baustein traegt dann das Wort wie jedes Mosaik.
+export function mischungFuerPack(m: Readonly<CustomMischung>, mitMiaPack: boolean, mitSticker: boolean): Readonly<CustomMischung> {
+  const gesicht: CustomGesicht = (m.gesicht === 'mia' && !mitMiaPack) || (m.gesicht === 'sticker' && !mitSticker) ? 'mosaik' : m.gesicht;
+  const flaeche: CustomFlaeche = m.flaeche === 'sticker' && !mitSticker ? 'mosaik' : m.flaeche;
+  return gesicht === m.gesicht && flaeche === m.flaeche ? m : Object.freeze({ gesicht, flaeche, woerter: m.woerter });
+}
+
+// Die Kennung der Definition, die zu gespeicherten Einstellungen gehoert (`gewaehlt`, ohne Pack): `preset: 'custom'` mit gueltiger Mischung ist die Kennung dieser
+// Mischung, ohne gueltige Mischung Mosaik (E6a C4); jede andere Kennung die der Tabelle, unbekannt Mosaik. Nimmt auch die Kennung einer Mischung.
+export function wirkKennungVon(e: { preset?: unknown; custom?: unknown }): WirkKennung {
+  if (e.preset === CUSTOM_ID) {
+    const m = pruefeCustom(e.custom);
+    return m ? customKennung(m) : STANDARD_PRESET;
+  }
+  return presetOderMosaik(e.preset).id;
+}
+
+// Das, was bei Einstellungen und Nachrichten fuer eine aufgeloeste Definition steht: bei einer Mischung `preset: 'custom'` mit der Mischung, sonst die Kennung.
+// So reist die aufgeloeste (nach dem Pack ersetzte) Mischung mit (E6a C7), und der Empfaenger prueft sie nach C4.
+export function wahlAusDef(d: PresetDef): { preset: PresetKennung; custom?: CustomMischung } {
+  return d.mischung ? { preset: CUSTOM_ID, custom: { ...d.mischung } } : { preset: d.id as Preset };
+}
+
+export function istPresetKennung(x: unknown): x is PresetKennung {
+  return x === CUSTOM_ID || istPreset(x);
 }
 
 // Migration: der alte Wert `stil` wird zum Preset. Unbekannt: null. (`augenbalken` ist seit Phase 11 E4c kein Stil mehr, sondern der Schalter
@@ -105,10 +239,12 @@ export function presetAusStil(stil: unknown): Preset | null {
 }
 
 // Das Preset, das wirklich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), Sticker-Presets nur mit Stickern im Pack
-// (`zensur:sticker`), sonst Mosaik. `mitSticker` fehlt = keine Sticker (sicherer Standard).
-export function presetFuerPack(preset: Preset, mitMiaPack: boolean, mitSticker = false): Preset {
+// (`zensur:sticker`), sonst Mosaik. `mitSticker` fehlt = keine Sticker (sicherer Standard). Eine Mischung (Custom) wird bausteinweise ersetzt
+// (`mischungFuerPack`) und liefert die Kennung der ersetzten Mischung.
+export function presetFuerPack(preset: AnyKennung, mitMiaPack: boolean, mitSticker = false): WirkKennung {
   const d = presetOderMosaik(preset);
-  return !packGenuegt(d.braucht, mitMiaPack, mitSticker) ? OHNE_PACK_PRESET : d.id;
+  if (d.mischung) return customKennung(mischungFuerPack(d.mischung, mitMiaPack, mitSticker));
+  return !packGenuegt(d.braucht, mitMiaPack, mitSticker) ? OHNE_PACK_PRESET : (d.id as Preset);
 }
 
 // Reicht das Pack fuer die Anforderung eines Presets (`braucht`)?
@@ -117,14 +253,14 @@ export function packGenuegt(braucht: PresetDef['braucht'], mitMiaPack: boolean, 
 }
 
 // Nutzt dieses Preset Sticker (Flaechen mit der Behandlung `sticker`, auch als Ersatz fuer Mias Gesicht)?
-export const nutztSticker = (preset: Preset): boolean => presetOderMosaik(preset).gesicht === 'sticker' || presetOderMosaik(preset).koerper === 'sticker';
+export const nutztSticker = (preset: AnyKennung): boolean => presetOderMosaik(preset).gesicht === 'sticker' || presetOderMosaik(preset).koerper === 'sticker';
 
 // Zeichnet dieses Preset Mias Gesicht?
-export const nutztMiasGesicht = (preset: Preset): boolean => presetOderMosaik(preset).gesicht === 'mia-gesicht';
+export const nutztMiasGesicht = (preset: AnyKennung): boolean => presetOderMosaik(preset).gesicht === 'mia-gesicht';
 
 // Behandlung fuer ein ganz verdecktes Bild (Steigerung Stufe 4, bewegtes SVG): die Behandlung der Koerper-Zonen, ersatzweise Mosaik.
 // Mias Gesicht, der Augenbalken und der Sticker passen nicht auf ein ganzes Bild (STICKER-BAUPLAN Entscheidung 6: dort bleibt es Mosaik).
-export function ganzesBildBehandlung(preset: Preset): Behandlung {
+export function ganzesBildBehandlung(preset: AnyKennung): Behandlung {
   const k = presetOderMosaik(preset).koerper;
   return k === null || k === 'mia-gesicht' || k === 'balken' || k === 'sticker' ? 'mosaik' : k;
 }
@@ -132,7 +268,7 @@ export function ganzesBildBehandlung(preset: Preset): Behandlung {
 // Behandlung einer Flaeche der Zone `zone` im Preset, aus der Tabelle (die Videozensur nimmt sie, wenn eine Flaeche keine eigene Behandlung traegt;
 // der Erkenner setzt `behandlung` nach derselben Regel, siehe berechneFlaechen in src/erkenner/zonen.ts): Zensurbalken auf den Augen Balken, Gesicht
 // nach `gesicht`, alles andere nach `koerper`. Ohne Eintrag (Gesicht oder Koerper null) Mosaik, nie "nichts".
-export function behandlungFuerZone(preset: Preset, zone: string): Behandlung {
+export function behandlungFuerZone(preset: AnyKennung, zone: string): Behandlung {
   const d = presetOderMosaik(preset);
   if (zone === 'eyes' && d.augen === 'balken-immer') return 'balken';
   return (zone === 'face' ? d.gesicht : d.koerper) ?? 'mosaik';
@@ -145,7 +281,7 @@ export const stilHatBalken = (d: PresetDef): boolean => d.augen === 'balken-imme
 // Zonen, die eine Definition wirklich auswertet (statt der Schalter): hat der Stil den Balken (Zensurbalken), kommen die Augen zu den Schaltern dazu. Mit dem Schalter
 // Eye bar bleiben die Schalter, wie der Nutzer sie hat (R11: der Schalter nimmt nie etwas weg und fuegt keine Augenflaeche hinzu). Sonst dasselbe Objekt.
 // Gegeben wird die aufgeloeste Definition (`presetDef(e).gewaehlt`) oder eine Kennung (dann ohne Schalter).
-export function zonenFuerPreset<T extends { an: boolean; bedeckt?: boolean }>(preset: Preset | PresetDef | undefined, zonen: Record<string, T>): Record<string, T> {
+export function zonenFuerPreset<T extends { an: boolean; bedeckt?: boolean }>(preset: AnyKennung | PresetDef | undefined, zonen: Record<string, T>): Record<string, T> {
   if (!preset) return zonen;
   const d = typeof preset === 'string' ? presetOderMosaik(preset) : preset;
   if (stilHatBalken(d)) return { ...zonen, eyes: { ...zonen.eyes!, an: true } };

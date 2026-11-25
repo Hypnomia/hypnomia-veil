@@ -3,7 +3,7 @@
 // passende Treffersatz und die Flaechen. Flaechen nur ueber `berechneBildFlaechen` (mit `verschmelzen = true` wie im Bild-Weg), keine zweite Rechnung.
 import { vervollstaendige, type Einstellungen } from '../../einstellungen.ts';
 import { presetDef } from '../../preset-def.ts';
-import { nutztMiasGesicht, nutztSticker, type PresetDef } from '../../presets.ts';
+import { nutztMiasGesicht, nutztSticker, wahlAusDef, type PresetDef } from '../../presets.ts';
 import type { PackKurz } from '../../pack/vertrag.ts';
 import type { Flaeche, Treffer } from '../../nachrichten.ts';
 import { trefferFuer, type BeispielKennung } from '../../beispiel.ts';
@@ -23,11 +23,33 @@ export interface VorschauEingabe {
   bild: BeispielKennung;
   breite: number; // natuerliche Groesse des Bildes (die Vorschau rechnet fuer anzeigeSkala 1)
   hoehe: number;
+  // Schau gesperrter Stile ohne Pack (E6b B8): `einstellungen` ist dann die gedachte Wahl (der angetippte Stil, wie er mit Pack gewaehlt waere), und es wird gerechnet, als
+  // haette das Pack alle Freischaltungen. Mias Gesicht und Sticker malt der Zeichner dann als Platzhalter, nie aus dem Pack. Fehlt das Feld: wie bisher.
+  schau?: boolean;
   // Nur der Testbau: die Kennung, aus der die Wahl von Wort, Gesicht und Sticker gewuerfelt wird (sonst `beispiel:<bild>`).
   kennungTest?: string;
 }
 
+// Das gedachte Pack der Schau: alles frei, sonst leer. Es wird nie gespeichert und nie an einen Erkenner geschickt.
+export const SCHAU_PACK: PackKurz = {
+  id: 'schau',
+  version: '0',
+  titel: '',
+  freischaltungen: ['stil:mia-patch', 'zensur:sticker'],
+  bilder: 0,
+  vorschau: 0,
+  chibis: 0,
+  werbung: 0,
+  sticker: 0,
+  groesse: 0,
+  importiert: 0,
+};
+
+// Die gedachten Einstellungen der Schau: die des Nutzers mit dem angetippten Stil (der Teil kommt aus `waehlePreset`, `waehleCustom`, `faceSchreibteil`, `flaecheSchreibteil`).
+export const schauEinstellungen = (einst: Einstellungen, teil: Partial<Einstellungen>): Einstellungen => vervollstaendige({ ...einst, ...teil });
+
 export interface VorschauRechnung {
+  schau: boolean;
   gilt: PresetDef; // das Preset, das wirklich gilt (ohne Pack gilt der Ersatz)
   e: Einstellungen; // so sieht der Erkenner die Einstellungen: aufgeloestes Preset, Zonen, Rand, Schwelle, Eye bar, Wort-Themen
   mitGesichtssuche: boolean;
@@ -49,7 +71,7 @@ export function erkennerEinstellungen(einst: Einstellungen, pack: PackKurz | nul
     schwelle: einst.schwelle,
     zonen: einst.zonen,
     rand: einst.rand,
-    preset: gilt.id,
+    ...wahlAusDef(gilt), // bei Custom `preset: 'custom'` samt der (nach dem Pack ersetzten) Mischung, wie die Nachricht an den Erkenner (E6a C7)
     ...(einst.augenbalken ? { augenbalken: true } : {}),
     ...(einst.woerterThemen === null ? {} : { woerterThemen: einst.woerterThemen }),
   });
@@ -57,7 +79,7 @@ export function erkennerEinstellungen(einst: Einstellungen, pack: PackKurz | nul
 }
 
 export function rechneVorschau(a: VorschauEingabe): VorschauRechnung {
-  const { e, gilt } = erkennerEinstellungen(a.einstellungen, a.pack);
+  const { e, gilt } = erkennerEinstellungen(a.einstellungen, a.schau ? SCHAU_PACK : a.pack);
   const mitGesichtssuche = brauchtGesichtssuche(e);
   // Abgelegt sind die Treffer bei der kleinsten Schwelle; die Vorschau filtert wie die Schwelle der Einstellung (V6).
   // Treffer der Gesichtssuche (YuNet) filtert der Erkenner nicht nach dieser Schwelle, die Vorschau darum auch nicht.
@@ -65,21 +87,23 @@ export function rechneVorschau(a: VorschauEingabe): VorschauRechnung {
   const flaechen = berechneBildFlaechen(treffer, treffer, e, false, a.breite, a.hoehe, true);
   const nutztPack = gilt.braucht !== null || gilt.woerter;
   return {
+    schau: !!a.schau,
     gilt,
     e,
     mitGesichtssuche,
     treffer,
     flaechen,
     kennung: a.kennungTest ?? kennungImProdukt(a.bild),
-    packStand: nutztPack ? (a.pack?.importiert ?? 0) : undefined,
-    nutztGesicht: nutztMiasGesicht(e.preset),
-    nutztSticker: nutztSticker(e.preset),
+    packStand: nutztPack && !a.schau ? (a.pack?.importiert ?? 0) : undefined,
+    // In der Schau kommt nichts aus dem Pack: Gesicht und Sticker sind Platzhalter (zeichner.ts)
+    nutztGesicht: !a.schau && nutztMiasGesicht(gilt.id),
+    nutztSticker: !a.schau && nutztSticker(gilt.id),
   };
 }
 
 // Schluessel des Zeichnens aus ALLEN Eingaben (V8): aendert sich einer, wird neu gezeichnet; bleibt er gleich, nicht.
 export function zeichenSchluessel(a: VorschauEingabe): string {
-  const { e, gilt } = erkennerEinstellungen(a.einstellungen, a.pack);
-  const gesichtStand = nutztMiasGesicht(e.preset) ? (a.gesichter ? [a.gesichter.fertig, a.gesichter.mit] : null) : 0;
-  return JSON.stringify([a.bild, gilt.id, e.schwelle, e.zonen, e.rand, e.augenbalken, e.woerterThemen, a.pack?.id ?? null, a.pack?.importiert ?? 0, a.pack?.sticker ?? 0, gesichtStand, a.breite, a.hoehe, a.kennungTest ?? '']);
+  const { e, gilt } = erkennerEinstellungen(a.einstellungen, a.schau ? SCHAU_PACK : a.pack);
+  const gesichtStand = nutztMiasGesicht(gilt.id) && !a.schau ? (a.gesichter ? [a.gesichter.fertig, a.gesichter.mit] : null) : 0;
+  return JSON.stringify([a.bild, gilt.id, e.schwelle, e.zonen, e.rand, e.augenbalken, e.woerterThemen, a.schau ? 'schau' : (a.pack?.id ?? null), a.schau ? 0 : (a.pack?.importiert ?? 0), a.schau ? 0 : (a.pack?.sticker ?? 0), gesichtStand, a.breite, a.hoehe, a.kennungTest ?? '']);
 }

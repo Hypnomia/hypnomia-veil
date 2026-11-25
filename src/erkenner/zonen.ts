@@ -3,7 +3,7 @@
 
 import type { Einstellungen, Zone } from '../einstellungen';
 import { presetDef } from '../preset-def.ts';
-import { ganzesBildBehandlung, personenGruppen, stilHatBalken, type Preset } from '../presets.ts';
+import { ganzesBildBehandlung, personenGruppen, stilHatBalken, type AnyKennung } from '../presets.ts';
 import type { Box, Flaeche, Treffer } from '../nachrichten';
 import type { YunetGesicht } from './yunet';
 import { setzeWortBoxen, verschmelze } from './verschmelzen.ts';
@@ -332,7 +332,7 @@ export function berechnePersonen(
 
 export function berechneFlaechen(
   treffer: readonly Treffer[],
-  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: Preset; augenbalken?: boolean },
+  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: AnyKennung; custom?: unknown; augenbalken?: boolean },
   breite: number,
   hoehe: number,
   // Ausdruecklich: true nur im Bild-Weg (Phase 11 E1: gleichrangige Flaechen verschmelzen zu Huellen, `wortBox` fuer Aufgelegtes). false: genau die
@@ -363,7 +363,7 @@ export function berechneFlaechen(
     const b = f.zone === 'face' ? d.gesicht : d.koerper;
     return b ? { ...f, behandlung: b } : f;
   });
-  const gleichrangig = verschmelzen ? verschmelze(einzeln, ganzesBildBehandlung(einstellungen.preset ?? 'mosaik')) : einzeln;
+  const gleichrangig = verschmelzen ? verschmelze(einzeln, ganzesBildBehandlung(d.id)) : einzeln;
   const aufgelegt: Flaeche[] = [];
   if (gesichtTausch) aufgelegt.push(...berechneGesichter(treffer, d.koerper ?? undefined, breite, hoehe, einstellungen.rand));
   if (d.augen === 'balken-immer') aufgelegt.push(...berechneAugenbalken(treffer, breite, hoehe));
@@ -377,7 +377,7 @@ export function berechneFlaechen(
 export function berechneBildFlaechen(
   treffer: readonly Treffer[],
   rohTreffer: readonly Treffer[],
-  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: Preset; augenbalken?: boolean },
+  einstellungen: Pick<Einstellungen, 'zonen' | 'rand'> & { preset?: AnyKennung; custom?: unknown; augenbalken?: boolean },
   ganzVerdecken: boolean,
   breite: number,
   hoehe: number,
@@ -385,6 +385,7 @@ export function berechneBildFlaechen(
 ): Flaeche[] {
   const frau = ganzVerdecken ? rohTreffer.find((t) => t.weiblich) : undefined;
   if (!frau) return berechneFlaechen(treffer, einstellungen, breite, hoehe, verschmelzen);
-  const ganz: Flaeche = { zone: frau.zone, box: [0, 0, breite, hoehe], behandlung: ganzesBildBehandlung(einstellungen.preset ?? 'mosaik') };
-  return presetDef(einstellungen).gewaehlt.augen === 'balken-immer' ? [ganz, ...berechneAugenbalken(treffer, breite, hoehe)] : [ganz];
+  const d = presetDef(einstellungen).gewaehlt;
+  const ganz: Flaeche = { zone: frau.zone, box: [0, 0, breite, hoehe], behandlung: ganzesBildBehandlung(d.id) };
+  return d.augen === 'balken-immer' ? [ganz, ...berechneAugenbalken(treffer, breite, hoehe)] : [ganz];
 }

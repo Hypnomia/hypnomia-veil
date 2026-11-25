@@ -11,10 +11,18 @@ let zonenAnpassung: ((e: Einstellungen) => WirksameZonen | null) | null = null;
 export function setzeZonenAnpassung(fn: ((e: Einstellungen) => WirksameZonen | null) | null): void {
   zonenAnpassung = fn;
 }
-// Das Preset, das wirklich gilt (Mia-Presets nur mit Pack, src/pack/vertrag.ts presetFuerPackKurz); null = das eingestellte.
-let presetAnpassung: ((e: Einstellungen) => Einstellungen['preset']) | null = null;
-export function setzePresetAnpassung(fn: ((e: Einstellungen) => Einstellungen['preset']) | null): void {
+// Die Wahl, die wirklich gilt (Mia-Presets nur mit Pack, src/pack/vertrag.ts presetWahlFuerPackKurz): `preset` und bei Custom die nach dem Pack ersetzte Mischung
+// (E6a C7); null = das eingestellte.
+export type PresetWahlAnpassung = Pick<Einstellungen, 'preset'> & Partial<Pick<Einstellungen, 'custom'>>;
+let presetAnpassung: ((e: Einstellungen) => PresetWahlAnpassung) | null = null;
+export function setzePresetAnpassung(fn: ((e: Einstellungen) => PresetWahlAnpassung) | null): void {
   presetAnpassung = fn;
+}
+// Was die Nachricht an `einstellungen` zu Preset und Mischung traegt: die Anpassung, sonst das Eingestellte (bei Custom samt Mischung).
+function presetWahl(e: Einstellungen): PresetWahlAnpassung {
+  const w = presetAnpassung?.(e);
+  if (w) return w.custom ? { preset: w.preset, custom: w.custom } : { preset: w.preset };
+  return e.preset === 'custom' ? { preset: e.preset, custom: e.custom } : { preset: e.preset };
 }
 import {
   ANTWORT_MAX_MS,
@@ -195,7 +203,7 @@ export async function sendePruefe(
       schwelle: e.schwelle,
       zonen: angepasst?.zonen ?? e.zonen,
       rand: e.rand,
-      preset: presetAnpassung?.(e) ?? e.preset,
+      ...presetWahl(e),
       ...(e.augenbalken ? { augenbalken: true as const } : {}),
       ...(e.woerterThemen === null ? {} : { woerterThemen: e.woerterThemen }),
       ...(packStand === undefined ? {} : { packStand }),

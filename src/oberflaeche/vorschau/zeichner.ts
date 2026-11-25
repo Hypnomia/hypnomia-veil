@@ -6,6 +6,7 @@ import { gesichterFuer, stickerFuer, woerterFuer } from '../../erkenner/auswahl'
 import { hatTransparenz, kannAlpha, rendereZensur } from '../../erkenner/stile';
 import { starteGesichtsScan } from '../../pack/patches';
 import { rechneVorschau, type VorschauEingabe } from './rechnung';
+import { PLATZHALTER_GESICHT_B, PLATZHALTER_GESICHT_H, maleHerz, malePlatzhalterGesicht } from './platzhalter';
 
 export interface ZeichenErgebnis {
   bild: string; // Data-Adresse (JPEG oder PNG wie beim Erkenner)
@@ -31,20 +32,29 @@ export async function zeichneBeispiel(a: VorschauEingabe, adresse: string): Prom
     const e = r.e;
     // Mias Gesicht: die Suche in den Patch-Bildern liest in dieser Seite nur die Ablage des Erkenners (V3: kein YuNet hier). Erst lesen, dann waehlen.
     if (r.nutztGesicht) await starteGesichtsScan(r.packStand).catch(() => undefined);
-    const gesichter = r.nutztGesicht ? await gesichterFuer(r.kennung, r.flaechen, r.packStand) : null;
+    // Schau gesperrter Stile (E6b B8): statt Mias Gesicht und der Sticker aus dem Pack die gemalten Platzhalter, sonst derselbe Weg.
+    const platzGesicht = r.schau ? malePlatzhalterGesicht() : null;
+    const platzHerz = r.schau ? maleHerz() : null;
+    const gesichter = r.nutztGesicht
+      ? await gesichterFuer(r.kennung, r.flaechen, r.packStand)
+      : platzGesicht
+        ? { bilder: r.flaechen.map((f) => (f.behandlung === 'mia-gesicht' ? { bild: platzGesicht as CanvasImageSource, ausschnitt: [0, 0, PLATZHALTER_GESICHT_B, PLATZHALTER_GESICHT_H] as [number, number, number, number] } : null)), freigeben: () => undefined }
+        : null;
     const anzeigeSkala = 1;
     let sticker: Awaited<ReturnType<typeof stickerFuer>> | null = null;
+    if (platzHerz) sticker = { bilder: r.flaechen.map((f) => (f.behandlung === 'sticker' || (f.behandlung === 'mia-gesicht' && f.ersatz === 'sticker') ? (platzHerz as CanvasImageSource) : null)), schluessel: r.flaechen.map((f) => `schau|${f.zone}|${f.box.join(',')}`), freigeben: () => undefined } as unknown as Awaited<ReturnType<typeof stickerFuer>>;
     try {
-      sticker = r.nutztSticker ? await stickerFuer(r.kennung, r.flaechen, r.packStand, anzeigeSkala) : null;
+      if (r.nutztSticker) sticker = await stickerFuer(r.kennung, r.flaechen, r.packStand, anzeigeSkala);
     } catch {
       sticker = null;
     }
     try {
       // Woerter erst, wenn `VEIL Wort` wirklich geladen ist (V9): woerterFuer wartet darauf, sobald ein Wort gebraucht wird.
-      const woerter = await woerterFuer(r.kennung, r.flaechen, e.woerterThemen, r.packStand, e.preset);
+      // Schau: das Wort ist immer MIA (leere Themenwahl), nie aus dem Pack.
+      const woerter = await woerterFuer(r.kennung, r.flaechen, r.schau ? [] : e.woerterThemen, r.packStand, r.gilt.id);
       const nurSchwarz = r.gilt.augen !== 'wie-koerper';
       const png = nurSchwarz && kannAlpha(blob.type) && hatTransparenz(bitmap, b, h);
-      const bild = await rendereZensur(bitmap, b, h, r.flaechen, e.preset, {
+      const bild = await rendereZensur(bitmap, b, h, r.flaechen, r.gilt.id, {
         anzeigeSkala,
         png,
         gesichter: gesichter?.bilder,

@@ -31,3 +31,22 @@
 .preset-zeile { display: grid; grid-template-columns: 60px 1fr auto; align-items: center; gap: var(--v-a-3); }
 .preset-zeile .preset-bild svg { display: block; width: 40px; height: 48px; }
 .preset-zeile .preset-name { font-weight: 800; }
+
+/* Custom-Baukasten (E6b): Huelle der Karten (Platz fuer das Bedienelement der Schau), Gruppe "Your own mix" und die drei Zeilen darunter. */
+.preset-huelle { position: relative; min-width: 0; }
+.preset-schau { position: absolute; inset: 0; padding: 0; border: 0; border-radius: var(--v-r-s); background: transparent; cursor: pointer; }
+.preset-schau[hidden] { display: none; }
+.preset-schau:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 2px; }
+.preset-custom-ort { margin-top: var(--v-a-3); }
+.preset-custom-ort[hidden] { display: none; }
+.v-baukasten, .v-baukasten-zeile { display: flex; flex-direction: column; min-width: 0; color: var(--v-text); font-family: var(--v-schrift-text); }
+.v-baukasten-zeile { gap: var(--v-a-3); }
+.v-baukasten { gap: var(--v-a-4); padding: var(--v-a-3); border-radius: var(--v-r-m); border: 1.5px solid var(--v-rand); background: var(--v-glas); }
+.v-bk-gruppe { display: flex; flex-wrap: wrap; gap: var(--v-a-2); }
+.v-bk-huelle { position: relative; display: inline-flex; }
+.v-bk-knopf { min-width: var(--v-fingerziel); min-height: var(--v-fingerziel); padding: 0 var(--v-a-4); border: 1.5px solid var(--v-rand); border-radius: var(--v-r-voll); background: var(--v-weiss); color: var(--v-text); font: 700 14px/1.2 var(--v-schrift-text); cursor: pointer; touch-action: manipulation; }
+.v-bk-knopf[aria-checked='true'] { border: 2px solid var(--v-rosa-700); background: var(--v-rosa-100); color: var(--v-rosa-800); font-weight: 800; }
+.v-bk-knopf:focus-visible, .v-bk-schau:focus-visible { outline: 3px solid var(--v-lav-500); outline-offset: 3px; }
+.v-bk-knopf:disabled { opacity: 0.55; cursor: pointer; }
+.v-bk-schau { position: absolute; inset: 0; padding: 0; border: 0; border-radius: var(--v-r-voll); background: transparent; cursor: pointer; }
+.v-bk-schau[hidden] { display: none; }

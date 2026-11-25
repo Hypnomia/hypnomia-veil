@@ -1,7 +1,7 @@
 // Auswahl der Pack-Inhalte je Flaeche (Mias Gesicht, Sticker, Woerter): stabil je Bild und Flaeche ueber den Schluessel `kennung|zone|box`. Der Erkenner (Hintergrund,
 // Offscreen-Dokument) und die Live-Vorschau der Erweiterungsseiten (src/oberflaeche/vorschau/) benutzen dieses Modul gemeinsam, damit die Vorschau genau die Wahl
 // trifft, die die echte Zensur trifft (Phase 11 E5, V1). Reine Verschiebung aus erkenner.ts, ohne onnxruntime.
-import { ganzesBildBehandlung, hatWort, waehleWort } from '../presets.ts';
+import { ganzesBildBehandlung, hatWort, waehleWort, type AnyKennung } from '../presets.ts';
 import { holeJeFlaeche, stickerPasst } from '../sticker.ts';
 import type { Einstellungen } from '../einstellungen';
 import type { Flaeche } from '../nachrichten';
@@ -69,7 +69,7 @@ export async function woerterFuer(
   flaechen: readonly Flaeche[],
   themen: string[] | null,
   packStand: number | undefined,
-  preset: Einstellungen['preset'],
+  preset: AnyKennung,
 ): Promise<string[]> {
   const standard = ganzesBildBehandlung(preset);
   const braucht = (f: Flaeche): boolean => hatWort(f.behandlung ?? standard) || (f.behandlung === 'mia-gesicht' && !!f.ersatz && hatWort(f.ersatz));

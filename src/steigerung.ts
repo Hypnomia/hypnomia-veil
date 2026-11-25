@@ -5,7 +5,7 @@
 // damit die Einheitstests mit `node --experimental-strip-types` laufen. Ablage nur lokal (storage.local), kein Netzverkehr.
 
 import { zonenFuerPreset, type Einstellungen, type Zone, type ZonenEinstellung } from './einstellungen.ts';
-import { type Preset } from './presets.ts';
+import { type PresetKennung } from './presets.ts';
 import { presetDef } from './preset-def.ts';
 
 export const STEIGERUNG_SCHLUESSEL = 'steigerung';
@@ -103,7 +103,7 @@ export interface WirksameZonen {
 // Zensurbalken und der Schalter Eye bar (E4c): die Steigerung wirkt wie gewohnt (frueher ruhte sie beim Stil Eye bar, Stufe 4 verdeckte kein ganzes Bild;
 // das entfaellt mit der Art `nur-balken`, es gilt die gewoehnliche Regel des gewaehlten Stils), die Augen bleiben zusaetzlich immer an. Die Regel "Augen immer
 // dazu" steht an einer Stelle: `zonenFuerPreset` (src/presets.ts), gefuettert mit der aufgeloesten Definition, die den Schalter traegt (`presetDef`).
-export function wirksameZonen(einstellungen: Pick<Einstellungen, 'zonen'> & { preset?: Preset; augenbalken?: boolean }, stufe: SteigerungStufe): WirksameZonen {
+export function wirksameZonen(einstellungen: Pick<Einstellungen, 'zonen'> & { preset?: PresetKennung; custom?: unknown; augenbalken?: boolean }, stufe: SteigerungStufe): WirksameZonen {
   const def = presetDef(einstellungen).gewaehlt;
   const zonen = Object.fromEntries(
     Object.entries(einstellungen.zonen).map(([z, e]) => [z, { ...e }]),

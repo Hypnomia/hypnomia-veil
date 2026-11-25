@@ -230,12 +230,12 @@ test('Einstellungsseite ohne Pack: zwoelf Karten (Eye bar ist keine Karte mehr, 
   try {
     await seite.goto(optionsUrl());
     const karten = seite.locator('#preset-karten input[name="preset"]');
-    await expect(karten).toHaveCount(12);
-    expect(await karten.evaluateAll((l) => l.map((f) => (f as HTMLInputElement).value))).toEqual([...PRESET_IDS]);
-    await expect(seite.locator('#preset-karten .preset-gruppe')).toHaveCount(4);
-    expect(await seite.locator('#preset-karten .preset-gruppe-titel').allTextContents()).toEqual(['With my face', 'With my stickers', 'Classic', 'Whole person']);
+    await expect(karten).toHaveCount(13); // E6b: dazu die Karte Custom
+    expect(await karten.evaluateAll((l) => l.map((f) => (f as HTMLInputElement).value))).toEqual([...PRESET_IDS, 'custom']);
+    await expect(seite.locator('#preset-karten .preset-gruppe')).toHaveCount(5); // E6b: dazu "Your own mix"
+    expect(await seite.locator('#preset-karten .preset-gruppe-titel').allTextContents()).toEqual(['With my face', 'With my stickers', 'Classic', 'Whole person', 'Your own mix']);
     // jede Karte hat eine Vorschau (SVG) und einen Namen
-    await expect(seite.locator('#preset-karten .preset-bild svg')).toHaveCount(12);
+    await expect(seite.locator('#preset-karten .preset-bild svg')).toHaveCount(13); // E6b
     // Der Schalter Eye bar steht direkt unter dem Raster, ist aus und hat ein Fingerziel von mindestens 44 px Hoehe
     await expect(seite.locator('#augenbalken')).not.toBeChecked();
     await expect(seite.locator('#augenbalken-zeile strong')).toHaveText(EYE_BAR_TITEL);
@@ -558,8 +558,9 @@ test('Mit Pack ohne Gesicht in den Patches: Mia-Presets waehlbar, Chips der Wort
       ['preset-gruppe-sticker', 'With my stickers'],
       ['preset-gruppe-klassisch', 'Classic'],
       ['preset-gruppe-person', 'Whole person'],
+      ['preset-gruppe-custom', 'Your own mix'], // E6b
     ]);
-    expect(await seiteB.locator('#preset-karten input[name="preset"]').count()).toBe(12);
+    expect(await seiteB.locator('#preset-karten input[name="preset"]').count()).toBe(13); // E6b
     // Kein Gesicht in den Patch-Bildern dieses Packs (synthetisch): ehrlicher Hinweis nach fertigem Scan
     await expect(seiteB.locator('#preset-kein-gesicht')).toHaveText(HINWEIS_KEIN_GESICHT, { timeout: 15_000 });
     // Wort-Presets zeigen ohne Chips (hier: mit Pack gibt es Chips) keine Zeile "ohne Pack"

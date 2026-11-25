@@ -735,6 +735,7 @@ section#schritt[data-schritt^='interview'] {
 }
 /* E5: im Streifen (unter 900 px) gibt es die Punkte und den Hinweis nur im Dialog, die Kachel oeffnet ihn. */
 .iv-vorschau .v-vorschau-punkte,
+.iv-vorschau .v-vorschau-schau,
 .iv-vorschau .v-vorschau-hinweis {
   display: none;
 }
@@ -771,6 +772,7 @@ section#schritt[data-schritt^='interview'] {
   .iv-vorschau .v-vorschau-punkte:not([hidden]) {
     display: flex;
   }
+  .iv-vorschau .v-vorschau-schau:not([hidden]),
   .iv-vorschau .v-vorschau-hinweis:not([hidden]) {
     display: block;
   }
@@ -843,6 +845,15 @@ button.textlink {
   }
   .iv-vorschau .v-vorschau-etikett {
     align-self: center;
+    margin: 0;
+  }
+  /* E6b: laeuft die Schau, kommt der Knopf "Back to yours" dazu; er bricht in eine zweite Zeile um, nie waagerecht aus dem Bild (320 px). */
+  .iv-vorschau .v-vorschau-platz {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .iv-vorschau .v-vorschau-zurueck {
     margin: 0;
   }
   .iv-karte .knoepfe {

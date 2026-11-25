@@ -218,7 +218,7 @@ try {
 
   // 1. Einstellungsseite: Eye bar ist ein Schalter unter dem Raster, keine Karte; gespeichert; der alte Stand wandert
   const felder = await driver.findElements(By.css('#preset-karten input[name="preset"]'));
-  pruefe(felder.length === 12, `Einstellungsseite: zwoelf Preset-Karten (${felder.length})`);
+  pruefe(felder.length === 13, `Einstellungsseite: zwoelf Preset-Karten und Custom (${felder.length})`); // E6b
   pruefe((await driver.findElements(By.css('#preset-augenbalken'))).length === 0, 'Eye bar ist keine Karte mehr');
   pruefe(!(await sichtbar('#zonen-hinweis')), 'Zonen-Hinweis ruht ohne Balken-Preset');
   pruefe(!(await driver.findElement(By.css('#augenbalken')).isSelected()), 'Schalter Eye bar ist standardmaessig aus');

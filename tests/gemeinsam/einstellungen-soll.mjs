@@ -41,7 +41,11 @@ export const SOLL_OHNE_ID = ['input[name=einrichten-stufe]'];
 export const BEHAELTER = ['#preset-karten', '#wort-chips'];
 export const PRESET_IDS_SOLL = [
   'mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur', 'mia-sticker', 'sticker', 'mosaik', 'mosaik-wort', 'blur', 'zensurbalken', 'person-mosaik', 'person-blur',
+  // E6b: die dreizehnte Karte (Custom) in der Gruppe "Your own mix"
+  'custom',
 ];
+// E6b: jede der zwoelf Karten hat ein Bedienelement fuer die Schau gesperrter Stile (`.preset-schau`, ohne id, nur bei gesperrter Karte sichtbar).
+export const SCHAU_KARTEN_SOLL = 12;
 export const ZONEN_SOLL = ['eyes', 'mouth', 'face', 'head', 'breast', 'genitals', 'buttocks', 'belly', 'feet', 'armpits'];
 
 // Bausteine (E4d2): Wurzel-id und die Bedienelemente darin als "Art:Kennung" (Art: Rolle, sonst Tag, bei input der Typ).
@@ -55,6 +59,11 @@ export const BAUSTEINE_SOLL = {
   'verweigern-wahl': [...stufen3, 'button:', 'input:range:'],
   'freilegen-wahl': [...stufen3, 'button:', 'input:range:'],
   'lautstaerke-wahl': [...stufen3, 'button:', 'input:range:'],
+  // E6b: die drei Zeilen des Baukastens unter der Karte Custom (immer im DOM, sichtbar nur bei gewaehltem Custom). Zeile Face: sieben Radios und je ein Bedienelement der Schau
+  // (nur bei gesperrtem Baustein sichtbar); Zeile "Everything else": vier Radios und vier der Schau; Words ist ein Schalter.
+  'baukasten-face': [...['nothing', 'bar', 'mia', 'sticker', 'mosaik', 'blur', 'schwarz'].map((w) => `radio:${w}`), ...Array.from({ length: 7 }, () => 'button:')],
+  'baukasten-flaeche': [...['schwarz', 'mosaik', 'blur', 'sticker'].map((w) => `radio:${w}`), ...Array.from({ length: 4 }, () => 'button:')],
+  'baukasten-woerter': ['switch:'],
 };
 // Listen mit wechselndem Inhalt: Selektor der Zeile und die Bedienelemente je Zeile (eine Zeile ohne Bedienelement ist nur die Leerzeile `.leer`).
 export const LISTEN_ZEILE = { '#ausnahmen-liste': 'li', '#seiten-liste': 'li', '#kon-zeiten': '.zeit-zeile' };
@@ -77,7 +86,7 @@ export const SAMMLE_SKRIPT = `
   };
   const schluessel = [];
   const ohneId = {};
-  const inBehaelter = { presets: [], sonst: [] };
+  const inBehaelter = { presets: [], schau: [], sonst: [] };
   const bausteine = {};
   const listen = {};
   for (const k of Object.keys(LISTEN)) listen[k] = { zeilen: [], lose: [] };
@@ -95,7 +104,8 @@ export const SAMMLE_SKRIPT = `
     }
     const b = e.closest(BEHAELTER.join(','));
     if (b) {
-      if (b.id === 'preset-karten') inBehaelter.presets.push(e.id.replace(/^preset-/, ''));
+      if (b.id === 'preset-karten' && e.classList.contains('preset-schau')) inBehaelter.schau.push('schau');
+      else if (b.id === 'preset-karten') inBehaelter.presets.push(e.id.replace(/^preset-/, ''));
       else inBehaelter.sonst.push(b.id + ':' + (e.id || e.tagName));
       continue;
     }
@@ -127,6 +137,7 @@ export function vergleicheBedienelemente(ist, eintraege = {}, optionen = {}) {
   }
   const b = ist.inBehaelter;
   if (JSON.stringify([...b.presets].sort()) !== JSON.stringify([...PRESET_IDS_SOLL].sort())) fehler.push(`Stilkarten ${JSON.stringify(b.presets)}`);
+  if (b.schau.length !== SCHAU_KARTEN_SOLL) fehler.push(`Bedienelemente der Schau an den Karten ${b.schau.length} statt ${SCHAU_KARTEN_SOLL}`);
   if (b.sonst.length) fehler.push(`unerwartet in Behaeltern ${JSON.stringify(b.sonst)}`);
   // Bausteine: Wurzel genau einmal, Inhalt genau nach Regel
   if (ist.fehlende.length) fehler.push(`Baustein fehlt ${JSON.stringify(ist.fehlende)}`);

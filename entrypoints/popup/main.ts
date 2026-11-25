@@ -26,11 +26,10 @@ import { FEHLER_SPEICHERN, NAME_STRENG, STUFE_TEXT, ZONEN_NAMEN, stimmungsWort }
 import { abdeckungStand, popupStufe } from '../../src/oberflaeche/abdeckung';
 import type { Texte } from '../../src/quiz/vertrag';
 import { PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, type PackKurz } from '../../src/pack/vertrag';
-import { packGenuegt } from '../../src/presets';
 import { presetDef } from '../../src/preset-def';
 import { presetVorschau } from '../../src/oberflaeche/presets-ansicht';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
-import { packHinweis, presetSatz, zonenHinweis } from '../../src/oberflaeche/preset-texte';
+import { popupStilText, zonenHinweis } from '../../src/oberflaeche/preset-texte';
 // Session 11 (PHASE-6-AUFTRAEGE-SESSION-11.md): eigene Module je Auftrag, jedes zeichnet nur seinen Platz.
 import './einstieg-hinweis';
 import './version-hinweis';
@@ -196,10 +195,11 @@ function zeichnePreset(e: Einstellungen): void {
   const gilt = def.gilt.id;
   presetBild.innerHTML = presetVorschau(gilt, 'popup');
   presetName.textContent = def.gilt.name;
-  // Sperre der Pack-Presets (Mia, Sticker): der Hinweis auf das Pack hat Vorrang, sonst der Satz zum Preset.
-  const gesperrt = !packGenuegt(def.gewaehlt.braucht, frei, mitSticker);
-  // Ohne Pack steht dabei, was bis dahin gilt (Mosaik); mit Pack aber ohne brauchbares Patch der Hinweis des Packs allein.
-  packHinweis_.textContent = gesperrt ? packHinweis(frei, pack, mitSticker, def.gewaehlt.braucht) + (pack ? '' : T.PACK_HINWEIS_BIS_DAHIN) : presetSatz(gilt, frei, frei && gesichter?.fertig ? gesichter.mit : null);
+  // Sperre der Pack-Presets (Mia, Sticker): der Hinweis auf das Pack hat Vorrang, sonst der Satz zum Preset. Ohne Pack steht dabei, was bis dahin gilt (Mosaik); mit Pack aber
+  // ohne brauchbares Patch der Hinweis des Packs allein. Bei Custom sagt ein Satz, dass nur der gesperrte Teil Mosaik ist (popupStilText).
+  const stilText = popupStilText({ def, frei, mitSticker, pack, faceAn: e.zonen.face.an, gesichterMit: frei && gesichter?.fertig ? gesichter.mit : null, bisDahin: T.PACK_HINWEIS_BIS_DAHIN });
+  const gesperrt = stilText.gesperrt;
+  packHinweis_.textContent = stilText.text;
   // Mia-Preset gilt, aber Face steht aus: sagen, was dann gilt (der Satz der Karte klaenge sonst nach mehr)
   if (!gesperrt && def.gilt.gesicht === 'mia-gesicht' && !e.zonen.face.an) packHinweis_.textContent += ` ${T.HINWEIS_FACE_AUS}`;
   const zh = zonenHinweis(gilt);

@@ -2,12 +2,12 @@
 // Rein: keine Laufzeit-Importe ausser src/presets.ts (Einheitstests mit `node --experimental-strip-types`), kein Speicher, kein Pack-Zugriff.
 // Das Pack kommt als Wert herein (Kurzfassung), nie als Abfrage. Ausserhalb von src/presets.ts und dieser Datei liest keine Stelle die Tabelle direkt.
 // Die Nachschlage-Regel (unbekannt gilt als Mosaik) steht in `presetOderMosaik`, die Rueckfall-Regel (Pack fehlt) in `presetFuerPack`, beide in src/presets.ts.
-import { PRESET_IDS, presetFuerPack, presetOderMosaik, type PresetDef } from './presets.ts';
+import { PRESET_IDS, presetFuerPack, presetOderMosaik, wirkKennungVon, type AnyKennung, type PresetDef } from './presets.ts';
 import type { Freischaltung, PackKurz } from './pack/vertrag.ts';
 
 // Die Definition zu einer Kennung ohne Pack-Blick (= `gewaehlt`): fuer Stellen, die nur eine Kennung halten (Videozensur, Kartenbilder, Texte).
 // Unbekannt oder fehlend gilt als Mosaik. Liefert immer dasselbe Objekt der Tabelle.
-export function presetDefFuerKennung(kennung: string | undefined | null): PresetDef {
+export function presetDefFuerKennung(kennung: AnyKennung | string | undefined | null): PresetDef {
   return presetOderMosaik(kennung);
 }
 
@@ -34,8 +34,10 @@ function mitSchalter(d: PresetDef, augenbalken: unknown): PresetDef {
 // `gewaehlt`: die Definition der eingestellten Kennung (so wie die Karte sie nennt). `gilt`: die Definition, die wirklich wirkt: Mia-Presets nur mit
 // Pack (`stil:mia-patch`), Sticker-Presets nur mit Stickern (`zensur:sticker`), sonst Mosaik. Ohne `pack` gilt: kein Pack. Beide tragen die Augen-Art
 // mit dem Schalter `augenbalken` (E4c): kein Aufrufer verrechnet den Schalter selbst.
-export function presetDef(e: { preset?: string | null; augenbalken?: boolean | null }, pack?: PackKurz | null): { gewaehlt: PresetDef; gilt: PresetDef } {
-  const gewaehlt = presetOderMosaik(e.preset);
+// Custom (E6a): `preset: 'custom'` mit der Mischung `e.custom`; fehlt sie oder ist auch nur ein Feld ungueltig, ist die Definition die von Mosaik (C4, `wirkKennungVon`).
+// Mit Pack ersetzt `gilt` die Mischung bausteinweise (Mias Gesicht ohne `stil:mia-patch`, Sticker ohne `zensur:sticker` werden Mosaik), `gewaehlt` bleibt, wie gespeichert.
+export function presetDef(e: { preset?: string | null; augenbalken?: boolean | null; custom?: unknown }, pack?: PackKurz | null): { gewaehlt: PresetDef; gilt: PresetDef } {
+  const gewaehlt = presetOderMosaik(wirkKennungVon(e));
   const gilt = presetOderMosaik(presetFuerPack(gewaehlt.id, istFreigeschaltet(pack, 'stil:mia-patch'), istFreigeschaltet(pack, 'zensur:sticker')));
   return { gewaehlt: mitSchalter(gewaehlt, e.augenbalken), gilt: mitSchalter(gilt, e.augenbalken) };
 }

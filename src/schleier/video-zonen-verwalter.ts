@@ -6,7 +6,7 @@
 import type { Einstellungen } from '../einstellungen';
 import type { AntwortFehler, AntwortPackBild, AntwortPackWort, NachrichtErkennerPackBild } from '../nachrichten';
 import { ladeSeitenSchriften, schriftVersuchMoeglich } from '../oberflaeche/design/schrift';
-import { waehleWort, type Preset } from '../presets';
+import { waehleWort, type AnyKennung } from '../presets';
 import { PACKBILD_MAX_SEITE_PATCH, PACKBILD_MAX_SEITE_STICKER } from '../nachrichten';
 import { ordneNeu, stickerFarbe } from '../sticker';
 import { ANTWORT_MAX_MS, VIDEO_WECHSEL_MIN_MS, VIDEO_ZONEN_GRAU_B, VIDEO_ZONEN_MAX_JE_DOKUMENT, VIDEO_ZONEN_MIN_B, VIDEO_ZONEN_MIN_H } from './konstanten';
@@ -25,7 +25,7 @@ export interface VerwalterHaken {
   aktiv(): boolean;
   einstellungen(): Einstellungen | null;
   // Wirksames Preset (Mia-Presets nur mit Pack, sonst Mosaik).
-  preset(): Preset;
+  preset(): AnyKennung;
   // Gewaehlte Wort-Themen (null = alle, [] = keins).
   woerterThemen(): string[] | null;
   packStand(): number;

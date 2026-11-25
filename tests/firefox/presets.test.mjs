@@ -247,12 +247,12 @@ try {
 
   // 1. Oberflaeche ohne Pack
   const karten = await driver.findElements(By.css('#preset-karten input[name="preset"]'));
-  pruefe(karten.length === 12, `zwoelf Preset-Karten (${karten.length})`);
-  pruefe((await driver.findElements(By.css('#preset-karten .preset-gruppe'))).length === 4, 'vier Gruppen');
+  pruefe(karten.length === 13, `zwoelf Preset-Karten und Custom (${karten.length})`); // E6b: die dreizehnte Karte
+  pruefe((await driver.findElements(By.css('#preset-karten .preset-gruppe'))).length === 5, 'vier Gruppen und Your own mix'); // E6b
   const gruppenTitel = [];
   for (const t of await driver.findElements(By.css('#preset-karten .preset-gruppe-titel'))) gruppenTitel.push(await t.getText());
-  pruefe(JSON.stringify(gruppenTitel.map((t) => t.toLowerCase())) === JSON.stringify(['with my face', 'with my stickers', 'classic', 'whole person']), `Gruppen in der Reihenfolge mia, sticker, klassisch, person (${gruppenTitel})`); // die Ueberschriften stehen in Grossbuchstaben (CSS)
-  pruefe((await driver.findElements(By.css('#preset-karten .preset-bild svg'))).length === 12, 'zwoelf Vorschau-Figuren');
+  pruefe(JSON.stringify(gruppenTitel.map((t) => t.toLowerCase())) === JSON.stringify(['with my face', 'with my stickers', 'classic', 'whole person', 'your own mix']), `Gruppen in der Reihenfolge mia, sticker, klassisch, person, custom (${gruppenTitel})`); // die Ueberschriften stehen in Grossbuchstaben (CSS)
+  pruefe((await driver.findElements(By.css('#preset-karten .preset-bild svg'))).length === 13, 'zwoelf Vorschau-Figuren und die von Custom'); // E6b
   const gesperrt = [];
   for (const id of ['mia-wort', 'mia-mosaik', 'mia-mosaik-wort', 'mia-blur', 'mia-sticker', 'sticker']) gesperrt.push(await driver.findElement(By.css(`#preset-${id}`)).getAttribute('disabled'));
   pruefe(gesperrt.every((g) => g === 'true'), 'ohne Pack sind die sechs Presets mit meinem Gesicht oder meinen Stickern gesperrt');
@@ -320,7 +320,7 @@ try {
   pruefe((await text('#preset-face-hinweis')).includes('I switched Face on'), 'Wechsel auf Mia-Preset schaltet Face ein, mit Hinweis');
   // Radiogruppe: eine fuer alle Karten, vier benannte Gruppen darin
   pruefe((await driver.findElement(By.css('#preset-karten')).getAttribute('role')) === 'radiogroup' && (await driver.findElement(By.css('#preset-karten')).getAttribute('aria-labelledby')) === 'stil-titel', 'Karten: eine Radiogruppe mit Ueberschrift');
-  pruefe((await driver.findElements(By.css('#preset-karten [role="group"]'))).length === 4 && (await driver.findElements(By.css('#preset-karten [role="radiogroup"]'))).length === 0, 'Karten: vier benannte Gruppen');
+  pruefe((await driver.findElements(By.css('#preset-karten [role="group"]'))).length === 5 && (await driver.findElements(By.css('#preset-karten [role="radiogroup"]'))).length === 0, 'Karten: fuenf benannte Gruppen'); // E6b
   // unbekannte Wort-Themen (anderes Pack): alle Chips aus, Hinweis MIA
   await imSeitenkontext(`const a = (await api.storage.local.get('einstellungen')).einstellungen; await api.storage.local.set({ einstellungen: { ...a, woerterThemen: ['gibt-es-nicht'] } });`);
   await driver.findElement(By.css('label:has(#preset-mia-wort)')).click();

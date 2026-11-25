@@ -109,3 +109,10 @@
   .v-wahl { grid-template-columns: repeat(var(--v-spalten-schmal, 1), minmax(0, 1fr)); }
   .v-stufe { padding: 0 var(--v-a-4); }
 }
+
+/* Schau gesperrter Stile (E6b B8): Marke "Pack" an der Kachel (Text im DOM, in jeder Groesse), Satz und Knopf "Back to yours". */
+.v-vorschau-marke { position: absolute; top: var(--v-a-1); left: var(--v-a-1); z-index: 1; padding: 0.125rem var(--v-a-2); border-radius: var(--v-r-voll); background: var(--v-rosa-700); color: var(--v-weiss); font: 800 0.6875rem/1.2 var(--v-schrift-text); pointer-events: none; }
+.v-vorschau-schau { margin: var(--v-a-1) 0 0; font: 600 0.75rem/1.35 var(--v-schrift-text); color: var(--v-rosa-800); }
+.v-vorschau-marke[hidden], .v-vorschau-schau[hidden], .v-vorschau-zurueck[hidden] { display: none; }
+.v-vorschau-zurueck { align-self: flex-start; min-height: var(--v-fingerziel); min-width: var(--v-fingerziel); max-width: 100%; margin-top: var(--v-a-2); padding: 0 var(--v-a-4); border: 0.09rem solid var(--v-rosa-700); border-radius: var(--v-r-voll); background: var(--v-weiss); color: var(--v-rosa-800); font: 800 0.8125rem/1.15 var(--v-schrift-text); cursor: pointer; }
+.v-vorschau-zurueck:focus-visible { outline: var(--v-a-1) solid var(--v-rosa-700); outline-offset: var(--v-a-1); }

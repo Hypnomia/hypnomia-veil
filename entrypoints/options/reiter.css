@@ -125,6 +125,7 @@
   }
   /* E5: im Streifen gibt es die Punkte und den Hinweis nur im Dialog (die Kachel oeffnet ihn). */
   .vorschau-spalte .v-vorschau-punkte,
+  .vorschau-spalte .v-vorschau-schau,
   .vorschau-spalte .v-vorschau-hinweis {
     display: none;
   }
@@ -206,6 +207,15 @@
   }
   .vorschau-spalte .v-vorschau-etikett {
     align-self: center;
+    margin: 0;
+  }
+  /* E6b: laeuft die Schau, kommt der Knopf "Back to yours" dazu; er bricht in eine zweite Zeile um, nie waagerecht aus dem Bild (320 px). */
+  .vorschau-spalte .v-vorschau-platz {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .vorschau-spalte .v-vorschau-zurueck {
     margin: 0;
   }
 }

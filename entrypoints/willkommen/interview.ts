@@ -15,7 +15,8 @@ import { EYE_BAR_TEXT, EYE_BAR_TITEL } from '../../src/oberflaeche/gemeinsam';
 import { ersatzWarnungGilt, gesperrtText, waehleErwachsenHinweis, waehleKleidungHinweis, waehleStilHinweise, waehleZonenHinweis } from '../../src/oberflaeche/hinweise';
 import { beobachteGesichter, type GesichterStand } from '../../src/oberflaeche/gesichter-status';
 import { presetDef } from '../../src/preset-def';
-import { baueLiveVorschau } from '../../src/oberflaeche/vorschau/ansicht';
+import { baueLiveVorschau, type LiveVorschau } from '../../src/oberflaeche/vorschau/ansicht';
+import { INTERVIEW_CUSTOM_ZEILE } from '../../src/oberflaeche/bedienung-texte';
 import { presetSatz, zonenHinweisTeile } from '../../src/oberflaeche/preset-texte';
 import {
   baueAuswahl,
@@ -163,6 +164,9 @@ export function seiteKleidung(k: Kontext): Seite {
 
 // ---------- 3 Style ----------
 
+// Die Vorschau des Interviews (E6b B8): die Schau gesperrter Karten laeuft auch hier. Gesetzt von `baueVorschau`.
+let vorschauLive: LiveVorschau | null = null;
+
 export function seiteStil(k: Kontext, seiten: number): Seite {
   const wurzel = knoten('div');
   wurzel.append(knoten('p', undefined, TEXT.i3Text));
@@ -174,8 +178,12 @@ export function seiteStil(k: Kontext, seiten: number): Seite {
     praefix: 'iv-preset',
     kompakt: true,
     labelId: 'schritt-titel',
+    beiTipp: () => vorschauLive?.beendeSchau(),
+    // Gesperrte Karten haben ein eigenes Bedienelement fuer die Schau (nichts wird gespeichert); die Wahl einer freien Karte beendet sie (B8 d).
+    beiSchau: (preset, ausloeser) => vorschauLive?.zeigeSchau({ teil: waehlePreset(k.einst(), preset).teil, art: 'karte' }, ausloeser),
     // Wechsel auf ein Preset mit Mias Gesicht schaltet Face ein (waehlePreset); der Hinweis steht darunter, erst nach erfolgreichem Speichern.
     beiWahl: (preset) => {
+      vorschauLive?.beendeSchau();
       let faceEin = false;
       void k
         .speichere((alt) => {
@@ -190,6 +198,9 @@ export function seiteStil(k: Kontext, seiten: number): Seite {
         });
     },
   });
+  // B9: Custom hat im Interview keine Karte; steht es im Speicher, ist keine Karte gewaehlt und diese Zeile sagt es.
+  const customZeile = knoten('p', 'hinweis', INTERVIEW_CUSTOM_ZEILE, 'iv-stil-custom');
+  customZeile.hidden = true;
   const satz = knoten('p', 'hinweis', '', 'iv-stil-satz');
   const sperre = knoten('p', 'hinweis', '', 'iv-stil-sperre');
   sperre.hidden = true;
@@ -214,7 +225,7 @@ export function seiteStil(k: Kontext, seiten: number): Seite {
     beiAenderung: (an) => void k.speichere(() => ({ augenbalken: an })),
   });
   augenbalken.knopf.id = 'iv-augenbalken';
-  wurzel.append(kartenHost, augenbalken.element, satz, sperre, zonenText, faceText);
+  wurzel.append(kartenHost, customZeile, augenbalken.element, satz, sperre, zonenText, faceText);
   // Fund 7 und 8: ohne Pack (vier Seiten) steht Calm mode auf der Stil-Seite, er wirkt dort auf bewegte Stile; mit Pack steht er auf der letzten Seite (Extras).
   const ruhig = seiten < INTERVIEW_SEITEN ? baueSchalter({ titel: TEXT.ruhigTitel, hinweis: TEXT.ruhigText, an: k.einst().ruhig, beiAenderung: (an) => void k.speichere(() => ({ ruhig: an })) }) : null;
   if (ruhig) {
@@ -227,6 +238,7 @@ export function seiteStil(k: Kontext, seiten: number): Seite {
     const patchFrei = istFreigeschaltet(p, 'stil:mia-patch');
     const stickerFrei = istFreigeschaltet(p, 'zensur:sticker');
     karten.aktualisiere(e.preset, patchFrei, stickerFrei);
+    customZeile.hidden = e.preset !== 'custom';
     const def = presetDef(e, p).gilt;
     const wirksam = def.id;
     if (patchFrei && !beobachtet) {
@@ -451,6 +463,7 @@ export function baueVorschau(): { element: HTMLElement; zeichne: (e: Einstellung
   // Der Praefix `vorschau` haelt die Filter-Kennungen der Strichzeichnung getrennt von denen der Stilkarten (keine doppelte id im Dokument).
   const live = baueLiveVorschau({ label: TEXT.vorschauLabel, praefix: 'vorschau' });
   aside.append(kopf, live.element);
+  vorschauLive = live;
   return {
     element: aside,
     zeichne: (e, p) => live.aktualisiere({ einstellungen: e, pack: p }),

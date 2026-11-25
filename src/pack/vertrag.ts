@@ -3,7 +3,7 @@
 // Ablage: Dateien in IndexedDB (Erweiterungs-Ursprung, `unlimitedStorage`, Entscheidung 25), eine kleine Kurzfassung
 // in storage.local unter `pack`, damit Popup und Content-Script ohne IndexedDB wissen, was freigeschaltet ist.
 
-import type { Preset } from '../presets.ts';
+import { wahlAusDef, type AnyKennung, type CustomMischung, type PresetKennung, type WirkKennung } from '../presets.ts';
 import { istFreigeschaltet, presetDef } from '../preset-def.ts';
 import type { SatzGruppe } from '../quiz/vertrag';
 
@@ -207,9 +207,15 @@ export interface PackKurz {
 export { istFreigeschaltet };
 
 // Preset, das tatsaechlich gilt: Mia-Presets nur mit Pack (Freischaltung `stil:mia-patch`), Sticker-Presets nur mit Stickern im Pack
-// (`zensur:sticker`), sonst Mosaik (Demo: Klassisch und Ganze Person).
-export function presetFuerPackKurz(preset: Preset, pack: PackKurz | null | undefined): Preset {
-  return presetDef({ preset }, pack).gilt.id;
+// (`zensur:sticker`), sonst Mosaik (Demo: Klassisch und Ganze Person). Gegeben wird eine Kennung oder die Einstellungen (dann gilt bei `preset: 'custom'` die Mischung,
+// bausteinweise ersetzt, E6a C5); das Ergebnis ist die Kennung der gueltigen Definition (bei einer Mischung die Kennung dieser Mischung, `custom:...`, nur im Programm).
+export function presetFuerPackKurz(preset: AnyKennung | { preset?: string | null; custom?: unknown }, pack: PackKurz | null | undefined): WirkKennung {
+  return presetDef(typeof preset === 'string' ? { preset } : preset, pack).gilt.id;
+}
+
+// Dasselbe als Wert fuer die Nachricht an den Erkenner und fuer Einstellungen: `preset` und bei Custom die ersetzte Mischung (E6a C7).
+export function presetWahlFuerPackKurz(e: { preset?: string | null; custom?: unknown }, pack: PackKurz | null | undefined): { preset: PresetKennung; custom?: CustomMischung } {
+  return wahlAusDef(presetDef(e, pack).gilt);
 }
 
 // Liest die Kurzfassung aus storage.local (Popup, Optionsseite, Content-Script).

@@ -37,7 +37,7 @@ import {
   zeigeOriginal,
 } from './anwenden';
 import { entscheideNachladen } from '../erkenner/nachladen';
-import { GESICHTER_STAND_SCHLUESSEL, PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, type PackKurz } from '../pack/vertrag';
+import { GESICHTER_STAND_SCHLUESSEL, PACK_SPEICHER_SCHLUESSEL, istFreigeschaltet, ladePackKurz, presetFuerPackKurz, presetWahlFuerPackKurz, type PackKurz } from '../pack/vertrag';
 import { presetDef } from '../preset-def.ts';
 import { SteigerungMelder } from './steigerung-melder';
 import { setzeUrteilMelder, setzeZensiertMelder } from './anwenden';
@@ -373,7 +373,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
     lebt,
     aktiv: () => aktiv,
     einstellungen: () => einstellungen,
-    preset: () => presetFuerPackKurz(einstellungen?.preset ?? 'mosaik', packKurz),
+    preset: () => (einstellungen ? presetFuerPackKurz(einstellungen, packKurz) : 'mosaik'),
     woerterThemen: () => einstellungen?.woerterThemen ?? null,
     packStand: () => packKurz?.importiert ?? 0,
     zustand: (el) => zustaende.get(el),
@@ -1976,8 +1976,9 @@ export function starteSchleier(ctx: KontextLeicht): void {
   function pruefRelevant(e: Einstellungen): string {
     const { gilt } = presetDef(e, packKurz);
     const preset = gilt.id;
+    // `gewaehlt.id` traegt bei Custom die Bausteine (E6a C8): aendert der Nutzer einen, wird neu geprueft wie bei einem Stilwechsel.
     // gesichterStand: Mias Gesicht nur nach der Gesichtssuche (bis dahin bekamen Pruefungen den Ersatz): wenn sie fertig meldet, bewerten offene Seiten neu
-    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, e.augenbalken, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, gilt.gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
+    return JSON.stringify([e.schwelle, e.zonen, e.rand, e.preset, presetDef(e).gewaehlt.id, e.augenbalken, preset, e.woerterThemen, nutztPack(e) ? (packKurz?.importiert ?? 0) : 0, gilt.gesicht === 'mia-gesicht' ? gesichterStand : 0, vorschau.stand(), steigerung.stufe(), e.video]);
   }
 
   // Zeit der letzten Meldung "Gesichtssuche fertig" (storage.local.gesichterStand), 0 = keine
@@ -2180,7 +2181,7 @@ export function starteSchleier(ctx: KontextLeicht): void {
   planeStartphasenEnde(STARTPHASE_MAX_MS);
   beobachter.start(); // sofort sammeln, auswerten erst nach dem Laden der Einstellungen
   setzeZonenAnpassung((e) => steigerung.zonenFuer(e));
-  setzePresetAnpassung((e) => presetFuerPackKurz(e.preset, packKurz));
+  setzePresetAnpassung((e) => presetWahlFuerPackKurz(e, packKurz));
   setzeZensiertMelder((el) => {
     // Session 11: Ledger zaehlt nur neue Inhalte (Neubewertung desselben Inhalts zaehlt nicht, wie bei der Steigerung).
     if (steigerung.zensiert(el)) melde({ art: 'zensiert' });

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Veil Custom-Testseite</title>
+    <style>
+      body { margin: 0; padding: 8px; }
+      img { display: block; max-width: none; }
+    </style>
+  </head>
+  <body>
+    <!-- Ein Bild vom Testserver (Satz sfw oder nsfw, nie im Repo), in natuerlicher Groesse: der Custom-Baukasten (E6a) misst die Pixel der Seite gegen die Antwort des Erkenners.
+         ?satz=sfw|nsfw&bild=<Dateiname>. -->
+    <img id="bild" alt="" />
+    <script>
+      (function () {
+        var p = new URLSearchParams(location.search);
+        var satz = p.get('satz') === 'nsfw' ? 'nsfw' : 'sfw';
+        var name = p.get('bild') || 'sfw-001-portraet.jpg';
+        document.getElementById('bild').src = '/testbild/' + satz + '/' + encodeURIComponent(name);
+      })();
+    </script>
+  </body>
+</html>

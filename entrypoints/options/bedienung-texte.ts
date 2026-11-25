@@ -10,7 +10,7 @@ import type { ZonenStand } from '../../src/einstieg/zonen';
 import { TON_TEXTE } from '../../src/ton/texte';
 
 export { ZONEN_NAMEN };
-export { ERWACHSEN_TEXTE, ERWACHSEN_VERWORFEN, KLEIDUNG_TEXTE, ZONEN_TEXTE, ZONEN_VERWORFEN } from '../../src/oberflaeche/bedienung-texte';
+export { BAUKASTEN_TEXTE, ERWACHSEN_TEXTE, ERWACHSEN_VERWORFEN, KLEIDUNG_TEXTE, SCHAU_TEXTE, ZONEN_TEXTE, ZONEN_VERWORFEN } from '../../src/oberflaeche/bedienung-texte';
 
 // Der eine Hinweis der Frage bei einem gemischten Stand (keine Antwort markiert): nennt genau die Zonen, die heute eingeschaltet UND unter Kleidung
 // gedeckt sind (`zonenUnterKleidung`), nie mehr als gespeichert ist. Die Wahl des Hinweises ist die reine Funktion `waehleKleidungHinweis`.

@@ -3,7 +3,7 @@
 // er zur Flaeche passt, mit pinkem Rahmen) oder Sticker (deckende Pastell-Flaeche mit Rahmen, darauf mittig ein Sticker des Packs). Ausgabe als JPEG-Data-URL (PNG, wenn die Quelle Durchsichtiges hat und nur Balken oder Schwarz kommen).
 
 import { FARBEN, WERTE } from '../oberflaeche/design/werte.ts';
-import { malLauf, ersatzMitMarke, ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type Behandlung, type Preset } from '../presets.ts';
+import { malLauf, ersatzMitMarke, ganzesBildBehandlung, hatWort, ohneWort, wortPasst, type AnyKennung, type Behandlung } from '../presets.ts';
 import { stickerFarbe, stickerPasst, stickerRechteck } from '../sticker.ts';
 import type { Box, Flaeche } from '../nachrichten';
 
@@ -344,7 +344,7 @@ export async function rendereZensur(
   breite: number,
   hoehe: number,
   flaechen: readonly Flaeche[],
-  preset: Preset,
+  preset: AnyKennung,
   optionen: RenderOptionen = {},
 ): Promise<string> {
   const { leinwand, ctx } = neueZielLeinwand(breite, hoehe);
