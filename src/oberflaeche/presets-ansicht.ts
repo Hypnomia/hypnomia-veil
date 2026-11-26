@@ -131,7 +131,7 @@ export interface KartenOptionen {
 
 export interface Karten {
   // Zeichnet die Auswahl: `aktuell` ist das gespeicherte Preset, `miaPack` ob die Mia-Presets frei sind, `mitSticker` ob das Pack Sticker mitbringt.
-  // `custom`: die gespeicherte Mischung (das Kartenbild von Custom ist ihre Strichfigur und folgt jeder Aenderung).
+  // `custom`: die gespeicherte Mischung (das Kartenbild von Custom ist die Strichfigur der Mischung, die gilt, und folgt jeder Aenderung).
   aktualisiere(aktuell: PresetKennung, miaPack: boolean, mitSticker: boolean, custom?: unknown): void;
   felder: ReadonlyMap<PresetKennung, HTMLInputElement>;
   // Der Platz direkt unter der Karte Custom (nur mit `mitCustom`, ein Geschwister des Hosts, der Host muss im Dokument stehen): hier stehen die drei Zeilen des Baukastens.
@@ -266,8 +266,9 @@ export function baueKarten(host: HTMLElement, o: KartenOptionen): Karten {
       if (customFeld) {
         customFeld.checked = aktuell === CUSTOM_ID;
         if (customOrt) customOrt.hidden = aktuell !== CUSTOM_ID;
-        // Das Kartenbild ist die Strichfigur der gespeicherten Mischung und folgt jeder Aenderung.
-        const kennung = customKennung(pruefeCustom(custom) ?? CUSTOM_STANDARD);
+        // Das Kartenbild ist die Strichfigur der Mischung, die gilt (E7 A5): ohne das Pack steht Mosaik an der Stelle des gesperrten Bausteins (bausteinweise wie
+        // `presetFuerPack`), nicht der gespeicherte. Es folgt jeder Aenderung der Mischung und des Packs. Die Schau malt ihr eigenes Bild und ist davon unberuehrt.
+        const kennung = presetFuerPack(customKennung(pruefeCustom(custom) ?? CUSTOM_STANDARD), miaPack, mitSticker);
         if (customBild && customStand !== kennung) {
           customStand = kennung;
           customBild.innerHTML = presetVorschau(kennung, o.praefix);

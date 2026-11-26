@@ -645,6 +645,13 @@ export function matrixDreht(transform: string | null | undefined): boolean {
 
 // ---------- Sprung ----------
 
+// Bezug fuer die Sprung-Erkennung: ein Durchgang mit Bildzeit (requestVideoFrameCallback) vergleicht mit der Bildzeit des letzten Bild-Durchgangs, damit
+// nicht Bild gegen Uhr verglichen wird (die Uhr kann unter Last dem gezeigten Bild vorauslaufen). Gibt es noch keine Bildzeit, und bei Durchgaengen ohne
+// Bildzeit, gilt der letzte Wert wie bisher (`letzteMt`).
+export function sprungBezug(hatBildzeit: boolean, letzteBildMt: number, letzteMt: number): number {
+  return hatBildzeit && Number.isFinite(letzteBildMt) ? letzteBildMt : letzteMt;
+}
+
 // Hat sich die Abspielposition zwischen zwei gezeigten Bildern sprunghaft geaendert (ohne dass ein Ereignis es gemeldet haette)? Normal ist ein
 // kleiner Schritt nach vorn (auch ein paar Bilder uebersprungen); ein Schritt ueber `grenze` Sekunden oder nach hinten ist ein Sprung.
 export function istSprung(vorher: number, jetzt: number, grenze: number, rueck = 0.1): boolean {

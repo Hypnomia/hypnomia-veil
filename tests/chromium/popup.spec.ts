@@ -607,6 +607,65 @@ test('Fund 2: ohne Zugriff steht "I can’t reach this page." statt eines gesper
   }
 });
 
+test('Feste Liste (Standardliste): Seite auf der Liste zeigt den gesperrten Knopf "On the never-touch list" und den Hinweis, nichts wird gespeichert', async () => {
+  // Die Seite wird ueber eine Route bedient (kein Netz): der aktive Tab zeigt eine Adresse der Standardliste.
+  await context.route('https://www.sparkasse.de/**', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>x</title><p>x</p>' }));
+  const web = mitReitern(await context.newPage());
+  const seite = mitReitern(await context.newPage());
+  try {
+    await web.goto('https://www.sparkasse.de/privat');
+    await seite.goto(popupUrl());
+    await zuruecksetzen(seite);
+    await web.bringToFront();
+    await seite.reload();
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    await expect(seite.locator('#diese-seite-name')).toHaveText('sparkasse.de');
+    await expect(seite.locator('#ausnahme')).toBeVisible();
+    await expect(seite.locator('#ausnahme')).toBeDisabled();
+    await expect(seite.locator('#ausnahme')).toHaveText('On the never-touch list');
+    await expect(seite.locator('#ausnahme-hinweis')).toHaveText('sparkasse.de stays untouched. Banks and the like are always safe from me.');
+    // Ein gesperrter Knopf schreibt nichts: auch ein erzwungener Klick laesst die eigene Liste leer.
+    await seite.evaluate(() => (document.getElementById('ausnahme') as HTMLButtonElement).click());
+    await seite.waitForTimeout(300);
+    expect((await einst(seite)).ausnahmen ?? []).not.toContain('sparkasse.de');
+  } finally {
+    await context.unroute('https://www.sparkasse.de/**');
+    await zuruecksetzen(seite);
+    await seite.close();
+    await web.close();
+  }
+});
+
+test('Entfernen: "Let Mia back on this site" nimmt jedes eigene Muster weg, das die Seite trifft (auch Pfadmuster), und nur diese', async () => {
+  const web = mitReitern(await context.newPage());
+  await web.goto(SEITE); // http://localhost:<port>/hello.html
+  const seite = mitReitern(await context.newPage());
+  try {
+    await seite.goto(popupUrl());
+    await zuruecksetzen(seite);
+    await schreibe(seite, { einstellungen: { ...(await einst(seite)), ausnahmen: ['localhost/hello', 'localhost/andere', 'example.org'] } });
+    await web.bringToFront();
+    await seite.reload();
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    await expect(seite.locator('#ausnahme')).toHaveText(T.AUSNAHME_KNOPF_ZURUECK); // das Pfadmuster trifft diese Seite
+    await expect(seite.locator('#ausnahme-hinweis')).toHaveText(T.AUSNAHME_NACH('localhost'));
+    await seite.locator('#ausnahme').click();
+    await expect.poll(async () => (await einst(seite)).ausnahmen ?? []).not.toContain('localhost/hello');
+    // Der Speicher enthaelt das Muster nicht mehr; Muster, die die Seite nicht treffen, bleiben.
+    expect((await einst(seite)).ausnahmen).toEqual(['localhost/andere', 'example.org']);
+    await expect(seite.locator('#ausnahme')).toHaveText(T.AUSNAHME_KNOPF_AN);
+    await expect(seite.locator('#ausnahme-hinweis')).toHaveText(T.AUSNAHME_VOR('localhost'));
+    // Nach dem Neuladen gilt die Ausnahme weiter nicht.
+    await seite.reload();
+    await expect(seite.locator('#status')).not.toBeEmpty();
+    await expect(seite.locator('#ausnahme')).toHaveText(T.AUSNAHME_KNOPF_AN);
+  } finally {
+    await zuruecksetzen(seite);
+    await seite.close();
+    await web.close();
+  }
+});
+
 test('Fund 1 (Popup): ohne Pack heissen beide Knoepfe "Get the Mia Pack", mit Pack "Mia Pack settings" im Fuss', async () => {
   const seite = mitReitern(await context.newPage());
   try {

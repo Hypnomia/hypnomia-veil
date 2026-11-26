@@ -69,6 +69,50 @@ async function klickeAuf(seite: Page, r: { x: number; y: number; w: number; h: n
   const m = mitte(r);
   await seite.mouse.click(m.x, m.y);
 }
+// Wartet auf ein ruhiges Ziel (7b B3): der Knopf mit dem Text liegt in zwei Lesungen mindestens 150 ms auseinander auf 1 px gleich, der Host ebenso, seine Mitte
+// liegt im Fenster und im Rollbereich der Karte. Statt einer festen Wartezeit; die Frist ist die von `bis`. Bei Rot steht das letzte Abbild in der Ausgabe.
+async function ruhigesZiel(seite: Page, text: string, frist = 8000): Promise<{ x: number; y: number; w: number; h: number }> {
+  const gleich = (a: any, b: any) => Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1;
+  let letzter: Abbild | null = null;
+  let bezug: { t: number; knopf: any; host: any } | null = null;
+  let ziel: { x: number; y: number; w: number; h: number } | null = null;
+  try {
+    await expect
+      .poll(
+        async () => {
+          const a = await abbild(seite);
+          letzter = a;
+          const fenster = seite.viewportSize();
+          const knopf = a && a.zustand === 'frage' ? a.antworten.find((b: any) => b.text === text) : null;
+          if (!a || !knopf || !fenster) {
+            bezug = null;
+            return false;
+          }
+          const m = mitte(knopf);
+          const imFenster = m.x >= 0 && m.x <= fenster.width && m.y >= 0 && m.y <= fenster.height;
+          const imRollbereich = m.x >= a.scrollBox.x && m.x <= a.scrollBox.x + a.scrollBox.w && m.y >= a.scrollBox.y && m.y <= a.scrollBox.y + a.scrollBox.h;
+          const jetzt = Date.now();
+          if (!bezug || !gleich(bezug.knopf, knopf) || !gleich(bezug.host, a.host)) {
+            bezug = { t: jetzt, knopf, host: a.host };
+            return false;
+          }
+          if (jetzt - bezug.t < 150 || !imFenster || !imRollbereich) return false;
+          ziel = knopf;
+          return true;
+        },
+        { timeout: frist, intervals: [50] },
+      )
+      .toBe(true);
+  } catch (e) {
+    const p = await seite.evaluate(() => {
+      const r = document.querySelector('#player')?.getBoundingClientRect();
+      return r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+    });
+    console.log(`ruhigesZiel "${text}" nicht erreicht: letztes Abbild ${JSON.stringify(letzter)}, Player ${JSON.stringify(p)}`);
+    throw e;
+  }
+  return ziel!;
+}
 const tasten = (seite: Page) =>
   seite.evaluate(() => {
     const t = (window as any).tasten as { f: number; m: number; leer: number };
@@ -738,7 +782,7 @@ test('Anker und schmaler Bildschirm: Riegel folgt dem Player, fuellt auf 375 px 
   try {
     // Ab 420 px Hoehe bleibt der Riegel auf der Flaeche des Ankers (darunter fuellt er den Sichtbereich, siehe Test "Kleiner Anker").
     await s.evaluate(() => ((document.querySelector('#player') as HTMLElement).style.height = '480px'));
-    await oeffne(s, { frage: 'test-w1', anker: '#player' });
+    await oeffne(s, { frage: 'test-w1', anker: '#player', verweigern: 0 });
     const a = await bis(s, (x) => x.zustand === 'frage');
     const p = await s.evaluate(() => {
       const r = document.querySelector('#player')!.getBoundingClientRect();
@@ -748,16 +792,29 @@ test('Anker und schmaler Bildschirm: Riegel folgt dem Player, fuellt auf 375 px 
     expect(Math.abs(a.host.h - p.h)).toBeLessThan(3);
     expect(Math.abs(a.host.x - p.x)).toBeLessThan(3);
     await s.evaluate(() => (document.querySelector('#player') as HTMLElement).style.marginLeft = '200px');
-    await expect.poll(async () => (await abbild(s)).host.x, { timeout: 3000 }).toBeGreaterThan(190);
+    await expect
+      .poll(async () => (await abbild(s)).host.x, { timeout: 3000, message: 'Riegel folgt dem Player nach marginLeft' })
+      .toBeGreaterThan(190)
+      .catch(async (e) => {
+        console.log(`Anker marginLeft nicht gefolgt: letztes Abbild ${JSON.stringify(await abbild(s))}`);
+        throw e;
+      });
     await s.setViewportSize({ width: 375, height: 700 });
     const k = await bis(s, (x) => x.host.w <= 375 && x.host.w >= 370);
     expect(k.pause.x + k.pause.w).toBeLessThanOrEqual(376);
     expect(k.pause.h).toBeGreaterThanOrEqual(40);
     for (const b of k.antworten) expect(b.h).toBeGreaterThanOrEqual(44);
-    await s.waitForTimeout(250); // Layout setzt sich (Neuaufbau nach Groessenwechsel), dann frische Koordinaten
-    const k2 = await bis(s, (x) => x.zustand === 'frage' && x.antworten.length === 3);
-    await klickeAuf(s, k2.antworten.find((b: any) => b.text === 'alpha'));
-    await expect.poll(() => ergebnis(s), { timeout: 5000 }).toBe('geloest');
+    // Layout setzt sich (Neuaufbau nach Groessenwechsel): erst klicken, wenn das Ziel ruhig liegt.
+    await bis(s, (x) => x.zustand === 'frage' && x.antworten.length === 3);
+    const ziel = await ruhigesZiel(s, 'alpha');
+    await klickeAuf(s, ziel);
+    await expect
+      .poll(() => ergebnis(s), { timeout: 5000 })
+      .toBe('geloest')
+      .catch(async (e) => {
+        console.log(`Klick auf alpha ohne Ergebnis: Ziel ${JSON.stringify(ziel)}, Abbild jetzt ${JSON.stringify(await abbild(s))}`);
+        throw e;
+      });
   } finally {
     await s.close();
   }

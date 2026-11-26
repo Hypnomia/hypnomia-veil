@@ -15,6 +15,7 @@ import {
   inhaltsRechteck,
   iou,
   istSprung,
+  sprungBezug,
   matrixDreht,
   parsePosition,
   pruefeEignung,
@@ -1034,6 +1035,40 @@ test('istSprung: Rueckwaertsgrenze ist die Uhr-Toleranz', () => {
   const tol = uhrToleranz();
   assert.equal(istSprung(3.293, 3.293 - tol + 0.001, 0.75), false);
   assert.equal(istSprung(3.293, 3.293 - tol - 0.001, 0.75), true);
+});
+
+// ---------- 7b B2: Sprung-Erkennung vergleicht gleiche Uhren ----------
+// Wie der Durchgang der Leinwand: der Bezug kommt aus `sprungBezug`, die Grenzen sind die des Produkts.
+const sprungMit = (hatBildzeit, letzteBildMt, letzteMt, mt) => istSprung(sprungBezug(hatBildzeit, letzteBildMt, letzteMt), mt, 0.75, uhrToleranz());
+
+test('sprungBezug: Bildzeit vergleicht mit dem letzten Bild, sonst mit dem letzten Wert', () => {
+  assert.equal(sprungBezug(true, 3.5, 3.7), 3.5);
+  assert.equal(sprungBezug(true, Number.NaN, 3.7), 3.7); // noch kein Bild-Durchgang
+  assert.equal(sprungBezug(false, 3.5, 3.7), 3.7);
+  assert.equal(sprungBezug(false, Number.NaN, 3.7), 3.7);
+});
+
+test('Sprung B2: Bild 3,50, Uhr 3,70 (Last), Bild 3,53 ist kein Sprung', () => {
+  assert.equal(sprungMit(true, 3.5, 3.7, 3.53), false);
+});
+
+test('Sprung B2: Schleife, Bild 9,98 zu 0,02 ist ein Sprung (auch mit Uhr-Durchgang dazwischen)', () => {
+  assert.equal(sprungMit(true, 9.98, 9.98, 0.02), true);
+  assert.equal(sprungMit(true, 9.98, 10.05, 0.02), true);
+});
+
+test('Sprung B2: Bild zu Bild 0,2 s zurueck ist ein Sprung, 0,8 s vor ist ein Sprung', () => {
+  assert.equal(sprungMit(true, 5.0, 5.0, 4.8), true);
+  assert.equal(sprungMit(true, 5.0, 5.0, 5.8), true);
+  assert.equal(sprungMit(true, 5.0, 5.3, 5.8), true); // vorwaerts gegen das Bild, nicht gegen die Uhr
+  assert.equal(sprungMit(true, 5.0, 5.0, 5.04), false);
+});
+
+test('Sprung B2: ohne Bildzeit Uhr gegen letzten Wert wie bisher', () => {
+  assert.equal(sprungMit(false, 3.5, 3.7, 3.55), istSprung(3.7, 3.55, 0.75, uhrToleranz()));
+  assert.equal(sprungMit(false, 3.5, 3.7, 3.55), true);
+  assert.equal(sprungMit(false, 3.5, 3.7, 3.75), false);
+  assert.equal(sprungMit(false, Number.NaN, 1.0, 2.0), true);
 });
 
 // ---------- Phase 11 E1, H1: der Video-Weg bekommt die Flaechen wie vor Etappe 1 (unverschmolzen) ----------

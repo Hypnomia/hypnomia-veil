@@ -3,6 +3,7 @@
 // passende Treffersatz und die Flaechen. Flaechen nur ueber `berechneBildFlaechen` (mit `verschmelzen = true` wie im Bild-Weg), keine zweite Rechnung.
 import { vervollstaendige, type Einstellungen } from '../../einstellungen.ts';
 import { presetDef } from '../../preset-def.ts';
+import { baueErkennerEinstellungen } from '../../pruef-einstellungen.ts';
 import { nutztMiasGesicht, nutztSticker, wahlAusDef, type PresetDef } from '../../presets.ts';
 import type { PackKurz } from '../../pack/vertrag.ts';
 import type { Flaeche, Treffer } from '../../nachrichten.ts';
@@ -67,14 +68,8 @@ export const kennungImProdukt = (bild: BeispielKennung): string => `beispiel:${b
 // Einstellungen, wie sie der Schleier an den Erkenner schickt (pruefung.ts `sendePruefe`): ohne Steigerung (Mias Kontrolle gehoert nicht zur Vorschau).
 export function erkennerEinstellungen(einst: Einstellungen, pack: PackKurz | null): { e: Einstellungen; gilt: PresetDef } {
   const gilt = presetDef(einst, pack).gilt;
-  const e = vervollstaendige({
-    schwelle: einst.schwelle,
-    zonen: einst.zonen,
-    rand: einst.rand,
-    ...wahlAusDef(gilt), // bei Custom `preset: 'custom'` samt der (nach dem Pack ersetzten) Mischung, wie die Nachricht an den Erkenner (E6a C7)
-    ...(einst.augenbalken ? { augenbalken: true } : {}),
-    ...(einst.woerterThemen === null ? {} : { woerterThemen: einst.woerterThemen }),
-  });
+  // bei Custom `preset: 'custom'` samt der (nach dem Pack ersetzten) Mischung, wie die Nachricht an den Erkenner (E6a C7); die Bauart ist die des Schleiers
+  const e = vervollstaendige(baueErkennerEinstellungen(einst, wahlAusDef(gilt)));
   return { e, gilt };
 }
 
@@ -101,9 +96,10 @@ export function rechneVorschau(a: VorschauEingabe): VorschauRechnung {
   };
 }
 
-// Schluessel des Zeichnens aus ALLEN Eingaben (V8): aendert sich einer, wird neu gezeichnet; bleibt er gleich, nicht.
+// Schluessel des Zeichnens aus ALLEN Eingaben (V8): aendert sich einer, wird neu gezeichnet; bleibt er gleich, nicht. Die Schau steht als eigenes Objekt an der Stelle der
+// Pack-Kennung (eine Zeichenkette oder null): eine Pack-Kennung, wie auch immer sie lautet, kann damit nie den Schluessel der Schau ergeben.
 export function zeichenSchluessel(a: VorschauEingabe): string {
   const { e, gilt } = erkennerEinstellungen(a.einstellungen, a.schau ? SCHAU_PACK : a.pack);
   const gesichtStand = nutztMiasGesicht(gilt.id) && !a.schau ? (a.gesichter ? [a.gesichter.fertig, a.gesichter.mit] : null) : 0;
-  return JSON.stringify([a.bild, gilt.id, e.schwelle, e.zonen, e.rand, e.augenbalken, e.woerterThemen, a.schau ? 'schau' : (a.pack?.id ?? null), a.schau ? 0 : (a.pack?.importiert ?? 0), a.schau ? 0 : (a.pack?.sticker ?? 0), gesichtStand, a.breite, a.hoehe, a.kennungTest ?? '']);
+  return JSON.stringify([a.bild, gilt.id, e.schwelle, e.zonen, e.rand, e.augenbalken, e.woerterThemen, a.schau ? { schau: true } : (a.pack?.id ?? null), a.schau ? 0 : (a.pack?.importiert ?? 0), a.schau ? 0 : (a.pack?.sticker ?? 0), gesichtStand, a.breite, a.hoehe, a.kennungTest ?? '']);
 }

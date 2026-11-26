@@ -264,6 +264,62 @@ test('S2: ein gespeicherter, gesperrter Baustein steht gewaehlt und gesperrt da,
   await s.close();
 });
 
+test('A5 (E7): das Kartenbild von Custom folgt der Mischung, die gilt (ohne Pack Mosaik statt des gesperrten Bausteins), nicht der gespeicherten; mit Pack die gespeicherte', async () => {
+  const kartenBild = async (e: Record<string, unknown>): Promise<string> => {
+    const s = await oeffneSeite({ preset: 'custom', zonen: GESICHT_AN, ...e });
+    const html = await s.locator('label.preset-karte:has(#preset-custom) .preset-bild').innerHTML();
+    await s.close();
+    return html;
+  };
+  const m = (gesicht: string, flaeche: string, woerter = false) => ({ custom: { gesicht, flaeche, woerter } });
+  const mosaik = await kartenBild(m('mosaik', 'mosaik'));
+  const mosaikBlur = await kartenBild(m('mosaik', 'blur'));
+  expect(mosaik).toContain('<svg');
+  expect(mosaikBlur).not.toBe(mosaik);
+  // ohne Pack: Mias Gesicht und Sticker gelten als Mosaik, bausteinweise
+  expect(await kartenBild(m('mia', 'sticker'))).toBe(mosaik);
+  expect(await kartenBild(m('sticker', 'mosaik'))).toBe(mosaik);
+  expect(await kartenBild(m('mia', 'blur'))).toBe(mosaikBlur);
+  expect(await kartenBild(m('mosaik', 'sticker'))).toBe(mosaik);
+  // ein gueltiger, nicht gesperrter Baustein bleibt, wie gespeichert (ein Baustein ersetzt nicht den anderen)
+  const schwarzMosaik = await kartenBild(m('schwarz', 'mosaik'));
+  expect(schwarzMosaik).not.toBe(mosaik);
+  expect(await kartenBild(m('schwarz', 'sticker'))).toBe(schwarzMosaik);
+  // mit Pack: die gespeicherte Mischung (Mias Gesicht und Sticker haben eine eigene Strichfigur)
+  const bauModul = '../../scripts/pack/baue-pack.mjs';
+  const bau = (await import(bauModul)) as { baueDummyPack(o?: Record<string, unknown>): Promise<{ bytes: Uint8Array }> };
+  const datei = path.join(ordner, 'dummy-a5.miapack');
+  await writeFile(datei, (await bau.baueDummyPack()).bytes);
+  const i = mitReitern(await context.newPage());
+  await i.goto(url('options.html'));
+  await i.locator('#datei').setInputFiles(datei);
+  await i.locator('#annehmen').click();
+  await expect(i.locator('#pack-titel')).toHaveText('Dummy pack (synthetic pictures)');
+  await i.close();
+  try {
+    const v = await context.newPage();
+    await v.goto(url('hilfe.html'));
+    await schreibe(v, { einstieg: FERTIG });
+    await entferne(v, ['einstellungen']);
+    await schreibe(v, { einstellungen: { version: 1, preset: 'custom', zonen: GESICHT_AN, ...m('mia', 'sticker') } });
+    await v.close();
+    const s = mitReitern(await context.newPage());
+    await s.setViewportSize({ width: 1400, height: 1500 });
+    await s.goto(url('options.html'));
+    await reiter(s, 'Cover style');
+    const mitPack = await s.locator('label.preset-karte:has(#preset-custom) .preset-bild').innerHTML();
+    await s.close();
+    expect(mitPack).not.toBe(mosaik);
+  } finally {
+    const r = mitReitern(await context.newPage());
+    await r.goto(url('options.html'));
+    await r.locator('#entfernen').click();
+    await r.locator('#entfernen-ja').click();
+    await expect(r.locator('#pack-status')).toContainText('No pack yet');
+    await r.close();
+  }
+});
+
 test('S3: mit dem Pruefer-Pack gibt es keine Sperre und keine Schau, My face und Stickers sind speicherbar', async () => {
   const bauModul = '../../scripts/pack/baue-pack.mjs';
   const bau = (await import(bauModul)) as { baueDummyPack(o?: Record<string, unknown>): Promise<{ bytes: Uint8Array }> };

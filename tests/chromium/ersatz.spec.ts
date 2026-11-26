@@ -397,6 +397,101 @@ test('Wurzelelement ausgetauscht (document.open) und Aenderungen am Host: die Ga
   await setze({ pause: false });
 });
 
+test('Waechter gibt nach 30 Rettungen je Minute auf: die Seite zeigt sich, aber kein Bild wird offen (Schleier haelt sie verdeckt)', async () => {
+  test.setTimeout(120_000);
+  await setze({ pause: false });
+  const seite = await oeffne(LISTE);
+  try {
+    await warteGalerie(seite);
+    // Bilder der Seite und ein Fuehler im Bildtakt: ein Bild, das sichtbar ist (Deckkraft nicht 0), ohne dass der Schleier es beurteilt hat (kein data-veil), zaehlt als Verstoss.
+    await seite.evaluate(async () => {
+      for (let n = 1; n <= 6; n++) {
+        const b = document.createElement('img');
+        b.id = `p${n}`;
+        b.width = 160;
+        b.height = 120;
+        b.src = `/synthetisch/${n}.png`;
+        document.body.append(b);
+      }
+      // Bilder, in denen der Erkenner etwas findet (Testbilder mit Erwachsenen-Inhalt): sie muessen zensiert oder verdeckt sein und nie roh zu sehen.
+      const liste = ((await (await fetch('/api/testbilder?satz=nsfw')).json()) as { bilder: string[] }).bilder.slice(0, 8);
+      liste.forEach((name, i) => {
+        const b = document.createElement('img');
+        b.id = `f${i}`;
+        b.className = 'mit-fund-kandidat';
+        b.width = 160;
+        b.height = 120;
+        b.src = `/testbild/nsfw/${encodeURIComponent(name)}`;
+        document.body.append(b);
+      });
+      (window as any).__verstoss = 0;
+      (window as any).__proben = 0;
+      const tick = () => {
+        (window as any).__proben++;
+        for (const i of Array.from(document.querySelectorAll('img'))) {
+          if (!i.hasAttribute('data-veil') && getComputedStyle(i).opacity !== '0') (window as any).__verstoss++;
+          if (i.hasAttribute('data-fund') && i.getAttribute('data-veil') !== 'zensiert' && i.getAttribute('data-veil') !== 'verdeckt') (window as any).__verstoss++;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    // Vor dem Aufgeben: warten, bis alle beurteilt sind; die mit Fund (zensiert oder verdeckt) merken (Attribut des Tests, vom Fuehler beobachtet).
+    await expect
+      .poll(() => seite.evaluate(() => Array.from(document.querySelectorAll('img.mit-fund-kandidat')).every((i) => i.hasAttribute('data-veil'))), { timeout: 30_000 })
+      .toBe(true);
+    const fund = await seite.evaluate(() => {
+      const ids: string[] = [];
+      for (const i of Array.from(document.querySelectorAll('img.mit-fund-kandidat'))) {
+        const v = i.getAttribute('data-veil');
+        if (v === 'zensiert' || v === 'verdeckt') {
+          i.setAttribute('data-fund', '1');
+          ids.push(i.id);
+        }
+      }
+      return ids;
+    });
+    expect(fund.length, 'kein Testbild mit Fund unter den Kandidaten (die Aussage braeuchte eines)').toBeGreaterThan(0);
+    // Die Seite entfernt den Host immer wieder; die Wache holt ihn zurueck, bis die Obergrenze erreicht ist.
+    let entfernt = 0;
+    for (let i = 0; i < 45 && (await hatAttr(seite)); i++) {
+      await seite.evaluate(() => document.querySelector('[data-veil-ersatz-host]')?.remove());
+      entfernt++;
+      await expect.poll(async () => (await hostDa(seite)) || !(await hatAttr(seite)), { timeout: 8000, intervals: [20] }).toBe(true);
+    }
+    // Aufgegeben: weder Attribut noch Galerie, und der Seiteninhalt ist zu sehen.
+    await warteOhneGalerie(seite);
+    expect(entfernt, 'Entfernungen bis zum Aufgeben').toBeGreaterThanOrEqual(30);
+    expect(await seite.evaluate(() => getComputedStyle(document.getElementById('inhalt')!).visibility)).toBe('visible');
+    // Was dann gilt: jedes Bild bleibt verborgen oder wird vom Schleier beurteilt (verdeckt, zensiert oder frei), nie ungeprueft offen.
+    await expect
+      .poll(() => seite.evaluate(() => Array.from(document.querySelectorAll('img')).every((i) => i.hasAttribute('data-veil'))), { timeout: 15_000 })
+      .toBe(true);
+    // Ein Bild, das erst jetzt auftaucht, beginnt verborgen.
+    const neu = await seite.evaluate(() => {
+      const b = document.createElement('img');
+      b.id = 'nach';
+      b.width = 160;
+      b.height = 120;
+      b.src = '/synthetisch/7.png?nach=1';
+      document.body.append(b);
+      return getComputedStyle(b).opacity;
+    });
+    expect(neu, 'neues Bild nach dem Aufgeben beginnt verborgen').toBe('0');
+    expect(
+      await seite.evaluate((ids) => ids.map((id) => document.getElementById(id)!.getAttribute('data-veil')), fund),
+      'Bilder mit Fund nach dem Aufgeben',
+    ).toEqual(fund.map((_, k) => (k >= 0 ? expect.stringMatching(/^(zensiert|verdeckt)$/) : '')));
+    const w = await seite.evaluate(() => ({ verstoss: (window as any).__verstoss as number, proben: (window as any).__proben as number }));
+    console.log(`ersatz: Aufgeben nach ${entfernt} Entfernungen, ${fund.length} Bilder mit Fund, ${w.proben} Bildtakt-Proben, ${w.verstoss} unbeurteilte sichtbare Bilder`);
+    expect(w.proben).toBeGreaterThan(50);
+    expect(w.verstoss).toBe(0);
+  } finally {
+    await seite.close();
+  }
+  await setze({ pause: false });
+});
+
 test('Tab ist stumm, solange die Galerie steht; der Stand davor kommt zurueck', async () => {
   await setze({ pause: true });
   const seite = await oeffne(LISTE);

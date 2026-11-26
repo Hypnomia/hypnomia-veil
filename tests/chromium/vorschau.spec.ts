@@ -783,6 +783,8 @@ test('V11 schmal: bei 320, 360 und 412 px ist die Kachel 64 px hoch, die Punkte 
       const k = (await kachel.boundingBox())!;
       expect(Math.round((await seite.locator('.vorschau-spalte .v-vorschau-rahmen').boundingBox())!.height), `${breite} px: Hoehe des Rahmens (wie heute)`).toBe(64);
       expect(k.height, 'Trefferflaeche der Kachel').toBeGreaterThanOrEqual(44);
+      await expect(seite.locator('.vorschau-spalte .v-vorschau-punkte')).toHaveCount(1);
+      await expect(seite.locator('.vorschau-spalte > .v-vorschau-platz > .v-vorschau-hinweis:not(.v-vorschau-offen)')).toHaveCount(1);
       expect(await seite.locator('.vorschau-spalte .v-vorschau-punkte').isVisible()).toBe(false);
       expect(await seite.locator('.vorschau-spalte > .v-vorschau-platz > .v-vorschau-hinweis:not(.v-vorschau-offen)').isVisible()).toBe(false);
       expect(await seite.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -876,6 +878,7 @@ test('N1 bis N4: bei null Flaechen steht das Beispielbild unverdeckt als data-Bi
     await seite.goto(optionsUrl());
     await expect.poll(async () => { const h = await haken(seite); return !!h && h.gezeigt === h.angefordert && h.anzahl >= 1; }).toBe(true);
     const hinweisSpalte = seite.locator('.vorschau-spalte > .v-vorschau-platz > .v-vorschau-offen');
+    await expect(hinweisSpalte).toHaveCount(1); // isVisible() unten ist auch bei einem Waehler ohne Treffer false
     const hinweisDialog = seite.locator('.vorschau-spalte dialog .v-vorschau-dialog-hinweis', { hasText: VORSCHAU_NICHTS });
     const offene: string[] = [];
     // Je Bild: offen genau dann, wenn der Hinweis steht (Spalte), das Alt "nothing covered" lautet und die Adresse ein data-Bild ist
@@ -956,10 +959,17 @@ test('Rueckfall: ohne Beispielbilder im Bau zeigt der Platz wie bisher die Stric
     await expect.poll(async () => { const h = await haken(seite); return !!h && h.gezeigt === h.angefordert; }).toBe(true);
     expect(await seite.locator('.vorschau-spalte .v-vorschau-flaeche svg').count()).toBe(1);
     expect(await seite.locator('.vorschau-spalte .v-vorschau-kachel').count()).toBe(0);
-    expect(await seite.locator('.vorschau-spalte .v-vorschau-punkte').isVisible()).toBe(false);
-    // beide Hinweise einzeln: der Motiv-Hinweis und der Hinweis "nichts zu verdecken" (ohne Bilddateien gibt es keinen von beiden)
-    expect(await seite.locator('.vorschau-spalte .v-vorschau-platz > .v-vorschau-hinweis:not(.v-vorschau-offen)').isVisible()).toBe(false);
-    expect(await seite.locator('.vorschau-spalte .v-vorschau-platz > .v-vorschau-offen').isVisible()).toBe(false);
+    // Punkte und beide Hinweise einzeln: der Motiv-Hinweis und der Hinweis "nichts zu verdecken". Alle drei Elemente stehen im DOM und sind verborgen (ohne Bilddateien
+    // zeigt die Ansicht keinen von ihnen). `isVisible()` ist auch dann false, wenn der Waehler nichts trifft; darum zuerst genau ein Treffer je Waehler.
+    const punkteOhne = seite.locator('.vorschau-spalte .v-vorschau-punkte');
+    const motivHinweisOhne = seite.locator('.vorschau-spalte .v-vorschau-platz > .v-vorschau-hinweis:not(.v-vorschau-offen)');
+    const offenHinweisOhne = seite.locator('.vorschau-spalte .v-vorschau-platz > .v-vorschau-offen');
+    await expect(punkteOhne).toHaveCount(1);
+    await expect(motivHinweisOhne).toHaveCount(1);
+    await expect(offenHinweisOhne).toHaveCount(1);
+    expect(await punkteOhne.isVisible()).toBe(false);
+    expect(await motivHinweisOhne.isVisible()).toBe(false);
+    expect(await offenHinweisOhne.isVisible()).toBe(false);
     expect(await seite.locator('.vorschau-spalte dialog[open]').count()).toBe(0);
     // Der Stil wechselt: die Zeichnung folgt
     const vorher = await seite.locator('.vorschau-spalte .v-vorschau-flaeche').innerHTML();
@@ -970,6 +980,88 @@ test('Rueckfall: ohne Beispielbilder im Bau zeigt der Platz wie bisher die Stric
   } finally {
     await ctx.close();
     await rm(profil2, { recursive: true, force: true });
+  }
+});
+
+// ---------- Fokus beim Rueckfall (Phase 11 E7 A7) ----------
+
+test('Fokus beim Rueckfall auf die Strichzeichnung: lag er in der Vorschau, bleibt er dort (nie body); lag er ausserhalb, bleibt er, wo er war', async () => {
+  test.skip(!MIT_BILDERN, 'Beispielbilder fehlen im Testbau');
+  await entfernePack();
+  await speichere({ preset: 'mosaik' });
+  const seite = await context.newPage();
+  const platz = seite.locator('.vorschau-spalte > .v-vorschau-platz');
+  // Wo der Fokus liegt: 'platz' (der Behaelter selbst), 'punkt:<bild>', 'kachel', 'body' oder sonst das Tag des Elements
+  const fokus = () =>
+    seite.evaluate(() => {
+      const a = document.activeElement as HTMLElement | null;
+      if (!a || a === document.body) return 'body';
+      if (a.classList.contains('v-vorschau-platz')) return a.tabIndex === -1 ? 'platz' : 'platz-ohne-tabindex';
+      if (a.classList.contains('v-vorschau-punkt')) return `punkt:${a.dataset.bild}`;
+      if (a.classList.contains('v-vorschau-kachel')) return 'kachel';
+      return `aussen:${a.tagName}`;
+    });
+  // Jeder Fall startet frisch: Seite laden, Bild da, dann sperrt der Test den Abruf der Bilddateien (HEAD kam schon durch), und eine Aenderung der Einstellung zeichnet
+  // neu; das Laden des Bildes scheitert, die Ansicht faellt auf die Strichzeichnung zurueck.
+  let runde = 0;
+  const frisch = async () => {
+    await seite.setViewportSize({ width: 1280, height: 800 });
+    await seite.goto(optionsUrl());
+    await expect.poll(async () => { const h = await haken(seite); return !!h && h.gezeigt === h.angefordert && h.anzahl >= 1; }).toBe(true);
+    await seite.evaluate(() => {
+      const echt = window.fetch.bind(window);
+      window.fetch = (u: RequestInfo | URL, o?: RequestInit) => (String(u).includes('/beispiel/') && o?.method !== 'HEAD' ? Promise.reject(new Error('gesperrt')) : echt(u, o));
+    });
+  };
+  const faelleZurueck = async () => {
+    runde += 1;
+    await speichere({ preset: runde % 2 ? 'blur' : 'schwarz' });
+    await expect(seite.locator('.vorschau-spalte .v-vorschau-skizze')).toHaveCount(1);
+    await expect.poll(async () => { const h = await haken(seite); return !!h && h.gezeigt === h.angefordert; }).toBe(true);
+  };
+  try {
+    // 1. Fokus auf der Kachel
+    await frisch();
+    await seite.locator('.vorschau-spalte .v-vorschau-kachel').focus();
+    expect(await fokus()).toBe('kachel');
+    await faelleZurueck();
+    expect(await fokus()).toBe('platz');
+    await expect(platz).toBeFocused();
+    // 2. Fenster offen (der Fokus liegt im Dialog)
+    await frisch();
+    await seite.locator('.vorschau-spalte .v-vorschau-kachel').click();
+    await expect(seite.locator('.vorschau-spalte dialog[open]')).toHaveCount(1);
+    await faelleZurueck();
+    await expect(seite.locator('.vorschau-spalte dialog[open]')).toHaveCount(0);
+    // breit: der Fokus lag auf dem Punkt im Dialog, sein Gegenstueck in der Spalte nimmt ihn
+    expect(await fokus()).toBe('punkt:vorn');
+    // 2b. schmal stehen die Punkte nur im Dialog: das Gegenstueck ist verborgen, der Behaelter nimmt den Fokus
+    await frisch();
+    await seite.setViewportSize({ width: 360, height: 700 });
+    await seite.locator('.vorschau-spalte .v-vorschau-kachel').click();
+    await expect(seite.locator('.vorschau-spalte dialog[open]')).toHaveCount(1);
+    await faelleZurueck();
+    await expect(seite.locator('.vorschau-spalte dialog[open]')).toHaveCount(0);
+    expect(await fokus()).toBe('platz');
+    // 3. Fokus auf einem Punkt (die Punkte bleiben beim Rueckfall nach einem Fehler des Bildes): er bleibt auf demselben Punkt
+    await frisch();
+    await punkt(seite, 'rueck').focus();
+    expect(await fokus()).toBe('punkt:rueck');
+    await faelleZurueck();
+    expect(await fokus()).toBe('punkt:rueck');
+    // 4. Fokus ausserhalb der Vorschau: er bleibt
+    await frisch();
+    const aussen = await seite.evaluate(() => {
+      const el = Array.from(document.querySelectorAll<HTMLElement>('button, input, select, a[href]')).find((x) => !x.closest('.v-vorschau-platz') && x.tabIndex >= 0 && x.offsetParent !== null);
+      el?.focus();
+      return el ? el.tagName : null;
+    });
+    expect(aussen).not.toBeNull();
+    expect(await fokus()).toBe(`aussen:${aussen}`);
+    await faelleZurueck();
+    expect(await fokus()).toBe(`aussen:${aussen}`);
+  } finally {
+    await seite.close();
   }
 });
 
@@ -985,9 +1077,25 @@ const MISCHUNGEN_OHNE_PACK = [
   { gesicht: 'sticker', flaeche: 'mosaik', woerter: false },
 ];
 
+// Die Einstellungen der Nachricht an den Erkenner, von Hand geschrieben (unabhaengig von `wahlAusDef`, `presetDef` und der Funktion des Produkts), je Eintrag von
+// MISCHUNGEN_OHNE_PACK in derselben Reihenfolge: ohne Pack wird Mias Gesicht und Sticker bausteinweise zu Mosaik; `packStand: 0` geht mit, sobald ein Wort gilt.
+const NACHRICHT_OHNE_PACK = [
+  { schwelle: 0.1, rand: 0.15, preset: 'custom', custom: { gesicht: 'mosaik', flaeche: 'mosaik', woerter: false } },
+  { schwelle: 0.1, rand: 0.15, preset: 'custom', custom: { gesicht: 'blur', flaeche: 'schwarz', woerter: true }, packStand: 0 },
+  { schwelle: 0.1, rand: 0.15, preset: 'custom', custom: { gesicht: 'schwarz', flaeche: 'blur', woerter: false } },
+  { schwelle: 0.1, rand: 0.15, preset: 'custom', custom: { gesicht: 'schwarz', flaeche: 'mosaik', woerter: true }, packStand: 0 },
+  { schwelle: 0.1, rand: 0.15, preset: 'custom', custom: { gesicht: 'mosaik', flaeche: 'schwarz', woerter: true }, packStand: 0 },
+  { schwelle: 0.1, rand: 0.15, preset: 'custom', custom: { gesicht: 'mosaik', flaeche: 'mosaik', woerter: false } },
+];
+
 test('T7 Custom ohne Pack: sechs Mischungen mal vier Bilder, Gesichtszone an (Vorschau gleich Antwort von pruefe); eine Mischung mit Eye bar und eine mit allen Zonen', async () => {
   test.setTimeout(900_000);
   await entfernePack();
+  // Die Nachricht, mit der der Test die echte Antwort holt, ist selbst gegen eine feste Nachricht geprueft (sonst baute der Test sie mit derselben Funktion wie das Produkt).
+  expect(NACHRICHT_OHNE_PACK.length).toBe(MISCHUNGEN_OHNE_PACK.length);
+  MISCHUNGEN_OHNE_PACK.forEach((custom, i) => {
+    expect(echteNachricht('vorn', { version: 1, preset: 'custom', custom, zonen: GESICHT_ZONEN }, null).einstellungen, `Nachricht ${JSON.stringify(custom)}`).toEqual({ ...NACHRICHT_OHNE_PACK[i], zonen: GESICHT_ZONEN });
+  });
   const alle: string[] = [];
   let n = 0;
   for (const custom of MISCHUNGEN_OHNE_PACK) {

@@ -124,6 +124,7 @@ let code = 0;
 try {
   const optionen = new firefox.Options().setPreference('media.volume_scale', '0.0').addArguments('-headless').setBinary(firefoxBin);
   optionen.setPreference('extensions.webextensions.uuids', JSON.stringify({ [GECKO_ID]: uuid }));
+  optionen.setPreference('network.dns.localDomains', 'sparkasse.de'); // Seite der festen Liste (7b C1) laeuft ueber den lokalen Testserver
   const dienst = new firefox.ServiceBuilder().addArguments('--allow-system-access');
   driver = await new Builder().forBrowser('firefox').setFirefoxOptions(optionen).setFirefoxService(dienst).build();
   mitReitern(driver);
@@ -267,6 +268,41 @@ try {
     pruefe((await text('#ausnahme')) === T.AUSNAHME_KNOPF_ZURUECK && (await text('#status')) === T.STATUS_AUSNAHME, 'Fund 13: nach dem Klick gilt es, Knopf und Status nennen es');
     await driver.findElement(By.css('#ausnahme')).click();
     await bis('Ausnahme entfernt', async () => !((await speicher('einstellungen'))?.ausnahmen ?? []).includes(muster));
+
+    // 7b C1: Entfernen nimmt jedes eigene Muster weg, das die Seite trifft (auch ein Pfadmuster), und nur dieses.
+    const port = Number(process.env.VEIL_FIXTURE_PORT ?? 47533);
+    const ladePopupNeu = async () => {
+      await driver.setContext(firefox.Context.CHROME);
+      try {
+        await driver.executeScript(`const w = Services.wm.getMostRecentWindow('navigator:browser'); const t = w.gBrowser.tabs.find((x) => x.linkedBrowser.currentURI.spec.endsWith('/popup.html')); t.linkedBrowser.reload();`);
+      } finally {
+        await driver.setContext(firefox.Context.CONTENT);
+      }
+      await warte(800);
+      await driver.switchTo().window(popup);
+    };
+    await imSeitenkontext(`const a = await api.storage.local.get('einstellungen'); await api.storage.local.set({ einstellungen: { ...(a.einstellungen ?? {}), ausnahmen: args[0] } });`, ['localhost/pfad', 'localhost/andere', 'example.org']);
+    await oeffne(`http://localhost:${port}/pfad/seite`);
+    await ladePopupNeu();
+    await bis('Pfadmuster trifft', async () => (await text('#ausnahme')) === T.AUSNAHME_KNOPF_ZURUECK);
+    pruefe((await text('#ausnahme-hinweis')) === T.AUSNAHME_NACH('localhost'), 'C1: Satz bei Pfadmuster');
+    await driver.findElement(By.css('#ausnahme')).click();
+    await bis('Pfadmuster entfernt', async () => !((await speicher('einstellungen'))?.ausnahmen ?? []).includes('localhost/pfad'));
+    pruefe(JSON.stringify((await speicher('einstellungen')).ausnahmen) === JSON.stringify(['localhost/andere', 'example.org']), `C1: nur das treffende Muster entfernt: ${JSON.stringify((await speicher('einstellungen')).ausnahmen)}`);
+    await bis('Knopf wieder hinzu', async () => (await text('#ausnahme')) === T.AUSNAHME_KNOPF_AN);
+    // 7b C1: Seite der festen Liste (Standardliste): Knopf gesperrt, Hinweis, nichts gespeichert.
+    await oeffne(`http://sparkasse.de:${port}/privat`);
+    await ladePopupNeu();
+    await bis('Standardliste', async () => (await text('#ausnahme')) === 'On the never-touch list');
+    pruefe(!(await driver.findElement(By.css('#ausnahme')).isEnabled()), 'C1: Knopf der festen Liste ist gesperrt');
+    pruefe((await text('#ausnahme-hinweis')) === 'sparkasse.de stays untouched. Banks and the like are always safe from me.', `C1: Hinweis der festen Liste "${await text('#ausnahme-hinweis')}"`);
+    pruefe((await text('#diese-seite-name')) === 'sparkasse.de', 'C1: Name der Seite auf der festen Liste');
+    pruefe(!((await speicher('einstellungen'))?.ausnahmen ?? []).includes('sparkasse.de'), 'C1: nichts gespeichert');
+    await imSeitenkontext(`const a = await api.storage.local.get('einstellungen'); await api.storage.local.set({ einstellungen: { ...(a.einstellungen ?? {}), ausnahmen: [] } });`);
+    // Zurueck auf die gewoehnliche Seite: die folgenden Messungen (Hoehe des Popups) gehen von deren kurzem Hinweis aus.
+    await oeffne(`http://localhost:${port}/`);
+    await ladePopupNeu();
+    await bis('Popup wieder auf der gewoehnlichen Seite', async () => (await text('#ausnahme')) === T.AUSNAHME_KNOPF_AN);
   } finally {
     web.close();
   }

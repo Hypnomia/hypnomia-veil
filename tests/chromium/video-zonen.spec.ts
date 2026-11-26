@@ -499,6 +499,63 @@ test('z8 Klick erreicht das Video, die Bedienleiste der Seite bleibt darueber', 
   await s.close();
 });
 
+test('z16 (E7 A8) MediaSource-Video mit blob:-Adresse: Zonen-Modus, Urteil zensiert, Boxen links, Waechter nie scharf, nie ein sichtbares Video unter der Leinwand', async () => {
+  test.setTimeout(90_000);
+  const s = await oeffne();
+  // Der Film der Seite (WebM aus MediaRecorder) laeuft ueber eine MediaSource: die Quelle des Videos ist eine blob:-Adresse der MediaSource, keine Datei.
+  const msq = await s.evaluate(async () => {
+    const b = await (await fetch((window as any).neueQuelle())).blob();
+    const buf = await b.arrayBuffer();
+    const typ = [b.type, 'video/webm; codecs="vp8"', 'video/webm; codecs="vp9"', 'video/webm'].find((t) => t && MediaSource.isTypeSupported(t));
+    if (!typ) return { fehler: 'kein WebM-Typ fuer MediaSource' };
+    const ms = new MediaSource();
+    const url = URL.createObjectURL(ms);
+    ms.addEventListener('sourceopen', () => {
+      const sb = ms.addSourceBuffer(typ);
+      sb.addEventListener('updateend', () => { if (ms.readyState === 'open') ms.endOfStream(); }, { once: true });
+      sb.appendBuffer(buf);
+    }, { once: true });
+    return { url, typ };
+  });
+  expect(msq.url, JSON.stringify(msq)).toMatch(/^blob:/);
+  const rec = await starteAufnahme(s);
+  await neuesVideo(s, { id: 'v1', quelle: msq.url });
+  expect(await s.evaluate(() => (document.getElementById('v1') as HTMLVideoElement).src.startsWith('blob:'))).toBe(true);
+  await warteZonen(s);
+  expect(await attr(s, 'v1', 'data-veil-video-modus')).toBe('zonen');
+  // Wie der Lauf von z1 und z2 (derselbe Film, bis 14,3 s): die Boxen werden fortlaufend gelesen, nicht einmal (unter Last deckt die Leinwand zeitweise ganz, Wackler Session 20).
+  const boxenLog: Array<{ t: number; ansicht: string; boxen: number[][] }> = [];
+  const t0 = Date.now();
+  while ((await ct(s)) < 14.3 && Date.now() - t0 < 40_000) {
+    const roh = await attr(s, 'v1', 'data-veil-video-boxen');
+    if (roh) boxenLog.push({ t: Date.now(), ...JSON.parse(roh) });
+    await abwarten(150);
+  }
+  const alle = await rec.stoppe();
+  const log = await eintraege(s);
+  // z1: Fenster nach dem Beginn der Leinwand und vor dem Schnitt bei 5 s: pinker Rahmen, rechte Haelfte scharf, Boxen links
+  const tl = zonenBeginn(log)!;
+  expect(tl, 'Leinwand hat nie begonnen').not.toBeNull();
+  const fenster = alle.filter((b) => b.ts > tl + 300 && b.ts < tl + 1400);
+  expect(fenster.length).toBeGreaterThan(15);
+  expect(fenster.filter((b) => b.rosa > 150).length / fenster.length, 'pinker Rahmen in zu wenigen Bildern').toBeGreaterThan(0.8);
+  expect(referenzKante, 'z16: Referenz aus dem ersten Lauf fehlt (die Aufnahme des ersten Durchlaufs muss vorher laufen)').toBeGreaterThan(1);
+  const kante = median(fenster.map((b) => b.kante));
+  expect(kante, `rechte Haelfte nicht scharf genug (${kante} gegen ${referenzKante})`).toBeGreaterThanOrEqual(0.8 * referenzKante);
+  const links = boxenLog.filter((b) => b.ansicht === 'zonen' && b.boxen.length);
+  expect(links.length, `Lesungen mit Zonen von ${boxenLog.length}`).toBeGreaterThan(5);
+  for (const b of links.filter((x) => x.t > tl && x.t < tl + 1500)) for (const k of b.boxen) expect(k[0]! + k[2]! / 2, JSON.stringify(b)).toBeLessThan(330);
+  // z2: ab dem Beginn der Zensur nie ein scharfes Schachbrett
+  const tz = zensurBeginn(log);
+  expect(tz, 'Zensur hat nie begonnen').not.toBeNull();
+  const bilder = alle.filter((b) => b.ts >= tz! + BEGINN_TOLERANZ_MS);
+  expect(bilder.length).toBeGreaterThan(150);
+  const schlecht = bilder.filter(scharf);
+  expect(schlecht.length, `scharfe Bilder ab Beginn der Zensur: ${schlecht.map((b) => Math.round(b.ts - tz!)).join(', ')}`).toBe(0);
+  expect(await sichtVerstoesse(s)).toEqual([]);
+  await s.close();
+});
+
 test('z9 fremdes Video ohne CORS nie Zonen, Etikett sagt warum', async () => {
   test.setTimeout(90_000);
   const s = await oeffne();

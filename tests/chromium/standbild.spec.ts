@@ -319,6 +319,56 @@ test('Video mit Groesse 0, das spaeter waechst, bekommt das Standbild dann', asy
   }
 });
 
+// Etikett (Session 16, UX 8b Nr. 20): sitzt in der geschlossenen Shadow Root des Standbilds und ist nur ueber den Barrierefreiheitsbaum des Browsers zu lesen
+// (CDP Accessibility.getFullAXTree sieht auch geschlossene Wurzeln). Ein Element mit display: none kommt dort nicht vor.
+const ETIKETT = 'Mia’s cover. Press play and answer first.';
+async function etikettTexte(s: Page): Promise<string[]> {
+  const cdp = await context.newCDPSession(s);
+  try {
+    await cdp.send('Accessibility.enable');
+    const baum = (await cdp.send('Accessibility.getFullAXTree')) as { nodes: { ignored?: boolean; name?: { value?: unknown } }[] };
+    const texte: string[] = [];
+    for (const n of baum.nodes) {
+      const w = n.name?.value;
+      if (!n.ignored && typeof w === 'string' && w.includes('Mia’s cover')) texte.push(w.trim());
+    }
+    return [...new Set(texte)]; // Behaelter und Textknoten tragen denselben Namen
+  } finally {
+    await cdp.detach().catch(() => {});
+  }
+}
+
+test('Etikett: das Standbild traegt "Mia’s cover. Press play and answer first." und das Etikett entfaellt unter 240 px Breite', async () => {
+  await importierePack(packPfad);
+  await setzeEinstellungen(EINST);
+  const s = await oeffneSeite();
+  try {
+    await neuesVideo(s, { id: 'haupt' });
+    await standbildBereit(s);
+    const breite = (px: number) => s.evaluate((b) => ((document.getElementById('player') as HTMLElement).style.width = `${b}px`), px);
+    const hat = async () => (await etikettTexte(s)).length > 0;
+    // Normale Breite (640 px): der Text steht da, genau so.
+    await expect.poll(async () => (await etikettTexte(s)).join('|'), { timeout: 8000, intervals: [100] }).toBe(ETIKETT);
+    // Grenze: 240 px zeigt es noch, 239 px nicht mehr (Behaelter-Abfrage max-width 239 px), auch weit darunter nicht.
+    await breite(240);
+    await expect.poll(async () => { const a = (await standbild(s))!; return Math.round(a.vr.w); }, { timeout: 6000 }).toBe(240);
+    await expect.poll(async () => Math.round((await standbild(s))!.r.w), { timeout: 6000 }).toBe(240);
+    await expect.poll(hat, { timeout: 6000, intervals: [100] }).toBe(true);
+    expect((await etikettTexte(s)).join('|')).toBe(ETIKETT);
+    await breite(239);
+    await expect.poll(async () => Math.round((await standbild(s))!.r.w), { timeout: 6000 }).toBe(239);
+    await expect.poll(hat, { timeout: 6000, intervals: [100] }).toBe(false);
+    await breite(120);
+    await expect.poll(async () => Math.round((await standbild(s))!.r.w), { timeout: 6000 }).toBe(120);
+    await expect.poll(hat, { timeout: 6000, intervals: [100] }).toBe(false);
+    // Wieder breit: das Etikett kommt zurueck.
+    await breite(400);
+    await expect.poll(async () => (await etikettTexte(s)).join('|'), { timeout: 6000, intervals: [100] }).toBe(ETIKETT);
+  } finally {
+    await s.close();
+  }
+});
+
 test('Lage: zentriertes, skaliertes und festes Video, das Standbild folgt der gemessenen Flaeche', async () => {
   const s = await oeffneSeite();
   try {

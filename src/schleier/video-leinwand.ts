@@ -62,6 +62,7 @@ import {
   inhaltsRechteck,
   istObjektPassung,
   istSprung,
+  sprungBezug,
   zeitOhneRueckfall,
   kantenZuRechteck,
   parsePosition,
@@ -214,6 +215,8 @@ export class ZonenVideo {
   private wartetAufSzene = false;
   private letzterDaumen: Float32Array | null = null;
   private letzteMt = Number.NaN;
+  // Bildzeit des letzten Durchgangs, der eine Bildzeit hatte (nur aus requestVideoFrameCallback).
+  private letzteBildMt = Number.NaN;
   private letzteSprungZahl: number;
   private letzteZeitMs = 0;
   // Ergebnis der letzten Antwort fuer die Entscheidung.
@@ -566,6 +569,7 @@ export class ZonenVideo {
     }
     const sprungZahl = this.h.sprungZaehler();
     const sprungOffen = sprungZahl !== this.letzteSprungZahl;
+    const hatBildzeit = typeof meta?.mediaTime === 'number';
     const mt = typeof meta?.mediaTime === 'number' ? meta.mediaTime : zeitOhneRueckfall(el.currentTime, this.letzteMt, VIDEO_UHR_RUECK_S, sprungOffen);
     const anders = !(mt === this.letzteMt) || this.ring.length === 0;
     if (!anders && !this.schmutzig) return;
@@ -578,7 +582,7 @@ export class ZonenVideo {
     let sofort = false;
     if (neuesBild) {
       if (sprungOffen) szeneNeu = true;
-      else if (Number.isFinite(this.letzteMt) && istSprung(this.letzteMt, mt, VIDEO_SPRUNG_MEDIA_S, VIDEO_UHR_RUECK_S)) szeneNeu = true;
+      else if (Number.isFinite(this.letzteMt) && istSprung(sprungBezug(hatBildzeit, this.letzteBildMt, this.letzteMt), mt, VIDEO_SPRUNG_MEDIA_S, VIDEO_UHR_RUECK_S)) szeneNeu = true;
     }
     let grau: GrauBild | null = null;
     let daumen: Float32Array | null = null;
@@ -619,6 +623,7 @@ export class ZonenVideo {
       }
       this.letzterDaumen = daumen;
       this.letzteMt = mt;
+      if (hatBildzeit) this.letzteBildMt = mt;
     }
     // Erste Antwort (vor der Leinwand aufgenommen) einspielen.
     if (this.anfang) this.spieleAnfangEin(this.anfang);

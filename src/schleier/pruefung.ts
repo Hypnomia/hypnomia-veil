@@ -4,6 +4,7 @@
 import type { Einstellungen } from '../einstellungen';
 import type { AntwortPruefe, AntwortPruefeOk, NachrichtErkennerPruefe, Quelle } from '../nachrichten';
 import type { WirksameZonen } from '../steigerung';
+import { baueErkennerEinstellungen } from '../pruef-einstellungen';
 
 // Steigerung der Zensur (Auftrag S): der Schleier setzt hier, welche Zonen der Erkenner bei der aktuellen Stufe bekommt (null = die
 // eingestellten). So bleiben alle Aufrufe von sendePruefe unveraendert.
@@ -199,16 +200,11 @@ export async function sendePruefe(
     quelle,
     breite,
     hoehe,
-    einstellungen: {
-      schwelle: e.schwelle,
-      zonen: angepasst?.zonen ?? e.zonen,
-      rand: e.rand,
-      ...presetWahl(e),
-      ...(e.augenbalken ? { augenbalken: true as const } : {}),
-      ...(e.woerterThemen === null ? {} : { woerterThemen: e.woerterThemen }),
+    einstellungen: baueErkennerEinstellungen(e, presetWahl(e), {
+      ...(angepasst?.zonen ? { zonen: angepasst.zonen } : {}),
       ...(packStand === undefined ? {} : { packStand }),
       ...(angepasst?.ganzVerdecken ? { ganzVerdecken: true } : {}),
-    },
+    }),
     rendern,
     ...(vorrang ? { vorrang: true as const } : {}),
     ...(verschmelzen ? { verschmelzen: true as const } : {}),

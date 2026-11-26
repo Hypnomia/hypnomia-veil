@@ -251,8 +251,8 @@ try {
   for (const k of BILDER) {
     await punktKlick(k);
     await bis(`Bild ${k}`, async () => { const h = await haken(); return !!h && h.bild === k && h.gezeigt === h.angefordert; });
-    const st = await driver.executeScript(`const h = JSON.parse(document.querySelector('[data-veil-vorschau]').getAttribute('data-veil-vorschau')); const n = document.querySelector('.vorschau-spalte > .v-vorschau-platz > .v-vorschau-offen'); return { offen: h.offen, sichtbar: !!n && !n.hidden && n.getClientRects().length > 0, text: n && n.textContent, alt: document.querySelector('.vorschau-spalte .v-vorschau-kachel img').getAttribute('alt'), src: document.querySelector('.vorschau-spalte .v-vorschau-kachel img').getAttribute('src').slice(0, 11) };`);
-    pruefe(st.sichtbar === st.offen && st.src === 'data:image/', `N: ${k} Hinweis sichtbar gleich offen, data-Bild ${JSON.stringify(st)}`);
+    const st = await driver.executeScript(`const h = JSON.parse(document.querySelector('[data-veil-vorschau]').getAttribute('data-veil-vorschau')); const n = document.querySelector('.vorschau-spalte > .v-vorschau-platz > .v-vorschau-offen'); return { offen: h.offen, da: document.querySelectorAll('.vorschau-spalte > .v-vorschau-platz > .v-vorschau-offen').length, sichtbar: !!n && !n.hidden && n.getClientRects().length > 0, text: n && n.textContent, alt: document.querySelector('.vorschau-spalte .v-vorschau-kachel img').getAttribute('alt'), src: document.querySelector('.vorschau-spalte .v-vorschau-kachel img').getAttribute('src').slice(0, 11) };`);
+    pruefe(st.da === 1 && st.sichtbar === st.offen && st.src === 'data:image/', `N: ${k} Hinweis sichtbar gleich offen, data-Bild ${JSON.stringify(st)}`);
     pruefe(st.offen ? st.alt === VORSCHAU_ALT_OFFEN && st.text === VORSCHAU_NICHTS : st.alt !== VORSCHAU_ALT_OFFEN, `N: ${k} Alt und Text ${JSON.stringify(st)}`);
     if (st.offen) offene.push(k);
   }

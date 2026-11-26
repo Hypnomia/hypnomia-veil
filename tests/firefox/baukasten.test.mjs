@@ -483,6 +483,21 @@ try {
   await stand({ preset: 'custom', zonen: GESICHT_AN, custom: { gesicht: 'mia', flaeche: 'sticker', woerter: false } });
   pruefe((await gewaehlt('face')) === 'mia' && (await gewaehlt('flaeche')) === 'sticker', 'S2: gespeicherte gesperrte Bausteine stehen gewaehlt da');
   pruefe((await js(`return document.querySelector('#baukasten-face .v-bk-knopf[data-id="mia"]').disabled`)) === true, 'S2: und gesperrt');
+  // A5 (E7): das Kartenbild von Custom zeigt die Mischung, die gilt (ohne Pack Mosaik statt der gesperrten Bausteine), nicht die gespeicherte
+  const kartenBild = () => js(`return document.getElementById('preset-custom').closest('label').querySelector('.preset-bild').innerHTML`);
+  const gesperrtBild = await kartenBild();
+  await stand({ preset: 'custom', zonen: GESICHT_AN, custom: { gesicht: 'mosaik', flaeche: 'mosaik', woerter: false } });
+  const mosaikBild = await kartenBild();
+  pruefe(mosaikBild.includes('<svg') && gesperrtBild === mosaikBild, 'A5: ohne Pack zeigt das Kartenbild bei Mia-Gesicht und Sticker Mosaik, wie die Mischung Mosaik');
+  await stand({ preset: 'custom', zonen: GESICHT_AN, custom: { gesicht: 'mia', flaeche: 'blur', woerter: false } });
+  const miaBlurBild = await kartenBild();
+  await stand({ preset: 'custom', zonen: GESICHT_AN, custom: { gesicht: 'mosaik', flaeche: 'blur', woerter: false } });
+  pruefe(miaBlurBild === (await kartenBild()) && miaBlurBild !== mosaikBild, 'A5: ohne Pack ersetzt nur der gesperrte Baustein, die freie Flaeche bleibt');
+  await importierePack();
+  await stand({ preset: 'custom', zonen: GESICHT_AN, custom: { gesicht: 'mia', flaeche: 'sticker', woerter: false } }, true);
+  pruefe((await kartenBild()) !== mosaikBild, 'A5: mit Pack zeigt das Kartenbild die gespeicherte Mischung');
+  await entfernePack();
+  await stand({ preset: 'custom', zonen: GESICHT_AN, custom: { gesicht: 'mia', flaeche: 'sticker', woerter: false } });
   pruefe((await text('#baukasten-face .v-hinweis')) === 'Part of your mix needs my Pack. That part is Mosaic for now.' && (await text('#baukasten-flaeche .v-hinweis')) === 'Part of your mix needs my Pack. That part is Mosaic for now.', 'S2: der eine Satz zum ersetzten Baustein');
   pruefe((await einst()).custom.gesicht === 'mia', 'S2: gespeichert bleibt, wie es war');
   pruefe((await vorschauRuht()).stil.startsWith('custom:mosaik:mosaik'), `S2: es gilt Mosaik an beiden Stellen (${(await haken()).stil})`);

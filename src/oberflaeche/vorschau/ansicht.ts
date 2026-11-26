@@ -228,6 +228,30 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
     gezeigteBilder += 1;
   };
 
+  // Fokus beim Rueckfall (E7 A7): Faellt die Ansicht bei offenem Fenster oder gedrueckter Kachel auf die Strichzeichnung zurueck, verschwinden die Elemente, auf denen der
+  // Fokus lag. Lag er vorher in der Vorschau, liegt er danach wieder in der Vorschau (auf dem entsprechenden Element, sonst auf dem Behaelter mit tabindex -1), nie auf
+  // `body`. Lag er ausserhalb, bleibt er, wo er war.
+  const fokusImPlatz = (): HTMLElement | null => {
+    const wurzel = platz.element.getRootNode() as Document | ShadowRoot;
+    const a = wurzel.activeElement;
+    return a instanceof HTMLElement && a !== platz.element && platz.element.contains(a) ? a : null;
+  };
+  const rueckfall = (stilId: string, name: string, welches: BeispielKennung, schauAn: boolean): void => {
+    const vorher = fokusImPlatz();
+    const bildPunkt = vorher?.classList.contains('v-vorschau-punkt') ? (vorher.dataset.bild ?? null) : null;
+    const warZurueck = vorher === zurueck;
+    zeigeSkizze(stilId, name, welches);
+    zeigeSchauUi(schauAn);
+    if (!vorher) return;
+    const ziel = bildPunkt && !punkte.gruppe.hidden ? punkte.knoepfe.find((k) => k.dataset.bild === bildPunkt) : warZurueck && !zurueck.hidden ? zurueck : null;
+    // Das entsprechende Element kann verborgen sein (schmal stehen die Punkte nur im Dialog): dann nimmt der Behaelter den Fokus.
+    ziel?.focus({ preventScroll: true });
+    if (!ziel || fokusImPlatz() !== ziel) {
+      platz.element.tabIndex = -1;
+      platz.element.focus({ preventScroll: true });
+    }
+  };
+
   const schreibeHaken = (): void => {
     if (!TESTHAKEN || !stand) return;
     platz.element.setAttribute(
@@ -277,8 +301,7 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
       if (!adresse) {
         bilderDa = false;
         gezeigterSchluessel = schluessel;
-        zeigeSkizze(gilt.id, gilt.name, a.bild);
-        zeigeSchauUi(!!a.schau);
+        rueckfall(gilt.id, gilt.name, a.bild, !!a.schau);
         schreibeHaken();
         return;
       }
@@ -303,8 +326,7 @@ export function baueLiveVorschau(o: LiveVorschauOptionen): LiveVorschau {
       if (mein !== seq) return;
       // Bild nicht ladbar oder Fehler beim Malen: ehrlich zurueck auf die Strichzeichnung (nie das Rohbild).
       gezeigterSchluessel = schluessel;
-      zeigeSkizze(gilt.id, gilt.name, a.bild);
-      zeigeSchauUi(!!a.schau);
+      rueckfall(gilt.id, gilt.name, a.bild, !!a.schau);
       schreibeHaken();
     }
   }
