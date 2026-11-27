@@ -180,11 +180,49 @@ function seitenAnsicht() {
   if (!v) throw new Error(`Seitenansicht nicht gefunden (${k.map((n) => n.klasse).filter(Boolean).slice(0, 20).join(', ')})`);
   return v;
 }
-async function tippeElement(css) {
-  const r = await js(`const e = document.querySelector(arguments[0]); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, dpr: devicePixelRatio };`, css);
-  await L.warte(300);
-  const v = seitenAnsicht();
-  L.tippe(v.x1 + r.x * r.dpr, v.y1 + r.y * r.dpr);
+// Tippt die Mitte eines Seiten-Elements. Fenix scrollt weich: nach scrollIntoView ist das gelesene Rechteck sonst veraltet (Session 25: der Tipp
+// auf "Accept and add" landete daneben). Darum sofort scrollen (behavior instant), dann warten, bis das Rechteck zweimal im Abstand gleich ist
+// und die Mitte im Fenster liegt und das Element dort das oberste ist, und erst dann auf die frisch gelesene Mitte tippen.
+async function tippeElement(css, frist = 8000) {
+  const lies = () => js(`const e = document.querySelector(arguments[0]);
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    const mx = r.left + r.width / 2, my = r.top + r.height / 2;
+    const t = document.elementFromPoint(mx, my);
+    return { x: r.left, y: r.top, b: r.width, h: r.height, mx, my, iw: innerWidth, ih: innerHeight, dpr: devicePixelRatio,
+             versteckt: !!e.closest('[hidden]') || e.getClientRects().length === 0, oben: !!t && (e === t || e.contains(t) || t.contains(e)),
+             deckt: t ? (t.id || t.className || t.tagName) : null };`, css);
+  const gleich = (a, b) => ['x', 'y', 'b', 'h'].every((k) => Math.abs(a[k] - b[k]) < 0.5);
+  const imFenster = (a) => a.b > 0 && a.h > 0 && a.mx >= 0 && a.mx <= a.iw && a.my >= 0 && a.my <= a.ih;
+  const t0 = Date.now();
+  let a = await lies();
+  if (!a) throw new Error(`tippeElement: ${css} nicht im Dokument (Reiter nicht gewaehlt oder Seite nicht geladen?)`);
+  await js(`document.querySelector(arguments[0]).scrollIntoView({ block: 'center', behavior: 'instant' })`, css);
+  let letzte = a;
+  while (Date.now() - t0 < frist) {
+    await L.warte(250);
+    a = await lies();
+    await L.warte(250);
+    const b = await lies();
+    letzte = b ?? a;
+    if (a && b && !b.versteckt && gleich(a, b) && imFenster(b) && b.oben) {
+      const v = seitenAnsicht();
+      L.tippe(v.x1 + b.mx * b.dpr, v.y1 + b.my * b.dpr);
+      return;
+    }
+  }
+  throw new Error(`tippeElement: ${css} wurde nicht ruhig und frei im Fenster (letzte Messung ${JSON.stringify(letzte)}); Foto fehler-<schritt> zeigt, was die Seite zeigt`);
+}
+// Reiter der Einstellungsseite waehlen (seit Commit 56bbe25 sieben Reiter, sichtbar ist nur einer) und warten, bis sein Panel sichtbar ist.
+// Reiter-Ids wie im Schritt bedienung: reiter-<id> (stil, zonen, erwachsen, extras, pack, ledger, ueber), Panel panel-<id>.
+async function waehleReiter(id) {
+  const da = await js(`const t = document.getElementById('reiter-' + arguments[0]); if (t) t.click(); return !!t;`, id);
+  if (!da) throw new Error(`Reiterknopf reiter-${id} fehlt auf der Einstellungsseite`);
+  await L.bis(`Reiter ${id} gewaehlt`, async () => (await js(`const p = document.getElementById('panel-' + arguments[0]); return !!p && !p.hidden && p.getClientRects().length > 0`, id)) === true, 10_000, 100)
+    .catch(async (e) => {
+      const stand = await js(`return { gewaehlt: [...document.querySelectorAll('[role=tab]')].filter((t) => t.getAttribute('aria-selected') === 'true').map((t) => t.id), offen: [...document.querySelectorAll('.reiter-panel')].filter((p) => !p.hidden).map((p) => p.id) }`).catch(() => null);
+      throw new Error(`${e.message}; Seite zeigt ${JSON.stringify(stand)}`);
+    });
 }
 const status = async () => {
   const roh = await js(`return document.documentElement.getAttribute('data-veil-status')`);
@@ -239,6 +277,10 @@ async function pack() {
   const name = 'mia-pack-0.7.0.miapack';
   L.adb('push', quelle, `/sdcard/Download/${name}`);
   await oeffneErweiterungsseite('options.html');
+  // Seit den sieben Reitern (56bbe25) liegt die Pack-Karte im Reiter "Pack and sound": ihn waehlen und warten, bis #datei sichtbar ist.
+  await waehleReiter('pack');
+  await L.bis('Datei-Knopf sichtbar (#datei im Reiter Pack and sound)', () => js(`const e = document.querySelector('#datei'); return !!e && !e.closest('[hidden]') && e.getClientRects().length > 0`), 15_000, 200)
+    .catch(async (e) => { L.foto('pack', 'datei-nicht-sichtbar'); throw e; });
   await L.bis('Datei-Knopf frei', () => js(`const e = document.querySelector('#datei'); return !!e && !e.disabled`), 15_000);
   L.foto('pack', 'vor-import');
   await tippeElement('#datei');
@@ -277,6 +319,12 @@ async function pack() {
   r.msBisLizenz = await L.bis('Lizenz-Block', () => sicht('#lizenz-block'), 120_000, 200).then(() => Date.now() - t1).catch(() => null);
   r.lizenzKopf = await js(`return document.querySelector('#lizenz-kopf')?.textContent.trim() ?? ''`);
   r.lizenzFoto = L.foto('pack', 'lizenz');
+  if (r.msBisLizenz == null) {
+    // Verschaerfung (Runde 2): ohne Lizenz-Block ist die Pruefung des Packs nicht fertig geworden, der Schritt ist rot.
+    r.lizenzMeldung = await js(`return [...document.querySelectorAll('#panel-pack [role=status], #panel-pack .meldung, #pack-status, #pack-meldung')].map((e) => e.textContent.trim()).filter(Boolean).slice(0, 5)`).catch(() => []);
+    ergebnis.schritte.pack = r;
+    throw new Error(`Lizenz-Block erschien nicht in 120 s nach der Dateiwahl; Meldungsfeld im Reiter: ${JSON.stringify(r.lizenzMeldung)}; Foto ${r.lizenzFoto}`);
+  }
   const t2 = Date.now();
   await tippeElement('#annehmen');
   const fertig = await L.bis('Pack importiert', async () => {
@@ -286,11 +334,16 @@ async function pack() {
   r.msAnnehmenBisFertig = Date.now() - t2;
   r.msImport = Date.now() - t1;
   r.pack = typeof fertig === 'string' ? { version: fertig } : fertig;
-  r.meldung = await js(`return [...document.querySelectorAll('[role=status], .meldung, #pack-status, #pack-meldung')].map((e) => e.textContent.trim()).filter(Boolean).slice(0, 5)`).catch(() => []);
+  r.meldung = await js(`return [...document.querySelectorAll('#panel-pack [role=status], #panel-pack .meldung, #pack-status, #pack-meldung')].map((e) => e.textContent.trim()).filter(Boolean).slice(0, 5)`).catch(() => []);
   await js(`document.querySelector('#datei')?.scrollIntoView({ block: 'center' })`);
   r.foto = L.foto('pack', 'nach-import');
   ergebnis.schritte.pack = r;
   console.log(`android pack: gewaehlt ${gewaehlt}, Import ${r.msImport} ms, ${JSON.stringify(r.pack)}, Meldung ${JSON.stringify(r.meldung)}`);
+  // Verschaerfung (Runde 2): ein nicht fertiger Import ist rot (vorher nur im Ergebnis vermerkt).
+  if (typeof fertig !== 'string') {
+    const stand = await js(`return document.querySelector('#pack-version')?.textContent.trim() ?? null`).catch(() => null);
+    throw new Error(`Import nicht fertig (${fertig.fehler ?? 'kein Ergebnis'}); #pack-version zeigt ${JSON.stringify(stand)}; Meldungsfeld im Reiter: ${JSON.stringify(r.meldung)}; Foto ${r.foto}`);
+  }
 }
 
 // Session 20: Preset "sticker" (nach dem Pack-Import, Pack mit Stickern): Preset in den Optionen antippen, auf der Foto-Testseite (nsfw)
@@ -300,6 +353,8 @@ async function sticker() {
   const preset = () => L.imSeitenkontext(driver, `const e = (await api.storage.local.get('einstellungen')).einstellungen; return e ? e.preset ?? null : null;`);
   const waehle = async (id) => {
     await oeffneErweiterungsseite('options.html');
+    // Die Presetkarten liegen im Reiter "Cover style" (beim Oeffnen vorn): trotzdem ausdruecklich waehlen.
+    await waehleReiter('stil');
     r[`gesperrt-${id}`] = await js(`const e = document.querySelector('#preset-' + arguments[0]); return e ? e.disabled : 'fehlt'`, id);
     if (r[`gesperrt-${id}`] !== false) throw new Error(`Preset ${id} nicht waehlbar (${r[`gesperrt-${id}`]}): Pack ohne Sticker oder nicht importiert`);
     await tippeElement(`label:has(#preset-${id})`);

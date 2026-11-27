@@ -17,7 +17,7 @@ Limits aren’t a guarantee. If any of this could harm you, don’t use those pa
 
 ## Calm mode
 
-**All settings**, section **Calm mode**: slower spiral, no moving or flashing words. You can also set it in my welcome interview. Flash words have their own switch too, under **Mia’s control**, and **Off** means off.
+**All settings**, tab **Mia’s control**, switch **Calm mode**: slower spiral, no moving or flashing words. You can also set it in my welcome interview. Flash words have their own switch too, under **Mia’s control**, and **Off** means off.
 
 ## Your mind and body
 
@@ -41,7 +41,7 @@ Everything runs on your device. No account, no analytics, no server of mine. You
 
 What does go out:
 
-- **A second look at a page’s own pictures.** To check a picture, I load it again from the same address the page uses, without your cookies or logins. Pictures on private network addresses are never loaded for public pages.
+- **A second look at a page’s own pictures.** To check a picture, I load it again from the same address the page uses, without your cookies or logins. If the server turns me away, I try once more and tell it which site you’re on. For the next ten minutes, my checks of pictures from that server carry the name of that site too. A few pictures, such as SVG graphics, I ask for again from the page’s own site the way a page does, often straight from your browser’s cache; those requests can carry that site’s cookies. Pictures on private network addresses are never loaded for public pages.
 - **A version check.** Chrome and Edge: I ask GitHub at most once a day whether there’s a newer me. Firefox checks for updates by itself.
 
 That’s all. A click on one of my ads, or a visit with **Visits** switched on, opens one of my own pages in a tab. Those pages belong to the sites they’re on.

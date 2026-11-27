@@ -19,7 +19,7 @@ Open my popup on that site and tap **Leave this site alone**, then reload the pa
 ### Adding a site I should leave alone
 
 - **From the site:** my popup, **Leave this site alone**. Subdomains are included.
-- **By hand:** **All settings**, **Sites I leave alone**, type the address, **Add**.
+- **By hand:** **All settings**, tab **What I cover**, **Sites I leave alone**, type the address, **Add**.
 
 **Let Mia back on this site** in the popup, or **Remove** in the settings, undoes it. Banks, mail, payment pages and the like are on my fixed never-touch list already.
 
@@ -46,10 +46,10 @@ The entry hides until you unlock it: **Settings**, **About Firefox**, tap the Fi
 
 ### Deleting my data
 
-- **The pack:** **Mia Pack**, **Remove Mia Pack**.
+- **The pack:** **Pack and sound**, **Remove Mia Pack**.
 - **The counter:** **Mia’s Ledger**, **Clear my ledger**.
 - **Everything at once:** [uninstall me](uninstall.md). All I stored in your browser goes with me.
 
 ### Still stuck
 
-Come to my Discord: [discord.gg/2C8YAwDkat](https://discord.gg/2C8YAwDkat). Tell me your browser and its version, my version (**All settings**, **About**), the site, and what happened. Leave out anything private.
+Come to my Discord: [discord.gg/2C8YAwDkat](https://discord.gg/2C8YAwDkat). Tell me your browser and its version, my version (**All settings**, tab **About**), the site, and what happened. Leave out anything private.

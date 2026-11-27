@@ -23,7 +23,7 @@ Keep the file somewhere safe. You need it again for a new browser or after a rei
 ## Importing it
 
 1. Finish my welcome steps first. Until then the import says **Meet Mia first**.
-2. Open **All settings** and go to **Mia Pack** (my popup’s **Get the Mia Pack** takes you there). Under **Already have the file?**, you’ll find the file picker.
+2. Open **All settings**, tab **Pack and sound**, card **Mia Pack** (my popup’s **Get the Mia Pack** takes you there). Under **Already have the file?**, you’ll find the file picker.
 3. Click **Choose the pack file** and pick the `.miapack` file. On a computer you can also drop the file onto that spot.
 4. I check every file inside. Under **Before it goes in** you see the title, the version and my license.
 5. Read the license, then click **Accept and add**. **Not yet** stops here, and nothing is stored.
@@ -37,10 +37,10 @@ My ads replace ad spaces on web pages, are always labeled “Mia’s ad”, and 
 
 ## The license, in short
 
-The pictures, sounds and words are mine. You may use them with HYPNOMIA VEIL, for yourself, in private. No sharing, no selling, no editing, no training AI on them. The full text is in the pack: open **Mia Pack** in the settings and click **Read the license**.
+The pictures, sounds and words are mine. You may use them with HYPNOMIA VEIL, for yourself, in private. No sharing, no selling, no editing, no training AI on them. The full text is in the pack: open **Pack and sound** in the settings and click **Read the license**.
 
 ## Removing it
 
-**Mia Pack**, then **Remove Mia Pack**. My pictures, sounds and words go with it, your settings stay. Import the file again whenever you like.
+**All settings**, tab **Pack and sound**, then **Remove Mia Pack**. My pictures, sounds and words go with it, your settings stay. Import the file again whenever you like.
 
 Import trouble? See the [FAQ](faq.md).

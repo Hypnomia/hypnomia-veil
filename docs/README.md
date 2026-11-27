@@ -27,7 +27,7 @@ No Safari. Apple only allows extensions through the App Store.
 - [Safety](safety.md): flashing, Calm mode, 18+, your data
 - [FAQ](faq.md): the usual trouble and how to fix it
 
-The same pages live inside HYPNOMIA VEIL, so you can read them offline: tap the round **?** in my popup, or **Help and guides** at the top of my settings page.
+The same pages live inside HYPNOMIA VEIL, so you can read them offline: tap the round **?** in my popup, or **Help** at the top of my settings page.
 
 ## Help from a human
 

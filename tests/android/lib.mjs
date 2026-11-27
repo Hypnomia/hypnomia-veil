@@ -108,6 +108,9 @@ export function leseOberflaeche() {
 }
 
 const DIALOG_MUSTER = /terms of use|terms of service|nutzungsbedingungen/i;
+// Android-Systemdialog "Set Firefox as your default browser app?" (kommt gelegentlich nach dem Start): immer ueber "Cancel" schliessen,
+// nie ueber "Set as default" (am Emulator nichts als Standard setzen).
+const STANDARD_DIALOG_MUSTER = /set firefox as your default browser/i;
 // Einrichtungskarten von Firefox nach dem Willkommensdialog: immer ablehnen.
 const ABLEHNEN_MUSTER = /^(not now|cancel|skip|no thanks|maybe later)$/i;
 
@@ -135,6 +138,20 @@ export async function raeumeFirefoxDialogeWeg(frist = 15_000) {
         continue;
       }
     }
+    const standard = knoten.find((k) => STANDARD_DIALOG_MUSTER.test(k.text) || STANDARD_DIALOG_MUSTER.test(k.beschreibung));
+    if (standard) {
+      const abbrechen = finde(knoten, /^cancel$/i)[0];
+      if (abbrechen) {
+        tippe(abbrechen.mx, abbrechen.my);
+        console.log('android: Systemdialog "Set Firefox as your default browser app?" mit Cancel geschlossen (nichts als Standard gesetzt)');
+        etwas = true;
+        await warte(800);
+      } else {
+        // Dialog da, aber kein Cancel-Knoten gelesen: nie "Set as default" tippen, neu lesen.
+        await warte(500);
+      }
+      continue;
+    }
     const nein = finde(knoten, ABLEHNEN_MUSTER)[0];
     if (nein) {
       tippe(nein.mx, nein.my);
@@ -153,7 +170,7 @@ export async function raeumeFirefoxDialogeWeg(frist = 15_000) {
 // Liegt der Willkommensdialog oben, wird er weggetippt (siehe oben); danach muessen die Knoten neu gelesen werden.
 // Rueckgabe true: es wurde getippt.
 export function pruefeKeinDialog(knoten = leseOberflaeche()) {
-  const treffer = knoten.find((k) => DIALOG_MUSTER.test(k.text) || DIALOG_MUSTER.test(k.beschreibung));
+  const treffer = knoten.find((k) => DIALOG_MUSTER.test(k.text) || DIALOG_MUSTER.test(k.beschreibung) || STANDARD_DIALOG_MUSTER.test(k.text) || STANDARD_DIALOG_MUSTER.test(k.beschreibung));
   return Boolean(treffer);
 }
 

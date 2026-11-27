@@ -34,7 +34,7 @@ New versions of me, and new versions of the Mia Pack. Your pack and your setting
 
 ## Chrome and Edge
 
-Chrome and Edge don’t update hand-loaded extensions by themselves, so I tell you. When a new version is out, my popup says so under the Pause button, with **How to update**. The same note waits in **All settings**, section **About**, with the steps. **Check now** asks again.
+Chrome and Edge don’t update hand-loaded extensions by themselves, so I tell you. When a new version is out, my popup says so under the Pause button, with **How to update**. The same note waits in **All settings**, tab **About**, with the steps. **Check now** asks again.
 
 To look, I ask GitHub at most once a day. No sign-in, and I send nothing about you.
 
@@ -49,7 +49,7 @@ To look, I ask GitHub at most once a day. No sign-in, and I send nothing about y
 
 Firefox keeps me up to date by itself. Nothing for you to do.
 
-Impatient? **All settings**, section **About**, button **Check now**. On older Firefox versions that button isn’t there, and Firefox still updates me on its own schedule.
+Impatient? **All settings**, tab **About**, button **Check now**. On older Firefox versions that button isn’t there, and Firefox still updates me on its own schedule.
 
 ## New versions of the Mia Pack
 
@@ -58,6 +58,6 @@ When I make a new pack version, you replace the file. Your settings stay exactly
 - **Bought the pack once?** New pack versions are free for you. I swap the file in the same shop product you bought, so you download it from the same place again.
 - **Hypnotic Pet member?** I post the new file for the tier. Download it from that post.
 
-Then import it like the first time: **All settings**, **Mia Pack**, **Update or replace the pack**, **Choose the pack file**, **Accept and add**. I tell you which version you have and which one the file is. A newer one simply replaces the old.
+Then import it like the first time: **All settings**, tab **Pack and sound**, **Update or replace the pack**, **Choose the pack file**, **Accept and add**. I tell you which version you have and which one the file is. A newer one simply replaces the old.
 
 If a pack needs a newer HYPNOMIA VEIL, I say so. Update me first, then import the pack.

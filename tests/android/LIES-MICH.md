@@ -12,14 +12,22 @@ Aufruf: `npm run test:android` (Emulator laeuft, `adb` und `geckodriver` im PATH
 - Fehlt der Test auf echten Geraeten: dort `adb -s <Seriennummer>` freigeben und `VEIL_ANDROID_SERIAL` setzen. Alternative waere Remote-Debugging ueber `adb forward` (nicht noetig, nicht geprueft).
 
 ## Phase 8 (Session 14): Durchlauf und Update-Test
-- `node tests/android/durchlauf.mjs --alle` (oder `--schritt apis,einstieg,schleier,pack,besuch,pause,bedienung`): Weg einer Nutzerin im Emulator mit dem
-  Testbau aus `.output-android` (`VEIL_AUSGABE=.output-android WXT_TESTHAKEN=1 npm run zip:test:firefox`), temporaer installiert. Echtes Pack ueber
-  `VEIL_ECHTES_PACK=<pfad>` (Pfad nie in Dateien); es wird nur nach `/sdcard/Download/` im Emulator geschoben und im Android-Dateiwaehler gewaehlt.
-  Fotos nach `../03 Recherche/emulator/phase8-*.png`, Zahlen nach `scripts/messung/ergebnis-android-*.json` (ignoriert). Ports 47420 bis 47422 per
-  `adb reverse` (Testhaken greifen nur auf 127.0.0.1).
+- `VEIL_AUSGABE=.output-test node tests/android/durchlauf.mjs --alle` (oder `--schritt apis,einstieg,schleier,pack,sticker,besuch,pause,bedienung,speicher`,
+  neun Schritte): Weg einer Nutzerin im Emulator mit dem Testbau aus `.output-test` (`VEIL_AUSGABE=.output-test WXT_TESTHAKEN=1 npm run zip:test:firefox`),
+  temporaer installiert. Ohne `VEIL_AUSGABE` sucht das Skript in `.output-android`. Echtes Pack ueber `VEIL_ECHTES_PACK=<pfad>` (Pfad nie in Dateien); es
+  wird nur nach `/sdcard/Download/` im Emulator geschoben und im Android-Dateiwaehler gewaehlt. Der Dateiname im Emulator ist fest
+  `mia-pack-0.7.0.miapack`, ganz gleich, welche Pack-Version die Quelle hat (das Skript sucht im Waehler nur nach diesem Namen). Der Schritt `speicher`
+  wird uebersprungen (braucht eine signierte XPI). Fotos nach `../03 Recherche/emulator/phase8-*.png`, Zahlen nach
+  `scripts/messung/ergebnis-android-*.json` (ignoriert). Ports 47420 bis 47422 per `adb reverse` (Testhaken greifen nur auf 127.0.0.1).
+- Die Einstellungsseite hat sieben Reiter (Cover style, What I cover, Adult sites, Mia’s control, Pack and sound, Ledger, About), sichtbar ist nur einer. Der Pack-Knopf
+  (`#datei`) und "Accept and add" liegen im Reiter "Pack and sound": der Schritt `pack` waehlt ihn ueber `reiter-pack` und wartet, bis `#datei` sichtbar
+  ist. Die Presetkarten (Schritt `sticker`) liegen im Reiter "Cover style" (`reiter-stil`). Jeder Schritt, der etwas auf der Einstellungsseite antippt,
+  muss zuerst den Reiter waehlen.
+- `tippeElement` wartet nach dem Scrollen (weiches Scrollen von Fenix), bis das Rechteck des Elements ruhig steht, und tippt dann auf die frisch gelesene Mitte.
 - Hilfen in `tests/android/lib.mjs`. Der Firefox-Willkommensdialog ("Terms of Use") kommt bei jedem geckodriver-Start wieder (App-Daten werden
-  geloescht); `raeumeFirefoxDialogeWeg()` bestaetigt ihn im Emulator (Entscheidung 152 der Inhaberin, nur Emulator) und lehnt Einrichtungskarten ab.
-  `VEIL_ANDROID_DIALOG_STOPP=1` bricht stattdessen ab.
+  geloescht); `raeumeFirefoxDialogeWeg()` bestaetigt ihn im Emulator (Entscheidung 152 der Inhaberin, nur Emulator) und lehnt Einrichtungskarten ab; den Android-Systemdialog
+  "Set Firefox as your default browser app?" schliesst es ueber "Cancel" (nie "Set as default").
+  `VEIL_ANDROID_DIALOG_STOPP=1` bricht stattdessen ab (gilt nur fuer den Terms-Dialog; Einrichtungskarten und den Standardbrowser-Dialog raeumt das Skript trotzdem weg).
 - Falle: nach dem Start steht der Startbildschirm von Fenix vorn; eine geladene Seite laeuft dann unsichtbar (`innerWidth` 0). Das Skript holt sie
   ueber die Tab-Uebersicht nach vorn (`seiteNachVorn`).
 - Falle: Popup oeffnet auf Android als ganze Seite ueber "More options", "Extensions", "HYPNOMIA VEIL"; der WebDriver-Inhaltskontext bleibt die Webseite.

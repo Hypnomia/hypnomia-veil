@@ -13,7 +13,7 @@ Keep my icon where you can see it. My popup holds **Pause Mia**, and I want that
 
 ## Cover styles
 
-Your cover style is how I cover what I find. Pick it under **Cover style** in **All settings**; **Change cover style** in my popup takes you straight there. The styles come in four groups, and each card shows a little figure with what I do to it.
+Your cover style is how I cover what I find. Pick it under **Cover style** in **All settings**; **Change cover style** in my popup takes you straight there. The styles come in five groups, and each card shows a little figure with what I do to it. While you choose, on a wide window a preview stays in view and shows what your settings do on four sample pictures. If they would cover nothing on a picture, it stays open with a note.
 
 **With my face** needs the Mia Pack. When you pick one, I switch **Face** on under **Zones**, and every face I find becomes mine, cut to fit and tilted with the head when I can tell. Switch Face off again and I leave it off. While Face is on, **Eyes** and **Mouth** add nothing on top. **Head**, if you switched it on, still gets the same cover as everything else, with my face over the middle. Everything else you switched on gets the rest of the name:
 
@@ -33,9 +33,11 @@ Under the cards sits the **Eye bar** switch: a black bar over the eyes of every 
 
 **Whole person** works without the pack too. When I find something you switched on, I cover the whole person with one mosaic or one blur, not just that spot. I work out the person from the parts I recognize, so the edges can be off. When I’m unsure, I cover more rather than less.
 
+**Your own mix** has one card, **Custom**, and only in my settings. Below it you pick three things: **Face** (Nothing, Bar, My face, Sticker, Mosaic, Blur or Black), **Everything else** (Black, Mosaic, Blur or Stickers) and **Words**. Words need Black or Mosaic to sit on. Parts that need the Mia Pack are Mosaic until the pack is in.
+
 **My words** come from the Mia Pack, sorted by topic. With a style that uses words, pick the topics under the cards: one, a few or all. With no topic picked, I write MIA. A spot too small for a word gets the same cover without one.
 
-Without the pack, the styles with my face stay locked. If one of them was your style, I use Mosaic until the pack is back.
+Without the pack, the styles with my face or my stickers stay locked. Tap one and the preview shows how it would look, with a stand-in for my face or a heart for a sticker; nothing is saved, and **Back to yours** ends it. If one of them was your style, I use Mosaic until the pack is back.
 
 ## My ads
 
